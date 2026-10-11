@@ -141,4 +141,4 @@ pnpm stack:stop:infra   # 同上，并执行 docker compose down
 
 ---
 
-上一篇：[用户手册目录](README.md) ｜ 下一篇：[02 首页与学习工具](02-trader-home-and-learning.md)
+上一篇：[手册目录](README.md) ｜ 下一篇：[02 首页与学习模式](02-trader-home-and-learning.md)
