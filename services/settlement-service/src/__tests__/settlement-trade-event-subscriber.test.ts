@@ -257,6 +257,46 @@ test("paused consumer skips cycles without touching the checkpoint, then catches
   assert.equal((afterExpiry as { skipped?: boolean }).skipped, undefined);
 });
 
+test("a pause requested mid-cycle stops before the next stream entry", async () => {
+  const now = new Date("2026-03-10T10:00:00.000Z");
+  const repository = new InMemorySettlementRepository();
+  const service = createService(repository);
+  const pause = new SettlementConsumerPauseControl({ now: () => now });
+  let pausedOnce = false;
+  const subscriber = new SettlementTradeEventSubscriber(
+    service,
+    {
+      async listTradeEventStreamEntries() {
+        return [createStreamEntry("trade-1", 1), createStreamEntry("trade-2", 2)];
+      },
+      async acknowledgeTradeSettlement(command) {
+        // The fault lab pauses (once) while the first trade is being settled.
+        if (!pausedOnce) {
+          pausedOnce = true;
+          pause.pause({ durationMs: 60_000, reason: "lab" });
+        }
+        return command;
+      }
+    },
+    {
+      consumerId: "settlement-service",
+      markets: ["BTC-USDT"],
+      batchSize: 10,
+      overlapCount: 1,
+      now: () => now,
+      pauseControl: pause
+    }
+  );
+
+  const cycle = await subscriber.runOnce({ trigger: "automatic" });
+  assert.equal(cycle.appliedCount, 1, "only the in-flight entry is applied");
+  assert.equal((cycle.marketSummaries[0] as { interruptedByPause?: boolean }).interruptedByPause, true);
+
+  pause.resume();
+  const resumed = await subscriber.runOnce({ trigger: "automatic" });
+  assert.equal(resumed.appliedCount, 1, "the remaining entry is applied after resume");
+});
+
 test("consumer pause clamps the duration and can be disabled", () => {
   const now = new Date("2026-03-10T10:00:00.000Z");
   const pause = new SettlementConsumerPauseControl({ now: () => now, maxDurationMs: 60_000 });

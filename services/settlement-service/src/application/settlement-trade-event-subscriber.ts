@@ -98,6 +98,10 @@ export class SettlementTradeEventSubscriber {
     let failedCount = 0;
 
     for (const market of markets) {
+      // A pause requested mid-cycle takes effect before the next market...
+      if (this.pauseControl?.isPaused()) {
+        break;
+      }
       const checkpoint = (
         await this.applicationService.listTradeEventConsumerCheckpoints({
           consumerId: this.consumerId,
@@ -140,6 +144,12 @@ export class SettlementTradeEventSubscriber {
       };
 
       for (const entry of entries) {
+        // ...and before the next entry: the checkpoint only covers what was
+        // already applied, so the rest is picked up after resume.
+        if (this.pauseControl?.isPaused()) {
+          marketSummary.interruptedByPause = true;
+          break;
+        }
         try {
           const result = await this.consumeEntry(
             entry,

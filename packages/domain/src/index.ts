@@ -204,6 +204,15 @@ export function hashRequestBody(rawBody?: Buffer | string): string {
   return createHash("sha256").update(bodyBuffer).digest("hex");
 }
 
+/**
+ * A bare trailing "?" is not stable on the wire: Node 22's fetch sends
+ * "/p?" as "/p" while Node 26 keeps it, so signer and verifier could see
+ * different paths. Both sides sign the path without it.
+ */
+export function normalizeInternalServicePath(path: string): string {
+  return path.endsWith("?") ? path.slice(0, -1) : path;
+}
+
 export function buildInternalServiceCanonicalRequest(input: {
   callerName: string;
   method: string;
@@ -214,7 +223,7 @@ export function buildInternalServiceCanonicalRequest(input: {
   return [
     input.callerName,
     input.method.toUpperCase(),
-    input.path,
+    normalizeInternalServicePath(input.path),
     input.timestamp,
     hashRequestBody(input.rawBody)
   ].join("\n");

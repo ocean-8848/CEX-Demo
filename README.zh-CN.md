@@ -38,7 +38,7 @@ demo-simulator：做市商 + 模拟 EVM 链 + 测试水龙头
 
 ## 快速开始
 
-前置条件：Node.js 22+、pnpm 10、Rust（stable）、Docker。只有浏览器 E2E 测试需要 Chrome。
+前置条件：Node.js 22（版本见 [.nvmrc](.nvmrc)，可用 `nvm use`）、pnpm 10、Rust（stable）、Docker。只有浏览器 E2E 测试需要 Chrome。
 
 ```bash
 pnpm install --frozen-lockfile

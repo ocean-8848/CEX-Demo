@@ -6,7 +6,7 @@
 
 | 工具 | 版本要求 | 用途 |
 | --- | --- | --- |
-| Node.js | 22（与 CI 一致） | 运行全部 TypeScript 服务、前端 Web Host 和脚本 |
+| Node.js | 22（版本见根目录 `.nvmrc`，与 CI 一致） | 运行全部 TypeScript 服务、前端 Web Host 和脚本 |
 | pnpm | 10（`package.json` 中 `packageManager` 锁定为 `pnpm@10.6.0`，可用 `corepack enable` 自动匹配） | monorepo 依赖管理与脚本入口 |
 | Rust | stable 工具链（含 `cargo`） | 编译并运行 `engines/matching-engine` |
 | Docker | 支持 `docker compose`（Compose v2） | 本地 PostgreSQL / Redis / Kafka / ClickHouse（可选 Jaeger） |

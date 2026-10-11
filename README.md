@@ -40,7 +40,7 @@ Stack: TypeScript + NestJS services, Rust matching engine, React SPAs, PostgreSQ
 
 ## Quick start
 
-Prerequisites: Node.js 22+, pnpm 10, Rust (stable), Docker. Chrome is only needed for the browser E2E tests.
+Prerequisites: Node.js 22 (pinned in [.nvmrc](.nvmrc); run `nvm use`), pnpm 10, Rust (stable), Docker. Chrome is only needed for the browser E2E tests.
 
 ```bash
 pnpm install --frozen-lockfile

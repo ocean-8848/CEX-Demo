@@ -88,11 +88,13 @@ function createSignature(input) {
     .digest("hex");
 }
 
+// Mirrors normalizeInternalServicePath in @web3-cex/domain: a bare trailing "?"
+// is dropped by some Node fetch versions, so it is never part of the signature.
 function buildCanonicalRequest(input) {
   return [
     input.callerName,
     input.method.toUpperCase(),
-    input.path,
+    input.path.endsWith("?") ? input.path.slice(0, -1) : input.path,
     input.timestamp,
     hashRequestBody(input.rawBody)
   ].join("\n");

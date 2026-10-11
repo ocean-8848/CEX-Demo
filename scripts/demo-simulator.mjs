@@ -79,6 +79,9 @@ const state = {
   faucetCount: 0,
   makersPaused: false,
   makerTickInFlight: null,
+  // Set when maker balances may be gone (resume after demo:reset, or an order
+  // rejected for balance) so the next tick tops up instead of waiting ~50s.
+  makerFundingNeeded: true,
   // Canonical block hashes of recent blocks; a reorg drops the orphaned ones.
   blockHashes: new Map(),
   chainLock: Promise.resolve(),
@@ -310,7 +313,8 @@ async function makerTick() {
 async function runMakerTick() {
   state.makerTicks += 1;
   try {
-    if (state.makerTicks % 20 === 1) {
+    if (state.makerFundingNeeded || state.makerTicks % 20 === 1) {
+      state.makerFundingNeeded = false;
       await ensureMakerFunding();
     }
     const halted = await readHaltedMarkets();
@@ -461,8 +465,11 @@ async function placeOrder(spec, owner, order) {
     });
   } catch (error) {
     // A rejected maker order (e.g. temporarily insufficient balance) is not
-    // fatal; the next tick will re-quote.
+    // fatal; the next tick tops up if needed and re-quotes.
     state.lastMakerError = readErrorMessage(error);
+    if (/INSUFFICIENT|below required/i.test(state.lastMakerError)) {
+      state.makerFundingNeeded = true;
+    }
   }
 }
 
@@ -874,6 +881,10 @@ const server = createServer(async (request, response) => {
     if (request.method === "POST" && url.pathname === "/api/demo/makers") {
       const body = await readJsonBody(request);
       state.makersPaused = Boolean(body.paused);
+      if (!state.makersPaused) {
+        // demo:reset truncates the ledger while makers are paused.
+        state.makerFundingNeeded = true;
+      }
       if (state.makersPaused && state.makerTickInFlight) {
         await state.makerTickInFlight.catch(() => undefined);
       }

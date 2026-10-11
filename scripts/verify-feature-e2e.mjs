@@ -104,8 +104,16 @@ async function opsLogin(operator) {
 const ops = (token, path, body) => http(`${OPS}${path}`, { token, body });
 
 async function bestAsk(market) {
-  const depth = await fetchJson(`${config.marketDataBaseUrl}/api/v1/market-data/depth?market=${market}`);
-  assert.ok(depth.asks?.length, `${market} has asks (are the simulator makers running?)`);
+  // Makers resume right after demo:verify:flow; markets without seeded
+  // liquidity (e.g. SOL-USDT) need a few simulator ticks before quoting.
+  const depth = await waitFor(
+    `${market} asks (are the simulator makers running?)`,
+    async () => {
+      const book = await fetchJson(`${config.marketDataBaseUrl}/api/v1/market-data/depth?market=${market}`);
+      return book.asks?.length ? book : null;
+    },
+    30_000
+  );
   return depth.asks[0].price;
 }
 
@@ -127,7 +135,7 @@ async function waitSettled(orderId) {
 
 async function reconciliationMismatches(opsToken) {
   const report = await ops(opsToken, "/ledger/reconciliation");
-  assert.equal(report.status, 200);
+  assert.equal(report.status, 200, `ledger reconciliation: ${JSON.stringify(report.body)}`);
   return report.body.mismatchCount;
 }
 
@@ -399,24 +407,27 @@ assert.equal(login.status, 201, `demo trader login: ${JSON.stringify(login.body)
 const account = await gateway("/accounts/spot", { token: login.body.token });
 const ctx = { token: login.body.token, accountId: account.body.accountId, opsToken: await opsLogin(DEMO_OPS) };
 
-const results = [];
 let failed = false;
+// Print each result as soon as it is known so a later crash cannot hide it.
+const report = (result) => {
+  failed ||= !result.ok;
+  console.log(`${result.ok ? "PASS" : "FAIL"}  ${result.name.padEnd(14)} ${result.seconds.toFixed(1).padStart(5)}s  ${result.detail}`);
+};
+
 for (const name of names) {
   const startedAt = Date.now();
   try {
     const detail = await sections[name](ctx);
-    results.push({ name, ok: true, detail, seconds: (Date.now() - startedAt) / 1000 });
+    report({ name, ok: true, detail, seconds: (Date.now() - startedAt) / 1000 });
   } catch (error) {
-    failed = true;
-    results.push({ name, ok: false, detail: error instanceof Error ? error.message : String(error), seconds: (Date.now() - startedAt) / 1000 });
+    report({ name, ok: false, detail: error instanceof Error ? error.message : String(error), seconds: (Date.now() - startedAt) / 1000 });
   }
 }
 
-const mismatches = await reconciliationMismatches(ctx.opsToken);
-results.push({ name: "reconciliation", ok: mismatches === 0, detail: `${mismatches} mismatches`, seconds: 0 });
-failed ||= mismatches !== 0;
-
-for (const result of results) {
-  console.log(`${result.ok ? "PASS" : "FAIL"}  ${result.name.padEnd(14)} ${result.seconds.toFixed(1).padStart(5)}s  ${result.detail}`);
+try {
+  const mismatches = await reconciliationMismatches(ctx.opsToken);
+  report({ name: "reconciliation", ok: mismatches === 0, detail: `${mismatches} mismatches`, seconds: 0 });
+} catch (error) {
+  report({ name: "reconciliation", ok: false, detail: error instanceof Error ? error.message : String(error), seconds: 0 });
 }
 process.exit(failed ? 1 : 0);
