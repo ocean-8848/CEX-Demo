@@ -62,6 +62,7 @@ Stop with `pnpm stack:stop` (add Docker: `pnpm stack:stop:infra`).
 Next steps:
 
 - [docs/getting-started.md](docs/getting-started.md): ports, environment variables, scripts, and tests
+- [docs/manual/](docs/manual/README.md): the user manual, covering every page of both apps with screenshots (Chinese)
 - [docs/demo-walkthrough.md](docs/demo-walkthrough.md): a guided tour of both apps and the main money flows
 - [docs/troubleshooting.md](docs/troubleshooting.md): common problems
 

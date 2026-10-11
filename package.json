@@ -23,6 +23,7 @@
     "demo:simulator": "node ./scripts/demo-simulator.mjs",
     "demo:up": "pnpm stack:start && pnpm demo:prepare",
     "demo:verify": "node ./scripts/verify-mvp-demo.mjs",
+    "docs:screenshots": "node ./scripts/capture-manual-screenshots.mjs",
     "demo:verify:flow": "node ./scripts/verify-demo-main-flow.mjs",
     "demo:verify:evidence": "node ./scripts/verify-demo-main-flow.mjs | node ./scripts/render-demo-evidence.mjs",
     "demo:verify:evidence:archive": "node ./scripts/verify-demo-main-flow.mjs | node ./scripts/archive-demo-evidence.mjs",

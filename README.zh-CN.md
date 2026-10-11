@@ -60,6 +60,7 @@ pnpm demo:up
 接下来：
 
 - [docs/getting-started.md](docs/getting-started.md)：端口、环境变量、脚本与测试
+- [docs/manual/](docs/manual/README.md)：使用手册，按页面介绍前后台全部功能，含截图
 - [docs/demo-walkthrough.md](docs/demo-walkthrough.md)：前后台导览与主要资金链路演示
 - [docs/troubleshooting.md](docs/troubleshooting.md)：常见问题
 

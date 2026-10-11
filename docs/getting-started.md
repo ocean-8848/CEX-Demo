@@ -252,6 +252,7 @@ pnpm --filter @web3-cex/ledger-service start
 | `pnpm test:trader-web:local` | `trader-web` 对真实全栈的浏览器 E2E |
 | `pnpm test:ops-console:local` | `ops-console` 对真实全栈的浏览器 E2E |
 | `pnpm test:trade-domain:replay` | 启动临时撮合引擎，验证成交事件序列、回放游标与结算幂等 |
+| `pnpm docs:screenshots` | 在已启动并播种的全栈上重新生成 [使用手册](manual/README.md) 的截图（需要本机 Chrome，会执行演示下单、充值、提现等操作） |
 
 ## 11. 运行测试
 
