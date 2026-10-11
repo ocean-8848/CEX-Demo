@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>交易所架构探索</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .layout { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .svg-wrap { width: 100%; }
+  .svg-wrap svg { width: 100%; height: auto; display: block; touch-action: manipulation; }
+
+  .band { fill: var(--surface-2); stroke: none; }
+  .band-label { font-size: 12px; fill: var(--text-2); font-weight: 600; }
+
+  .edge { stroke: var(--border); stroke-width: 1.4; fill: none; transition: stroke .2s, stroke-width .2s; }
+  .edge.done { stroke: var(--text-2); stroke-width: 1.8; opacity: .7; }
+  .edge.active { stroke: var(--accent); stroke-width: 3.2; }
+  .edge.async { stroke-dasharray: 7 5; }
+  .edge.async.active { stroke: var(--info); }
+  .edge.fail { stroke: var(--sell); stroke-width: 3.2; }
+  .mk-base { fill: var(--border); } .mk-done { fill: var(--text-2); } .mk-sync { fill: var(--accent); }
+  .mk-async { fill: var(--info); } .mk-fail { fill: var(--sell); }
+
+  .node { cursor: pointer; }
+  .node rect { fill: var(--surface); stroke: var(--border); stroke-width: 1.5; transition: fill .2s, stroke .2s; }
+  .node .n1 { font-size: 12.5px; font-weight: 650; }
+  .node .n2 { font-size: 10.5px; fill: var(--text-2); }
+  .node:hover rect { stroke: var(--accent); }
+  .node:focus { outline: none; }
+  .node:focus-visible rect { stroke: var(--info); stroke-width: 3; }
+  .node.done rect { fill: var(--surface-2); stroke: var(--text-2); }
+  .node.active rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 3; }
+  .node.faulty rect { fill: var(--sell-soft); stroke: var(--sell); stroke-dasharray: 5 3; stroke-width: 2.2; }
+  .node.failed rect { fill: var(--sell-soft); stroke: var(--sell); stroke-width: 3.4; stroke-dasharray: none; }
+  .node .xmark { fill: var(--sell); font-size: 14px; font-weight: 700; display: none; }
+  .node.faulty .xmark, .node.failed .xmark { display: inline; }
+  .packet { fill: var(--accent); }
+  .packet.async { fill: var(--info); }
+
+  .scen-row button.on { background: var(--accent); border-color: var(--accent); color: #1d1d1b; font-weight: 600; }
+  .fault-row button { font-size: 12px; padding: 4px 10px; }
+  .fault-row button.on { background: var(--sell-soft); border-color: var(--sell); color: var(--sell); font-weight: 600; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-2); margin-top: 8px; }
+  .legend i { display: inline-block; width: 22px; height: 0; border-top: 3px solid var(--accent); vertical-align: middle; margin-right: 4px; }
+  .legend i.a { border-top: 3px dashed var(--info); }
+  .legend i.f { border-top: 3px solid var(--sell); }
+
+  ol.steps { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow: auto; }
+  ol.steps li { padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; margin-bottom: 4px; font-size: 13px; }
+  ol.steps li.pending { opacity: .38; }
+  ol.steps li.current { border-color: var(--accent); background: var(--accent-soft); }
+  ol.steps li.failstep { border-color: var(--sell); background: var(--sell-soft); }
+  ol.steps .t { font-weight: 600; }
+  ol.steps .d { color: var(--text-2); margin-top: 2px; }
+  ol.steps .no { font-family: var(--mono); color: var(--text-2); margin-right: 4px; }
+  .status { font-weight: 650; }
+  .fund { font-family: var(--mono); font-size: 12.5px; background: var(--surface-2); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; }
+  .result dt { font-size: 12px; color: var(--text-2); margin-top: 8px; }
+  .result dd { margin: 2px 0 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../02-system-architecture.md">📖 对应章节：02 系统总架构</a>
+  </header>
+  <h1>交易所架构探索</h1>
+  <p class="lead">一张可点击的 CEX 架构图。选择一个业务场景，看请求如何穿过各个服务。再给某个服务"注入故障"，看系统在哪一步失败、用户看到什么、系统如何补偿。</p>
+
+  <div class="callout info small">
+    <b>怎么玩：</b>
+    1. 点上方按钮选择场景。
+    2. 点"单步"一步一步走，或点"自动播放"。
+    3. 点图中任意服务（或下方故障按钮）把它切换为故障，再重新运行场景。
+    实线 = 同步调用（影响用户请求成败）；虚线 = 异步事件（Kafka，最终一致）。
+  </div>
+
+  <h2>1. 选择场景</h2>
+  <div class="btn-row scen-row" id="scenRow"></div>
+  <div class="btn-row">
+    <button id="btnStep" class="primary">单步 ▶</button>
+    <button id="btnAuto">自动播放</button>
+    <button id="btnReset">重置</button>
+  </div>
+
+  <div class="layout">
+    <div class="card">
+      <div class="svg-wrap">
+        <svg id="arch" viewBox="0 0 960 600" role="img" aria-label="交易所服务架构图">
+          <defs id="defs"></defs>
+          <g id="bands"></g>
+          <g id="edges"></g>
+          <g id="nodes"></g>
+          <g id="edgesTop"></g>
+          <g id="packets"></g>
+        </svg>
+      </div>
+      <div class="legend">
+        <span><i></i>同步调用</span>
+        <span><i class="a"></i>异步事件</span>
+        <span><i class="f"></i>失败</span>
+        <span>虚线红框 = 已注入故障</span>
+      </div>
+      <h3>注入故障 <span class="muted small">（点按钮或点图中节点切换）</span></h3>
+      <div class="btn-row fault-row" id="faultRow"></div>
+      <div class="btn-row"><button id="btnClearFault" class="small">清除全部故障</button></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3 id="scenTitle">场景</h3>
+        <p class="small muted" id="scenDesc"></p>
+        <p class="small">状态：<span class="status" id="status">未开始</span></p>
+        <ol class="steps" id="steps"></ol>
+      </div>
+      <div class="card">
+        <h3>资金视图</h3>
+        <div class="fund" id="fund">—</div>
+        <div id="result" class="result"></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>2. 试一试</h2>
+  <div class="grid cols-3">
+    <div class="card small">
+      <h3>试一试 A：撮合宕机</h3>
+      <p>把 <code>matching-engine</code> 设为故障，运行"下单成交"。观察：失败发生在冻结<b>之后</b>。资金视图里 6,000 USDT 已冻结。系统必须执行哪个补偿动作？</p>
+    </div>
+    <div class="card small">
+      <h3>试一试 B：Kafka 堆积</h3>
+      <p>把 <code>Kafka</code> 设为故障，分别运行"充值"和"下单成交"。观察：同步部分全部成功，账本已正确。用户只是"看不到"变化。这就是最终一致。</p>
+    </div>
+    <div class="card small">
+      <h3>试一试 C：索引器宕机</h3>
+      <p>把 <code>blockchain-indexer</code> 设为故障，运行"提币"。观察：币已经上链离开热钱包，账本仍是冻结。为什么此时<b>绝对不能</b>解冻？</p>
+    </div>
+  </div>
+
+  <footer class="note">
+    本页是教学模型。服务名对应本仓库 CEX Demo 的目录；补偿策略为业界通用做法，不代表币安内部实现。
+    数值均为示例。阅读 <a href="../02-system-architecture.md">02-system-architecture.md</a> 了解完整说明。
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var NS = 'http://www.w3.org/2000/svg';
+  var NW = 140, NH = 46;
+
+  // ---------- 节点 ----------
+  var NODES = [
+    { id: 'user', name: '用户', sub: '浏览器 / App', x: 90, y: 70, nofault: true },
+    { id: 'web', name: 'trader-web', sub: '用户前端', x: 280, y: 70 },
+    { id: 'gw', name: 'api-gateway', sub: '鉴权 / 限流 / WS', x: 480, y: 70 },
+    { id: 'ops', name: 'ops-console', sub: '审核 / 对账', x: 830, y: 70 },
+    { id: 'order', name: 'order-service', sub: '订单生命周期', x: 180, y: 180 },
+    { id: 'risk', name: 'risk-service', sub: '下单前风控', x: 380, y: 180 },
+    { id: 'me', name: 'matching-engine', sub: 'Rust 内存撮合', x: 580, y: 180 },
+    { id: 'settle', name: 'settlement', sub: '成交结算', x: 790, y: 180 },
+    { id: 'identity', name: 'identity-service', sub: '用户 / 2FA', x: 180, y: 290 },
+    { id: 'wallet', name: 'wallet-service', sub: '充值 / 提币单据', x: 430, y: 290 },
+    { id: 'ledger', name: 'ledger-service', sub: '双分录账本', x: 700, y: 290 },
+    { id: 'indexer', name: 'blockchain-indexer', sub: '扫链 / 确认数', x: 230, y: 400 },
+    { id: 'custody', name: 'custody-adapter', sub: '签名 / 广播', x: 480, y: 400 },
+    { id: 'chain', name: '区块链', sub: 'EVM 节点', x: 760, y: 400 },
+    { id: 'redis', name: 'Redis', sub: '限流 / 快照', x: 100, y: 520 },
+    { id: 'pg', name: 'PostgreSQL', sub: '事实存储', x: 280, y: 520 },
+    { id: 'kafka', name: 'Kafka', sub: '事件总线', x: 470, y: 520 },
+    { id: 'md', name: 'market-data', sub: '行情 / 公共 WS', x: 660, y: 520 },
+    { id: 'ch', name: 'ClickHouse', sub: 'K 线 / 分析', x: 850, y: 520 }
+  ];
+  var BANDS = [
+    { label: '① 接入层', x: 10, y: 22, w: 690, h: 96 },
+    { label: '⑥ 运营后台', x: 710, y: 22, w: 240, h: 96 },
+    { label: '② 交易核心', x: 10, y: 132, w: 940, h: 96 },
+    { label: '③ 资金层', x: 10, y: 242, w: 940, h: 96 },
+    { label: '④ 链上层', x: 10, y: 352, w: 940, h: 96 },
+    { label: '⑤ 数据层', x: 10, y: 472, w: 940, h: 96 }
+  ];
+  var byId = {};
+  NODES.forEach(function (n) { byId[n.id] = n; });
+
+  // ---------- 场景 ----------
+  // mode: sync | async | local
+  var SCENARIOS = [
+    {
+      id: 'login', name: '注册登录',
+      desc: '新用户注册并开启 2FA，拿到登录会话（session）。不涉及资金。',
+      fund0: '无资金变化',
+      steps: [
+        { f: 'user', t: 'web', m: 'sync', title: '用户填写邮箱和密码', d: '前端做格式校验。' },
+        { f: 'web', t: 'gw', m: 'sync', title: 'POST /auth/register', d: '请求进入统一网关。' },
+        { f: 'gw', t: 'redis', m: 'sync', title: '网关检查限流计数', d: '同一 IP 注册过多会被拒绝（防批量注册）。' },
+        { f: 'gw', t: 'identity', m: 'sync', title: '创建用户', d: '身份服务保存密码哈希，不保存明文。' },
+        { f: 'identity', t: 'pg', m: 'sync', title: '写入用户表', d: '用户档案落库，事务提交。' },
+        { f: 'identity', t: 'identity', m: 'local', title: '校验 TOTP 2FA', d: '用户绑定验证器 App，输入 6 位动态码。' },
+        { f: 'identity', t: 'gw', m: 'sync', title: '返回 session', d: '网关把 session 交给前端。' },
+        { f: 'gw', t: 'user', m: 'sync', title: '登录成功', d: '用户进入首页。同步部分结束。' },
+        { f: 'identity', t: 'kafka', m: 'async', title: '发布 user.registered', d: '事件进入 identity.events。' },
+        { f: 'kafka', t: 'ops', m: 'async', title: '运营后台出现 KYC 待审', d: '合规人员异步审核证件。' }
+      ],
+      faults: {
+        gw: { user: '页面报错"服务不可用"，所有接口失败。', comp: '无资金影响。业界做法：多地域部署网关，DNS / 负载均衡自动切走故障节点。', fund: '无资金变化' },
+        redis: { user: '注册请求返回 503 或 429。', comp: '限流依赖 Redis。业界做法：Redis 故障时降级为本地内存限流，或对敏感接口直接拒绝（fail closed）。' },
+        identity: { user: '注册 / 登录失败，提示稍后重试。', comp: '用户未创建，不需要补偿。前端重试时带同一个幂等键，防止重复创建。' },
+        pg: { user: '注册失败。', comp: '事务未提交，没有半条用户记录。数据库主从切换后恢复。' },
+        kafka: { user: '用户已登录成功，体验无异常。', comp: '同步部分已完成。事件留在 outbox 表里，Kafka 恢复后重发。运营后台的 KYC 队列延迟出现。' },
+        ops: { user: '用户无感知，但 KYC 审核变慢，暂时不能提币。', comp: '事件保留在 Kafka。后台恢复后从消费位点继续处理。' }
+      }
+    },
+    {
+      id: 'deposit', name: '充值',
+      desc: '用户从个人钱包向交易所充值地址转入 1 ETH（示例）。由链上事件触发，整条链路是异步的。',
+      fund0: 'ETH  可用 0  冻结 0',
+      steps: [
+        { f: 'user', t: 'chain', m: 'async', title: '用户在链上转账 1 ETH', d: '目标是交易所分配给该用户的专属充值地址。' },
+        { f: 'indexer', t: 'chain', m: 'async', title: '索引器扫描新区块', d: '按地址匹配交易所的充值地址。' },
+        { f: 'indexer', t: 'wallet', m: 'async', title: 'deposit.detected（确认数 1）', d: '充值单状态 = pending。此时不入账。', fund: 'ETH  可用 0  冻结 0\n充值单：pending（1/12 确认）' },
+        { f: 'indexer', t: 'indexer', m: 'local', title: '等待确认数达到 12（示例）', d: '防止链重组（Reorg）把交易回滚。' },
+        { f: 'indexer', t: 'wallet', m: 'async', title: '推进充值为 confirmed', d: '同一个 txHash 只推进一次（幂等）。' },
+        { f: 'wallet', t: 'ledger', m: 'sync', title: 'postJournal 入账', d: '借：平台热钱包镜像 1 ETH；贷：用户可用 1 ETH。幂等键 = txHash。' },
+        { f: 'ledger', t: 'pg', m: 'sync', title: '分录与余额同一事务提交', d: '同时写 outbox 事件。', fund: 'ETH  可用 1  冻结 0\n充值单：credited' },
+        { f: 'ledger', t: 'kafka', m: 'async', title: '发布 ledger.journal_posted', d: 'outbox 任务把事件发到 Kafka。' },
+        { f: 'kafka', t: 'gw', m: 'async', title: '网关消费余额事件', d: '找到该用户的私有 WebSocket 连接。' },
+        { f: 'gw', t: 'user', m: 'async', title: '推送"充值到账"', d: '用户界面刷新余额。' }
+      ],
+      faults: {
+        chain: { user: '用户在区块浏览器上看到交易，但交易所迟迟不显示。', comp: '链拥堵或 RPC 节点故障。索引器切换备用 RPC 节点；恢复后从扫描游标继续。' },
+        indexer: { user: '充值一直显示"未到账"。', comp: '索引器重启后从扫描游标继续扫块。入账以 txHash 为幂等键，不会重复入账。监控按"区块落后数"告警。' },
+        wallet: { user: '充值停在"确认中"。', comp: '索引器重试推进。wallet 恢复后按 txHash 去重处理。' },
+        ledger: { user: '充值显示"处理中"，余额未增加。', comp: '钱包保持 confirmed 未入账状态，后台任务重试 postJournal（幂等键 = txHash）。对账任务会标记长时间未入账的充值。' },
+        pg: { user: '充值显示"处理中"。', comp: '账本事务未提交，没有半条分录。数据库恢复后重试入账。' },
+        kafka: { user: '余额没有实时刷新，手动刷新页面能看到 1 ETH。', comp: '资金已正确入账。事件积压在 outbox，Kafka 恢复后补发。这是"最终一致"：账对，推送慢。', fund: 'ETH  可用 1  冻结 0（账本已正确）\n推送：积压中' },
+        gw: { user: '收不到到账通知，WebSocket 断开。', comp: '资金已入账。客户端重连后重新拉取余额快照。', fund: 'ETH  可用 1  冻结 0（账本已正确）' }
+      }
+    },
+    {
+      id: 'trade', name: '下单成交',
+      desc: '用户 A 限价买 0.1 BTC，价格 60,000 USDT（示例）。订单簿里正好有卖单，立即全部成交。手续费 0.1%（示例）。',
+      fund0: 'USDT 可用 10000  冻结 0\nBTC  可用 0',
+      steps: [
+        { f: 'user', t: 'web', m: 'sync', title: '用户点击"买入"', d: '限价 60000，数量 0.1。' },
+        { f: 'web', t: 'gw', m: 'sync', title: 'POST /orders', d: '携带 session 和幂等键 clientOrderId。' },
+        { f: 'gw', t: 'redis', m: 'sync', title: '限流 + 幂等键检查', d: '重复提交的同一订单被直接返回，不会下两次。' },
+        { f: 'gw', t: 'order', m: 'sync', title: 'createOrder', d: '订单状态 = new。' },
+        { f: 'order', t: 'risk', m: 'sync', title: '风控校验', d: '价格偏离、数量精度、最小下单额、可用余额。' },
+        { f: 'order', t: 'ledger', m: 'sync', title: 'freezeBalance 冻结 6000 USDT', d: '0.1 × 60000 = 6000。可用转冻结。' },
+        { f: 'ledger', t: 'pg', m: 'sync', title: '冻结写入账本', d: '幂等键 = orderId。', fund: 'USDT 可用 4000  冻结 6000\nBTC  可用 0' },
+        { f: 'order', t: 'me', m: 'sync', title: 'submitOrder 送入撮合', d: '订单进入内存订单簿。' },
+        { f: 'me', t: 'me', m: 'local', title: '价格优先、时间优先撮合', d: '与卖一 0.1 BTC @ 60000 成交。撮合不碰余额。' },
+        { f: 'me', t: 'order', m: 'sync', title: '成交回报', d: '订单状态 = filled。' },
+        { f: 'order', t: 'settle', m: 'sync', title: 'settleTrade', d: '把成交交给结算服务。' },
+        { f: 'settle', t: 'ledger', m: 'sync', title: 'consumeBalance + postJournal', d: '扣冻结 6000 USDT；买方 +0.0999 BTC；手续费账户 +0.0001 BTC。', fund: 'USDT 可用 4000  冻结 0\nBTC  可用 0.0999\n手续费账户 BTC +0.0001' },
+        { f: 'order', t: 'gw', m: 'sync', title: '返回订单 filled', d: '同步部分结束。' },
+        { f: 'gw', t: 'user', m: 'sync', title: '用户看到"已成交"', d: '' },
+        { f: 'order', t: 'kafka', m: 'async', title: '发布 trade.executed', d: '同时账本发布 ledger.journal_posted。' },
+        { f: 'kafka', t: 'md', m: 'async', title: '行情服务消费成交', d: '更新盘口、最新价、K 线。' },
+        { f: 'md', t: 'web', m: 'async', title: '公共 WebSocket 推送', d: '所有用户看到盘口变化。' }
+      ],
+      faults: {
+        gw: { user: '下单按钮报错，所有接口失败。', comp: '请求没有到达订单服务，无冻结，不需要补偿。' },
+        redis: { user: '下单返回 503。', comp: '幂等键无法检查。业界做法：资金类接口 fail closed，直接拒绝，避免重复下单。' },
+        order: { user: '下单返回 503。', comp: '订单未创建，无冻结。用户可以重试（同一 clientOrderId）。' },
+        risk: { user: '下单被拒："系统繁忙"。', comp: '风控不可用时 fail closed：拒单，不放行。资金未冻结，不需要补偿。' },
+        ledger: { user: '下单被拒："余额冻结失败"。', comp: '冻结没有成功，订单标记 rejected。无资金副作用。' },
+        pg: { user: '下单被拒。', comp: '账本事务未提交，冻结不生效。订单标记 rejected。' },
+        me: { user: '下单被拒，提示"交易暂不可用"。但可用余额少了 6000 USDT（已冻结）。', comp: '订单服务把订单标记 rejected，调用账本解冻 6000 USDT（幂等键 = orderId）。如果解冻也失败，任务进入 recovery queue 重试，超限进入死信，由 ops-console 人工处理。', fund: 'USDT 可用 4000  冻结 6000 ← 必须解冻\n补偿后：USDT 可用 10000  冻结 0' },
+        settle: { user: '订单显示"已成交"，但 BTC 没到账，6000 USDT 仍是冻结。', comp: '撮合结果已经发生，不能撤回。结算任务进入 recovery queue 自动重试（幂等键 = tradeId）；多次失败后进入死信，ops-console 人工恢复。', fund: 'USDT 可用 4000  冻结 6000\nBTC  可用 0 ← 待结算' },
+        kafka: { user: '下单已成交、余额正确，但盘口和最新价不动，K 线断档。', comp: '资金已正确结算。Kafka 恢复后消费者追上，行情补推。客户端发现序号跳跃时重新拉取盘口快照。', fund: 'USDT 可用 4000  冻结 0\nBTC  可用 0.0999（账本已正确）' },
+        md: { user: '盘口和成交列表冻结，看起来"没有成交"。', comp: '资金不受影响。行情服务重启后从 Kafka 位点继续消费，并重建盘口快照。' },
+        web: { user: '页面打不开或无法下单。', comp: '前端故障不影响后端。API 用户（量化程序）仍可正常交易。' }
+      }
+    },
+    {
+      id: 'withdraw', name: '提币',
+      desc: '用户把 0.5 ETH 提到外部地址（示例）。先冻结，审核通过后签名广播，链上确认后才最终出账。',
+      fund0: 'ETH  可用 1  冻结 0',
+      steps: [
+        { f: 'user', t: 'web', m: 'sync', title: '填写地址、数量、2FA 码', d: '' },
+        { f: 'web', t: 'gw', m: 'sync', title: 'POST /withdrawals', d: '携带幂等键。' },
+        { f: 'gw', t: 'wallet', m: 'sync', title: 'requestWithdrawal', d: '钱包服务创建提币单。' },
+        { f: 'wallet', t: 'identity', m: 'sync', title: '校验 2FA 与用户状态', d: '冻结用户、未完成 KYC 的用户被拒绝。' },
+        { f: 'wallet', t: 'wallet', m: 'local', title: '规则校验', d: '地址白名单、单日限额、最小提币额、风控规则。' },
+        { f: 'wallet', t: 'ledger', m: 'sync', title: 'freezeBalance 冻结 0.5 ETH', d: '幂等键 = withdrawalId。', fund: 'ETH  可用 0.5  冻结 0.5\n提币单：requested' },
+        { f: 'wallet', t: 'gw', m: 'sync', title: '返回"审核中"', d: '同步部分结束。' },
+        { f: 'ops', t: 'wallet', m: 'async', title: '审核通过', d: '小额自动审核，大额人工审核。' },
+        { f: 'wallet', t: 'custody', m: 'async', title: 'createTransfer', d: '钱包服务不接触私钥。' },
+        { f: 'custody', t: 'custody', m: 'local', title: '热钱包 / MPC 签名', d: '' },
+        { f: 'custody', t: 'chain', m: 'async', title: '广播交易，得到 txHash', d: '币已离开热钱包。', fund: 'ETH  可用 0.5  冻结 0.5\n提币单：broadcasted\n链上：0.5 ETH 已发出' },
+        { f: 'indexer', t: 'chain', m: 'async', title: '跟踪 txHash 确认数', d: '' },
+        { f: 'indexer', t: 'wallet', m: 'async', title: '确认数达到阈值', d: '提币单 = confirmed。' },
+        { f: 'wallet', t: 'ledger', m: 'sync', title: 'consumeBalance 冻结转出账', d: '借：用户冻结 0.5；贷：热钱包镜像 0.5。', fund: 'ETH  可用 0.5  冻结 0\n提币单：completed' },
+        { f: 'ledger', t: 'kafka', m: 'async', title: '发布账本事件', d: '' },
+        { f: 'kafka', t: 'gw', m: 'async', title: '网关消费通知', d: '' },
+        { f: 'gw', t: 'user', m: 'async', title: '推送"提币完成"', d: '' }
+      ],
+      faults: {
+        gw: { user: '提币页面报错。', comp: '请求未到达钱包服务，无冻结。' },
+        wallet: { user: '提币提交失败。', comp: '提币单未创建，无冻结。' },
+        identity: { user: '提币被拒："安全验证失败"。', comp: '2FA 无法校验时 fail closed：拒绝提币。无冻结，不需要补偿。' },
+        ledger: { user: '提币提交失败。', comp: '冻结没有成功，提币单标记 failed。无资金副作用。' },
+        ops: { user: '提币一直"审核中"，0.5 ETH 被冻结。', comp: '资金保持冻结，安全。审核恢复后继续。用户主动取消时，钱包调用账本解冻。', fund: 'ETH  可用 0.5  冻结 0.5\n提币单：reviewing' },
+        custody: { user: '提币"处理中"。', comp: '签名或广播失败，币还在热钱包。custody-adapter 重试或切换 provider。终态失败时提币单标记 failed，账本解冻 0.5 ETH。', fund: 'ETH  可用 0.5  冻结 0.5\n终态失败后解冻：可用 1  冻结 0' },
+        chain: { user: '提币"处理中"很久，区块浏览器上显示 pending。', comp: '链拥堵。资金保持冻结，不能解冻（交易随时可能上链）。可以用更高手续费替换交易加速。' },
+        indexer: { user: '外部地址已经收到币，但交易所仍显示"处理中"。', comp: '币已离开热钱包，账本仍是冻结。此时绝对不能解冻，否则用户多得 0.5 ETH。索引器恢复后按 txHash 推进确认；对账任务会发现"链上已出、账本未出"的差异。', fund: 'ETH  可用 0.5  冻结 0.5 ← 不能解冻！\n链上：0.5 ETH 已到达外部地址' },
+        kafka: { user: '提币已完成，但没收到通知。', comp: '资金已正确出账。通知事件积压，Kafka 恢复后补发。', fund: 'ETH  可用 0.5  冻结 0（账本已正确）' }
+      }
+    },
+    {
+      id: 'market', name: '行情推送',
+      desc: '一笔成交产生后，行情如何扇出给所有在线用户。整条链路是异步的，不影响资金。',
+      fund0: '行情链路不修改任何余额',
+      steps: [
+        { f: 'me', t: 'me', m: 'local', title: '撮合产生一笔成交', d: 'BTC/USDT 0.1 @ 60000（示例）。' },
+        { f: 'me', t: 'order', m: 'sync', title: '成交回报', d: '' },
+        { f: 'order', t: 'kafka', m: 'async', title: '发布 trade.executed', d: '按交易对作为分区键，保证顺序。' },
+        { f: 'kafka', t: 'md', m: 'async', title: '行情服务消费', d: '' },
+        { f: 'md', t: 'md', m: 'local', title: '更新盘口、ticker、K 线', d: '每条推送带递增序号。' },
+        { f: 'md', t: 'redis', m: 'async', title: '写盘口快照', d: '新连接先拉快照，再接增量。' },
+        { f: 'md', t: 'ch', m: 'async', title: '成交落 ClickHouse', d: '物化视图生成 1 分钟 K 线。' },
+        { f: 'md', t: 'web', m: 'async', title: '公共 WebSocket 推送', d: '一份数据扇出给大量连接。' },
+        { f: 'web', t: 'user', m: 'async', title: '界面刷新盘口与成交', d: '' }
+      ],
+      faults: {
+        me: { user: '没有新成交，行情静止，下单被拒。', comp: '撮合从快照 + 顺序日志恢复订单簿。恢复前交易所暂停该交易对。' },
+        order: { user: '成交回报延迟。', comp: '撮合输出保留在日志里。订单服务恢复后继续处理。' },
+        kafka: { user: '盘口和最新价不动。', comp: '资金不受影响。消费者追上后补推。客户端发现序号跳跃时重新拉取快照。' },
+        md: { user: '行情冻结，K 线断档。', comp: '资金不受影响。重启后从 Kafka 位点继续，重建快照。' },
+        redis: { user: '已连接用户正常；新打开页面的用户看不到初始盘口。', comp: '快照不可用。降级为从行情服务内存直接返回，或稍后重试。' },
+        ch: { user: '实时行情正常，历史 K 线缺一段。', comp: '分析库故障不影响实时推送。恢复后从 Kafka 回放补齐。' },
+        web: { user: '页面无法显示行情。', comp: 'API 用户仍可通过公共 WebSocket 接收行情。' }
+      }
+    }
+  ];
+
+  // ---------- 状态 ----------
+  var state = { scen: SCENARIOS[2], idx: -1, failed: false, finished: false, timer: null };
+  var faults = {};
+  var nodeEls = {}, edgeEls = {}, faultBtns = {};
+
+  // ---------- SVG 构建 ----------
+  function el(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  var svg = document.getElementById('arch');
+  var defs = document.getElementById('defs');
+  ['base', 'done', 'sync', 'async', 'fail'].forEach(function (k) {
+    var m = el('marker', { id: 'mk-' + k, viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' }, defs);
+    el('path', { d: 'M0,0 L10,5 L0,10 z', 'class': 'mk-' + k }, m);
+  });
+  BANDS.forEach(function (b) {
+    var g = document.getElementById('bands');
+    el('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 10, 'class': 'band' }, g);
+    var t = el('text', { x: b.x + 8, y: b.y + 15, 'class': 'band-label' }, g);
+    t.textContent = b.label;
+  });
+
+  function clip(a, b) {
+    // 从 a 中心指向 b 中心，返回 b 矩形边界上的点
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var hw = NW / 2 + 3, hh = NH / 2 + 3;
+    var t = Math.min(dx === 0 ? Infinity : hw / Math.abs(dx), dy === 0 ? Infinity : hh / Math.abs(dy));
+    return { x: b.x - dx * t, y: b.y - dy * t };
+  }
+  function edgeKey(a, b) { return a < b ? a + '|' + b : b + '|' + a; }
+
+  var edgeSet = {};
+  SCENARIOS.forEach(function (s) {
+    s.steps.forEach(function (st) { if (st.f !== st.t) edgeSet[edgeKey(st.f, st.t)] = true; });
+  });
+  var gEdges = document.getElementById('edges');
+  var gTop = document.getElementById('edgesTop');
+  Object.keys(edgeSet).forEach(function (k) {
+    var p = k.split('|');
+    var a = byId[p[0]], b = byId[p[1]];
+    var e = el('line', { 'class': 'edge' }, gEdges);
+    edgeEls[k] = { el: e, a: a.id, b: b.id };
+    setEdgeDir(k, a.id, b.id, false);
+  });
+  function setEdgeDir(k, from, to, arrow) {
+    var a = byId[from], b = byId[to];
+    var p1 = clip(b, a), p2 = clip(a, b);
+    var e = edgeEls[k].el;
+    e.setAttribute('x1', p1.x.toFixed(1)); e.setAttribute('y1', p1.y.toFixed(1));
+    e.setAttribute('x2', p2.x.toFixed(1)); e.setAttribute('y2', p2.y.toFixed(1));
+    if (!arrow) e.removeAttribute('marker-end');
+  }
+
+  var gNodes = document.getElementById('nodes');
+  NODES.forEach(function (n) {
+    var g = el('g', { 'class': 'node', tabindex: n.nofault ? '-1' : '0', role: 'button', transform: 'translate(' + (n.x - NW / 2) + ',' + (n.y - NH / 2) + ')' }, gNodes);
+    el('rect', { width: NW, height: NH, rx: 9 }, g);
+    var t1 = el('text', { x: NW / 2, y: 20, 'text-anchor': 'middle', 'class': 'n1' }, g); t1.textContent = n.name;
+    var t2 = el('text', { x: NW / 2, y: 36, 'text-anchor': 'middle', 'class': 'n2' }, g); t2.textContent = n.sub;
+    var x = el('text', { x: NW - 12, y: 15, 'text-anchor': 'middle', 'class': 'xmark' }, g); x.textContent = '✕';
+    var title = el('title', {}, g); title.textContent = n.nofault ? n.name : n.name + '（点击切换故障）';
+    if (!n.nofault) {
+      g.setAttribute('aria-label', n.name + '，点击切换故障');
+      g.addEventListener('click', function () { toggleFault(n.id); });
+      g.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggleFault(n.id); } });
+    }
+    nodeEls[n.id] = g;
+  });
+
+  // ---------- 控件 ----------
+  var scenRow = document.getElementById('scenRow');
+  var scenBtns = {};
+  SCENARIOS.forEach(function (s) {
+    var b = document.createElement('button');
+    b.textContent = s.name;
+    b.addEventListener('click', function () { state.scen = s; reset(); });
+    scenRow.appendChild(b);
+    scenBtns[s.id] = b;
+  });
+  var faultRow = document.getElementById('faultRow');
+  NODES.forEach(function (n) {
+    if (n.nofault) return;
+    var b = document.createElement('button');
+    b.textContent = n.name;
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', function () { toggleFault(n.id); });
+    faultRow.appendChild(b);
+    faultBtns[n.id] = b;
+  });
+
+  var btnStep = document.getElementById('btnStep');
+  var btnAuto = document.getElementById('btnAuto');
+  btnStep.addEventListener('click', function () { stopAuto(); step(); });
+  btnAuto.addEventListener('click', function () {
+    if (state.timer) { stopAuto(); return; }
+    if (state.finished || state.failed) reset();
+    btnAuto.textContent = '暂停';
+    step();
+    state.timer = setInterval(function () { if (!step()) stopAuto(); }, 1500);
+  });
+  document.getElementById('btnReset').addEventListener('click', function () { reset(); });
+  document.getElementById('btnClearFault').addEventListener('click', function () {
+    faults = {}; syncFaultUI(); reset();
+  });
+
+  function stopAuto() {
+    if (state.timer) clearInterval(state.timer);
+    state.timer = null;
+    btnAuto.textContent = '自动播放';
+  }
+
+  function toggleFault(id) {
+    if (faults[id]) delete faults[id]; else faults[id] = true;
+    syncFaultUI();
+    reset();
+  }
+  function syncFaultUI() {
+    NODES.forEach(function (n) {
+      nodeEls[n.id].classList.toggle('faulty', !!faults[n.id]);
+      if (faultBtns[n.id]) {
+        faultBtns[n.id].classList.toggle('on', !!faults[n.id]);
+        faultBtns[n.id].setAttribute('aria-pressed', faults[n.id] ? 'true' : 'false');
+      }
+    });
+  }
+
+  // ---------- 运行 ----------
+  var stepsEl = document.getElementById('steps');
+  var statusEl = document.getElementById('status');
+  var fundEl = document.getElementById('fund');
+  var resultEl = document.getElementById('result');
+
+  var MODE_PILL = { sync: '<span class="pill accent">同步</span>', async: '<span class="pill info">异步</span>', local: '<span class="pill">内部</span>' };
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function reset() {
+    stopAuto();
+    state.idx = -1; state.failed = false; state.finished = false;
+    Object.keys(scenBtns).forEach(function (k) { scenBtns[k].classList.toggle('on', k === state.scen.id); });
+    document.getElementById('scenTitle').textContent = '场景：' + state.scen.name;
+    document.getElementById('scenDesc').textContent = state.scen.desc;
+    stepsEl.innerHTML = '';
+    state.scen.steps.forEach(function (st, i) {
+      var li = document.createElement('li');
+      li.className = 'pending';
+      var who = st.f === st.t ? byId[st.f].name : byId[st.f].name + ' → ' + byId[st.t].name;
+      li.innerHTML = '<div><span class="no">' + (i + 1) + '.</span>' + MODE_PILL[st.m] + ' <span class="t">' + esc(st.title) + '</span></div>' +
+        '<div class="d small"><span class="mono">' + esc(who) + '</span>' + (st.d ? '　' + esc(st.d) : '') + '</div>';
+      stepsEl.appendChild(li);
+    });
+    Object.keys(edgeEls).forEach(function (k) {
+      var e = edgeEls[k];
+      e.el.setAttribute('class', 'edge');
+      gEdges.appendChild(e.el);
+      setEdgeDir(k, e.a, e.b, false);
+    });
+    NODES.forEach(function (n) { nodeEls[n.id].classList.remove('active', 'done', 'failed'); });
+    document.getElementById('packets').innerHTML = '';
+    var fc = Object.keys(faults).length;
+    statusEl.textContent = fc ? '未开始（已注入 ' + fc + ' 个故障）' : '未开始';
+    statusEl.style.color = '';
+    fundEl.textContent = state.scen.fund0;
+    resultEl.innerHTML = '';
+    btnStep.disabled = false;
+  }
+
+  function step() {
+    if (state.failed || state.finished) return false;
+    var steps = state.scen.steps;
+    // 上一步变成"已完成"
+    if (state.idx >= 0) {
+      var prev = steps[state.idx];
+      nodeEls[prev.f].classList.replace('active', 'done') || nodeEls[prev.f].classList.add('done');
+      nodeEls[prev.t].classList.replace('active', 'done') || nodeEls[prev.t].classList.add('done');
+      if (prev.f !== prev.t) {
+        var pk = edgeKey(prev.f, prev.t);
+        edgeEls[pk].el.setAttribute('class', 'edge done' + (prev.m === 'async' ? ' async' : ''));
+        edgeEls[pk].el.setAttribute('marker-end', 'url(#mk-done)');
+        gEdges.appendChild(edgeEls[pk].el);
+      }
+      stepsEl.children[state.idx].className = '';
+    }
+    state.idx++;
+    if (state.idx >= steps.length) {
+      state.finished = true;
+      statusEl.textContent = '✓ 场景完成';
+      statusEl.style.color = 'var(--buy)';
+      resultEl.innerHTML = '<p class="small muted">全部步骤成功。试着在图中注入一个故障，再运行一次。</p>';
+      btnStep.disabled = true;
+      return false;
+    }
+    var st = steps[state.idx];
+    var li = stepsEl.children[state.idx];
+    li.className = 'current';
+    li.scrollIntoView({ block: 'nearest' });
+
+    // 故障判定：先看目标节点，再看来源节点
+    var bad = faults[st.t] ? st.t : (faults[st.f] ? st.f : null);
+    if (st.f !== st.t) {
+      var k = edgeKey(st.f, st.t);
+      setEdgeDir(k, st.f, st.t, true);
+      var cls = bad ? 'edge fail' : 'edge active' + (st.m === 'async' ? ' async' : '');
+      edgeEls[k].el.setAttribute('class', cls);
+      gTop.appendChild(edgeEls[k].el); // 当前连线画在节点上方，长连线也清晰可见
+      edgeEls[k].el.setAttribute('marker-end', 'url(#mk-' + (bad ? 'fail' : st.m) + ')');
+      animatePacket(st.f, st.t, st.m, bad);
+    }
+    if (bad) {
+      fail(st, bad, li);
+      return false;
+    }
+    nodeEls[st.f].classList.remove('done'); nodeEls[st.f].classList.add('active');
+    nodeEls[st.t].classList.remove('done'); nodeEls[st.t].classList.add('active');
+    statusEl.textContent = '第 ' + (state.idx + 1) + ' / ' + steps.length + ' 步';
+    statusEl.style.color = '';
+    if (st.fund) fundEl.textContent = st.fund;
+    return true;
+  }
+
+  function fail(st, bad, li) {
+    state.failed = true;
+    btnStep.disabled = true;
+    li.className = 'failstep';
+    nodeEls[bad].classList.add('failed');
+    var other = bad === st.t ? st.f : st.t;
+    nodeEls[other].classList.remove('done'); nodeEls[other].classList.add('active');
+    var info = state.scen.faults[bad] || {
+      user: '该步骤超时或返回错误。',
+      comp: '本场景没有为该节点定义专门的补偿。业界通用做法：同步步骤失败则回滚已做的冻结；异步步骤失败则重试，超限进入死信队列。'
+    };
+    var sync = st.m !== 'async';
+    statusEl.textContent = '✕ 第 ' + (state.idx + 1) + ' 步失败（' + byId[bad].name + ' 故障）';
+    statusEl.style.color = 'var(--sell)';
+    if (info.fund) fundEl.textContent = info.fund;
+    resultEl.innerHTML =
+      '<dl>' +
+      '<dt>失败位置</dt><dd>第 ' + (state.idx + 1) + ' 步：' + esc(st.title) + ' ' + (sync ? '<span class="pill accent">同步</span>' : '<span class="pill info">异步</span>') + '</dd>' +
+      '<dt>用户看到什么</dt><dd>' + esc(info.user) + '</dd>' +
+      '<dt>系统如何补偿</dt><dd>' + esc(info.comp) + '</dd>' +
+      '<dt>影响范围</dt><dd>' + (sync
+        ? '同步链路失败：用户请求直接失败或卡住，需要检查之前的步骤是否留下冻结。'
+        : '异步链路失败：之前的同步步骤已经生效，数据最终一致，用户感知为"延迟"。') + '</dd>' +
+      '</dl>';
+  }
+
+  function animatePacket(f, t, mode, bad) {
+    var g = document.getElementById('packets');
+    g.innerHTML = '';
+    var a = byId[f], b = byId[t];
+    var c = el('circle', { r: 6, 'class': 'packet' + (mode === 'async' ? ' async' : ''), cx: a.x, cy: a.y }, g);
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var dur = reduce ? 1 : 520;
+    var stopAt = bad ? 0.7 : 1;
+    var t0 = null;
+    function frame(ts) {
+      if (!c.parentNode) return;
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / dur) * stopAt;
+      c.setAttribute('cx', (a.x + (b.x - a.x) * p).toFixed(1));
+      c.setAttribute('cy', (a.y + (b.y - a.y) * p).toFixed(1));
+      if ((ts - t0) < dur) requestAnimationFrame(frame);
+      else if (bad) c.setAttribute('class', 'packet mk-fail');
+      else if (c.parentNode) c.parentNode.removeChild(c);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  syncFaultUI();
+  reset();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P07 上币与新币分发</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .layers { position: relative; height: 600px; }
+  .layers > .layer { position: absolute; left: 0; right: 0; top: 0; }
+  .ann { display: flex; flex-direction: column; gap: 8px; }
+  .ann .t { font-size: 34px; font-weight: 700; }
+  .ann .s { font-size: 26px; color: var(--text-2); }
+  .ann .no { font-family: var(--mono); color: var(--gold); font-size: 26px; }
+  .dd h3 { font-size: 36px; margin-bottom: 8px; }
+  .dd .chk { font-size: 28px; color: var(--text); }
+  .dd .veto { font-size: 26px; color: var(--sell); margin-top: 8px; }
+  .noteline { font-size: 30px; padding: 16px 26px; }
+  .calc { font-size: 29px; line-height: 1.55; display: flex; flex-direction: column; gap: 10px; }
+  .calc .ln { font-family: var(--mono); font-size: 27px; padding: 10px 18px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+  .calc .ln.cur { border-color: var(--gold); background: var(--gold-soft); }
+  .calc .ln.red { border-color: var(--sell); background: var(--sell-soft); }
+  .calc .hd { font-size: 26px; color: var(--text-2); }
+  .tl { display: flex; flex-direction: column; gap: 16px; }
+  .tl .card { padding: 14px 24px; font-size: 28px; line-height: 1.45; }
+  .rev .card { padding: 18px 24px; }
+  .rev .card h3 { font-size: 32px; margin-bottom: 4px; }
+  .tl .card .d { font-family: var(--mono); color: var(--gold); font-size: 24px; display: block; margin-bottom: 4px; }
+  .prot .card { padding: 20px 28px; font-size: 29px; }
+  .prot .card h3 { font-size: 34px; margin-bottom: 6px; }
+  .air .card { padding: 22px 26px; font-size: 27px; line-height: 1.45; }
+  .air .card h3 { font-size: 34px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="P07" data-title="上币与新币分发：Launchpad、Launchpool 与空投">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 产品深潜 · P07</div>
+    <h1>一个新币，<span class="hl">怎样走到你面前</span></h1>
+    <div class="grid3" style="max-width:1640px" data-step="0">
+      <div class="card ann"><span class="no">公告 ①</span><span class="t">币安将上线 XYZ</span><span class="s">充值时间 · 开盘时间 · 交易对</span></div>
+      <div class="card ann"><span class="no">公告 ②</span><span class="t">XYZ 开放充值</span><span class="s">链上充入交易所</span></div>
+      <div class="card ann"><span class="no">公告 ③</span><span class="t">XYZ/USDT 开盘</span><span class="s">提币通常在开盘后开放</span></div>
+    </div>
+    <div class="flow" data-step="1">
+      <div class="node info">尽调</div><div class="arrow"></div>
+      <div class="node info">技术接入</div><div class="arrow"></div>
+      <div class="node gold">分发活动</div><div class="arrow"></div>
+      <div class="node">开盘保护</div><div class="arrow"></div>
+      <div class="node sell">复审 · 下架</div>
+    </div>
+    <div class="card warn" data-step="2" style="max-width:1640px">本集内容不构成投资建议 · 新币价格波动极大，参与发行活动可能亏损 · 除公开资料外数字均为示例</div>
+    <ol class="say">
+      <li>一个新币上线币安，你通常只看到三条公告。上线公告，开放充值，然后开盘交易。</li>
+      <li>公告背后，是一整条流水线。尽调，技术接入，分发活动，开盘保护，还有上线后的复审和下架。</li>
+      <li>还有，为什么几乎所有新币活动，门槛都是持有 BNB？先说明，本集内容不构成投资建议。新币价格波动极大，参与发行活动可能亏损。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>本集路线图</h2>
+    <div class="grid2">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>上币全流程<br><span class="muted">状态机 · 尽调 · 接入 · 开盘保护 · 上币费争议</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>Launchpad<br><span class="muted">快照取平均 · 超额认购与退款</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">3</span><div>Launchpool<br><span class="muted">按小时分配 · 后来者稀释</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">4</span><div>空投与 BNB 飞轮<br><span class="muted">HODLer · Megadrop · Alpha</span></div></div>
+    </div>
+    <div class="card gold" data-step="2" style="font-size:30px">三层口径：币安公开资料 · 业界通用做法 · 示例数字</div>
+    <ol class="say">
+      <li>本集分四段。第一段，上币全流程，从申请、开盘到下架，再看上币费争议。第二段，Launchpad，用 BNB 认购新币。</li>
+      <li>第三段，Launchpool，质押挖新币。第四段，各类空投，以及它们怎样拉动 BNB 需求。</li>
+      <li>口径照旧分三层：币安公开资料，业界通常做法，示例数字。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="上币状态机" data-onstep="smStep">
+    <div class="kicker">Listing State Machine · 业界抽象</div>
+    <h2>从申请到下架：一个代币的一生</h2>
+    <svg id="sm" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>先看平台内部，一个代币从申请到下架，是一台状态机。起点是项目方提交申请。</li>
+      <li>初审通过，进入尽调。材料不全，或者尽调发现重大风险，直接拒绝。</li>
+      <li>尽调完成，交给上币委员会。委员会否决就结束，通过则进入技术接入。</li>
+      <li>节点和参数就绪，发布公告。到点开放充值，然后开盘交易。</li>
+      <li>上线并不是终点。每个代币都在交易和观察之间，接受周期复审。不达标就加观察标签，指标恢复再移除。</li>
+      <li>下架也是流程，先公告，再停止交易，保留提币窗口，最后关闭提币。委员会规则和复审周期没有完整公开，这张图是业界抽象。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="尽调与风险标签">
+    <div class="kicker">Due Diligence · Seed Tag · Monitoring Tag</div>
+    <h2>尽调四条线，上线后两种标签</h2>
+    <div class="layers">
+      <div class="layer grid2">
+        <div class="card dd" data-step="0" data-until="3"><h3>① 团队</h3><div class="chk">实名背景 · 过往项目 · 法律纠纷</div><div class="veto">否决：匿名团队无担保、历史跑路</div></div>
+        <div class="card dd" data-step="1" data-until="3"><h3>② 代码</h3><div class="chk">审计报告 · 增发、冻结、升级权限</div><div class="veto">否决：可无限增发、可冻结任意地址</div></div>
+        <div class="card dd" data-step="2" data-until="3"><h3>③ 代币经济</h3><div class="chk">总量 · 流通量 · 解锁计划 · 集中度</div><div class="veto">否决：前 10 地址持有 90% · 示例</div></div>
+        <div class="card dd" data-step="3" data-until="3"><h3>④ 合规</h3><div class="chk">证券认定 · 制裁名单 · 隐私币</div><div class="veto">否决：目标辖区监管风险过高</div></div>
+      </div>
+      <div class="layer grid2" style="top:0">
+        <div class="card gold dd" data-step="4"><h3>种子标签 Seed Tag</h3><div class="chk">2023 年 7 月替代创新区<br>波动和风险更高</div><div class="chk" style="margin-top:12px">交易前须通过风险测验<br><b class="hl">每 90 天一次</b></div></div>
+        <div class="card sell dd" data-step="5"><h3>观察标签 Monitoring Tag</h3><div class="chk">可能不再满足上币标准<br>≠ 自动下架，复审更频繁</div><div class="veto" style="font-size:28px;margin-top:12px">公开报道：标记当天价格常大幅下跌</div></div>
+      </div>
+      <div class="layer card info noteline" style="top:440px" data-step="0" data-until="3">每条线输出：通过 · 不通过 · 有条件通过</div>
+      <div class="layer card warn noteline" style="top:440px" data-step="4">提示：带标签代币可能在短时间内下架，下架后只能在提币窗口内转出</div>
+    </div>
+    <ol class="say">
+      <li>尽调分四条线并行，每条线给出通过、不通过或有条件通过。第一条线看团队，实名背景、过往项目和法律纠纷。匿名无担保或有跑路历史，会被否决。</li>
+      <li>第二条线看代码，重点是审计报告，以及增发、冻结、升级权限。合约能无限增发，或者管理员能冻结任意地址，都会被否决。</li>
+      <li>第三条线看代币经济。总量、流通量、解锁计划和集中度。示例，前10个地址持有90%，或者首年大量解锁，都很危险。</li>
+      <li>第四条线看合规。会不会被认定为证券，是否涉及制裁名单或者隐私币。</li>
+      <li>上线之后还有标签。根据币安公开资料，2023年7月，种子标签替代了创新区。带种子标签的代币，波动和风险更高。用户每90天要通过一次风险测验，才能交易带种子或观察标签的代币。</li>
+      <li>观察标签，标记可能不再满足上币标准的代币。它不等于自动下架，但会被更频繁地复审。公开报道显示，标记公告发布当天，代币价格常大幅下跌。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="技术接入调用链" data-onstep="chainStep">
+    <div class="kicker">Integration Call Chain · listing-service 为示例服务名</div>
+    <h2>技术接入：一串按时间表触发的开关</h2>
+    <svg id="chain" width="1640" height="450" viewBox="0 0 1640 450"></svg>
+    <div class="card noteline" id="chain-note"></div>
+    <ol class="say">
+      <li>委员会通过之后，进入技术接入。运营后台先在上币服务里，创建资产 XYZ 和它的 USDT 交易对。</li>
+      <li>上币服务向扫链服务注册合约地址和确认数阈值。再让托管适配层生成充值地址池，配置热钱包。</li>
+      <li>然后把交易对参数写进订单服务。撮合引擎创建一个空订单簿，状态是预交易。</li>
+      <li>举个示例，参考价0.0523 USDT。tickSize 设为0.0001，stepSize 是1。最小下单额5 USDT。一个 tick，业界经验约为价格的0.01%到0.1%。</li>
+      <li>到点开放充值，再开启集合竞价或仅限价阶段。产生开盘价后，切换为连续交易。开盘之后才开放提币。</li>
+      <li>每个开关都有独立的回滚按钮。扫链要先跑通一次小额充值到入账，才能对外开放。转账扣税这类代币，扫到的金额和到账不一致，账本会出现差额。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="开盘：卖单从哪来" data-onstep="openStep">
+    <div class="kicker">Opening · 业界做法，币安参数以公告为准</div>
+    <h2 id="open-h">开盘那一刻，订单簿里有谁</h2>
+    <div class="row" style="gap:40px">
+      <svg id="book" width="640" height="600" viewBox="0 0 640 600"></svg>
+      <div class="col">
+        <div class="layers">
+          <div class="layer" data-step="0" data-until="1"><svg id="openchart" width="960" height="600" viewBox="0 0 960 600"></svg></div>
+          <div class="layer prot col" style="gap:18px">
+            <div class="card gold" data-step="2" data-until="3"><h3>集合竞价 Call Auction</h3>开盘前几分钟只收单不成交，到点按<b>成交量最大</b>算出单一开盘价</div>
+            <div class="card" data-step="3" data-until="3"><h3>仅限价阶段</h3>前几分钟禁止市价单，防止吃穿多档</div>
+            <div class="card" data-step="3" data-until="3"><h3>价格带保护</h3>拒绝偏离参考价过多的订单 · API 过滤器 PERCENT_PRICE_BY_SIDE</div>
+          </div>
+          <div class="layer prot col" style="gap:18px">
+            <div class="card sell" data-step="4"><h3>开盘即暴跌 · 业界</h3>空投获得者第一分钟集中卖出，做市买单不足，价格单边下跌</div>
+            <div class="card warn" data-step="4"><h3>低流通、高 FDV · 业界</h3>流通量只占 10% · 示例，后续每月解锁持续带来抛压，2024 年起社区批评很多</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>开盘那一刻，卖单从哪来？三类人。空投和挖矿的获得者，充值进来的早期持有人，还有开盘前挂双边单的做市商。</li>
+      <li>一个出错点是，充值通道开放太晚。卖盘很薄，少量买单就把开盘价推高，然后迅速回落。</li>
+      <li>所以业界有几种开盘保护。第一种是集合竞价。开盘前几分钟只收单不成交，到点按成交量最大的原则，算出单一开盘价。</li>
+      <li>第二种是仅限价阶段，前几分钟禁止市价单。第三种是价格带保护，拒绝偏离参考价太多的订单。币安 API 有一个按买卖方向的百分比价格过滤器。</li>
+      <li>开盘后还常见两种失败。一是空投获得者第一分钟集中卖出，做市买单不足，价格单边下跌。二是低流通、高完全稀释估值。示例里流通只占10%，后续每月解锁持续带来抛压。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="平台收益与上币费争议">
+    <div class="kicker">Revenue · Listing Fee Controversy · 中立表述</div>
+    <h2>平台从上币得到什么</h2>
+    <div class="row">
+      <div class="col rev" style="flex:0 0 440px">
+        <div class="card gold" data-step="0"><h3>① 手续费</h3>首日成交量往往很高<br><span class="mono">成交量 × 费率</span></div>
+        <div class="card" data-step="1"><h3>② 流量</h3>为参与活动注册、充值</div>
+        <div class="card" data-step="1"><h3>③ BNB 需求</h3>各类活动以 BNB 持仓为门槛</div>
+      </div>
+      <div class="col tl">
+        <div class="card" data-step="2"><span class="d">2024-10-31 · 公开报道</span>某加密投资机构创始人在社交媒体称：币安向某项目索要约 <b class="hl">15%</b> 代币供应量作为上币条件</div>
+        <div class="card" data-step="3"><span class="d">公开报道</span>币安联合创始人何一公开否认：币安不收取代币比例或固定金额</div>
+        <div class="card" data-step="4"><span class="d">2018 年起的公开政策</span>上币费用透明，<b class="hl">100%</b> 捐给慈善，金额由项目方提出，不设最低额</div>
+        <div class="card info" data-step="5"><span class="d">分析</span>争议核心：空投额度、营销额度、做市安排，是否构成隐性成本 → 外部无法验证</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>平台从上币得到三种收益。第一是手续费。新币首日成交量往往很高，成交量乘以费率，就是收入。</li>
+      <li>第二是流量，用户为参与活动而注册和充值。第三是 BNB 需求，发行活动都以 BNB 持仓为门槛。</li>
+      <li>再说上币费争议，我们只陈述公开报道。2024年10月31日，一家加密投资机构的创始人在社交媒体发文。文中称，币安向某项目索要约15%的代币供应量，作为上币条件。</li>
+      <li>币安联合创始人何一公开否认。她表示，币安不收取代币比例或固定金额。</li>
+      <li>公开报道里，币安自2018年起的政策是，上币费用透明，100%捐给慈善。金额由项目方提出，平台不规定最低额。</li>
+      <li>争议的核心，不是有没有明面费用。而是空投额度、营销额度和做市安排，是否构成隐性成本。这些合同细节，外部无法验证。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="Launchpad：快照取平均" data-onstep="snapStep">
+    <div class="kicker">Launchpad · Measurement</div>
+    <h2>计算期：每小时快照，取平均</h2>
+    <div class="flow" data-step="0">
+      <div class="node gold" id="ph1">计算期<small>每小时快照 BNB 余额</small></div><div class="arrow"></div>
+      <div class="node">认购期<small>承诺上限 = 平均持仓</small></div><div class="arrow"></div>
+      <div class="node">分配期<small>扣款 · 发币 · 退款</small></div>
+    </div>
+    <svg id="snap" width="1640" height="440" viewBox="0 0 1640 440"></svg>
+    <ol class="say">
+      <li>第一个分发渠道是 Launchpad，用 BNB 认购新币。公开报道显示，它分计算期、认购期、分配期三个阶段。</li>
+      <li>计算期里，系统每小时快照一次你的 BNB 余额。公开报道的典型值是连续6天，最后取平均，作为认购时的承诺上限。</li>
+      <li>临时充入大量 BNB，能不能拉高上限？看示例。6天就是144次快照，你平时持有1个 BNB。</li>
+      <li>最后6小时，你临时充入100个。于是138个小时余额是1，6个小时是101。</li>
+      <li>平均持仓是138加606，除以144。744除以144，约等于5.17个。</li>
+      <li>临时充入100个，只换来4.17个额外上限。而且计算期一结束，上限就固定了，认购期再充值也没用。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="Launchpad：认购、扣款与退款" data-onstep="padStep">
+    <div class="kicker">Launchpad · Commit → Calculate → Distribute</div>
+    <h2>超额认购：大部分 BNB 原路退回</h2>
+    <div class="row">
+      <svg id="pad" width="920" height="600" viewBox="0 0 920 600"></svg>
+      <div class="col calc" id="pad-calc"></div>
+    </div>
+    <ol class="say">
+      <li>认购期，你提交 BNB 承诺。承诺只冻结，不扣款，用的是账本的冻结分录。</li>
+      <li>示例，发售1000万个 NEW，发行价0.02 USDT，BNB 价格600。募资目标20万 USDT，约333.33个 BNB。</li>
+      <li>全网承诺了100万个 BNB，超额认购约3000倍。你承诺10个 BNB，份额是0.001%。</li>
+      <li>你的分配量，是0.001%乘以1000万，等于100个 NEW。扣款是100乘以0.02，再除以600，约0.003333个 BNB。</li>
+      <li>剩下的9.996667个 BNB 原路退回。扣款、发币、退款必须在同一个账本事务里。否则会出现代币到账、BNB 没退的中间状态。</li>
+      <li>如果单人分配量有硬顶，超出部分按比例分给其他用户。公开报道里，2023年7月某次认购，承诺总值约24亿美元，募资只有数百万美元。</li>
+      <li>用户的风险是破发，开盘价低于发行价。还有人用多个 KYC 账户拆分承诺，绕过单人硬顶。防线是 KYC 唯一性和设备关联风控。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="Launchpool：按份额挖矿与稀释" data-onstep="poolStep">
+    <div class="kicker">Launchpool · Farming</div>
+    <h2 id="pool-h">Launchpool：锁仓挖新币</h2>
+    <div class="row">
+      <div class="col calc" id="pool-calc" style="flex:0 0 640px"></div>
+      <svg id="pool" width="960" height="600" viewBox="0 0 960 600"></svg>
+    </div>
+    <ol class="say">
+      <li>第二个渠道，Launchpool，质押挖新币。用户把 BNB 或指定资产锁进池子，报道里出现过 FDUSD 和 USDC 池。本金不交给项目方，可随时赎回，以活动规则为准。</li>
+      <li>奖励按小时发放。你的小时均值除以全池小时均值，再乘以每小时奖励量。公开报道显示，每个池还有单人每小时上限。</li>
+      <li>看示例。全池200万个 BNB，你有10个，每小时奖励5万个 NEW。你的份额是0.0005%，每小时拿到0.25个 NEW。</li>
+      <li>一天是6个 NEW。假设开盘价0.5 USDT，就是3 USDT。等价年化等于3乘以365，除以10乘以600，得到18.25%。</li>
+      <li>现在后来者涌入，全池涨到400万。你什么都没做，份额减半，年化降到约9.13%。</li>
+      <li>涨到800万，年化只剩约4.56%。还要注意，年化依赖开盘价假设。开盘价减半，年化同样减半。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="Launchpool：小时内随机快照" data-onstep="hourStep">
+    <div class="kicker">Launchpool · Hourly Snapshots</div>
+    <h2 id="hour-h">一小时内多次随机快照</h2>
+    <svg id="hour" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>根据公开报道，系统每小时对个人和全池余额做多次快照，取小时平均。一直锁着10个，均值就是10。</li>
+      <li>快照时刻是随机的。整点前存入、整点后取出的套路，几乎拿不到奖励。</li>
+      <li>再看示例。有人只在这个小时的最后15分钟，锁入10个 BNB。小时均值约2.5个，他只拿到四分之一的奖励。</li>
+      <li>奖励由批量记账发放，从奖励账户转到用户现货。失败要幂等重试，幂等键是活动 ID、小时和用户 ID。</li>
+      <li>风险在开盘时。大量用户同时卖出奖励，价格单边下跌。挖矿收益，也可能远小于 BNB 自身的价格波动。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="空投：HODLer、Megadrop 与 Alpha" data-onstep="airStep">
+    <div class="kicker">Airdrops · 截至 2026 年公开资料</div>
+    <h2>三类空投：门槛都指向 BNB 或币安钱包</h2>
+    <div class="grid3 air">
+      <div class="card gold" id="air0" data-step="0"><h3>HODLer Airdrops</h3>BNB 放在 Simple Earn<br>活期、定期都算<br>回溯历史窗口 · 单人上限 4%</div>
+      <div class="card" id="air1" data-step="3"><h3>Megadrop</h3>锁定 BNB 定期<br>+ Web3 钱包任务<br>总分 = 锁仓分 × 倍数 + 奖励分</div>
+      <div class="card" id="air2" data-step="5"><h3>Binance Alpha</h3>钱包内早期代币<br>积分按 15 天滚动窗口<br>门槛领取 · 领取消耗积分</div>
+    </div>
+    <svg id="air" width="1640" height="290" viewBox="0 0 1640 290"></svg>
+    <ol class="say">
+      <li>第三类是空投。先看 HODLer Airdrops。只要把 BNB 放进 Simple Earn。活期定期都算，链上收益产品也计入。</li>
+      <li>它的关键词是回溯。系统回看公告前的一段历史窗口，每小时多次快照取平均。公告发出时，窗口已经结束，临时买入没有用。</li>
+      <li>份额有上限，单人不超过全池的4%。示例，全池均值3000万个 BNB，你有30个，空投总量1500万个 NEW。份额是0.0001%，你拿到15个。</li>
+      <li>再看 Megadrop。锁定 BNB 定期产品，再在 Binance Web3 钱包完成任务。总分等于锁仓分乘以任务倍数，再加任务奖励分。</li>
+      <li>示例。锁仓分100，倍数1.5，奖励分20，总分170。全网总分1000万，空投总量2000万个 NEW，你得到340个。</li>
+      <li>最后是 Binance Alpha，在钱包里交易还没上现货的早期代币。积分按15天滚动窗口计算，按门槛领取空投，领取会消耗积分。</li>
+      <li>风险是，Alpha 代币没走完现货上币的全部尽调，容易被误解为币安背书。还有人对倒刷积分，平台用门槛调整和异常检测应对。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="BNB 飞轮" data-onstep="wheelStep">
+    <div class="kicker">Flywheel</div>
+    <h2>飞轮：BNB 需求如何被拉动</h2>
+    <svg id="wheel" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>把这些活动串起来，就是一个飞轮。起点是新币活动，参与门槛是持有 BNB。</li>
+      <li>用户买入并长期持有 BNB。需求上升，生态吸引力上升，更多项目来币安首发，又带来更多活动。</li>
+      <li>闲置的 BNB 还会放进 Simple Earn，平台的理财规模也跟着上升。</li>
+      <li>但还有负循环。奖励在开盘时被卖出，如果新币持续破发，用户觉得挖到的币不值钱，参与意愿就会下降。</li>
+      <li>快照取平均，奖励长期持有者而不是临时资金，让 BNB 需求更粘。但飞轮强度依赖新币的二级市场表现，平台无法控制。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与下集预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">上币是一台状态机：尽调 → 接入 → 开盘，上线后在<span class="hl">交易与观察</span>之间周期复审。</li>
+      <li data-step="1">快照取平均：<span class="hl">744 ÷ 144 ≈ 5.17</span>，临时资金几乎无效。</li>
+      <li data-step="2">份额 = 我的均值 ÷ 全池均值：后来者<span class="hl">稀释</span>先来者，门槛都指向 BNB。</li>
+    </ul>
+    <div class="grid3" data-step="0">
+      <div class="card stat"><div class="k">Launchpad 退款 · 示例</div><div class="v hl" style="font-size:50px">9.996667</div></div>
+      <div class="card stat"><div class="k">Launchpool 年化 · 示例</div><div class="v" style="font-size:50px">18.25%</div></div>
+      <div class="card stat"><div class="k">HODLer 单人上限</div><div class="v" style="font-size:50px">4%</div></div>
+    </div>
+    <div class="card gold" data-step="3" style="font-size:34px">下集 P08 · 策略交易与跟单：网格、定投与带单分润</div>
+    <ol class="say">
+      <li>小结一下。第一，上币是一台状态机。尽调、技术接入、开盘保护，上线后还在交易和观察之间周期复审。</li>
+      <li>第二，快照取平均。示例里临时充入100个 BNB，平均只涨到5.17个。临时资金几乎无效。</li>
+      <li>第三，各类分发的份额，都是我的均值除以全池均值。后来者会稀释先来者，而门槛都指向 BNB。</li>
+      <li>下一集，我们看平台怎样替你挂单。网格、定投、TWAP 拆单，还有跟单的分润规则。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10', dim: '#5a5f6a' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const fmt = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 28}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.mono ? ' font-family="JetBrains Mono, SF Mono, Menlo, monospace"' : ''}${o.op != null ? ` opacity="${o.op}"` : ''}${o.plain ? '' : ` stroke="${C.bg}" stroke-width="7" paint-order="stroke"`}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op != null ? ` opacity="${o.op}"` : ''}/>`;
+  const Ln = (x1, y1, x2, y2, o = {}) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${o.c || C.t2}" stroke-width="${o.w || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op != null ? ` opacity="${o.op}"` : ''}/>`;
+  function A(x1, y1, x2, y2, o = {}) {
+    const c = o.c || C.t2, w = o.w || 4, a = Math.atan2(y2 - y1, x2 - x1), hl = 18, hw = 10;
+    const bx = x2 - Math.cos(a) * hl, by = y2 - Math.sin(a) * hl;
+    const p1 = [bx + Math.sin(a) * hw, by - Math.cos(a) * hw], p2 = [bx - Math.sin(a) * hw, by + Math.cos(a) * hw];
+    return `<g${o.op != null ? ` opacity="${o.op}"` : ''}><line x1="${x1}" y1="${y1}" x2="${bx}" y2="${by}" stroke="${c}" stroke-width="${w}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/><polygon points="${x2},${y2} ${p1} ${p2}" fill="${c}"/></g>`;
+  }
+  const Box = (x, y, w, h, t, s, o = {}) => R(x, y, w, h, o) + T(x + w / 2, y + (s ? h / 2 - 4 : h / 2 + 11), t, { anchor: 'middle', size: o.size || 30, bold: true, fill: o.tc || C.text, plain: true, op: o.op }) + (s ? T(x + w / 2, y + h / 2 + 30, s, { anchor: 'middle', size: o.ss || 22, fill: C.t2, plain: true, op: o.op }) : '');
+  function calcLines(box, lines, st, keep = 3) {
+    box.innerHTML = lines.filter(l => l[0] <= st && l[0] > st - keep).map(l => `<div class="ln ${l[0] === st ? (l[2] || 'cur') : ''}">${l[1]}</div>`).join('');
+  }
+
+  // 3. state machine
+  function smStep(el, st) {
+    const N = {
+      App: [40, 40, '已申请', 'Applied', 0], DD: [440, 40, '尽调', 'DueDiligence', 1], Com: [840, 40, '上币委员会', 'Committee', 2], Int: [1240, 40, '技术接入', 'Integration', 2],
+      Rej: [40, 186, '拒绝', 'Rejected', 1],
+      Ann: [1240, 300, '已公告', 'Announced', 3], Dep: [840, 300, '开放充值', 'DepositOpen', 3], Tra: [440, 300, '交易中', 'Trading', 3],
+      Mon: [440, 500, '观察标签', 'Monitoring', 4], Del: [40, 420, '已下架', 'Delisted', 5],
+    };
+    const E = [[380, 88, 440, 88, 1], [780, 88, 840, 88, 2], [1180, 88, 1240, 88, 2], [210, 136, 210, 186, 1], [500, 136, 380, 210, 1], [900, 136, 380, 250, 2],
+      [1410, 136, 1410, 300, 3], [1240, 348, 1180, 348, 3], [840, 348, 780, 348, 3], [575, 396, 575, 500, 4], [645, 500, 645, 396, 4], [440, 548, 380, 496, 5], [440, 360, 380, 440, 5]];
+    let h = '';
+    E.forEach(([a, b, c, d, s]) => h += A(a, b, c, d, { c: s === st ? C.gold : s < st ? C.t2 : C.line, op: s <= st ? 1 : .35 }));
+    Object.values(N).forEach(([x, y, t, s, k]) => {
+      const cur = k === st, red = (t === '拒绝' || t === '已下架') && k <= st;
+      h += Box(x, y, 340, 96, t, s, { fill: cur ? 'rgba(240,185,11,.16)' : red ? 'rgba(246,70,93,.12)' : C.panel, stroke: red ? C.sell : cur ? C.gold : k < st ? C.dim : C.line, op: k <= st ? 1 : .3, tc: red ? C.sell : C.text });
+    });
+    if (st >= 4) h += T(560, 456, '不达标', { anchor: 'end', size: 24, fill: C.warn }) + T(660, 456, '恢复', { size: 24, fill: C.buy });
+    const notes = [['项目方提交申请', '上币团队受理材料'], ['尽调四条线并行', '材料不全或重大风险 → 拒绝'], ['委员会投票', '通过 → 技术接入'], ['节点和参数就绪 → 公告', '到点开放充值 → 开盘'], ['上线后周期复审', '观察标签 ≠ 自动下架'], ['下架流程：公告 → 停止交易', '→ 提币窗口 → 关闭提币']][st];
+    h += R(840, 440, 760, 156, { fill: 'rgba(240,185,11,.08)', stroke: C.gold });
+    h += T(870, 504, notes[0], { size: 32, bold: true, fill: C.gold, plain: true }) + T(870, 560, notes[1], { size: 30, plain: true });
+    svgEl(el.querySelector('#sm'), h);
+  }
+
+  // 5. call chain
+  function chainStep(el, st) {
+    const L = [['运营后台', 'ops-console'], ['上币服务', 'listing-service'], ['扫链服务', 'blockchain-indexer'], ['托管适配', 'custody-adapter'], ['钱包服务', 'wallet-service'], ['订单服务', 'order-service'], ['撮合引擎', 'matching-engine']];
+    const X = i => 110 + i * 236;
+    const M = [[0, 1, '创建资产 XYZ 与交易对', 0], [1, 2, '注册合约地址、确认数', 1], [1, 3, '充值地址池、热钱包', 1], [1, 5, '写入 tickSize · stepSize · minNotional', 2], [1, 6, '空订单簿 PRE_TRADING', 2],
+      [0, 4, '到点开放充值', 4], [0, 6, '开启集合竞价 / 仅限价', 4], [6, 5, '开盘价 → 连续交易', 4, 1], [0, 4, '开盘后开放提币', 4]];
+    let h = '';
+    L.forEach(([c, e], i) => {
+      h += Ln(X(i), 84, X(i), 440, { c: C.line, w: 3, dash: '6 6' });
+      h += R(X(i) - 112, 0, 224, 84, { fill: C.panel2, stroke: C.line }) + T(X(i), 38, c, { anchor: 'middle', size: 28, bold: true, plain: true }) + T(X(i), 68, e, { anchor: 'middle', size: 19, fill: C.t2, plain: true, mono: true });
+    });
+    M.forEach(([a, b, t, s, dash], i) => {
+      const y = 128 + i * 38, show = s <= st || st === 5, cur = s === st || (st === 3 && s === 2);
+      if (!show) return;
+      const c = cur ? C.gold : C.t2;
+      h += A(X(a) + (b > a ? 6 : -6), y, X(b) + (b > a ? -6 : 6), y, { c, w: 3, dash: dash ? '8 6' : null });
+      const mx = b > a ? X(a) + 14 : X(b) + 14;
+      h += T(mx, y - 7, t, { size: 24, fill: cur ? C.gold : C.text });
+    });
+    svgEl(el.querySelector('#chain'), h);
+    const notes = ['所有开关由运营后台按时间表触发', '小额试充：充值 → 确认 → 入账 跑通后才对外开放', '订单簿先建好，状态预交易，不撮合',
+      '示例：参考价 0.0523 USDT → tickSize 0.0001 · stepSize 1 · minNotional 5 USDT', '顺序：开放充值 → 集合竞价或仅限价 → 连续交易 → 开放提币',
+      '出错点：转账扣税代币 → 扫链金额 ≠ 到账金额 → 账本差额'];
+    const n = el.querySelector('#chain-note');
+    n.textContent = notes[st];
+    n.className = 'card noteline ' + (st === 5 ? 'sell' : st === 3 ? 'gold' : 'info');
+  }
+
+  // 6. opening book
+  function openStep(el, st) {
+    const heads = ['开盘那一刻，订单簿里有谁', '充值开放太晚：卖盘稀薄', '开盘保护：集合竞价', '开盘保护：限价与价格带', '开盘后常见的失败'];
+    el.querySelector('#open-h').textContent = heads[st];
+    const asks = [[0.0547, 3, 2, 1], [0.0543, 2, 3, 1], [0.0539, 3, 1, 1], [0.0535, 2, 2, 1], [0.0531, 1, 2, 1], [0.0527, 1, 1, 1]];
+    const bids = [[0.0519, 4], [0.0515, 3], [0.0511, 5]];
+    const cols = [C.gold, C.info, C.buy];
+    let h = T(20, 30, '卖盘 · 示例价格', { size: 24, fill: C.t2 });
+    asks.forEach(([p, a, b, m], i) => {
+      const y = 50 + i * 50;
+      let seg = st === 1 ? [0, 0, m] : st === 4 ? [a + 3, 0, m] : [a, b, m];
+      let x = 200;
+      h += T(30, y + 32, p.toFixed(4), { size: 26, fill: C.sell, mono: true, plain: true });
+      if (st === 3 && i < 2) { h += R(200, y + 6, 400, 34, { fill: 'rgba(246,70,93,.05)', stroke: C.sell, dash: '6 5', rx: 6 }) + T(400, y + 31, '超出价格带 · 拒绝', { anchor: 'middle', size: 22, fill: C.sell, plain: true }); return; }
+      seg.forEach((q, k) => { if (q) { h += `<rect x="${x}" y="${y + 6}" width="${q * 52 - 4}" height="34" rx="5" fill="${cols[k]}" opacity="${st === 2 ? .45 : .85}"/>`; x += q * 52; } });
+      if (st === 1) h += R(x + 6, y + 6, 300, 34, { fill: 'transparent', stroke: C.dim, dash: '6 5', rx: 5 });
+    });
+    const mid = 50 + 6 * 50 + 22;
+    h += Ln(20, mid, 620, mid, { c: st === 2 ? C.gold : C.dim, w: st === 2 ? 4 : 2, dash: st === 2 ? null : '6 6' });
+    h += T(620, mid - 8, st === 2 ? '单一开盘价：成交量最大' : '参考价 0.0523', { anchor: 'end', size: 24, fill: st === 2 ? C.gold : C.t2 });
+    bids.forEach(([p, q], i) => {
+      const y = mid + 18 + i * 50, qq = st === 4 ? Math.max(1, q - 3) : q;
+      h += T(30, y + 32, p.toFixed(4), { size: 26, fill: C.buy, mono: true, plain: true });
+      h += `<rect x="200" y="${y + 6}" width="${qq * 52 - 4}" height="34" rx="5" fill="${C.buy}" opacity="${st === 2 ? .45 : .35}"/>`;
+    });
+    if (st === 3) h += R(14, 140, 612, 420, { fill: 'transparent', stroke: C.gold, dash: '10 6' }) + T(320, 590, '允许区间：参考价 ± X%', { anchor: 'middle', size: 24, fill: C.gold });
+    if (st === 2) h += T(320, 590, '只收单 · 不成交', { anchor: 'middle', size: 26, fill: C.gold, bold: true });
+    if (st <= 1 || st === 4) {
+      const lg = [['空投/挖矿获得者', C.gold], ['早期持有人', C.info], ['做市商', C.buy]];
+      lg.forEach(([t, c], k) => h += `<rect x="${20 + k * 210}" y="572" width="22" height="22" rx="4" fill="${c}"/>` + T(50 + k * 210, 592, t, { size: 21, fill: C.t2, plain: true }));
+    }
+    svgEl(el.querySelector('#book'), h);
+    if (st <= 1) {
+      let g = '';
+      const X = t => 80 + t * 8.4, Y = p => 520 - (p - 0.045) / 0.03 * 440;
+      g += Ln(80, 520, 920, 520, { c: C.t2 }) + Ln(80, 60, 80, 520, { c: C.t2 });
+      g += T(920, 556, '开盘后分钟 · 示例', { anchor: 'end', size: 24, fill: C.t2 });
+      g += Ln(80, Y(0.0523), 920, Y(0.0523), { c: C.dim, dash: '6 6' }) + T(90, Y(0.0523) - 10, '参考价', { size: 22, fill: C.t2 });
+      const pts = st === 0 ? [0.0523, 0.0528, 0.0525, 0.0531, 0.0527, 0.0533, 0.0529, 0.0532, 0.053, 0.0534, 0.0531]
+        : [0.0523, 0.064, 0.072, 0.069, 0.061, 0.056, 0.053, 0.0505, 0.0498, 0.049, 0.0485];
+      g += `<polyline fill="none" stroke="${st ? C.sell : C.buy}" stroke-width="6" stroke-linejoin="round" points="${pts.map((p, i) => X(i * 10) + ',' + Y(p)).join(' ')}"/>`;
+      g += T(500, 40, st ? '卖盘稀薄：开盘价被推高，随后快速回落' : '深度充足：价格围绕参考价小幅波动', { anchor: 'middle', size: 30, bold: true, fill: st ? C.sell : C.buy });
+      svgEl(el.querySelector('#openchart'), g);
+    }
+  }
+
+  // 8. snapshot averaging
+  function snapStep(el, st) {
+    const n = st === 1 ? 72 : 144;
+    const v = i => (st >= 3 && i >= 138) ? 101 : 1;
+    const base = 400, sc = 2.2, x0 = 110, bw = 10;
+    let h = '';
+    h += Ln(x0 - 6, base, x0 + 144 * bw + 6, base, { c: C.t2 });
+    for (let d = 0; d <= 6; d++) h += Ln(x0 + d * 24 * bw, base, x0 + d * 24 * bw, base + 12, { c: C.t2 }) + (d < 6 ? T(x0 + d * 24 * bw + 120, base + 36, `第 ${d + 1} 天`, { anchor: 'middle', size: 22, fill: C.t2 }) : '');
+    for (let i = 0; i < n; i++) { const hh = Math.max(4, v(i) * sc); h += `<rect x="${x0 + i * bw + 1}" y="${base - hh}" width="${bw - 2}" height="${hh}" fill="${v(i) > 1 ? C.sell : C.info}"/>`; }
+    if (st === 1) h += T(x0 + 72 * bw + 20, base - 20, '每小时 1 次快照，进行中', { size: 28, fill: C.info });
+    if (st >= 2) h += T(x0 + 10, base - 24, '平时持有 1 BNB · 示例', { size: 28, fill: C.info });
+    if (st >= 3) h += T(x0 + 138 * bw - 14, base - 101 * sc - 14, '最后 6 小时 101', { anchor: 'end', size: 28, fill: C.sell, bold: true });
+    if (st >= 4) {
+      const y = base - 5.17 * sc;
+      h += Ln(x0, y, x0 + 144 * bw, y, { c: C.gold, w: 4, dash: '10 6' }) + T(x0 + 72 * bw, y - 16, '平均 5.17', { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+    }
+    const stat = (x, k, val, col) => T(x, 34, k, { size: 24, fill: C.t2 }) + T(x, 84, val, { size: 40, bold: true, fill: col, mono: true });
+    h += stat(110, '快照次数', st === 1 ? '72 / 144' : '144', C.text);
+    if (st >= 4) h += stat(420, '平均持仓', '(138×1 + 6×101) ÷ 144 = 744 ÷ 144 ≈ 5.17', C.gold);
+    if (st === 5) {
+      h += R(640, 120, 540, 120, { fill: 'rgba(240,185,11,.12)', stroke: C.gold }) + T(910, 170, '+100 BNB → 上限只 +4.17', { anchor: 'middle', size: 32, bold: true, fill: C.gold, plain: true }) + T(910, 214, '计算期结束 → 上限固定', { anchor: 'middle', size: 28, plain: true });
+    }
+    svgEl(el.querySelector('#snap'), h);
+  }
+
+  // 9. launchpad allocation
+  function padStep(el, st) {
+    let h = '';
+    const uB = st === 0 ? '0 可用 · 10 冻结' : st < 4 ? '0 可用' : '9.996667';
+    const lk = st >= 4 ? '0' : '10 BNB';
+    const on = (k) => st >= k;
+    h += Box(20, 40, 260, 120, '用户现货 BNB', uB, { stroke: C.info, ss: 26 });
+    h += Box(330, 40, 260, 120, '用户现货 NEW', on(3) ? '+100 NEW' : '0', { stroke: on(3) ? C.buy : C.line, ss: 28 });
+    h += Box(640, 40, 260, 120, '项目方代币', '发售 10,000,000', { stroke: C.line, ss: 24 });
+    h += Box(20, 300, 260, 120, 'Launchpad 冻结', lk, { stroke: C.gold, ss: 28 });
+    h += Box(640, 300, 260, 120, '项目方募资', on(3) ? '+0.003333 BNB' : '0', { stroke: on(3) ? C.buy : C.line, ss: 26 });
+    h += A(70, 160, 70, 300, { c: C.gold, w: 5 }) + T(82, 226, '承诺', { size: 24, fill: C.gold }) + T(82, 256, '冻结', { size: 24, fill: C.gold });
+    if (on(3)) h += A(280, 370, 640, 370, { c: C.buy, w: 5 }) + T(460, 356, '扣款 0.003333', { anchor: 'middle', size: 24, fill: C.buy }) + A(640, 100, 590, 100, { c: C.buy, w: 5 }) + T(615, 84, '发币', { anchor: 'middle', size: 24, fill: C.buy });
+    if (on(4)) h += A(220, 300, 220, 160, { c: C.info, w: 5 }) + T(232, 226, '退款', { size: 24, fill: C.info }) + T(232, 256, '9.996667', { size: 24, fill: C.info, mono: true });
+    if (st === 4) h += R(6, 20, 908, 420, { fill: 'transparent', stroke: C.gold, dash: '12 8', sw: 3 }) + T(460, 470, '同一个账本事务：扣款 + 发币 + 退款', { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+    const big = [['冻结 ≠ 扣款', C.gold], ['募资目标 ≈ 333.33 BNB', C.text], ['超额认购 ≈ 3,000 倍', C.warn], ['真正扣款只占 0.03%', C.buy], null, ['承诺约 24 亿美元 vs 募资数百万', C.warn], ['破发 · 多账户拆分', C.sell]][st];
+    if (big) h += T(460, 540, big[0], { anchor: 'middle', size: 40, bold: true, fill: big[1] });
+    svgEl(el.querySelector('#pad'), h);
+    calcLines(el.querySelector('#pad-calc'), [
+      [0, '承诺只冻结，不扣款'], [0, '冻结 / 解冻分录 · 见账本章节'],
+      [1, '发售 10,000,000 NEW'], [1, '发行价 0.02 USDT · BNB = 600'], [1, '目标 200,000 USDT ≈ 333.33 BNB'],
+      [2, '全网承诺 1,000,000 BNB'], [2, '我承诺 10 BNB → 份额 0.001%'],
+      [3, '分配 = 0.001% × 10,000,000 = 100 NEW'], [3, '扣款 = 100 × 0.02 ÷ 600 ≈ 0.003333 BNB'],
+      [4, '退款 = 10 − 0.003333 = 9.996667 BNB'],
+      [5, '硬顶：超出部分按比例分给他人'], [5, '公开报道 2023-07：承诺约 24 亿美元'],
+      [6, '风险：开盘价 &lt; 发行价', 'red'], [6, '防线：KYC 唯一性 + 设备关联', 'red'],
+    ], st, 2);
+  }
+
+  // 10. launchpool dilution
+  function poolStep(el, st) {
+    el.querySelector('#pool-h').textContent = st <= 1 ? 'Launchpool：锁仓挖新币' : st <= 3 ? '按份额分奖励：18.25% 怎么来' : '后来者涌入：你的份额被稀释';
+    let h = '';
+    if (st <= 1) {
+      h += Box(20, 60, 280, 120, '用户 BNB', '10 BNB · 示例', { stroke: C.info, ss: 24 });
+      h += Box(560, 60, 360, 120, 'Launchpool 池', '全池小时均值', { stroke: C.gold, ss: 24 });
+      h += A(300, 100, 560, 100, { c: C.gold, w: 5 }) + T(430, 86, '锁入', { anchor: 'middle', size: 26, fill: C.gold });
+      h += A(560, 150, 300, 150, { c: C.info, w: 5 }) + T(430, 186, '随时赎回', { anchor: 'middle', size: 26, fill: C.info });
+      h += Box(560, 330, 360, 120, '项目方奖励额度', '每小时 50,000 NEW', { stroke: C.line, ss: 24 });
+      h += Box(20, 330, 280, 120, '用户现货 NEW', '奖励', { stroke: st === 1 ? C.buy : C.line, ss: 24 });
+      h += A(560, 390, 300, 390, { c: st === 1 ? C.buy : C.t2, w: st === 1 ? 6 : 4 }) + T(430, 376, '每小时按份额', { anchor: 'middle', size: 24, fill: st === 1 ? C.buy : C.t2 });
+      h += A(740, 180, 740, 330, { c: C.dim, dash: '8 6' }) + T(724, 250, 'Simple Earn 中的 BNB', { size: 22, fill: C.t2, anchor: 'end' }) + T(724, 278, '同时计息 · 以规则为准', { size: 22, fill: C.t2, anchor: 'end' });
+      h += T(470, 530, st === 1 ? '份额 = 个人小时均值 ÷ 全池小时均值' : '本金不交给项目方，奖励全由项目方承担', { anchor: 'middle', size: 30, bold: true, fill: st === 1 ? C.buy : C.text });
+    } else {
+      const X = p => 110 + p / 8.5 * 800, Y = a => 520 - a / 20 * 440;
+      h += Ln(110, 520, 920, 520, { c: C.t2 }) + Ln(110, 60, 110, 520, { c: C.t2 });
+      [0, 2, 4, 6, 8].forEach(p => h += T(X(p), 556, p ? p + 'M' : '0', { anchor: 'middle', size: 24, fill: C.t2 }));
+      [0, 5, 10, 15, 20].forEach(a => h += T(96, Y(a) + 8, a + '%', { anchor: 'end', size: 22, fill: C.t2 }) + Ln(110, Y(a), 920, Y(a), { c: C.line, w: 1 }));
+      h += T(920, 590, '全池 BNB · 示例', { anchor: 'end', size: 22, fill: C.t2 });
+      const pmax = st >= 5 ? 8 : st === 4 ? 4 : 2;
+      let path = [];
+      for (let p = 1.83; p <= 8.4; p += 0.1) path.push(X(p) + ',' + Y(36.5 / p));
+      h += `<polyline fill="none" stroke="${C.dim}" stroke-width="3" stroke-dasharray="6 6" points="${path.join(' ')}"/>`;
+      if (st >= 4) { let q = []; for (let p = 2; p <= pmax + 1e-9; p += 0.1) q.push(X(p) + ',' + Y(36.5 / p)); h += `<polyline fill="none" stroke="${C.gold}" stroke-width="6" points="${q.join(' ')}"/>`; }
+      if (st === 5) { let q = []; for (let p = 1.83; p <= 8.4; p += 0.1) q.push(X(p) + ',' + Y(18.25 / p)); h += `<polyline fill="none" stroke="${C.sell}" stroke-width="3" stroke-dasharray="4 6" points="${q.join(' ')}"/>` + T(X(5.4), Y(18.25 / 5.4) + 40, '开盘价减半', { size: 24, fill: C.sell }); }
+      const pts = [[2, 18.25, '18.25%'], [4, 9.125, '≈ 9.13%'], [8, 4.5625, '≈ 4.56%']].filter(p => p[0] <= pmax);
+      pts.forEach(([p, a, s], i) => {
+        const showA = st >= 3;
+        h += `<circle cx="${X(p)}" cy="${Y(a)}" r="12" fill="${i === pts.length - 1 ? C.gold : C.t2}"/>`;
+        h += T(p === 8 ? X(p) - 10 : X(p) + 18, p === 8 ? Y(a) - 30 : Y(a) - 18, showA ? s : '份额 0.0005%', { size: 30, bold: true, anchor: p === 8 ? 'end' : 'start', fill: i === pts.length - 1 ? C.gold : C.t2 });
+      });
+      const share = { 2: '10 ÷ 2,000,000', 4: '10 ÷ 4,000,000', 8: '10 ÷ 8,000,000' }[pmax];
+      h += T(900, 40, '我的份额 = ' + share, { anchor: 'end', size: 26, fill: C.text });
+    }
+    svgEl(el.querySelector('#pool'), h);
+    calcLines(el.querySelector('#pool-calc'), [
+      [0, '锁入 BNB · 随时赎回'], [0, '奖励由项目方承担'],
+      [1, '每小时奖励 = min(<br>个人小时均值 ÷ 全池小时均值<br>× 每小时奖励量, 单人上限)'],
+      [2, '全池 2,000,000 · 我 10 BNB'], [2, '每小时 50,000 NEW'], [2, '份额 0.0005% → 0.25 NEW/小时'],
+      [3, '每日 6 NEW × 0.5 = 3 USDT'], [3, '年化 = 3 × 365 ÷ (10 × 600)<br>= 18.25%'],
+      [4, '全池 4,000,000 → ≈ 9.13%'],
+      [5, '全池 8,000,000 → ≈ 4.56%'], [5, '开盘价减半 → 年化减半', 'red'],
+    ], st, st >= 4 ? 3 : 2);
+  }
+
+  // 11. hourly snapshots
+  function hourStep(el, st) {
+    el.querySelector('#hour-h').textContent = st <= 2 ? '一小时内多次随机快照' : st === 3 ? '结算：批量记账，幂等重试' : '风险：奖励开盘即被卖出';
+    const X = m => 140 + m * 18, top = 70, bot = 250, Yv = v => bot - v * 15;
+    const samples = [4, 11, 19, 26, 33, 41, 48, 56];
+    const bal = m => st === 0 ? 10 : st === 1 ? (m >= 58 ? 10 : 0) : (m >= 45 ? 10 : 0);
+    let h = '';
+    h += T(140, 36, '个人锁仓 · 示例 · 一小时', { size: 26, fill: C.t2 });
+    h += Ln(X(0), bot, X(60), bot, { c: C.t2 });
+    [0, 15, 30, 45, 60].forEach(m => h += Ln(X(m), bot, X(m), bot + 10, { c: C.t2 }) + T(X(m), bot + 36, m + ' 分', { anchor: 'middle', size: 22, fill: C.t2 }));
+    let pts = [];
+    for (let m = 0; m <= 60; m += 0.5) pts.push(X(m) + ',' + Yv(bal(m)));
+    h += `<polyline fill="none" stroke="${C.info}" stroke-width="5" points="${pts.join(' ')}"/>`;
+    const vals = samples.map(bal);
+    samples.forEach((m, i) => h += Ln(X(m), top, X(m), bot, { c: C.gold, w: 2, dash: '4 5' }) + `<circle cx="${X(m)}" cy="${Yv(vals[i])}" r="10" fill="${C.gold}"/>`);
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    h += T(X(60) + 30, 120, '小时均值', { size: 26, fill: C.t2 }) + T(X(60) + 30, 180, avg.toFixed(1) + ' BNB', { size: 52, bold: true, fill: C.gold, mono: true });
+    const tag = [['一直锁着', '均值 = 10'], ['整点前存入、整点后取出', '快照落空 → 约 0'], ['最后 15 分钟锁入', '均值约 2.5 → 只拿 1/4']][Math.min(st, 2)];
+    h += T(X(60) + 30, 226, tag[0], { size: 26, fill: st === 0 ? C.text : C.warn }) + T(X(60) + 30, 262, tag[1], { size: 26, fill: st === 0 ? C.text : C.warn });
+    if (st >= 3) {
+      const y = 340;
+      h += Box(20, y, 380, 130, 'snapshot-service', '个人均值 · 全池均值', { stroke: C.info, size: 28, ss: 24 });
+      h += Box(560, y, 460, 130, 'launchpool-service', '份额 = 个人 ÷ 全池 · 单人上限', { stroke: C.gold, size: 28, ss: 24 });
+      h += Box(1180, y, 400, 130, 'ledger-service', '奖励账户 → 用户现货 NEW', { stroke: C.buy, size: 28, ss: 24 });
+      h += A(400, y + 65, 560, y + 65, { c: C.t2 }) + A(1020, y + 65, 1180, y + 65, { c: C.t2 });
+      if (st === 3) h += R(20, 500, 1560, 80, { fill: 'rgba(240,185,11,.12)', stroke: C.gold }) + T(800, 552, '失败幂等重试 · 幂等键 = 活动 ID + 小时 + 用户 ID', { anchor: 'middle', size: 32, bold: true, fill: C.gold, plain: true });
+      else h += R(20, 500, 1560, 80, { fill: 'rgba(246,70,93,.12)', stroke: C.sell }) + T(800, 552, '开盘集中卖出奖励 → 单边下跌 · 挖矿收益可能远小于 BNB 波动', { anchor: 'middle', size: 30, bold: true, fill: C.sell, plain: true });
+    } else {
+      h += R(20, 360, 1560, 200, { fill: 'rgba(91,156,255,.06)', stroke: C.line });
+      h += T(60, 420, '快照时刻随机 · 个人和全池各取小时平均 · 公开报道', { size: 30, bold: true, plain: true });
+      h += T(60, 480, '我的每小时奖励 = min( 我的小时均值 ÷ 全池小时均值 × 每小时奖励量 , 单人每小时上限 )', { size: 26, fill: C.t2, plain: true });
+      h += T(60, 530, st === 2 ? '2.5 ÷ 10 = 1/4：只拿到四分之一' : st === 1 ? '临时资金拿不到奖励' : '整小时持有，拿满份额', { size: 28, fill: C.gold, bold: true, plain: true });
+    }
+    svgEl(el.querySelector('#hour'), h);
+  }
+
+  // 12. airdrops
+  function airStep(el, st) {
+    ['air0', 'air1', 'air2'].forEach((id, i) => {
+      const cur = [0, 0, 0, 1, 1, 2, 2][st] === i;
+      const c = el.querySelector('#' + id).classList; c.toggle('gold', cur && st !== 6); c.toggle('sell', cur && st === 6);
+    });
+    let h = '';
+    if (st <= 2) {
+      const X = d => 80 + d * 14;
+      h += Ln(X(0), 110, X(100), 110, { c: C.t2, w: 4 });
+      h += R(X(10), 70, X(60) - X(10), 80, { fill: '#1a2740', stroke: C.info }) + T((X(10) + X(60)) / 2, 120, '历史快照窗口 · 每小时多次', { anchor: 'middle', size: 26, plain: true });
+      const ev = [[68, '公告', C.gold], [80, '空投到账', C.buy], [92, '开盘', C.text]];
+      ev.forEach(([d, t, c]) => h += `<circle cx="${X(d)}" cy="110" r="12" fill="${c}"/>` + T(X(d), 60, t, { anchor: 'middle', size: 26, fill: c, bold: true }));
+      if (st >= 1) h += T(X(68), 190, '公告时窗口已结束 → 临时买入无效', { anchor: 'middle', size: 28, bold: true, fill: C.gold });
+      if (st === 2) h += R(80, 214, 1480, 66, { fill: 'rgba(240,185,11,.12)', stroke: C.gold }) + T(820, 258, '份额 = min(30 ÷ 30,000,000 , 4%) = 0.0001% → 0.0001% × 15,000,000 = 15 NEW', { anchor: 'middle', size: 28, mono: true, plain: true, fill: C.gold });
+    } else if (st <= 4) {
+      const parts = [['锁仓分', '100', C.info], ['× 任务倍数', '1.5', C.text], ['+ 任务奖励分', '20', C.text], ['= 总分', '170', C.gold]];
+      parts.forEach(([k, v, c], i) => { if (st === 3 && i) { h += R(80 + i * 380, 20, 340, 150, { fill: C.panel, stroke: C.line, op: .5 }) + T(250 + i * 380, 80, k, { anchor: 'middle', size: 28, fill: C.t2, plain: true }); return; }
+        h += R(80 + i * 380, 20, 340, 150, { fill: C.panel, stroke: c }) + T(250 + i * 380, 70, k, { anchor: 'middle', size: 28, fill: C.t2, plain: true }) + (st === 4 ? T(250 + i * 380, 140, v, { anchor: 'middle', size: 56, bold: true, fill: c, mono: true, plain: true }) : ''); });
+      if (st === 4) h += T(820, 240, '170 ÷ 10,000,000 × 20,000,000 = 340 NEW', { anchor: 'middle', size: 34, bold: true, fill: C.gold, mono: true });
+      else h += T(820, 240, '锁仓越多、期限越长，锁仓分越高', { anchor: 'middle', size: 30, fill: C.text });
+    } else {
+      const items = st === 5 ? [['15 天滚动窗口', '积分按交易与持仓累计'], ['积分门槛', '达到门槛领取空投 / TGE 名额'], ['领取消耗积分', '计分表变化频繁']]
+        : [['未经现货全部尽调', '易被误解为币安背书'], ['对倒刷积分', '门槛调整 + 异常检测'], ['回溯利好长期大户', '小户绝对收益很低']];
+      items.forEach(([a, b], i) => h += R(80 + i * 500, 30, 460, 200, { fill: st === 6 ? 'rgba(246,70,93,.1)' : C.panel, stroke: st === 6 ? C.sell : C.info }) + T(310 + i * 500, 110, a, { anchor: 'middle', size: 32, bold: true, fill: st === 6 ? C.sell : C.text, plain: true }) + T(310 + i * 500, 170, b, { anchor: 'middle', size: 26, fill: C.t2, plain: true }));
+    }
+    svgEl(el.querySelector('#air'), h);
+  }
+
+  // 13. flywheel
+  function wheelStep(el, st) {
+    const N = [[620, 70, '新币活动', 0], [930, 180, '门槛 = 持有 BNB', 0], [930, 410, '买入并长期持有', 1], [620, 520, 'BNB 需求上升', 1], [310, 410, '生态吸引力上升', 1], [310, 180, '更多项目首发', 1]];
+    const G = [[1340, 410, '放入 Simple Earn', 2], [1340, 540, '理财规模上升', 2]];
+    const Ng = [[1340, 70, '开盘抛压：奖励被卖出', 3], [1340, 240, '参与意愿下降', 3]];
+    let h = '';
+    const box = ([x, y, t, k], col) => {
+      const on = k <= st, cur = k === st || st === 4;
+      return R(x - 150, y - 38, 300, 76, { fill: cur ? (col === C.sell ? 'rgba(246,70,93,.14)' : 'rgba(240,185,11,.14)') : C.panel, stroke: on ? col : C.line, op: on ? 1 : .3 }) + T(x, y + 10, t, { anchor: 'middle', size: 28, bold: true, plain: true, op: on ? 1 : .3, fill: on && col === C.sell ? C.sell : C.text });
+    };
+    const ring = [[770, 90, 860, 142], [930, 218, 930, 372], [860, 448, 770, 500], [470, 500, 380, 448], [310, 372, 310, 218], [380, 142, 470, 90]];
+    ring.forEach(([a, b, c, d], i) => { const k = i === 0 ? 0 : 1; h += A(a, b, c, d, { c: k <= st ? C.gold : C.line, w: 5, op: k <= st ? 1 : .35 }); });
+    h += A(1080, 410, 1190, 410, { c: st >= 2 ? C.info : C.line, op: st >= 2 ? 1 : .3 }) + A(1340, 448, 1340, 502, { c: st >= 2 ? C.info : C.line, op: st >= 2 ? 1 : .3 });
+    h += A(770, 70, 1190, 70, { c: st >= 3 ? C.sell : C.line, op: st >= 3 ? 1 : .3 }) + A(1340, 108, 1340, 202, { c: st >= 3 ? C.sell : C.line, dash: '8 6', op: st >= 3 ? 1 : .3 }) + A(1190, 230, 1080, 196, { c: st >= 3 ? C.sell : C.line, dash: '8 6', op: st >= 3 ? 1 : .3 });
+    if (st >= 3) h += T(1340, 160, '如果新币持续破发', { anchor: 'middle', size: 22, fill: C.sell }).replace('x="1340"', 'x="1360"').replace('text-anchor="middle"', 'text-anchor="start"');
+    N.forEach(n => h += box(n, C.gold)); G.forEach(n => h += box(n, C.info)); Ng.forEach(n => h += box(n, C.sell));
+    h += T(620, 290, st === 4 ? '快照取平均' : '正循环', { anchor: 'middle', size: st === 4 ? 34 : 30, bold: true, fill: C.gold });
+    h += T(620, 336, st === 4 ? '奖励长期持有者 → 需求更粘' : '活动 → BNB → 首发', { anchor: 'middle', size: 26, fill: C.t2 });
+    svgEl(el.querySelector('#wheel'), h);
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

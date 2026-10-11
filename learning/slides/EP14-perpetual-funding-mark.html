@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP14 永续合约</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  table.t td, table.t th { padding: 14px 18px; }
+  table.t tr.cur td { background: var(--gold-soft); }
+  .pcard h3 { font-size: 40px; }
+  .pcard .en { font-family: var(--mono); font-size: 22px; color: var(--text-2); letter-spacing: .08em; }
+  .medians { display: flex; flex-direction: column; gap: 14px; }
+  .medians .m { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel); font-size: 30px; transition: all .3s; }
+  .medians .m b { font-family: var(--mono); font-size: 36px; }
+  .medians .m.pick { border-color: var(--gold); background: var(--gold-soft); }
+  .medians .m.low { border-color: var(--sell); background: var(--sell-soft); opacity: .7; }
+  .calc { font-family: var(--mono); font-size: 32px; line-height: 1.7; }
+  .calc .ln { transition: opacity .3s; }
+  .calc .ln.off { opacity: 0; }
+  .myth { font-size: 38px; padding: 40px 40px; line-height: 1.5; }
+  .myth .x { color: var(--sell); font-weight: 700; margin-right: 10px; }
+  .myth .ok { color: var(--buy); display: block; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP14" data-title="永续合约：资金费率与标记价格">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解 · EP14</div>
+    <h1>永续合约：<span class="hl">资金费率</span>与<span class="hl">标记价格</span></h1>
+    <div class="row" style="max-width:1640px">
+      <div class="card info col" data-step="0"><h3>问题一</h3>永续合约不到期，价格凭什么不跑偏？</div>
+      <div class="card sell col" data-step="1"><h3>问题二</h3>一笔大单砸出插针，仓位会被误伤强平吗？</div>
+    </div>
+    <div class="card warn" data-step="2" style="max-width:1640px">仅讲系统设计，不构成投资建议 · 杠杆会放大亏损 · 除公开资料外数字均为示例</div>
+    <ol class="say">
+      <li>交割合约有到期日，到期那天按指数价格结算，价格自然会回到现货。可是永续合约没有到期日。那它的价格，凭什么不跑偏？</li>
+      <li>还有第二个问题。如果有人用一笔大单，把合约价格瞬间砸下去，你的仓位会不会被误伤强平？</li>
+      <li>这一集就回答这两个问题，答案是资金费率和标记价格。先说明，本集只讲系统设计，不构成投资建议。杠杆会放大亏损，除了公开资料，数字都是示例。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>本集路线图</h2>
+    <div class="grid2">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>四种交易方式<br><span class="muted">现货 · 杠杆 · 交割 · 永续</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>资金费率<br><span class="muted">公式 · 算例 · 谁付给谁</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">3</span><div>三种价格<br><span class="muted">最新价 · 指数价格 · 标记价格</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">4</span><div>插针与真实下跌<br><span class="muted">2025-10-10 案例</span></div></div>
+    </div>
+    <ol class="say">
+      <li>本集分四段。第一，对比现货、杠杆、交割合约和永续合约。第二，拆开资金费率的公式，算两个例子，再看谁付钱给谁。</li>
+      <li>第三，区分最新价、指数价格和标记价格。第四，看一次插针为什么能被标记价格挡住，以及它挡不住的情况。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="四种交易方式" data-onstep="modeStep">
+    <div class="kicker">Spot · Margin · Delivery · Perpetual</div>
+    <h2>四种交易方式</h2>
+    <table class="t" id="modes">
+      <tr><th>方式</th><th>你持有什么</th><th>杠杆 · 示例</th><th>到期日</th><th>做空</th><th>主要成本</th></tr>
+      <tr data-step="0"><td class="hl">现货</td><td>真实的币</td><td>1 倍</td><td>无</td><td class="down">不能</td><td>手续费</td></tr>
+      <tr data-step="1"><td class="hl">杠杆</td><td>借钱买的真实币</td><td>3–10 倍</td><td>无</td><td class="up">能</td><td>手续费 + 利息</td></tr>
+      <tr data-step="2"><td class="hl">交割合约</td><td>到期结算的合约</td><td>最高 125 倍</td><td class="hl">有</td><td class="up">能</td><td>手续费</td></tr>
+      <tr data-step="3"><td class="hl">永续合约</td><td>不到期的合约</td><td>最高 125 倍</td><td>无</td><td class="up">能</td><td>手续费 + <span class="hl">资金费</span></td></tr>
+    </table>
+    <div class="flow" data-step="4">
+      <div class="node">现货</div><div class="arrow"></div>
+      <div class="node">杠杆<small>想放大收益</small></div><div class="arrow"></div>
+      <div class="node">交割合约<small>只要价格敞口</small></div><div class="arrow gold"></div>
+      <div class="node gold">永续合约<small>不想每季度换月</small></div>
+    </div>
+    <ol class="say">
+      <li>先把四种交易方式摆在一起。现货，你持有真实的币，没有杠杆，也不能做空。</li>
+      <li>杠杆交易，是借钱或借币，买卖真实的币。示例杠杆是3到10倍，成本多了一项借币利息。</li>
+      <li>交割合约，你持有的是一份合约，不是币。它有到期日，比如季度合约，到期按指数价格结算。</li>
+      <li>永续合约也是合约，但没有到期日。它多了一项成本，叫资金费。根据币安公开资料，部分 U 本位合约最高125倍杠杆。</li>
+      <li>从左往右，每一步都改进了上一步的一个不便。想放大收益，用杠杆。只要价格敞口，用合约。不想每个季度换月，用永续。代价是系统越来越复杂。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="永续为什么需要资金费率" data-onstep="convStep">
+    <div class="kicker">Why Funding</div>
+    <h2 id="conv-h">交割合约：到期自然收敛</h2>
+    <svg id="conv" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>先看交割合约。合约价可以高于现货，也可以低于现货。但到期那天，系统强制按指数价结算。所以越接近到期，两条线越靠近，最后重合。</li>
+      <li>永续合约去掉了到期日，也就失去了这种自然收敛。如果什么都不做，合约价可以一直偏离现货。</li>
+      <li>所以永续必须引入一个新机制，叫资金费率。打个比方，它像一根橡皮筋，一头拴着现货，一头拴着合约。跑得越远，拉力越大。</li>
+      <li>但比喻有不成立的地方。橡皮筋是连续用力的，资金费率不是。它每个周期才结算一次。两次结算之间，合约价可以偏离很远。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="资金费率公式" data-onstep="fundStep">
+    <div class="kicker">Funding Rate · 币安 U 本位公开公式</div>
+    <div class="formula" style="font-size:44px">F = P + clamp( I − P, −0.05%, +0.05% )</div>
+    <div class="row">
+      <svg id="fplot" width="900" height="500" viewBox="0 0 900 500"></svg>
+      <div class="col">
+        <div class="card" id="f-def" style="font-size:29px;padding:20px 26px"></div>
+        <div class="card gold calc" id="f-calc" style="padding:20px 26px"></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>根据币安公开资料，U 本位永续的资金费率公式是这样的。F 等于 P，加上一个修正项。修正项是 I 减 P，并且被限制在正负0.05%之间。</li>
+      <li>P 是溢价指数，衡量合约价格比指数价格高多少。它用冲击买价和冲击卖价来算，每个周期内多次采样，再取平均。</li>
+      <li>I 是利率，默认每8小时0.01%。它代表 USDT 和 BTC 的借贷利差。</li>
+      <li>举个示例。P 等于0.03%。I 减 P 等于负0.02%，在正负0.05%之内，不用截断。F 等于0.03%减0.02%，结果正好是0.01%。</li>
+      <li>再算一个。P 等于0.2%。I 减 P 是负0.19%，超出范围，被截到负0.05%。F 等于0.2%减0.05%，也就是0.15%。</li>
+      <li>推一下就知道。只要 P 落在负0.04%到0.06%之间，F 就恰好等于0.01%。这就是市场平静时，资金费率常年是0.01%的原因。资金费率另有上下限，以官网为准。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="谁付给谁" data-onstep="payStep">
+    <div class="kicker">Funding Payment</div>
+    <h2>资金费：多空之间转移，交易所不收</h2>
+    <svg id="pay" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>资金费多久结算一次？根据币安公开资料，默认每8小时一次，在 UTC 的0点、8点和16点。部分合约是4小时或1小时。行情剧烈时，币安还可以缩短周期。</li>
+      <li>资金费等于持仓名义价值乘以资金费率。名义价值等于标记价格乘以仓位数量。举个示例，你持有1个 BTC 多单，标记价格50000，资金费率0.01%。</li>
+      <li>费率是正的，多头付钱给空头。50000乘以0.01%，你要付5 USDT。持有同样空单的人，收到5 USDT。</li>
+      <li>如果费率是负的，方向反过来，空头付钱给多头。</li>
+      <li>注意两点。第一，交易所不收这笔钱，它只在多空之间转移。第二，只有在结算时刻持仓的人，才付或收资金费。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="负反馈回路" data-onstep="loopStep">
+    <div class="kicker">Negative Feedback</div>
+    <h2>资金费率构成一个负反馈回路</h2>
+    <svg id="loop" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>把资金费率放回市场里看，它构成一个负反馈回路。合约价高于指数价，溢价指数为正，资金费率也就为正。</li>
+      <li>费率为正，多头付钱给空头。持多的成本上升，持空反而有收益。</li>
+      <li>于是部分多头平仓，套利者也进场开空。</li>
+      <li>套利者是关键角色。他们在现货买入，在合约做空，一边赚资金费，一边把价差压回去。合约价因此回到指数价附近。</li>
+      <li>价格偏离越大，拉回的力越大。不过别忘了刚才的局限：资金费每个周期才结算一次，不是实时生效。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="三种价格">
+    <div class="kicker">Last · Index · Mark</div>
+    <h2>三种价格，各有用途</h2>
+    <div class="grid3">
+      <div class="card pcard" data-step="0"><span class="en">LAST PRICE</span><h3>最新价</h3>本合约最新一笔成交价<br><span class="muted">显示行情 · 下单参考</span></div>
+      <div class="card pcard info" data-step="1"><span class="en">INDEX PRICE</span><h3>指数价格</h3>多个现货交易所的加权平均<br><span class="muted">资金费率 · 标记价格的基础</span></div>
+      <div class="card pcard gold" data-step="2"><span class="en">MARK PRICE</span><h3>标记价格</h3>由指数价格和合约价格推导<br><span class="hl">未实现盈亏 · 强平</span></div>
+    </div>
+    <div class="code" data-step="3" style="font-size:30px">标记价格 = 中位数( 价格1, 价格2, 合约最新价 )
+价格1 = 指数价格 × (1 + 上次资金费率 × 距下次结算时间 / 资金费率周期)
+价格2 = 指数价格 + 移动平均基差(30 秒)</div>
+    <ol class="say">
+      <li>第三段，三种价格。最新价，是本合约最新一笔成交价，用来显示行情和下单参考。</li>
+      <li>指数价格，是多个现货交易所价格的加权平均。它用于计算资金费率，也是标记价格的基础。</li>
+      <li>标记价格，由指数价格和合约价格推导出来。它用来计算未实现盈亏，以及判断强平。这一点最关键。</li>
+      <li>根据币安公开资料，标记价格取三个数的中位数。价格1，是指数价格乘以一个资金费率修正。价格2，是指数价格加上30秒的移动平均基差。第三个，是合约最新价。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="指数价格的偏离截断" data-onstep="idxStep">
+    <div class="kicker">Index Price Guard</div>
+    <h2>指数价格：偏离中位数超过 3% 就截断</h2>
+    <svg id="idx" width="1640" height="580" viewBox="0 0 1640 580"></svg>
+    <ol class="say">
+      <li>指数价格本身也有保护。来看一个示例，5家现货交易所的报价。其中4家在50000附近，E 交易所出了故障，报出46000。</li>
+      <li>根据币安公开资料，某个报价偏离全部报价的中位数超过3%时，就会被截断。截断范围是中位数的0.97倍到1.03倍。</li>
+      <li>中位数是50000，所以 E 的报价被截到48500。单个交易所出故障，对指数的影响就被限制住了。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="插针：最新价与标记价格" data-onstep="wickStep">
+    <div class="kicker">Wick vs Mark Price</div>
+    <h2>插针：按最新价会强平，按标记价格不会</h2>
+    <div class="row">
+      <svg id="wick" width="1080" height="600" viewBox="0 0 1080 600"></svg>
+      <div class="col">
+        <div class="card" style="padding:18px 24px;font-size:28px">示例仓位：10x 多单<br>开仓价 <span class="mono">50,000</span><br>强平价 <span class="mono hl">45,180.72</span></div>
+        <div class="medians" id="med">
+          <div class="m" id="m1"><span>价格1</span><b>47,860</b></div>
+          <div class="m" id="m2"><span>价格2</span><b>47,800</b></div>
+          <div class="m" id="m3"><span>最新价</span><b>44,600</b></div>
+        </div>
+        <div class="card gold" id="m-res" style="padding:16px 24px;font-size:30px">中位数 = <b class="mono">47,800</b></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>举个示例。你开了一个10倍多单，开仓价50000。按下一集要推导的公式，强平价大约是45180.72。之后价格慢慢走低到48000附近。</li>
+      <li>某一刻，合约订单簿很薄。一笔大额市价卖单，把最新价瞬间砸到44600，然后又弹了回来。这就是插针。</li>
+      <li>如果系统用最新价判断强平，插针那一瞬间，价格穿过了强平线，你的仓位会被强平。可价格几秒后就回来了。</li>
+      <li>现在加上标记价格。插针那一刻，标记价格只下探到47800左右，离强平线很远。仓位安然无恙。</li>
+      <li>为什么？标记价格取三个数的中位数。价格1和价格2都锚定指数价格，几乎不动。最新价单独被打穿，排在最低，中位数不会选它。</li>
+      <li>但标记价格防的是假波动，不防真波动。如果全部现货交易所同时下跌，指数价格跟着跌，标记价格照样会穿过强平线。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="案例：2025-10-10" data-onstep="caseStep">
+    <div class="kicker">Case · 2025-10-10 · 公开报道</div>
+    <h2>保证金资产的估价，也要看外部来源</h2>
+    <div class="row">
+      <svg id="case" width="1000" height="560" viewBox="0 0 1000 560"></svg>
+      <div class="col">
+        <div class="card sell stat" data-step="0" style="padding:16px 24px"><div class="k">24 小时强平 · 史上最大单日</div><div class="v" style="font-size:52px">&gt; 190 亿美元</div></div>
+        <div class="card stat" data-step="3" style="padding:16px 24px"><div class="k">约 75% 强平发生在偏离之前 · 币安称</div><div class="v" style="font-size:52px">补偿 ≈ 2.83 亿美元</div></div>
+        <div class="card gold" data-step="4" style="padding:16px 24px;font-size:29px">教训：保证金估价要引用<b>多个外部来源</b></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>来看一个真实案例。根据公开报道，2025年10月10日，美国宣布对中国进口商品加征100%关税。加密市场24小时内强平超过190亿美元，是史上最大单日强平。多家交易所触发了 ADL。</li>
+      <li>在币安，USDe、WBETH、BNSOL 三种资产出现了指数偏离。时间是 UTC 21点36分到22点16分。USDe 在币安一度跌破0.66美元，而其他场所基本维持锚定。</li>
+      <li>问题出在哪里？用这些资产做保证金的用户，保证金的估价跟着本所的价格被砸穿，于是被强平。</li>
+      <li>币安称，约75%的强平发生在偏离之前。币安在24小时内，向受影响的合约、杠杆、借贷用户补偿约2.83亿美元。</li>
+      <li>教训是，保证金资产的估价，和标记价格一样，必须引用多个外部来源。只看本所订单簿，流动性枯竭时就会被砸穿，引发不公正的连锁强平。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="常见误区">
+    <div class="kicker">Misconceptions</div>
+    <h2>四个常见误区</h2>
+    <div class="grid2">
+      <div class="card myth" data-step="0"><span class="x">✕</span>资金费是交易所收的<span class="ok">✓ 只在多空之间转移</span></div>
+      <div class="card myth" data-step="1"><span class="x">✕</span>持仓期间一直在扣资金费<span class="ok">✓ 只有结算时刻持仓才付或收</span></div>
+      <div class="card myth" data-step="2"><span class="x">✕</span>有标记价格就不会被强平<span class="ok">✓ 挡得住插针，挡不住真实下跌</span></div>
+      <div class="card myth" data-step="3"><span class="x">✕</span>合约价时刻等于现货<span class="ok">✓ 两次结算之间可以偏离很远</span></div>
+    </div>
+    <ol class="say">
+      <li>最后理一理四个常见误区。误区一，资金费是交易所收的。不对，它只在多空之间转移，交易所不收。</li>
+      <li>误区二，持仓期间一直在扣资金费。也不对，只有在结算时刻持仓，才付或收。</li>
+      <li>误区三，有了标记价格就不会被插针强平。标记价格能挡住单一来源的插针，挡不住全市场的真实下跌。</li>
+      <li>误区四，资金费率能让合约价时刻等于现货。它每个周期才结算一次，两次结算之间，合约价可以偏离很远。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="小结与下集预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">永续没有到期日，靠<span class="hl">资金费率</span>锚定现货；正费率多付空，负费率空付多。</li>
+      <li data-step="0">F = P + clamp(I − P, ±0.05%)，平静时常年 <span class="hl">0.01%</span>。</li>
+      <li data-step="1">强平看<span class="hl">标记价格</span>：三者中位数，挡插针，不挡真实下跌。</li>
+    </ul>
+    <div class="grid3" data-step="1">
+      <div class="card stat"><div class="k">平静时资金费率</div><div class="v hl">0.01%</div></div>
+      <div class="card stat"><div class="k">默认结算周期</div><div class="v">8 小时</div></div>
+      <div class="card stat"><div class="k">标记价格</div><div class="v" style="font-size:48px">三者中位数</div></div>
+    </div>
+    <div class="card gold" data-step="3" style="font-size:34px">下集 EP15 · 保证金与强平：保险基金和 ADL</div>
+    <ol class="say">
+      <li>小结一下。第一，永续合约没有到期日，靠资金费率锚定现货。费率为正，多头付空头。费率为负，空头付多头。交易所不收这笔钱。</li>
+      <li>第二，币安的资金费率等于 P 加上被截断的 I 减 P。市场平静时，它常年等于0.01%。</li>
+      <li>第三，强平看标记价格，不看最新价。标记价格取三者中位数，能挡住插针，但挡不住真实的下跌。</li>
+      <li>下一集，我们算清楚强平价。10倍多单，为什么跌9.6%就被强平？强平之后，亏损又由谁来兜底？我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', bg: '#0d0e10' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const fmt = n => n.toLocaleString('en-US');
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 28}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.plain ? '' : ` stroke="${C.bg}" stroke-width="8" paint-order="stroke"`}>${s}</text>`;
+  const line = (pts, col, w = 5, dash = '') => `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`;
+
+  function modeStep(el, st) {
+    el.querySelectorAll('#modes tr').forEach((tr, i) => tr.classList.toggle('cur', i === st + 1 && st < 4));
+  }
+
+  function convStep(el, st) {
+    el.querySelector('#conv-h').textContent = st === 0 ? '交割合约：到期自然收敛' : st === 1 ? '永续合约：没有到期日，靠什么收敛？' : '资金费率：把合约价拉回现货';
+    const svg = el.querySelector('#conv');
+    const x0 = 80, x1 = 1480, exp = 1300;
+    const s = x => 330 + 40 * Math.sin(x / 130) + 20 * Math.sin(x / 47);
+    const xs = []; for (let x = x0; x <= x1; x += 10) xs.push(x);
+    let h = `<line x1="${x0}" y1="560" x2="${x1}" y2="560" stroke="${C.t2}" stroke-width="3"/>` + T(x1, 548, '时间 →', { anchor: 'end', fill: C.t2, size: 26 });
+    h += line(xs.map(x => [x, s(x)]), C.info, 6);
+    h += T(x1 + 12, s(x1) + 10, '现货指数', { fill: C.info });
+    if (st === 0) {
+      const d = xs.filter(x => x <= exp).map(x => [x, s(x) - 130 * (exp - x) / (exp - x0)]);
+      h += line(d, C.gold, 6);
+      h += `<line x1="${exp}" y1="60" x2="${exp}" y2="560" stroke="${C.sell}" stroke-width="3" stroke-dasharray="10 8"/>` + T(exp, 50, '到期日 · 按指数价结算', { anchor: 'middle', fill: C.sell });
+      h += T(x0 + 40, s(x0) - 150, '交割合约价', { fill: C.gold });
+    } else {
+      let p;
+      if (st === 1) p = xs.map(x => [x, s(x) - 0.13 * (x - x0) - 20]);
+      else p = xs.map(x => [x, s(x) - 26 - 22 * Math.sin(x / 90) - (st === 3 ? 150 * Math.exp(-(((x - 830) / 80) ** 2)) : 0)]);
+      h += line(p, C.gold, 6, st === 1 ? '14 10' : '');
+      h += T(x1 + 12, Math.min(p[p.length - 1][1] - 6, s(x1) - 34), '永续合约价', { fill: C.gold });
+      if (st === 1) h += T(900, 120, '没有到期日 → 可能一直偏离', { fill: C.sell, size: 32, bold: true });
+      if (st >= 2) {
+        [380, 680, 980, 1280].forEach(x => h += `<line x1="${x}" y1="90" x2="${x}" y2="560" stroke="${C.line}" stroke-width="3" stroke-dasharray="6 8"/>` + T(x, 82, '结算', { anchor: 'middle', fill: C.t2, size: 24 }));
+        if (st === 2) h += T(160, 140, '偏离越大，拉力越大', { fill: C.buy, size: 32, bold: true });
+        if (st === 3) h += T(830, 150, '两次结算之间可偏离很远', { anchor: 'middle', fill: C.sell, size: 32, bold: true });
+      }
+    }
+    svgEl(svg, h);
+  }
+
+  function fundStep(el, st) {
+    const defs = [
+      '<b>F</b> 资金费率　<b>P</b> 溢价指数<br><b>I</b> 利率　<b>clamp</b> 限制在 ±0.05%',
+      '<b class="hl">P 溢价指数</b><br>[max(0, 冲击买价 − 指数) − max(0, 指数 − 冲击卖价)] ÷ 指数<br><span class="muted">周期内多次采样取平均</span>',
+      '<b class="hl">I 利率</b><br>默认 0.01% / 8 小时<br><span class="muted">USDT 与 BTC 的借贷利差</span>',
+      '<b>示例 1</b>　P = 0.03%', '<b>示例 2</b>　P = 0.2%',
+      '<b class="hl">平坦区</b><br>−0.04% ≤ P ≤ 0.06% → F = 0.01%<br><span class="muted">上下限以官网为准</span>',
+    ];
+    el.querySelector('#f-def').innerHTML = defs[st];
+    const calcs = {
+      3: ['I − P = 0.01% − 0.03%', '　　 = −0.02%　在范围内', 'F = 0.03% − 0.02%', '　= <span class="hl">0.01%</span>'],
+      4: ['I − P = −0.19%', '截断 → −0.05%', 'F = 0.2% − 0.05%', '　= <span class="hl">0.15%</span>'],
+    };
+    const cel = el.querySelector('#f-calc');
+    cel.style.display = calcs[st] ? '' : 'none';
+    cel.innerHTML = (calcs[st] || []).map(l => `<div class="ln">${l}</div>`).join('');
+    const svg = el.querySelector('#fplot');
+    const X = p => 90 + (p + 0.1) / 0.35 * 780, Y = f => 420 - (f + 0.05) / 0.25 * 380;
+    let h = '';
+    [-0.1, 0, 0.1, 0.2].forEach(p => h += `<line x1="${X(p)}" y1="${Y(-0.05)}" x2="${X(p)}" y2="${Y(0.2)}" stroke="${C.line}" stroke-width="2"/>` + T(X(p), 460, p.toFixed(1) + '%', { anchor: 'middle', fill: C.t2, size: 24 }));
+    [0, 0.1, 0.2].forEach(f => h += `<line x1="${X(-0.1)}" y1="${Y(f)}" x2="${X(0.25)}" y2="${Y(f)}" stroke="${C.line}" stroke-width="2"/>` + T(X(-0.1) - 12, Y(f) + 8, f.toFixed(1) + '%', { anchor: 'end', fill: C.t2, size: 24 }));
+    h += T(X(0.25), 494, '溢价指数 P →', { anchor: 'end', fill: C.t2, size: 24 });
+    h += T(X(-0.1) + 6, Y(0.2) - 12, '资金费率 F', { fill: C.t2, size: 24 });
+    const F = p => p + Math.max(-0.05, Math.min(0.05, 0.01 - p));
+    const pts = []; for (let p = -0.1; p <= 0.2501; p += 0.005) pts.push([X(p), Y(F(p))]);
+    h += line(pts, C.gold, 6);
+    if (st === 5 || st === 0) h += `<rect x="${X(-0.04)}" y="${Y(0.2)}" width="${X(0.06) - X(-0.04)}" height="${Y(-0.05) - Y(0.2)}" fill="rgba(46,189,133,.12)"/>` + T((X(-0.04) + X(0.06)) / 2, Y(0.2) + 34, 'F = 0.01%', { anchor: 'middle', fill: C.buy, size: 28, bold: true });
+    const dot = (p, lab) => `<circle cx="${X(p)}" cy="${Y(F(p))}" r="14" fill="${C.sell}"/>` + T(X(p) + 22, Y(F(p)) - 18, lab, { fill: C.sell, size: 28, bold: true });
+    if (st === 3) h += dot(0.03, 'P 0.03% → F 0.01%');
+    if (st === 4) h += dot(0.2, 'P 0.2% → F 0.15%').replace(`x="${X(0.2) + 22}"`, `x="${X(0.2) - 22}" text-anchor="end"`).replace('text-anchor="start"', '');
+    svgEl(svg, h);
+  }
+
+  function payStep(el, st) {
+    const svg = el.querySelector('#pay');
+    let h = '';
+    // timeline 24h
+    const tx = hr => 120 + hr / 24 * 1400;
+    h += `<line x1="${tx(0)}" y1="60" x2="${tx(24)}" y2="60" stroke="${C.t2}" stroke-width="3"/>`;
+    [0, 8, 16, 24].forEach(hr => h += `<circle cx="${tx(hr)}" cy="60" r="${hr < 24 ? 14 : 8}" fill="${hr < 24 ? C.gold : C.t2}"/>` + T(tx(hr), 110, hr < 24 ? `UTC ${String(hr).padStart(2, '0')}:00` : '次日', { anchor: 'middle', fill: hr < 24 ? C.gold : C.t2, size: 28 }));
+    h += T(tx(24), 30, '默认每 8 小时 · 部分合约 4h 或 1h', { anchor: 'end', fill: C.t2, size: 24 });
+    if (st >= 1) {
+      const box = (x, col, title, sub) => `<rect x="${x}" y="190" width="440" height="190" rx="16" fill="${C.panel}" stroke="${col}" stroke-width="3"/>` + T(x + 220, 260, title, { anchor: 'middle', fill: col, size: 40, bold: true }) + T(x + 220, 312, sub, { anchor: 'middle', fill: C.t2, size: 28 }) ;
+      h += box(120, C.buy, '多头', '1 BTC · 示例');
+      h += box(1080, C.sell, '空头', '1 BTC · 示例');
+      h += T(820, 180, '资金费 = 50,000 × 1 × F', { anchor: 'middle', fill: C.text, size: 30 });
+      if (st >= 2 && st <= 4) {
+        const neg = st === 3;
+        const a = neg ? 1070 : 570, b = neg ? 570 : 1070;
+        h += `<line x1="${a}" y1="285" x2="${b}" y2="285" stroke="${C.gold}" stroke-width="8"/>`;
+        h += neg ? `<polygon points="${b},285 ${b + 30},265 ${b + 30},305" fill="${C.gold}"/>` : `<polygon points="${b},285 ${b - 30},265 ${b - 30},305" fill="${C.gold}"/>`;
+        h += `<circle cx="820" cy="285" r="44" fill="${C.gold}"/>` + T(820, 298, '5', { anchor: 'middle', fill: C.bg, size: 40, bold: true, plain: true });
+        h += T(820, 370, neg ? 'F = −0.01% · 空付多 5 USDT' : 'F = +0.01% · 多付空 5 USDT', { anchor: 'middle', fill: C.gold, size: 32, bold: true });
+      }
+      if (st === 1) h += T(820, 300, '标记价格 50,000 · F = 0.01%', { anchor: 'middle', fill: C.gold, size: 32 });
+    }
+    if (st >= 4) {
+      h += `<rect x="600" y="430" width="440" height="110" rx="16" fill="${C.panel}" stroke="${C.line}" stroke-width="3"/>` + T(820, 478, '交易所', { anchor: 'middle', size: 32, bold: true }) + T(820, 520, '收入 0 · 只做转移', { anchor: 'middle', fill: C.t2, size: 26 });
+      h += T(120, 500, '只有结算时刻', { fill: C.info, size: 30 }) + T(120, 540, '持仓才付或收', { fill: C.info, size: 30 });
+    }
+    svgEl(svg, h);
+  }
+
+  function loopStep(el, st) {
+    const svg = el.querySelector('#loop');
+    const nodes = [
+      ['合约价 > 指数价', '溢价指数 P > 0'], ['资金费率 F > 0', ''], ['多头付钱给空头', '持多成本上升'],
+      ['多头平仓', '套利者开空'], ['合约价回落', '回到指数价附近'],
+    ];
+    const cx = 820, cy = 300, R = 230;
+    const pos = nodes.map((_, i) => { const a = -Math.PI / 2 + i * 2 * Math.PI / 5; return [cx + R * 1.75 * Math.cos(a), cy + R * Math.sin(a)]; });
+    const active = [[0, 1], [1, 2], [3], [3, 4], [0, 1, 2, 3, 4]][st];
+    let h = '';
+    pos.forEach((p, i) => {
+      const q = pos[(i + 1) % 5];
+      const on = active.includes(i) && active.includes((i + 1) % 5) || st === 4;
+      const dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy), ux = dx / L, uy = dy / L;
+      const a = [p[0] + ux * 150, p[1] + uy * 70], b = [q[0] - ux * 150, q[1] - uy * 70];
+      h += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${on ? C.gold : C.line}" stroke-width="5"/>`;
+      h += `<circle cx="${b[0]}" cy="${b[1]}" r="9" fill="${on ? C.gold : C.line}"/>`;
+    });
+    pos.forEach((p, i) => {
+      const on = active.includes(i);
+      h += `<rect x="${p[0] - 170}" y="${p[1] - 52}" width="340" height="104" rx="14" fill="${on ? 'rgba(240,185,11,.16)' : C.panel}" stroke="${on ? C.gold : C.line}" stroke-width="3"/>`;
+      h += T(p[0], p[1] + (nodes[i][1] ? -6 : 10), nodes[i][0], { anchor: 'middle', size: 32, bold: true, fill: on ? C.text : C.t2 });
+      if (nodes[i][1]) h += T(p[0], p[1] + 34, nodes[i][1], { anchor: 'middle', size: 24, fill: C.t2 });
+    });
+    if (st === 3) h += T(cx, cy + 10, '套利：现货买 + 合约空', { anchor: 'middle', fill: C.buy, size: 32, bold: true });
+    if (st === 4) h += T(cx, cy + 10, '偏离越大 · 拉力越大', { anchor: 'middle', fill: C.gold, size: 34, bold: true });
+    svgEl(svg, h);
+  }
+
+  function idxStep(el, st) {
+    const svg = el.querySelector('#idx');
+    const ex = [['A', 50010], ['B', 49990], ['C', 50000], ['D', 50020], ['E', 46000]];
+    const Y = p => 520 - (p - 45000) / 6500 * 460;
+    let h = '';
+    [45000, 46000, 47000, 48000, 49000, 50000, 51000].forEach(p => h += `<line x1="200" y1="${Y(p)}" x2="1200" y2="${Y(p)}" stroke="${C.line}" stroke-width="2"/>` + T(186, Y(p) + 9, fmt(p), { anchor: 'end', fill: C.t2, size: 24 }));
+    if (st >= 1) {
+      h += `<rect x="200" y="${Y(51500)}" width="1000" height="${Y(48500) - Y(51500)}" fill="rgba(46,189,133,.10)"/>`;
+      h += `<line x1="200" y1="${Y(48500)}" x2="1200" y2="${Y(48500)}" stroke="${C.buy}" stroke-width="3" stroke-dasharray="10 8"/>` + T(1215, Y(48500) + 9, '0.97 × 中位数 = 48,500', { fill: C.buy, size: 28 });
+      h += `<line x1="200" y1="${Y(50000)}" x2="1200" y2="${Y(50000)}" stroke="${C.gold}" stroke-width="3"/>` + T(1215, Y(50000) + 9, '中位数 50,000', { fill: C.gold, size: 28 });
+      h += T(1215, Y(51500) + 30, '±3% 带', { fill: C.buy, size: 28 });
+    }
+    ex.forEach(([n, p], i) => {
+      const x = 250 + i * 190;
+      const clipped = st >= 2 && n === 'E';
+      const v = clipped ? 48500 : p;
+      h += `<rect x="${x}" y="${Y(v)}" width="120" height="${520 - Y(v)}" rx="8" fill="${n === 'E' ? C.sell : C.info}" opacity=".85"/>`;
+      if (clipped) h += `<rect x="${x}" y="${Y(48500)}" width="120" height="${Y(46000) - Y(48500)}" fill="none" stroke="${C.sell}" stroke-width="3" stroke-dasharray="8 6"/>`;
+      h += T(x + 60, Y(v) - 14, fmt(v), { anchor: 'middle', size: 26, fill: n === 'E' ? C.sell : C.text, bold: clipped });
+      h += T(x + 60, 560, '交易所 ' + n, { anchor: 'middle', size: 28, fill: C.t2 });
+    });
+    if (st >= 2) { h += T(1215, Y(46600), 'E：46,000', { fill: C.sell, size: 30, bold: true }); h += T(1215, Y(46600) + 42, '→ 截断为 48,500', { fill: C.sell, size: 30, bold: true }); }
+    svgEl(svg, h);
+  }
+
+  function wickStep(el, st) {
+    const svg = el.querySelector('#wick');
+    // median panel
+    const med = el.querySelector('#med'), res = el.querySelector('#m-res');
+    const showMed = st >= 3 && st <= 4;
+    med.style.opacity = showMed ? 1 : .15; res.style.opacity = showMed ? 1 : .15;
+    el.querySelector('#m1').classList.toggle('pick', false);
+    el.querySelector('#m2').classList.toggle('pick', st === 4);
+    el.querySelector('#m3').classList.toggle('low', st === 4);
+    const Y = p => 550 - (p - 44000) / 7000 * 470;
+    const X0 = 150, X1 = 1040;
+    const last = [50000, 49800, 49500, 49300, 48900, 48600, 48400, 48200, 48100, 47900, 44600, 47950, 48050, 47900, 48000, 47950];
+    const mark = [50000, 49810, 49520, 49310, 48920, 48620, 48410, 48220, 48100, 47920, 47800, 47930, 48020, 47910, 47990, 47960];
+    const X = i => X0 + i * (X1 - X0) / (last.length - 1);
+    let h = '';
+    [44000, 46000, 48000, 50000].forEach(p => h += `<line x1="${X0}" y1="${Y(p)}" x2="${X1}" y2="${Y(p)}" stroke="${C.line}" stroke-width="2"/>` + T(X0 - 14, Y(p) + 9, fmt(p), { anchor: 'end', fill: C.t2, size: 24 }));
+    h += `<line x1="${X0}" y1="${Y(50000)}" x2="${X1}" y2="${Y(50000)}" stroke="${C.t2}" stroke-width="2" stroke-dasharray="6 6"/>` + T(X1, Y(50000) - 12, '开仓价 50,000', { anchor: 'end', fill: C.t2, size: 26 });
+    const liqCol = st === 5 ? C.sell : C.sell;
+    h += `<line x1="${X0}" y1="${Y(45180.72)}" x2="${X1}" y2="${Y(45180.72)}" stroke="${liqCol}" stroke-width="4" stroke-dasharray="14 8"/>` + T(X0 + 10, Y(45180.72) + 36, '强平线 45,180.72 · 示例', { fill: C.sell, size: 28, bold: true });
+    if (st === 5) {
+      // real market-wide drop: index & mark fall together
+      const drop = [50000, 49600, 49100, 48500, 48000, 47600, 47100, 46600, 46200, 45800, 45500, 45150, 44900, 44700, 44500, 44400];
+      h += line(drop.map((p, i) => [X(i), Y(p)]), C.info, 6) + line(drop.map((p, i) => [X(i), Y(p - 120)]), C.gold, 6);
+      h += `<circle cx="${X(11)}" cy="${Y(45180)}" r="16" fill="none" stroke="${C.sell}" stroke-width="5"/>`;
+      h += T(X(5), Y(46200) - 120, '全市场真实下跌：指数、标记一起跌', { fill: C.sell, size: 30, bold: true });
+      h += T(X1 - 10, Y(44400) + 40, '标记价格也会穿线', { anchor: 'end', fill: C.gold, size: 28 });
+      svgEl(svg, h); return;
+    }
+    const n = st === 0 ? 10 : last.length;
+    h += line(last.slice(0, n).map((p, i) => [X(i), Y(p)]), C.text, 4);
+    h += T(X(5), Y(last[5]) + 44, '最新价', { fill: C.text, size: 28 });
+    if (st >= 3) h += line(mark.map((p, i) => [X(i), Y(p)]), C.gold, 6) + T(X(15), Y(47250), '标记价格 ≈ 47,800', { anchor: 'end', fill: C.gold, size: 30, bold: true });
+    if (st >= 1) h += T(X(10) + 18, Y(44600) + 10, '插针 44,600', { fill: C.text, size: 28, bold: true });
+    if (st === 2) {
+      h += `<circle cx="${X(10)}" cy="${Y(44600)}" r="22" fill="none" stroke="${C.sell}" stroke-width="6"/>`;
+      h += T(X(8), 40, '按最新价判断 → 强平！', { anchor: 'middle', fill: C.sell, size: 36, bold: true });
+    }
+    if (st >= 3) h += T(X(8), 40, '按标记价格判断 → 不强平', { anchor: 'middle', fill: C.buy, size: 36, bold: true });
+    svgEl(svg, h);
+  }
+
+  function caseStep(el, st) {
+    const svg = el.querySelector('#case');
+    const X0 = 140, X1 = 940;
+    const tX = m => X0 + (m - 1260) / 120 * (X1 - X0); // minutes from 21:00 to 23:00
+    const Y = p => 470 - (p - 0.6) / 0.45 * 400;
+    let h = '';
+    [0.6, 0.7, 0.8, 0.9, 1.0].forEach(p => h += `<line x1="${X0}" y1="${Y(p)}" x2="${X1}" y2="${Y(p)}" stroke="${C.line}" stroke-width="2"/>` + T(X0 - 12, Y(p) + 9, p.toFixed(2), { anchor: 'end', fill: C.t2, size: 24 }));
+    [[1260, '21:00'], [1320, '22:00'], [1380, '23:00']].forEach(([m, l]) => h += T(tX(m), 510, l, { anchor: 'middle', fill: C.t2, size: 24 }));
+    h += T(X1, 545, 'UTC · 走势为示意，非真实数据', { anchor: 'end', fill: C.t2, size: 22 });
+    if (st >= 1) {
+      h += `<rect x="${tX(1296)}" y="${Y(1.05)}" width="${tX(1336) - tX(1296)}" height="${Y(0.6) - Y(1.05)}" fill="rgba(246,70,93,.12)"/>`;
+      h += T(tX(1316), Y(1.05) + 28, '21:36–22:16', { anchor: 'middle', fill: C.sell, size: 26, bold: true });
+      const other = [], bn = [];
+      for (let m = 1260; m <= 1380; m += 4) {
+        other.push([tX(m), Y(1 - 0.004 * Math.sin(m / 5))]);
+        let p = 1;
+        if (m > 1296 && m < 1336) p = 1 - 0.36 * Math.sin((m - 1296) / 40 * Math.PI) ** 0.6;
+        bn.push([tX(m), Y(p - 0.003 * Math.sin(m / 3))]);
+      }
+      h += line(other, C.info, 5) + T(X1 - 10, Y(1) - 16, '其他场所 ≈ 1.00', { anchor: 'end', fill: C.info, size: 26 });
+      h += line(bn, C.sell, 5) + T(tX(1316) + 24, Y(0.655) + 8, 'USDe @币安 < 0.66', { fill: C.sell, size: 28, bold: true });
+    } else {
+      h += T((X0 + X1) / 2, 260, '美国宣布加征 100% 关税', { anchor: 'middle', fill: C.text, size: 34, bold: true });
+      h += T((X0 + X1) / 2, 310, '多家交易所触发 ADL', { anchor: 'middle', fill: C.t2, size: 30 });
+    }
+    if (st === 2) { h += T(X0 + 14, Y(0.82), '保证金估价被砸穿', { fill: C.warn, size: 28, bold: true }); h += T(X0 + 14, Y(0.82) + 40, '→ 连锁强平', { fill: C.warn, size: 28, bold: true }); }
+    svgEl(svg, h);
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

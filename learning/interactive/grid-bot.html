@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>网格策略回测</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .params { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 12px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat .v { font-size: 19px; }
+  .chart-wrap { width: 100%; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  .ax { stroke: var(--border); stroke-width: 1; }
+  .gl { stroke: var(--text-2); stroke-width: 0.6; stroke-dasharray: 3 3; opacity: .55; }
+  .bound { stroke: var(--accent); stroke-width: 1.4; }
+  .zone { fill: var(--warn-soft); opacity: .7; }
+  .path-done { fill: none; stroke: var(--info); stroke-width: 1.6; }
+  .path-todo { fill: none; stroke: var(--text-2); stroke-width: 1; opacity: .25; }
+  .tb { fill: var(--buy); }
+  .ts { fill: var(--sell); }
+  .tinit { fill: var(--buy); opacity: .45; }
+  .cur { fill: var(--accent); stroke: var(--surface); stroke-width: 1.5; }
+  svg text.lbl { font-size: 11px; fill: var(--text-2); }
+  svg text.lblb { font-size: 11px; fill: var(--accent); font-weight: 600; }
+  .status { min-height: 44px; font-size: 13px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .dot.b { background: var(--buy); } .dot.s { background: var(--sell); } .dot.p { background: var(--info); border-radius: 2px; height: 3px; }
+  .dot.z { background: var(--warn-soft); border: 1px solid var(--warn); border-radius: 2px; }
+  .gtable { max-height: 260px; overflow: auto; }
+  ol.howto, ul.try { padding-left: 20px; margin: 6px 0; }
+  ol.howto li, ul.try li { margin: 4px 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  .controls select { width: auto; }
+  .controls label { margin: 0; }
+  pre.formula { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border-radius: 8px; padding: 10px; white-space: pre-wrap; margin: 8px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../products/P08-strategy-copy-trading.md">配套章节：P08 策略交易与跟单 →</a>
+  </header>
+  <h1>网格策略回测</h1>
+  <p class="lead">在一条随机价格路径上回测现货网格。策略在每条网格线上预埋限价单：价格向下穿过一条线就买入一格，向上穿过上一条线就卖出这一格。所有参数和价格都是示例，不代表任何真实行情。不构成投资建议。</p>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="howto small">
+      <li>设置价格区间、网格数、网格类型、投入资金和手续费率。</li>
+      <li>选择一种行情，点击"重新生成"换一条随机路径。相同种子永远生成相同路径。</li>
+      <li>点击"播放"。绿色点 = 买入成交，红色点 = 卖出成交。黄色区域在区间外，网格在那里"失效"。</li>
+      <li>对比"网格总收益"和"一直持有"。下方表格列出每一格的利润和利润率。</li>
+    </ol>
+    <h3>试一试</h3>
+    <ul class="try small">
+      <li><b>震荡 vs 单边上涨</b>：同一组参数，分别选"震荡"和"单边上涨"。震荡时网格利润持续累积；单边上涨时价格冲出上限，网格全部卖光，收益落后于一直持有。</li>
+      <li><b>单边下跌</b>：选"单边下跌"。价格跌破 80 后网格全部买满，浮动亏损远大于网格利润。</li>
+      <li><b>网格过密</b>：网格数调到 200，手续费 0.1%。看表格中的每格利润率：高价区的格子利润率变成负数，成交越多亏越多。</li>
+    </ul>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="params">
+      <div><label for="lo">价格下限（USDT）</label><input type="number" id="lo" value="80" step="1" min="1"></div>
+      <div><label for="hi">价格上限（USDT）</label><input type="number" id="hi" value="120" step="1" min="2"></div>
+      <div><label for="gtype">网格类型</label>
+        <select id="gtype"><option value="arith">等差（价格差相同）</option><option value="geo">等比（价格比相同）</option></select></div>
+      <div><label for="cap">投入资金（USDT）</label><input type="number" id="cap" value="1000" step="100" min="10"></div>
+      <div><label for="fee">手续费率（%，单边）</label><input type="number" id="fee" value="0.1" step="0.01" min="0" max="2"></div>
+      <div><label for="mode">行情</label>
+        <select id="mode"><option value="range">震荡</option><option value="up">单边上涨</option><option value="down">单边下跌</option></select></div>
+    </div>
+    <label for="n">网格数 N（共 N+1 条线）</label>
+    <div class="range-row"><input type="range" id="n" min="2" max="200" value="10"><output id="nOut">10</output></div>
+    <div class="controls" style="margin-top:12px">
+      <button class="primary" id="play" type="button">播放</button>
+      <button id="toEnd" type="button">跳到结尾</button>
+      <button id="regen" type="button">重新生成</button>
+      <label class="small muted">种子 <input type="number" id="seed" value="7" style="width:80px;display:inline-block"></label>
+      <label class="small muted">速度
+        <select id="speed"><option value="80">慢</option><option value="30" selected>中</option><option value="8">快</option></select></label>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>价格路径与成交 <span class="muted small" id="stepInfo"></span></h3>
+    <div class="chart-wrap"><svg class="chart" id="chart" viewBox="0 0 720 340" role="img" aria-label="价格路径、网格线与成交点"></svg></div>
+    <div class="legend">
+      <span><span class="dot p"></span>价格</span>
+      <span><span class="dot b"></span>买入成交</span>
+      <span><span class="dot s"></span>卖出成交</span>
+      <span><span class="dot z"></span>区间外（网格失效）</span>
+    </div>
+    <div class="callout info status" id="status">点击"播放"开始回测。</div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>统计</h3>
+    <div class="stats">
+      <div class="stat"><span class="k">当前价格</span><span class="v" id="sPrice">—</span></div>
+      <div class="stat"><span class="k">网格利润（已完成往返）</span><span class="v" id="sGrid">—</span></div>
+      <div class="stat"><span class="k">浮动盈亏</span><span class="v" id="sFloat">—</span></div>
+      <div class="stat"><span class="k">网格总收益</span><span class="v" id="sTotal">—</span></div>
+      <div class="stat"><span class="k">一直持有收益</span><span class="v" id="sHodl">—</span></div>
+      <div class="stat"><span class="k">成交次数（买 / 卖）</span><span class="v" id="sTrades">—</span></div>
+      <div class="stat"><span class="k">手续费合计</span><span class="v" id="sFee">—</span></div>
+      <div class="stat"><span class="k">持仓：币 / USDT</span><span class="v" id="sHold" style="font-size:15px">—</span></div>
+    </div>
+    <p class="muted small">网格总收益 = 当前权益 − 投入资金。浮动盈亏 = 网格总收益 − 网格利润。初始底仓以起始价买入，它与网格线价格的差额计入浮动盈亏。</p>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>每格利润（扣除双边手续费）</h3>
+    <pre class="formula">每格资金 B = 投入资金 ÷ N
+第 i 格数量 qᵢ = B ÷ Pᵢ
+第 i 格往返利润 = qᵢ × (Pᵢ₊₁ − Pᵢ) − f × qᵢ × (Pᵢ + Pᵢ₊₁)
+第 i 格利润率 = (Pᵢ₊₁ ÷ Pᵢ − 1) − f × (1 + Pᵢ₊₁ ÷ Pᵢ)</pre>
+    <p class="small" id="gridSummary"></p>
+    <div class="table-wrap gtable">
+      <table>
+        <thead><tr><th>格 i</th><th class="num">买入线 Pᵢ</th><th class="num">卖出线 Pᵢ₊₁</th><th class="num">数量 qᵢ</th><th class="num">往返利润</th><th class="num">利润率</th><th class="num">已完成往返</th></tr></thead>
+        <tbody id="gridRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer class="note">
+    简化说明：本页假设限价单在价格触及网格线时立即全部成交，没有排队、部分成交和滑点。价格路径是带种子的随机游走，起始价固定为 100 USDT，共 300 步。真实网格产品还有止盈止损、移动区间、合约杠杆等功能。参数均为示例，不构成投资建议。
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var STEPS = 300, P0 = 100;
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---- 带种子的随机数（mulberry32）----
+  function rng(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function gauss(r) {
+    var u = 1 - r(), v = r();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  function makePath(mode, seed) {
+    var r = rng(seed * 7919 + (mode === 'up' ? 1 : mode === 'down' ? 2 : 3));
+    var p = [P0], x = P0, i;
+    for (i = 1; i <= STEPS; i++) {
+      if (mode === 'range') {
+        x = x + 0.06 * (P0 - x) + 1.8 * gauss(r);
+      } else {
+        var drift = mode === 'up' ? 0.0013 : -0.0013;
+        x = x * Math.exp(drift + 0.011 * gauss(r));
+      }
+      if (x < 1) x = 1;
+      p.push(x);
+    }
+    return p;
+  }
+
+  // ---- 网格线与每格参数（与 P08 1.1 节公式一致）----
+  function makeLines(lo, hi, n, type) {
+    var L = [], i;
+    if (type === 'geo') {
+      var ratio = Math.pow(hi / lo, 1 / n);
+      for (i = 0; i <= n; i++) L.push(lo * Math.pow(ratio, i));
+    } else {
+      var d = (hi - lo) / n;
+      for (i = 0; i <= n; i++) L.push(lo + i * d);
+    }
+    L[n] = hi;
+    return L;
+  }
+  function gridProfit(q, pLow, pHigh, f) { return q * (pHigh - pLow) - f * q * (pLow + pHigh); }
+  function gridRate(pLow, pHigh, f) { var k = pHigh / pLow; return (k - 1) - f * (1 + k); }
+
+  // ---- 回测：预先算出每一步的状态 ----
+  function simulate(path, lines, capital, f) {
+    var n = lines.length - 1, B = capital / n, q = [], hold = [], rounds = [], i;
+    var cash = capital, base = 0, fees = 0, gp = 0, nb = 0, ns = 0, trades = [], snaps = [];
+    for (i = 0; i < n; i++) {
+      q.push(B / lines[i]); rounds.push(0);
+      if (lines[i] >= path[0]) {           // 当前价下方无此格的买点：用起始价买入底仓，等待在上方卖出
+        var cost = q[i] * path[0], fee0 = cost * f;
+        cash -= cost + fee0; fees += fee0; base += q[i]; hold.push(true); nb++;
+        trades.push({ t: 0, side: 'init', price: path[0] });
+      } else hold.push(false);
+    }
+    function snap(t) {
+      snaps.push({ cash: cash, base: base, fees: fees, gp: gp, nb: nb, ns: ns, nTrades: trades.length });
+    }
+    snap(0);
+    for (var t = 1; t <= STEPS; t++) {
+      var a = path[t - 1], b = path[t], k;
+      if (b < a) {
+        for (k = n; k >= 0; k--) {
+          if (a > lines[k] && lines[k] >= b && k < n && !hold[k]) {
+            var c = q[k] * lines[k], fb = c * f;
+            cash -= c + fb; fees += fb; base += q[k]; hold[k] = true; nb++;
+            trades.push({ t: t, side: 'buy', price: lines[k], grid: k });
+          }
+        }
+      } else if (b > a) {
+        for (k = 0; k <= n; k++) {
+          if (a < lines[k] && lines[k] <= b && k >= 1 && hold[k - 1]) {
+            var g = k - 1, proceeds = q[g] * lines[k], fs = proceeds * f;
+            cash += proceeds - fs; fees += fs; base -= q[g]; hold[g] = false; ns++;
+            gp += gridProfit(q[g], lines[g], lines[k], f); rounds[g]++;
+            trades.push({ t: t, side: 'sell', price: lines[k], grid: g });
+          }
+        }
+      }
+      snap(t);
+    }
+    return { q: q, rounds: rounds, trades: trades, snaps: snaps };
+  }
+
+  // ---- 状态 ----
+  var S = { path: null, lines: null, sim: null, t: 0, timer: null, cfg: null };
+
+  function readCfg() {
+    var lo = parseFloat($('lo').value), hi = parseFloat($('hi').value);
+    var n = parseInt($('n').value, 10), cap = parseFloat($('cap').value), fee = parseFloat($('fee').value) / 100;
+    if (!(lo > 0)) lo = 80;
+    if (!(hi > lo)) hi = lo * 1.5;
+    if (!(cap > 0)) cap = 1000;
+    if (!(fee >= 0)) fee = 0.001;
+    return { lo: lo, hi: hi, n: n, cap: cap, f: fee, type: $('gtype').value, mode: $('mode').value, seed: parseInt($('seed').value, 10) || 1 };
+  }
+
+  function rebuild(keepT) {
+    stop();
+    var c = readCfg();
+    S.cfg = c;
+    S.path = makePath(c.mode, c.seed);
+    S.lines = makeLines(c.lo, c.hi, c.n, c.type);
+    S.sim = simulate(S.path, S.lines, c.cap, c.f);
+    if (!keepT) S.t = 0;
+    renderGridTable();
+    render();
+  }
+
+  // ---- 绘图 ----
+  var W = 720, H = 340, ML = 44, MR = 12, MT = 12, MB = 26;
+  function fmt(x, d) { return x.toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  function signed(x) { return (x >= 0 ? '+' : '') + fmt(x, 2); }
+
+  function render() {
+    var c = S.cfg, path = S.path, lines = S.lines, t = S.t;
+    var lo = Math.min(c.lo, Math.min.apply(null, path)), hi = Math.max(c.hi, Math.max.apply(null, path));
+    var pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
+    var X = function (i) { return ML + (W - ML - MR) * i / STEPS; };
+    var Y = function (p) { return MT + (H - MT - MB) * (hi - p) / (hi - lo); };
+    var s = [];
+    // 区间外阴影
+    s.push('<rect class="zone" x="' + ML + '" y="' + MT + '" width="' + (W - ML - MR) + '" height="' + Math.max(0, Y(c.hi) - MT) + '"/>');
+    s.push('<rect class="zone" x="' + ML + '" y="' + Y(c.lo) + '" width="' + (W - ML - MR) + '" height="' + Math.max(0, H - MB - Y(c.lo)) + '"/>');
+    // 网格线
+    var step = lines.length > 60 ? Math.ceil(lines.length / 60) : 1;
+    for (var i = 1; i < lines.length - 1; i += step) {
+      s.push('<line class="gl" x1="' + ML + '" x2="' + (W - MR) + '" y1="' + Y(lines[i]).toFixed(1) + '" y2="' + Y(lines[i]).toFixed(1) + '"/>');
+    }
+    s.push('<line class="bound" x1="' + ML + '" x2="' + (W - MR) + '" y1="' + Y(c.hi) + '" y2="' + Y(c.hi) + '"/>');
+    s.push('<line class="bound" x1="' + ML + '" x2="' + (W - MR) + '" y1="' + Y(c.lo) + '" y2="' + Y(c.lo) + '"/>');
+    s.push('<text class="lblb" x="' + (ML + 4) + '" y="' + (Y(c.hi) - 4) + '">上限 ' + fmt(c.hi, 2) + '</text>');
+    s.push('<text class="lblb" x="' + (ML + 4) + '" y="' + (Y(c.lo) + 13) + '">下限 ' + fmt(c.lo, 2) + '</text>');
+    // 坐标轴刻度
+    for (var k = 0; k <= 4; k++) {
+      var pv = lo + (hi - lo) * k / 4;
+      s.push('<text class="lbl" x="2" y="' + (Y(pv) + 4).toFixed(1) + '">' + fmt(pv, 0) + '</text>');
+    }
+    s.push('<line class="ax" x1="' + ML + '" x2="' + ML + '" y1="' + MT + '" y2="' + (H - MB) + '"/>');
+    s.push('<line class="ax" x1="' + ML + '" x2="' + (W - MR) + '" y1="' + (H - MB) + '" y2="' + (H - MB) + '"/>');
+    s.push('<text class="lbl" x="' + ML + '" y="' + (H - 8) + '">第 0 步</text>');
+    s.push('<text class="lbl" x="' + (W - MR - 60) + '" y="' + (H - 8) + '">第 ' + STEPS + ' 步</text>');
+    // 价格线
+    var all = [], done = [];
+    for (i = 0; i <= STEPS; i++) {
+      var pt = X(i).toFixed(1) + ',' + Y(path[i]).toFixed(1);
+      all.push(pt); if (i <= t) done.push(pt);
+    }
+    s.push('<polyline class="path-todo" points="' + all.join(' ') + '"/>');
+    s.push('<polyline class="path-done" points="' + done.join(' ') + '"/>');
+    // 成交点
+    var tr = S.sim.trades;
+    for (i = 0; i < tr.length && tr[i].t <= t; i++) {
+      var cls = tr[i].side === 'sell' ? 'ts' : (tr[i].side === 'buy' ? 'tb' : 'tinit');
+      s.push('<circle class="' + cls + '" cx="' + X(tr[i].t).toFixed(1) + '" cy="' + Y(tr[i].price).toFixed(1) + '" r="3.2"/>');
+    }
+    s.push('<circle class="cur" cx="' + X(t).toFixed(1) + '" cy="' + Y(path[t]).toFixed(1) + '" r="5"/>');
+    $('chart').innerHTML = s.join('');
+    $('stepInfo').textContent = '第 ' + t + ' / ' + STEPS + ' 步 · 种子 ' + c.seed;
+    renderStats();
+  }
+
+  function renderStats() {
+    var c = S.cfg, t = S.t, p = S.path[t], sn = S.sim.snaps[t];
+    var equity = sn.cash + sn.base * p, total = equity - c.cap, floating = total - sn.gp;
+    var hodlBase = c.cap / (S.path[0] * (1 + c.f)), hodl = hodlBase * p - c.cap;
+    var set = function (id, v, cls) { var el = $(id); el.textContent = v; el.className = 'v' + (cls ? ' ' + cls : ''); };
+    var tone = function (x) { return x > 0.005 ? 'up' : (x < -0.005 ? 'down' : ''); };
+    set('sPrice', fmt(p, 2));
+    set('sGrid', signed(sn.gp), tone(sn.gp));
+    set('sFloat', signed(floating), tone(floating));
+    set('sTotal', signed(total) + ' (' + signed(total / c.cap * 100) + '%)', tone(total));
+    set('sHodl', signed(hodl) + ' (' + signed(hodl / c.cap * 100) + '%)', tone(hodl));
+    set('sTrades', sn.nb + ' / ' + sn.ns);
+    set('sFee', fmt(sn.fees, 2));
+    set('sHold', fmt(sn.base, 4) + ' / ' + fmt(sn.cash, 2));
+    var st = $('status');
+    if (p > c.hi) {
+      st.className = 'callout warn status';
+      st.textContent = '价格 ' + fmt(p, 2) + ' 高于上限：所有格子已卖出，策略只持有 USDT。网格失效：价格继续上涨，策略没有收益。';
+    } else if (p < c.lo) {
+      st.className = 'callout warn status';
+      st.textContent = '价格 ' + fmt(p, 2) + ' 低于下限：所有格子已买满，策略只持有币。网格失效：价格继续下跌，浮动亏损继续扩大。';
+    } else {
+      st.className = 'callout info status';
+      st.textContent = t === 0 ? '起始价 100。上方每一格先用起始价买入一份底仓（半透明绿点），等待卖出。' :
+        '价格在区间内。网格正常工作：下穿一条线买入一格，上穿上一条线卖出这一格。';
+    }
+  }
+
+  function renderGridTable() {
+    var c = S.cfg, L = S.lines, q = S.sim.q, rows = [], minR = Infinity, maxR = -Infinity, neg = 0;
+    for (var i = 0; i < q.length; i++) {
+      var pr = gridProfit(q[i], L[i], L[i + 1], c.f), rt = gridRate(L[i], L[i + 1], c.f);
+      if (rt < minR) minR = rt; if (rt > maxR) maxR = rt; if (rt < 0) neg++;
+      rows.push('<tr><td>' + i + '</td><td class="num">' + fmt(L[i], 4) + '</td><td class="num">' + fmt(L[i + 1], 4) +
+        '</td><td class="num">' + fmt(q[i], 4) + '</td><td class="num ' + (pr < 0 ? 'down' : '') + '">' + fmt(pr, 4) +
+        '</td><td class="num ' + (rt < 0 ? 'down' : '') + '">' + fmt(rt * 100, 3) + '%</td><td class="num">' + S.sim.rounds[i] + '</td></tr>');
+    }
+    $('gridRows').innerHTML = rows.join('');
+    var txt = '每格资金 B = ' + fmt(c.cap / c.n, 2) + ' USDT。每格利润率范围：' + fmt(minR * 100, 3) + '% ~ ' + fmt(maxR * 100, 3) + '%。';
+    if (c.type === 'geo') txt += ' 等比网格：每格利润率相同。';
+    else txt += ' 等差网格：低价区的格子利润率更高。';
+    if (neg > 0) txt += ' ⚠️ 有 ' + neg + ' 格利润率为负：网格间距小于双边手续费。';
+    $('gridSummary').textContent = txt;
+  }
+
+  // ---- 播放控制 ----
+  function stop() { if (S.timer) { clearInterval(S.timer); S.timer = null; } $('play').textContent = '播放'; }
+  function play() {
+    if (S.timer) { stop(); return; }
+    if (S.t >= STEPS) S.t = 0;
+    $('play').textContent = '暂停';
+    S.timer = setInterval(function () {
+      S.t++;
+      if (S.t >= STEPS) { S.t = STEPS; stop(); }
+      render();
+    }, parseInt($('speed').value, 10));
+  }
+
+  $('play').addEventListener('click', play);
+  $('toEnd').addEventListener('click', function () { stop(); S.t = STEPS; render(); });
+  $('regen').addEventListener('click', function () { $('seed').value = (parseInt($('seed').value, 10) || 0) + 1; rebuild(false); });
+  $('speed').addEventListener('change', function () { if (S.timer) { stop(); play(); } });
+  $('n').addEventListener('input', function () { $('nOut').textContent = $('n').value; rebuild(true); });
+  ['lo', 'hi', 'gtype', 'cap', 'fee'].forEach(function (id) { $(id).addEventListener('change', function () { rebuild(true); }); });
+  ['mode', 'seed'].forEach(function (id) { $(id).addEventListener('change', function () { rebuild(false); }); });
+
+  rebuild(false);
+  // 供调试与校验使用
+  window.__grid = { makeLines: makeLines, gridProfit: gridProfit, gridRate: gridRate, simulate: simulate, makePath: makePath };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,129 @@
+{
+  "$schema": "./markets.schema.json",
+  "version": 1,
+  "defaultMarket": "ETH-USDT",
+  "assets": [
+    {
+      "code": "USDT",
+      "name": "Tether USD",
+      "decimals": 6,
+      "displayDecimals": 2,
+      "networks": ["ethereum"],
+      "withdrawalFee": "1",
+      "demo": {
+        "faucetMaxAmount": "50000",
+        "depositSourceFloor": "1000000",
+        "faucetPresets": ["1000", "10000"]
+      }
+    },
+    {
+      "code": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "displayDecimals": 2,
+      "networks": ["ethereum"],
+      "withdrawalFee": "1"
+    },
+    {
+      "code": "ETH",
+      "name": "Ether",
+      "decimals": 18,
+      "displayDecimals": 4,
+      "networks": ["ethereum"],
+      "withdrawalFee": "0.001",
+      "demo": {
+        "faucetMaxAmount": "20",
+        "depositSourceFloor": "500",
+        "faucetPresets": ["1", "5"]
+      }
+    },
+    {
+      "code": "BTC",
+      "name": "Bitcoin",
+      "decimals": 8,
+      "displayDecimals": 6,
+      "networks": ["ethereum"],
+      "withdrawalFee": "0.0001",
+      "demo": {
+        "faucetMaxAmount": "1",
+        "depositSourceFloor": "50",
+        "faucetPresets": ["0.1", "0.5"]
+      }
+    },
+    {
+      "code": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "displayDecimals": 3,
+      "networks": ["ethereum"],
+      "withdrawalFee": "0.01",
+      "demo": {
+        "faucetMaxAmount": "200",
+        "depositSourceFloor": "10000",
+        "faucetPresets": ["10", "50"]
+      }
+    }
+  ],
+  "markets": [
+    {
+      "symbol": "BTC-USDT",
+      "baseAsset": "BTC",
+      "quoteAsset": "USDT",
+      "status": "listed",
+      "priceStep": "0.01",
+      "quantityStep": "0.0001",
+      "minQuantity": "0.0001",
+      "makerFeeRate": "0.0005",
+      "takerFeeRate": "0.001",
+      "maxPriceDeviationRatio": "0.2",
+      "referencePrice": "65000",
+      "simulator": {
+        "enabled": true,
+        "minQuantity": "0.002",
+        "maxQuantity": "0.12",
+        "baseInventory": "4",
+        "quoteInventory": "250000"
+      }
+    },
+    {
+      "symbol": "ETH-USDT",
+      "baseAsset": "ETH",
+      "quoteAsset": "USDT",
+      "status": "listed",
+      "priceStep": "0.01",
+      "quantityStep": "0.001",
+      "minQuantity": "0.001",
+      "makerFeeRate": "0.0005",
+      "takerFeeRate": "0.001",
+      "maxPriceDeviationRatio": "0.2",
+      "referencePrice": "3200",
+      "simulator": {
+        "enabled": true,
+        "minQuantity": "0.05",
+        "maxQuantity": "2.5",
+        "baseInventory": "60",
+        "quoteInventory": "250000"
+      }
+    },
+    {
+      "symbol": "SOL-USDT",
+      "baseAsset": "SOL",
+      "quoteAsset": "USDT",
+      "status": "listed",
+      "priceStep": "0.01",
+      "quantityStep": "0.01",
+      "minQuantity": "0.01",
+      "makerFeeRate": "0.0005",
+      "takerFeeRate": "0.001",
+      "maxPriceDeviationRatio": "0.2",
+      "referencePrice": "150",
+      "simulator": {
+        "enabled": true,
+        "minQuantity": "0.5",
+        "maxQuantity": "40",
+        "baseInventory": "1500",
+        "quoteInventory": "250000"
+      }
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "name": "@web3-cex/ledger-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "pnpm --filter @web3-cex/domain --filter @web3-cex/telemetry build",
+    "build": "tsc -p tsconfig.json",
+    "db:prepare": "pnpm build && node ./dist/scripts/run-db-prepare.js",
+    "demo": "pnpm build && node ./dist/scripts/demo.js",
+    "publish-outbox": "pnpm build && node ./dist/scripts/publish-outbox.js",
+    "reconcile-balances": "pnpm build && node ./dist/scripts/reconcile-balances.js",
+    "replay-account": "pnpm build && node ./dist/scripts/replay-account.js",
+    "check-alerts": "pnpm build && node ./dist/scripts/check-alerts.js",
+    "drain-outbox-alerts": "pnpm build && node ./dist/scripts/drain-outbox-alerts.js",
+    "backfill-withdrawal-settlements": "pnpm build && node ./dist/scripts/backfill-withdrawal-settlements.js",
+    "backfill-opening-balances": "pnpm build && node ./dist/scripts/backfill-opening-balances.js",
+    "start": "pnpm build && node --import @web3-cex/telemetry/register ./dist/main.js",
+    "pretypecheck": "pnpm --filter @web3-cex/domain --filter @web3-cex/telemetry build",
+    "test": "pnpm build && node --test dist/__tests__/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.6",
+    "@web3-cex/domain": "workspace:*",
+    "@web3-cex/telemetry": "workspace:*",
+    "kafkajs": "^2.2.4",
+    "pg": "^8.16.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  }
+}

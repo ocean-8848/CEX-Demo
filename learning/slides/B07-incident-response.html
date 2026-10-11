@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B07 应急响应</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .scene > h2 { font-size: 58px; }
+  svg text { font-size: 28px; }
+  .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1640px; }
+  .hero .card { display: flex; flex-direction: column; gap: 10px; min-height: 250px; }
+  .hero .card .k { font-size: 28px; color: var(--text-2); }
+  .hero .card .big { font-size: 68px; }
+  .er { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; }
+  .er .card { font-size: 30px; display: flex; flex-direction: column; gap: 8px; min-height: 250px; }
+  .er .card .n { font-family: var(--mono); color: var(--gold); font-size: 44px; font-weight: 700; }
+  .er .card .a { color: var(--text-2); font-size: 28px; }
+  .src { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .src .card { font-size: 30px; padding: 20px 26px; min-height: 200px; display: flex; flex-direction: column; gap: 6px; }
+  .src .card h3 { font-size: 36px; margin: 0; }
+  .src .card .f { color: var(--info); font-size: 28px; }
+  table.t tr { transition: background .3s, opacity .3s; }
+  table.t tr.on td { background: var(--gold-soft); }
+  table.t tr.dimr { opacity: .3; }
+  .cc { display: grid; grid-template-columns: 1fr 70px 1fr 70px 1fr; gap: 0; align-items: stretch; }
+  .cc .colh { font-size: 28px; font-weight: 700; margin-bottom: 12px; letter-spacing: .1em; }
+  .cc .stack { display: flex; flex-direction: column; gap: 14px; }
+  .cc .nd { background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 14px 20px; font-size: 30px; line-height: 1.4; transition: opacity .4s, box-shadow .4s, border-color .4s; }
+  .cc .r .nd { border-color: var(--sell); } .cc .i .nd { border-color: var(--warn); } .cc .f .nd { border-color: var(--buy); }
+  .cc .r .colh { color: var(--sell); } .cc .i .colh { color: var(--warn); } .cc .f .colh { color: var(--buy); }
+  .cc .ar { display: flex; align-items: center; justify-content: center; font-size: 52px; color: var(--text-2); transition: opacity .4s; }
+  .pend { opacity: .1 !important; }
+  .cc .nd.cur { box-shadow: 0 0 0 6px var(--gold-soft); border-color: var(--gold) !important; }
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .facts .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 22px; transition: opacity .4s; }
+  .facts .stat .k { font-size: 26px; } .facts .stat .v { font-size: 42px; }
+  .pr { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; }
+  .pr .card { font-size: 30px; padding: 20px 22px; min-height: 230px; display: flex; flex-direction: column; gap: 8px; transition: opacity .4s; }
+  .pr .card h3 { font-size: 40px; margin: 0; color: var(--gold); }
+  .pr .card .x { color: var(--sell); font-size: 26px; }
+  .why { display: flex; flex-direction: column; gap: 10px; }
+  .why .w { display: grid; grid-template-columns: 110px 1fr 1fr; gap: 18px; align-items: center; background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 10px 20px; font-size: 30px; transition: all .35s; }
+  .why .w .n { font-family: var(--mono); color: var(--gold); font-weight: 700; }
+  .why .w .q { color: var(--text-2); }
+  .why .w.pend { opacity: .12; }
+  .why .w.cur { border-color: var(--gold); background: #221e10; }
+  .path { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .path .card { font-size: 30px; display: flex; flex-direction: column; gap: 10px; min-height: 330px; transition: opacity .4s, box-shadow .4s; }
+  .path .card .n { font-family: var(--mono); font-size: 56px; font-weight: 700; color: var(--gold); line-height: 1; }
+  .path .card .d { color: var(--text-2); font-size: 28px; line-height: 1.5; }
+  .path .card.cur { box-shadow: 0 0 0 6px var(--gold-soft); border-color: var(--gold); }
+  .labs { display: flex; flex-wrap: wrap; gap: 16px; }
+  .labs .chip { font-size: 30px; padding: 10px 24px; }
+  .panel { display: none; }
+  .panel.on { display: flex; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="B07" data-title="应急响应：事故分级、止血与追回">
+
+  <!-- 1 开场 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 幕后核心 · B07 · 系列终章</div>
+    <h1>防线被突破之后，<span class="hl">先关阀门</span></h1>
+    <div class="hero">
+      <div class="card buy" data-step="1"><div class="k">2019 · 币安热钱包被盗</div><div class="big">约 7,000 BTC</div><div>暂停充提约一周 · SAFU 覆盖损失</div></div>
+      <div class="card warn" data-step="2"><div class="k">2025 · Bybit 冷钱包被盗</div><div class="big">约 14.6 亿$</div><div>约 40 万 ETH 及衍生代币 · 未暂停提币</div></div>
+    </div>
+    <div class="quote" data-step="0" style="font-size:42px">先止血，再查因，再恢复，最后复盘。</div>
+    <ol class="say">
+      <li>大家好，欢迎来到幕后核心第7集，应急响应。这也是整个视频系列的最后一集。先记住一句话，先止血，再查因，再恢复，最后复盘。</li>
+      <li>来看两个决策，以下据公开报道。2019年，币安热钱包被盗约7000个 BTC。币安暂停充提约一周，由 SAFU 覆盖损失。</li>
+      <li>2025年，Bybit 冷钱包被盗约40万 ETH 及衍生代币。总额约14.6亿美元，Bybit 没有暂停提币。</li>
+      <li>一个停，一个不停，都有道理。前面六集都在防止事故。本集假设防线已被突破。这时最重要的不是找到黑客，而是在下一笔钱流出之前关上阀门。</li>
+    </ol>
+  </section>
+
+  <!-- 2 比喻 -->
+  <section class="scene" data-title="像急诊一样处置">
+    <div class="kicker">一句话理解 · 打个比方</div>
+    <h2>应急响应像医院急诊</h2>
+    <div class="er">
+      <div class="card" data-step="0"><div class="n">1</div><b>分诊</b><div class="a">红色抢救、黄色排队、绿色等待</div><div class="hl">→ 事件分级</div></div>
+      <div class="card" data-step="1"><div class="n">2</div><b>止血、保呼吸</b><div class="a">先稳住，再拍片</div><div class="hl">→ 暂停提币、轮换密钥，再取证</div></div>
+      <div class="card" data-step="2"><div class="n">3</div><b>和家属沟通</b><div class="a">说清现在怎样</div><div class="hl">→ 用户公告</div></div>
+      <div class="card" data-step="2"><div class="n">4</div><b>病例讨论会</b><div class="a">不追究个人</div><div class="hl">→ 无责复盘</div></div>
+    </div>
+    <div class="card warn" data-step="3" style="font-size:30px">比喻不准的地方：病人不会逃跑；被盗资金却在链上不断转移，追踪要和时间赛跑。</div>
+    <ol class="say">
+      <li>打个比方，应急响应像医院急诊。病人推进来，分诊护士先看颜色。红色立刻抢救，黄色排队，绿色等待。这就是事件分级。</li>
+      <li>抢救时先止血、保呼吸，然后才拍片找原因。对应到交易所，就是先暂停提币、轮换密钥，再去取证。</li>
+      <li>病人稳定后，医生要和家属沟通，这是用户公告。最后科室开病例讨论会，不追究个人，只问流程哪里能改。这是无责复盘。</li>
+      <li>比喻不准的地方在于，病人不会逃跑。被盗资金却在链上不断转移，追踪是在和时间赛跑。</li>
+    </ol>
+  </section>
+
+  <!-- 3 事件来源 -->
+  <section class="scene" data-title="事件从哪里来">
+    <div class="kicker">问题模型 · 事件来源</div>
+    <h2>六类来源，各有各的发现方式</h2>
+    <div class="src">
+      <div class="card sell" data-step="0"><h3>外部攻击</h3>热钱包私钥泄露、签名界面被篡改<div class="f">链上监控、热钱包余额告警</div></div>
+      <div class="card" data-step="0"><h3>账户批量被盗</h3>钓鱼潮、撞库<div class="f">安全设置修改量激增</div></div>
+      <div class="card" data-step="1"><h3>内部错误</h3>错误配置导致重复入账<div class="f">对账差异</div></div>
+      <div class="card" data-step="1"><h3>链层事故</h3>链重组、跨链桥漏洞、链停摆<div class="f">节点监控、行业通报</div></div>
+      <div class="card" data-step="2"><h3>第三方故障</h3>托管商、云服务、发行方冻结<div class="f">供应商通知、健康检查</div></div>
+      <div class="card" data-step="2"><h3>系统故障</h3>撮合宕机、主从切换失败<div class="f">可用性监控</div></div>
+    </div>
+    <ol class="say">
+      <li>事件从哪里来？第一类是外部攻击，比如热钱包私钥泄露，签名界面被篡改，靠链上监控和余额告警发现。第二类是用户账户批量被盗，信号是安全设置修改量激增。</li>
+      <li>第三类是内部错误，比如错误配置导致重复入账，靠对账差异发现。第四类是链层事故，比如链重组和跨链桥漏洞。</li>
+      <li>第五类是第三方故障，比如云服务或发行方冻结。第六类是系统故障，比如撮合宕机。</li>
+    </ol>
+  </section>
+
+  <!-- 4 SEV 分级 -->
+  <section class="scene" data-title="事件分级 SEV1 到 SEV4" data-onstep="sevStep">
+    <div class="kicker">事件分级 · 示例</div>
+    <h2>先定级：级别决定响应时限和找谁</h2>
+    <svg id="sev" width="1640" height="570" viewBox="0 0 1640 570"></svg>
+    <ol class="say">
+      <li>事件来了，先定级。示例分四级。SEV4 是轻微问题，没有用户影响，比如报表延迟。值班工程师下一个工作日处理。</li>
+      <li>SEV3 是部分功能降级，比如某个币种提币广播失败率升高。1小时内响应，升级到团队负责人。</li>
+      <li>SEV2 是核心功能中断，但资金未受损，比如撮合停止。15分钟内响应，升级到技术 VP 和业务负责人。</li>
+      <li>SEV1 是资金正在流失，或者账本可能错误。5分钟内组建战情室，升级到 CEO、CISO、法务和公关。</li>
+      <li>定级有一条原则，宁高勿低。资金类事件在确认之前，一律先按 SEV1 处理。因为降级比升级容易。</li>
+    </ol>
+  </section>
+
+  <!-- 5 四层防线 -->
+  <section class="scene" data-title="四层防线与损失窗口" data-onstep="layerStep">
+    <div class="kicker">防线分层</div>
+    <h2>发现、止血、追踪、恢复，再写回前面</h2>
+    <svg id="lay" width="1640" height="560" viewBox="0 0 1640 560"></svg>
+    <ol class="say">
+      <li>应急响应分四层。第1层是发现，靠链上监控、对账和风控告警，也靠用户、白帽和同行报告。</li>
+      <li>第1层决定损失上限。从第一笔异常转出，到按下开关，这段时间就是损失窗口。</li>
+      <li>第2层是止血，暂停相关链或全站提币，冻结签名服务，轮换密钥。注意，止血只做可逆的动作。暂停提币可逆，回滚链上交易不可能。</li>
+      <li>第3层是追踪与冻结，依赖行业协作。被盗资产一旦进入混币器或跨链桥，追回难度会急剧上升。</li>
+      <li>第4层是恢复与承担，包括修复、赔付和分阶段恢复。赔付取决于平台储备，也就是上一集讲的金库。最后，无责复盘把改进写回前面各层。</li>
+    </ol>
+  </section>
+
+  <!-- 6 值班与升级 -->
+  <section class="scene" data-title="值班与升级" data-onstep="seqStep">
+    <div class="kicker">值班与升级 · 示例</div>
+    <h2>一线可以单人关，指挥官只管决策</h2>
+    <svg id="seq" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>来看值班和升级怎样运转。监控系统告警，热钱包10分钟流出超过阈值。一线值班在5分钟内确认是不是误报。</li>
+      <li>确认不是误报，升级为 SEV1。注意，一线值班有权单人关闭提币，不需要等审批。但重新开启必须两人。</li>
+      <li>事件指挥官，简称 IC，开始统筹。他下令先关闭该链提币，拉安全团队进战情室取证，并向管理层和法务通报。</li>
+      <li>IC 只负责决策和协调，不亲自排查。这样决策不会被技术细节淹没。</li>
+      <li>同时让公关准备首次公告，IC 批准后发布。公告可以说正在调查，但不能沉默。每一级还要有备份人，凌晨也能找到。</li>
+    </ol>
+  </section>
+
+  <!-- 7 止血决策树 -->
+  <section class="scene" data-title="止血决策树" data-onstep="treeStep">
+    <div class="kicker">止血决策树 · 示例场景</div>
+    <h2>钱在流吗？账对吗？能交易吗？</h2>
+    <svg id="tree" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>止血最难的是决定关多大范围。看这棵决策树，判断顺序是钱在流吗，账对吗，能交易吗。资金正确性优先于可用性。</li>
+      <li>举个示例。凌晨3点，TRON 链热钱包10分钟流出量是平时的8倍，其他链正常。资金在异常流出，而且限于单条链。</li>
+      <li>动作是暂停这条链的全部提币，冻结该钱包的签名。其他链照常运行。</li>
+      <li>20分钟后，以太坊热钱包也开始异常流出。范围不再确定，就选更大的范围，暂停全站提币。</li>
+      <li>接着问，账本本身可能被篡改吗？如果是，进入全站只读，停止交易和充提。如果不是，保持交易，继续调查。全站只读会让用户无法止损，所以是最后手段。</li>
+      <li>如果钱没在流，但某个币账实不平，就暂停该币充提。核心交易不可用，就按降级策略处理。都不是，就是 SEV3 或 SEV4。</li>
+      <li>为什么不确定时选大范围？暂停全站提币，代价是几小时投诉。漏关一条链，代价可能是全部热钱包。暂停时还必须同时发公告。</li>
+    </ol>
+  </section>
+
+  <!-- 8 自动止血规则与指标 -->
+  <section class="scene" data-title="自动止血规则与响应指标" data-onstep="ruleStep">
+    <div class="kicker">规则、指标与阈值 · 示例</div>
+    <h2 id="ruleH"></h2>
+    <div class="panel col" id="ruleA">
+      <table class="t" id="rules">
+        <thead><tr><th>规则</th><th>条件</th><th>自动动作</th></tr></thead>
+        <tbody>
+          <tr><td>热钱包流出异常</td><td>10 分钟流出 &gt; 过去 7 天同时段均值 × 5</td><td>暂停该链提币 · SEV1</td></tr>
+          <tr><td>对账差异扩大</td><td>某币种账实差异连续 3 次扩大</td><td>暂停该币充提 · SEV1</td></tr>
+          <tr><td>签名拒绝激增</td><td>意图不一致拒绝 ≥ 1 次</td><td>冻结签名服务 · SEV1</td></tr>
+          <tr><td>安全设置修改激增</td><td>1 小时内为基线 × 5</td><td>全站提高挑战等级 · SEV2</td></tr>
+          <tr><td>链重组</td><td>重组深度 &gt; 入账确认数</td><td>暂停该链充值入账 · SEV2</td></tr>
+        </tbody>
+      </table>
+      <div class="card" id="ruleNote" style="font-size:30px; padding:16px 26px"></div>
+    </div>
+    <div class="panel" id="ruleB" style="gap:22px">
+      <div class="card info col"><div class="mono hl" style="font-size:48px;font-weight:700">MTTD</div>平均发现时间<div class="big" style="font-size:52px">&lt; 5 分钟</div><div class="muted">资金事件</div></div>
+      <div class="card info col"><div class="mono hl" style="font-size:48px;font-weight:700">MTTA</div>平均确认时间<div class="big" style="font-size:52px">&lt; 5 分钟</div><div class="muted">SEV1</div></div>
+      <div class="card gold col"><div class="mono hl" style="font-size:48px;font-weight:700">MTTC</div>平均止血时间<div class="big" style="font-size:52px">&lt; 15 分钟</div><div class="muted">SEV1</div></div>
+      <div class="card col"><div class="mono hl" style="font-size:48px;font-weight:700">MTTR</div>平均恢复时间<div class="big" style="font-size:40px">按类型设定</div><div class="muted">复盘两周内完成 100%</div></div>
+    </div>
+    <ol class="say">
+      <li>有些止血动作可以自动触发。示例规则一，热钱包10分钟流出超过过去7天同时段均值的5倍。这时自动暂停该链提币，呼叫 SEV1。</li>
+      <li>算一下。示例里同时段均值是200万，5倍就是1000万。刚才 TRON 链是平时的8倍，也就是1600万，规则触发。</li>
+      <li>规则二，某币种账实差异连续3次扩大，暂停该币充提。规则三，签名意图不一致的拒绝，哪怕只出现1次，也要冻结签名服务。</li>
+      <li>规则四，安全设置修改量1小时内达到基线5倍，全站提高挑战等级。规则五，链重组深度超过入账确认数，暂停该链充值入账。注意，自动规则只做可逆动作，比如暂停。</li>
+      <li>怎么衡量团队？看四个时间。平均发现时间，资金事件小于5分钟。平均确认时间，SEV1 小于5分钟。平均止血时间，SEV1 小于15分钟。恢复时间按事件类型设定。</li>
+    </ol>
+  </section>
+
+  <!-- 9 黑客事件时序 -->
+  <section class="scene" data-title="黑客事件处置时序" data-onstep="tlStep">
+    <div class="kicker">黑客事件处置时序 · 时间为示例</div>
+    <h2>从 T+0 到 T+2 周</h2>
+    <svg id="tl" width="1640" height="330" viewBox="0 0 1640 330"></svg>
+    <div class="row" id="tlCards"></div>
+    <ol class="say">
+      <li>下面看黑客事件的处置时序，时间都是示例。T加0，告警触发，值班确认。</li>
+      <li>T加5分钟，暂停相关链提币，冻结签名服务。T加30分钟，轮换可能泄露的密钥，把剩余资产转入新地址。</li>
+      <li>T加1小时，开始取证。取证有四条纪律。先保全，再修复。不重启被入侵的主机，因为内存证据会丢。每个操作都记录谁、何时、做了什么。证据副本要算哈希，以便用于司法程序。</li>
+      <li>同时开始用户沟通，首次公告发出，之后定时更新。T加1天内，宣布由 SAFU 还是自有资金覆盖损失。</li>
+      <li>T加数天，启用新密钥、新地址，分币种逐步开放提币。T加2周内，完成无责复盘。</li>
+      <li>这里有三个常见错误。在被入侵的主机上直接修复，覆盖了证据。只轮换密钥，没迁移旧地址里的资产。恢复提币时一次全开，积压请求冲垮热钱包。</li>
+    </ol>
+  </section>
+
+  <!-- 10 链上追踪与联合冻结 -->
+  <section class="scene" data-title="链上追踪与联合冻结" data-onstep="traceStep">
+    <div class="kicker">链上追踪 · 联合冻结</div>
+    <h2>交易所和稳定币发行方，是变现的收费站</h2>
+    <div class="row">
+      <svg id="trace" width="1080" height="560" viewBox="0 0 1080 560"></svg>
+      <div class="col" id="traceSide"></div>
+    </div>
+    <ol class="say">
+      <li>止血之后开始追钱。T加1小时，标记攻击者地址，推送给链上分析公司。资金开始拆分转移。</li>
+      <li>被盗资产要变现，通常要经过中心化交易所或稳定币。所以它们就像收费站。T加2小时，通知其他交易所、稳定币发行方和跨链桥。</li>
+      <li>流入交易所的部分被冻结，发行方也冻结对应地址。但进入混币器或跨链桥的部分，追回难度急剧上升。</li>
+      <li>据公开报道，2019年11月，韩国交易所 Upbit 被盗约34.2万 ETH。部分资金转入币安后，币安冻结了这些资金。</li>
+      <li>2024年8月，币安发布公告。截至当年7月31日，其安全团队当年追回或冻结的外部被盗资金，超过7300万美元。</li>
+      <li>注意，联合冻结需要证据和法律依据。交易所通常要求受害方提供交易哈希和报案材料，才会长期冻结。错误冻结同样会伤害用户。</li>
+    </ol>
+  </section>
+
+  <!-- 11 对外沟通 -->
+  <section class="scene" data-title="对外沟通" data-onstep="commStep">
+    <div class="kicker">对外沟通原则</div>
+    <h2>快、准、定时更新、说清影响、一个声音</h2>
+    <div class="pr">
+      <div class="card" data-c="0"><h3>快</h3>止血后尽快发首次公告<div class="x">反例：沉默数小时，用户从链上浏览器先发现</div></div>
+      <div class="card" data-c="1"><h3>准</h3>只说已确认的事实<div class="x">反例：首次公告给损失数字，之后多次改口</div></div>
+      <div class="card" data-c="1"><h3>定时更新</h3>承诺下一次更新时间并做到<div class="x">反例：公告后失联</div></div>
+      <div class="card" data-c="2"><h3>说清影响</h3>资产是否受影响、能否提币、何时恢复<div class="x">反例：只讲技术细节</div></div>
+      <div class="card" data-c="2"><h3>一个声音</h3>只由指定发言人对外<div class="x">反例：员工在社交媒体各说各话</div></div>
+    </div>
+    <div class="card gold" data-step="3" style="font-size:30px">据公开报道 · <b>Funds are SAFU</b>：源自 2018 年一条推文的 Funds are safe，被网络视频念成 SAFU → 2018-07 设立同名用户安全资产基金 → 2019 热钱包被盗时由 SAFU 覆盖损失</div>
+    <ol class="say">
+      <li>技术之外，还有沟通。五条原则。第一是快，止血后尽快发首次公告。反例是沉默几小时，用户先从链上浏览器发现。</li>
+      <li>第二是准，只说已确认的事实。不要首次公告就给损失数字，之后多次改口。第三是定时更新，承诺下次更新的时间，并且做到。</li>
+      <li>第四是说清用户影响。你的资产受不受影响，能不能提币，何时恢复。第五是一个声音，只由指定发言人对外。</li>
+      <li>据公开报道，币安那个著名的说法源自赵长鹏2018年的一条推文，原意是资金安全。网络视频把 safe 念成 SAFU，形成迷因。2018年7月，币安设立了同名的用户安全资产基金。</li>
+      <li>2019年热钱包被盗后，币安宣布由 SAFU 覆盖损失。一句简短明确的话，比长篇技术解释更能稳定信任。前提是它是真的，并且有储备支撑。</li>
+    </ol>
+  </section>
+
+  <!-- 12 案例 Bybit -->
+  <section class="scene" data-title="案例：2025 Bybit 被盗" data-onstep="caseStep">
+    <div class="kicker">真实案例 · 2025-02 · 据公开报道</div>
+    <h2>不停提币，靠的是储备和借款</h2>
+    <div class="cc">
+      <div class="r"><div class="colh">事件</div><div class="stack">
+        <div class="nd" data-k="0">冷钱包被盗约 40 万 ETH 及衍生代币</div>
+        <div class="nd" data-k="2">提币高峰</div>
+      </div></div>
+      <div class="ar" data-k="1">→</div>
+      <div class="i"><div class="colh">处置</div><div class="stack">
+        <div class="nd" data-k="1">公开确认；CEO 直播说明</div>
+        <div class="nd" data-k="1">承诺 1:1 覆盖，不暂停提币</div>
+        <div class="nd" data-k="2">向合作方借入 ETH</div>
+        <div class="nd" data-k="3">联合冻结 · 发布赏金</div>
+      </div></div>
+      <div class="ar" data-k="2">→</div>
+      <div class="f"><div class="colh">结果</div><div class="stack">
+        <div class="nd" data-k="2">数日内补足 ETH 缺口</div>
+        <div class="nd" data-k="3">冻结约 4,289 万$：只占总额一小部分</div>
+      </div></div>
+    </div>
+    <div class="facts">
+      <div class="stat" data-k="0"><div class="k">被盗</div><div class="v down">约 14.6 亿$</div></div>
+      <div class="stat" data-k="4"><div class="k">被盗的是</div><div class="v">冷钱包</div></div>
+      <div class="stat" data-k="4"><div class="k">止血范围</div><div class="v hl">匹配受影响范围</div></div>
+      <div class="stat" data-k="5"><div class="k">2019 币安</div><div class="v" style="font-size:34px">暂停充提约一周，全面排查</div></div>
+    </div>
+    <ol class="say">
+      <li>来看最后一个案例，以下据公开报道。2025年2月，Bybit 冷钱包被盗约40万 ETH 及衍生代币。</li>
+      <li>Bybit 公开确认了事件，CEO 直播说明。它承诺用户资产1比1覆盖，不暂停提币。</li>
+      <li>提币高峰随之而来。Bybit 向合作方借入 ETH 应对，据公开报道，数日内补足了 ETH 缺口。</li>
+      <li>同时，Tether、Circle、多家交易所和链上分析公司提供协助。Bybit 冻结了约4289万美元，还发布了赏金征集线索。</li>
+      <li>为什么没暂停提币？因为被盗的是冷钱包，热钱包和其他资产仍可用。止血范围要和受影响范围匹配。不暂停提币，需要储备或借款支撑，这正是金库能力。</li>
+      <li>注意，冻结只追回了一小部分，追回不能作为主要的损失兜底。而2019年币安暂停充提约一周，是因为当时需要全面排查。不同事件，最优决策不同。</li>
+    </ol>
+  </section>
+
+  <!-- 13 无责复盘与演练 -->
+  <section class="scene" data-title="无责复盘与演练" data-onstep="pmStep">
+    <div class="kicker">无责复盘 · 5 Whys 示例 · 演练</div>
+    <h2 id="pmH"></h2>
+    <div class="panel col" id="pmA">
+      <div class="why">
+        <div class="w"><span class="n">Why 1</span><span class="q">为什么热钱包被转出？</span><span>签名服务签了攻击者构造的交易</span></div>
+        <div class="w"><span class="n">Why 2</span><span class="q">为什么签名服务会签？</span><span>策略引擎认为目标地址在白名单内</span></div>
+        <div class="w"><span class="n">Why 3</span><span class="q">为什么攻击者地址在白名单？</span><span>3 天前被一名运维加入</span></div>
+        <div class="w"><span class="n">Why 4</span><span class="q">为什么能单人加白名单？</span><span>白名单变更没有四眼审批</span></div>
+        <div class="w"><span class="n">Why 5</span><span class="q">为什么没有四眼审批？</span><span>上线时被列为低风险配置</span></div>
+      </div>
+      <div class="card buy" id="pmFix" style="font-size:30px; padding:16px 26px">改进项：白名单变更升级为高风险操作，两人审批 + 冷却期 · 有负责人和截止日期</div>
+    </div>
+    <div class="panel col" id="pmB">
+      <table class="t">
+        <thead><tr><th>演练类型</th><th>做法</th><th>频率 · 示例</th></tr></thead>
+        <tbody>
+          <tr><td>桌面推演</td><td>主持人逐步给出事件信息，各角色口头说出动作</td><td>每季度</td></tr>
+          <tr><td>紧急开关演练</td><td>在预发环境真实按下全站提币开关，测生效时间</td><td>每月</td></tr>
+          <tr><td>混沌工程</td><td>受控范围内主动注入故障，例如关掉一个节点</td><td>持续</td></tr>
+          <tr><td>红队联合演练</td><td>红队真实攻击，SOC 和值班不提前知道</td><td>每年</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ol class="say">
+      <li>事故处理完，最后一步是无责复盘。只分析流程和系统哪里出了问题，不惩罚犯错的个人。目的是让每个人都敢说出真实经过。</li>
+      <li>看一个5 Whys 示例。为什么热钱包被转出？签名服务签了攻击者构造的交易。为什么会签？策略引擎认为目标地址在白名单内。</li>
+      <li>为什么攻击者地址在白名单里？3天前被一名运维加入。为什么运维能单人加白名单？因为白名单变更没有四眼审批。</li>
+      <li>为什么没有四眼审批？因为该功能上线时被列为低风险配置。改进项是，白名单变更升级为高风险操作，两人审批，并设冷却期。</li>
+      <li>常见错误是，复盘找到了责任人，就停止追问。下一次换个人，还会犯同样的错。</li>
+      <li>流程还要靠演练保持可用。每季度做桌面推演。每月在预发环境真按一次全站提币开关，测量生效时间。还有持续的混沌工程，和每年的红队联合演练。</li>
+    </ol>
+  </section>
+
+  <!-- 14 小结与预告 -->
+  <section class="scene" data-title="小结与预告" data-onstep="endStep">
+    <div class="kicker" id="endK">小结</div>
+    <h2 class="pA">记住三件事</h2>
+    <ul class="bullets pA">
+      <li data-step="0"><span class="hl">先止血，再查因，再恢复，最后复盘</span>；定级宁高勿低，范围不确定先大后小。</li>
+      <li data-step="1">止血只做<span class="hl">可逆动作</span>：单人可关，两人才能开；取证先保全再修复。</li>
+      <li data-step="2">追回靠行业协作，但不能当兜底；真正的兜底是<span class="hl">储备和说真话</span>。</li>
+    </ul>
+    <h2 class="pB">接下来：幕后核心进阶 5 集</h2>
+    <div class="path pB">
+      <div class="card gold" data-p="3"><div class="n">2</div><b>B08–B09 工程与监管</b><div class="d">实时风控平台：特征、规则、模型与灰度 · 全球监管与牌照：分区经营</div></div>
+      <div class="card info" data-p="4"><div class="n">2</div><b>B10–B11 数据与研发</b><div class="d">税务报送与数据隐私 · 安全工程：把安全做进研发与运营</div></div>
+      <div class="card buy" data-p="5"><div class="n">1</div><b>B12 事故案例库</b><div class="d">16 起交易所事故：防线是怎样被突破的</div></div>
+    </div>
+    <div class="labs pB" data-p="6">
+      <span class="chip gold">交互实验</span><span class="chip">订单簿撮合</span><span class="chip">强平计算</span><span class="chip">储备金证明</span><span class="chip">充提模拟</span><span class="chip">对账实验室</span><span class="chip">市场监控</span><span class="chip">盗号攻防</span><span class="chip">AML 资金图谱</span>
+    </div>
+    <ol class="say">
+      <li>小结三点。第一，先止血，再查因，再恢复，最后复盘。定级宁高勿低，范围不确定时先大后小。</li>
+      <li>第二，止血只做可逆动作。一线值班可以单人关，重新开启必须两人。取证先保全，再修复。</li>
+      <li>第三，追回靠行业协作，但不能当兜底。真正的兜底，是储备和说真话的沟通。</li>
+      <li>幕后核心的前7集到这里讲完了。它们讲的是每道防线是什么。接下来是进阶篇，共5集，讲这些防线怎样落成工程。</li>
+      <li>B08 讲实时风控平台，从特征、规则、模型到灰度上线。B09 讲全球监管，一家交易所怎样在不同地区分开经营。</li>
+      <li>B10 讲税务报送和数据隐私。B11 讲怎样把安全做进研发和运营。</li>
+      <li>最后，B12 是安全事故案例库。我们会看历史上的防线，是怎样一道道被突破的。下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+  function svgEl(tag, attrs, text) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text !== undefined) e.textContent = text; return e; }
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', text: '#eceae4', t2: '#9ea3ad', line: '#2c3038', panel: '#16181c', dim: '#555b66' };
+  const T = (svg, x, y, s, fill, size, anchor, weight, op) => svg.appendChild(svgEl('text', { x, y, fill: fill || C.text, 'text-anchor': anchor || 'middle', 'dominant-baseline': 'middle', opacity: op ?? 1, style: `font-size:${size || 28}px;${weight ? 'font-weight:700' : ''}` }, s));
+  function box(svg, x, y, w, h, t, o = {}) {
+    svg.appendChild(svgEl('rect', { x, y, width: w, height: h, rx: 12, fill: o.fill || C.panel, stroke: o.stroke || C.line, 'stroke-width': o.sw || 3, opacity: o.op ?? 1 }));
+    const lines = Array.isArray(t) ? t : [t];
+    lines.forEach((s, i) => T(svg, x + w / 2, y + h / 2 + (i - (lines.length - 1) / 2) * 34, s, i ? C.t2 : (o.tc || C.text), i ? 26 : (o.fs || 30), 'middle', false, o.op ?? 1));
+  }
+  function arrow(svg, x1, y1, x2, y2, color, dash, w) {
+    const id = 'ah' + svg.id + color.slice(1);
+    if (!svg.querySelector('#' + id)) {
+      let defs = svg.querySelector('defs'); if (!defs) { defs = svgEl('defs', {}); svg.appendChild(defs); }
+      const m = svgEl('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' });
+      m.appendChild(svgEl('path', { d: 'M0,0 L10,5 L0,10 z', fill: color })); defs.appendChild(m);
+    }
+    svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': w || 4, 'marker-end': `url(#${id})`, 'stroke-dasharray': dash ? '10 8' : '' }));
+  }
+
+  // 4: SEV ladder
+  function sevStep(el, st) {
+    const svg = el.querySelector('#sev'); svg.innerHTML = '';
+    const L = [
+      ['SEV4', '轻微问题，无用户影响', '例：报表延迟；单个告警误报', '下一个工作日', '值班工程师', C.t2],
+      ['SEV3', '部分功能降级', '例：某币种提币广播失败率升高', '1 小时', '团队负责人', C.info],
+      ['SEV2', '核心功能中断，资金未受损', '例：撮合停止；某链充值全部延迟', '15 分钟', '技术 VP、业务负责人', C.warn],
+      ['SEV1', '资金正在流失，或账本可能错误', '例：热钱包异常转出；账实不平且扩大', '5 分钟 · 战情室', 'CEO、CISO、法务、公关', C.sell],
+    ];
+    T(svg, 1080, 22, '响应时限', C.t2, 24); T(svg, 1420, 22, '升级到', C.t2, 24);
+    L.forEach(([n, d, e, t, w, c], i) => {
+      const y = 465 - i * 115, x = 20 + i * 40, on = i <= st, cur = i === st && st <= 3;
+      svg.appendChild(svgEl('rect', { x, y, width: 1620 - x, height: 100, rx: 14, fill: cur ? '#221e10' : C.panel, stroke: cur ? C.gold : (on ? c : C.line), 'stroke-width': cur ? 5 : 3, opacity: on ? 1 : .2 }));
+      T(svg, x + 30, y + 36, n, c, 40, 'start', true, on ? 1 : .2);
+      T(svg, x + 190, y + 34, d, C.text, 30, 'start', false, on ? 1 : .2);
+      T(svg, x + 190, y + 74, e, C.t2, 26, 'start', false, on ? 1 : .2);
+      T(svg, 1080, y + 50, t, c, 30, 'middle', true, on ? 1 : .2);
+      T(svg, 1420, y + 50, w, C.text, 26, 'middle', false, on ? 1 : .2);
+    });
+    if (st >= 4) {
+      svg.appendChild(svgEl('rect', { x: 20, y: 8, width: 860, height: 70, rx: 14, fill: '#2a1418', stroke: C.sell, 'stroke-width': 4 }));
+      T(svg, 450, 43, '资金类事件未确认前 → 一律先按 SEV1 · 宁高勿低', C.sell, 32, 'middle', true);
+      arrow(svg, 450, 78, 450, 116, C.sell, false, 5);
+    }
+  }
+
+  // 5: layers + loss window
+  function layerStep(el, st) {
+    const svg = el.querySelector('#lay'); svg.innerHTML = '';
+    const L = [['第 1 层 · 发现', ['链上监控、对账、风控告警', '用户、白帽、同行报告']], ['第 2 层 · 止血', ['暂停该链或全站提币', '冻结签名，轮换密钥']], ['第 3 层 · 追踪与冻结', ['链上追踪', '联合冻结，报案']], ['第 4 层 · 恢复与承担', ['修复与验证', '赔付：SAFU 或自有资金']]];
+    const cur = [0, 0, 1, 2, 3][st];
+    L.forEach(([h, d], i) => {
+      const x = 10 + i * 410, on = i <= cur, c = i === cur;
+      svg.appendChild(svgEl('rect', { x, y: 30, width: 370, height: 220, rx: 14, fill: c ? '#221e10' : C.panel, stroke: c ? C.gold : (on ? C.info : C.line), 'stroke-width': c ? 5 : 3, opacity: on ? 1 : .2 }));
+      T(svg, x + 185, 70, h, c ? C.gold : C.text, 32, 'middle', true, on ? 1 : .2);
+      d.forEach((s, j) => T(svg, x + 185, 130 + j * 50, s, C.t2, 26, 'middle', false, on ? 1 : .2));
+      if (i < 3) arrow(svg, x + 372, 140, x + 406, 140, i < cur ? C.gold : C.line);
+    });
+    // loss window timeline
+    if (st >= 1) {
+      const y = 360;
+      svg.appendChild(svgEl('line', { x1: 60, y1: y, x2: 1580, y2: y, stroke: C.line, 'stroke-width': 6 }));
+      svg.appendChild(svgEl('rect', { x: 200, y: y - 26, width: 520, height: 52, rx: 8, fill: 'rgba(246,70,93,.25)', stroke: C.sell, 'stroke-width': 3 }));
+      T(svg, 460, y, '损失窗口', C.sell, 30, 'middle', true);
+      T(svg, 200, y + 60, '第一笔异常转出', C.text, 26); T(svg, 720, y + 60, '按下开关', C.gold, 26, 'middle', true);
+      svg.appendChild(svgEl('circle', { cx: 200, cy: y, r: 12, fill: C.sell })); svg.appendChild(svgEl('circle', { cx: 720, cy: y, r: 12, fill: C.gold }));
+      T(svg, 1150, y + 60, st >= 2 ? '暂停提币 = 可逆 ✓    回滚链上交易 = 不可能 ✗' : '发现越快，窗口越短，损失上限越低', st >= 2 ? C.buy : C.t2, 28, 'middle', st >= 2);
+    }
+    if (st >= 3) T(svg, 1015, 282, '混币器、跨链桥 → 追回难度急剧上升', C.warn, 26, 'middle', true);
+    if (st >= 4) {
+      svg.appendChild(svgEl('rect', { x: 1060, y: 450, width: 560, height: 80, rx: 14, fill: '#14261e', stroke: C.buy, 'stroke-width': 4 }));
+      T(svg, 1340, 490, '无责复盘：改进写回 B02 到 B06', C.buy, 30, 'middle', true);
+      svg.appendChild(svgEl('polyline', { points: '1060,510 30,510 30,262', fill: 'none', stroke: C.buy, 'stroke-width': 4, 'stroke-dasharray': '10 8' }));
+      arrow(svg, 30, 300, 30, 256, C.buy, false, 4);
+      T(svg, 1425, 282, '赔付取决于储备 · 见 B06', C.gold, 26, 'middle', true);
+    }
+  }
+
+  // 6: sequence diagram
+  function seqStep(el, st) {
+    const svg = el.querySelector('#seq'); svg.innerHTML = '';
+    const P = ['监控系统', '一线值班', '事件指挥官 IC', '安全团队', '管理层与法务', '公关与客服'];
+    const X = i => 130 + i * 276;
+    P.forEach((p, i) => { const hot = (st === 3 && i === 2); box(svg, X(i) - 120, 10, 240, 64, p, { stroke: hot ? C.gold : C.info, fill: hot ? '#2a2412' : C.panel, sw: hot ? 5 : 3, fs: 28 }); svg.appendChild(svgEl('line', { x1: X(i), y1: 74, x2: X(i), y2: 595, stroke: C.line, 'stroke-width': 3, 'stroke-dasharray': '8 8' })); });
+    const M = [
+      [0, 0, 1, '告警：热钱包 10 分钟流出超阈值', C.sell],
+      [0, 1, 1, '5 分钟内确认是否误报', C.t2, true],
+      [1, 1, 2, '升级为 SEV1', C.sell],
+      [1, 1, 1, '有权单人关闭提币 · 开启需两人', C.gold, true],
+      [2, 2, 1, '指令：先关闭该链提币', C.gold],
+      [2, 2, 3, '拉入战情室，开始取证', C.info],
+      [2, 2, 4, '通报事件与初步影响', C.info],
+      [4, 2, 5, '准备首次公告', C.info],
+      [4, 5, 2, '公告草稿待批准', C.t2],
+      [4, 2, 5, '批准发布', C.buy],
+    ];
+    let y = 110;
+    M.forEach(([k, a, b, t, c, self]) => {
+      if (k > st) return;
+      const cur = k === st;
+      if (self) {
+        svg.appendChild(svgEl('path', { d: `M${X(a)},${y - 10} h60 v28 h-56`, fill: 'none', stroke: c, 'stroke-width': 3 }));
+        T(svg, X(a) + 76, y + 4, t, c, 26, 'start', cur);
+      } else {
+        arrow(svg, X(a), y, X(b) + (b > a ? -8 : 8), y, c, false, cur ? 4 : 3);
+        T(svg, (X(a) + X(b)) / 2, y - 20, t, c, 26, 'middle', cur);
+      }
+      y += self ? 60 : 48;
+    });
+    if (st === 3) {
+      svg.appendChild(svgEl('rect', { x: X(2) - 260, y: 500, width: 520, height: 70, rx: 12, fill: '#2a2412', stroke: C.gold, 'stroke-width': 4 }));
+      T(svg, X(2), 535, 'IC 只管决策和协调，不亲自排查', C.gold, 28, 'middle', true);
+    }
+    if (st === 4) T(svg, 20, 560, '每一级都要有备份人', C.warn, 28, 'start', true);
+  }
+
+  // 7: decision tree
+  function treeStep(el, st) {
+    const svg = el.querySelector('#tree'); svg.innerHTML = '';
+    const N = {
+      q1: [600, 0, 440, 64, '资金正在异常流出？', 'q'],
+      q2: [80, 110, 470, 64, '限于单条链或单个钱包？', 'q'],
+      q5: [1090, 110, 470, 64, '账本与链上对不平？', 'q'],
+      a1: [10, 220, 300, 84, ['暂停该链全部提币', '冻结该钱包签名'], 'a'],
+      a2: [380, 220, 300, 84, '暂停全站提币', 'a'],
+      q3: [330, 340, 400, 64, '账本可能被篡改？', 'q'],
+      a3: [130, 450, 300, 84, ['全站只读', '停止交易与充提'], 'x'],
+      a4: [620, 450, 260, 84, ['保持交易', '继续调查'], 'a'],
+      a5: [870, 220, 280, 84, '暂停该币充提', 'a'],
+      q6: [1200, 220, 400, 64, '核心交易不可用？', 'q'],
+      a6: [1120, 340, 240, 84, ['按降级策略', '处理'], 'a'],
+      a7: [1380, 340, 240, 84, ['SEV3 或 SEV4', '正常排查'], 'a'],
+    };
+    const E = [['q1', 'q2', '是'], ['q1', 'q5', '否'], ['q2', 'a1', '是'], ['q2', 'a2', '否或不确定'], ['a2', 'q3', ''], ['q3', 'a3', '是'], ['q3', 'a4', '否'], ['q5', 'a5', '是 · 限于某币'], ['q5', 'q6', '否'], ['q6', 'a6', '是'], ['q6', 'a7', '否']];
+    const path = [[], ['q1', 'q2'], ['q1', 'q2', 'a1'], ['q1', 'q2', 'a2'], ['q1', 'q2', 'a2', 'q3', 'a3', 'a4'], ['q1', 'q5', 'a5', 'q6', 'a6', 'a7'], ['a2', 'a1']][st];
+    const ctr = k => { const [x, y, w, h] = N[k]; return [x + w / 2, y + h / 2, x, y, w, h]; };
+    E.forEach(([a, b, lab]) => {
+      const [ax, ay, , , , ah] = ctr(a), [bx, by, , bTop] = ctr(b);
+      const on = path.includes(a) && path.includes(b);
+      const y1 = ay + ah / 2, y2 = N[b][1];
+      arrow(svg, ax, y1, bx, y2 - 2, on ? C.gold : C.dim, false, on ? 4 : 2);
+      if (lab) T(svg, (ax + bx) / 2 + (bx > ax ? 18 : -18), (y1 + y2) / 2, lab, on ? C.gold : C.t2, 22, bx > ax ? 'start' : 'end', on);
+    });
+    for (const k in N) {
+      const [x, y, w, h, t, ty] = N[k]; const on = path.includes(k) || st === 0;
+      const col = ty === 'q' ? C.info : ty === 'x' ? C.sell : C.buy;
+      box(svg, x, y, w, h, t, { stroke: on ? (path.includes(k) && st ? C.gold : col) : C.line, fill: path.includes(k) && st ? '#221e10' : C.panel, op: on ? 1 : .3, sw: path.includes(k) && st ? 5 : 3, fs: 28 });
+    }
+    const notes = ['判断顺序：钱在流吗 → 账对吗 → 能交易吗', '示例：凌晨 3 点 TRON 热钱包 10 分钟流出 = 平时 × 8，其他链正常', '只关 TRON 链：其他链照常运行', '20 分钟后以太坊也异常 → 范围不确定 → 全站暂停提币', '全站只读：用户无法止损 → 只在账本可能被篡改时用', '钱没在流：按对账 → 可用性 → SEV3/4 继续往下判', '漏关一条链的代价 ≫ 几小时投诉 · 暂停必须同时发公告'];
+    T(svg, 820, 572, notes[st], C.gold, 28, 'middle', true);
+  }
+
+  // 8: rules + metrics
+  function ruleStep(el, st) {
+    const b = st >= 4;
+    el.querySelector('#ruleA').classList.toggle('on', !b);
+    el.querySelector('#ruleB').classList.toggle('on', b);
+    el.querySelector('#ruleH').textContent = b ? '响应指标：四个时间' : '自动止血规则：只做可逆动作';
+    const hl = [[0], [0], [1, 2], [3, 4], []][st];
+    el.querySelectorAll('#rules tbody tr').forEach((r, i) => { r.classList.toggle('on', hl.includes(i)); r.classList.toggle('dimr', st <= 1 && i > 0); });
+    const notes = [
+      '自动动作：暂停、冻结、提高挑战等级 —— 都可以撤回',
+      '示例：同时段均值 200 万 × 5 = <b class="hl">1,000 万</b> 阈值；TRON 平时 × 8 = <b class="down">1,600 万</b> → 触发',
+      '签名意图不一致：<b class="hl">1 次</b>就冻结 —— 签名层的异常没有“偶尔”',
+      '误判少靠人工，速度快靠自动 → 自动只做<b class="hl">可逆</b>动作',
+      '',
+    ];
+    el.querySelector('#ruleNote').innerHTML = notes[st];
+  }
+
+  // 9: timeline
+  function tlStep(el, st) {
+    const svg = el.querySelector('#tl'); svg.innerHTML = '';
+    const M = [['T+0', '发现', 0, C.sell], ['T+5 分', '暂停提币 · 冻结签名', 1, C.gold], ['T+30 分', '轮换密钥 · 资产转新地址', 1, C.gold], ['T+1 时', '取证 · 链上追踪 · 首次公告', 2, C.info], ['T+2 时', '联合冻结', 3, C.info], ['T+1 天', '报案 · 宣布赔付', 3, C.warn], ['T+数天', '新密钥 · 分币种开放', 4, C.buy], ['T+2 周', '无责复盘', 4, C.buy]];
+    const X = i => 90 + i * 208;
+    svg.appendChild(svgEl('line', { x1: 40, y1: 150, x2: 1600, y2: 150, stroke: C.line, 'stroke-width': 8 }));
+    M.forEach(([t, d, k, c], i) => {
+      const on = k <= st || st === 5, cur = k === st;
+      svg.appendChild(svgEl('circle', { cx: X(i), cy: 150, r: cur ? 18 : 13, fill: on ? c : C.line }));
+      T(svg, X(i), 100, t, on ? c : C.dim, 30, 'middle', true);
+      const parts = d.split(' · ');
+      parts.forEach((p, j) => T(svg, X(i), 200 + j * 36, p, on ? C.text : C.dim, 26, 'middle', cur));
+    });
+    if (st >= 1) svg.appendChild(svgEl('rect', { x: X(0), y: 140, width: X(1) - X(0), height: 20, fill: C.sell, opacity: .6 }));
+    T(svg, 1600, 310, '时间为示例', C.warn, 22, 'end');
+    const cards = [
+      '<div class="card sell" style="flex:1;font-size:30px">告警触发 → 值班确认 → 定级</div>',
+      '<div class="card gold" style="flex:1;font-size:30px"><b>止血</b>：暂停相关链提币，冻结签名服务</div><div class="card gold" style="flex:1;font-size:30px">轮换可能泄露的密钥，<b>剩余资产转入新地址</b></div>',
+      '<div class="card info" style="flex:1;font-size:30px"><b>取证四纪律</b>：先保全，再修复 · 不重启被入侵主机 · 记录谁、何时、做了什么 · 证据副本算哈希</div>',
+      '<div class="card info" style="flex:1;font-size:30px"><b>用户沟通</b>：T+1 时起首次公告，之后定时更新</div><div class="card warn" style="flex:1;font-size:30px">T+1 天内宣布：SAFU 还是自有资金覆盖</div>',
+      '<div class="card buy" style="flex:1;font-size:30px">新密钥、新地址；<b>分币种逐步</b>开放提币</div><div class="card buy" style="flex:1;font-size:30px">T+2 周内无责复盘，改进项入排期</div>',
+      '<div class="card sell" style="flex:1;font-size:28px">✗ 在被入侵主机上直接修复，覆盖证据</div><div class="card sell" style="flex:1;font-size:28px">✗ 只换密钥，没迁移旧地址资产</div><div class="card sell" style="flex:1;font-size:28px">✗ 一次全开提币，积压冲垮热钱包</div>',
+    ];
+    el.querySelector('#tlCards').innerHTML = cards[st];
+  }
+
+  // 10: on-chain tracing
+  function traceStep(el, st) {
+    const svg = el.querySelector('#trace'); svg.innerHTML = '';
+    const node = (x, y, r, c, t, sub, op) => { svg.appendChild(svgEl('circle', { cx: x, cy: y, r, fill: '#1e2127', stroke: c, 'stroke-width': 4, opacity: op ?? 1 })); T(svg, x, y, t, c, 26, 'middle', true, op ?? 1); if (sub) T(svg, x, y + r + 24, sub, C.t2, 22, 'middle', false, op ?? 1); };
+    const hot = [90, 280], atk = [300, 280];
+    const hops = [[500, 120], [500, 280], [500, 440]];
+    const dest = [[800, 70, '交易所 A', C.buy], [800, 210, '稳定币发行方', C.buy], [800, 350, '混币器', C.sell], [800, 490, '跨链桥', C.warn]];
+    arrow(svg, hot[0] + 50, 280, atk[0] - 52, 280, C.sell, false, 5);
+    hops.forEach(h => arrow(svg, atk[0] + 46, 280, h[0] - 40, h[1], C.sell, false, 3));
+    const links = [[0, 0], [1, 1], [1, 2], [2, 3]];
+    if (st >= 1) links.forEach(([h, d]) => arrow(svg, hops[h][0] + 40, hops[h][1], dest[d][0] - 70, dest[d][1], st >= 2 && d <= 1 ? C.buy : C.dim, st < 2, 3));
+    node(hot[0], hot[1], 50, C.gold, '热钱包');
+    node(atk[0], atk[1], 50, C.sell, '攻击者', st >= 0 ? '已标记' : '');
+    hops.forEach((h, i) => node(h[0], h[1], 40, C.sell, '地址' + (i + 1)));
+    dest.forEach(([x, y, t, c], i) => {
+      const op = st >= 1 ? 1 : .25;
+      svg.appendChild(svgEl('rect', { x: x - 70, y: y - 40, width: 230, height: 80, rx: 12, fill: st >= 2 && i <= 1 ? '#14261e' : (st >= 2 && i >= 2 ? '#2a1418' : C.panel), stroke: c, 'stroke-width': 3, opacity: op }));
+      T(svg, x + 45, y - (st >= 2 ? 12 : 0), t, c, 28, 'middle', true, op);
+      if (st >= 2) T(svg, x + 45, y + 22, i <= 1 ? '已冻结 ✓' : '追回难度急剧上升', i <= 1 ? C.buy : C.sell, 22);
+    });
+    if (st >= 1) T(svg, 1030, 280, '收费站', C.gold, 28, 'middle', true);
+    if (st >= 1) svg.appendChild(svgEl('path', { d: 'M1030,40 L1030,250 M1030,310 L1030,520', stroke: C.gold, 'stroke-width': 3, 'stroke-dasharray': '6 6', fill: 'none' }));
+    const side = [
+      '<div class="card"><h3>T+1 小时</h3>标记攻击者地址，推送给链上分析公司</div>',
+      '<div class="card gold"><h3>T+2 小时 · 联合冻结</h3>通知其他交易所、稳定币发行方、跨链桥</div>',
+      '<div class="card buy">交易所、发行方：<b>可以冻结</b></div><div class="card sell">混币器、跨链桥：<b>追回难度急剧上升</b></div>',
+      '<div class="card info"><h3>据公开报道 · 2019-11</h3>Upbit 被盗约 34.2 万 ETH；部分转入币安后被冻结</div>',
+      '<div class="card info"><h3>据公开报道 · 2024-08</h3>币安：截至 2024-07-31，当年已追回或冻结 <b class="hl">超过 7,300 万$</b> 外部被盗资金，约 80% 与外部黑客、漏洞利用和盗窃相关</div>',
+      '<div class="card warn"><h3>需要证据和法律依据</h3>受害方提供交易哈希、报案材料 → 长期冻结</div><div class="card">短期临时冻结 + 证据补齐后长期冻结<br><span class="muted">错误冻结同样伤害用户</span></div>',
+    ];
+    el.querySelector('#traceSide').innerHTML = side[st];
+  }
+
+  // 11: comms
+  function commStep(el, st) {
+    el.querySelectorAll('.pr .card').forEach(c => { const k = +c.dataset.c; c.style.opacity = st >= 3 ? .45 : (k <= st ? 1 : .15); c.classList.toggle('gold', k === st && st <= 2); });
+    el.querySelector('.card.gold[data-step="3"]').style.borderColor = st >= 4 ? 'var(--buy)' : '';
+  }
+
+  function caseStep(el, st) {
+    el.querySelectorAll('[data-k]').forEach(n => { const k = +n.dataset.k; n.classList.toggle('pend', st < k); n.classList.toggle('cur', st === k); });
+  }
+
+  // 13: postmortem
+  function pmStep(el, st) {
+    const b = st >= 5;
+    el.querySelector('#pmA').classList.toggle('on', !b);
+    el.querySelector('#pmB').classList.toggle('on', b);
+    el.querySelector('#pmH').textContent = b ? '演练：让流程在真出事时可用' : '无责复盘：问流程，不问责任人';
+    const upto = [-1, 1, 3, 4, 4][Math.min(st, 4)];
+    el.querySelectorAll('.why .w').forEach((w, i) => { w.classList.toggle('pend', i > upto); w.classList.toggle('cur', (st === 1 && i <= 1) || (st === 2 && (i === 2 || i === 3)) || (st === 3 && i === 4)); });
+    const fix = el.querySelector('#pmFix');
+    fix.style.opacity = st >= 3 ? 1 : (st === 0 ? 1 : 0);
+    fix.className = 'card ' + (st === 0 ? 'info' : st === 4 ? 'sell' : 'buy');
+    fix.innerHTML = st === 0 ? '目的：让每个人都敢说出<b>真实经过</b> · 模板：摘要 · 影响 · 时间线 · 根因 · 做得好的 · 做得不好的 · 改进项'
+      : st === 4 ? '✗ 找到责任人就停止追问 → 换个人还会犯同样的错' : '改进项：白名单变更升级为高风险操作，两人审批 + 冷却期 · 有负责人和截止日期';
+  }
+
+  // 14: summary + learning path
+  function endStep(el, st) {
+    el.querySelectorAll('.pA').forEach(n => n.style.display = st <= 2 ? '' : 'none');
+    el.querySelectorAll('.pB').forEach(n => n.style.display = st >= 3 ? '' : 'none');
+    el.querySelector('#endK').textContent = st <= 2 ? '小结' : '下集预告 · 幕后核心进阶篇';
+    el.querySelectorAll('[data-p]').forEach(n => { const k = +n.dataset.p; n.style.opacity = st >= k ? 1 : .15; n.classList.toggle('cur', st === k); });
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

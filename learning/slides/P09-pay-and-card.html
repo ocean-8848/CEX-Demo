@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P09 支付与卡</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .layers { position: relative; height: 600px; }
+  .layers > .layer { position: absolute; left: 0; right: 0; top: 0; }
+  table.t.bd td, table.t.bd th { padding: 12px 16px; font-size: 28px; }
+  table.t.bd tr { transition: opacity .4s; }
+  table.t.fee td, table.t.fee th { padding: 11px 16px; font-size: 27px; }
+  .mini .card { padding: 18px 24px; font-size: 28px; line-height: 1.45; }
+  .mini .card h3 { font-size: 32px; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="P09" data-title="支付与卡：Binance Pay、礼品卡与加密借记卡">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 产品深潜 · P09</div>
+    <h1>账本里的数字，<span class="hl">怎样变成钱</span></h1>
+    <div class="row" style="max-width:1640px">
+      <div class="card col buy" data-step="0"><div class="stat"><div class="k">Binance Pay 转给朋友 · 示例</div><div class="v">100 USDT</div></div>只改账本 · 币安宣传零 gas、零手续费</div>
+      <div class="card col warn" data-step="1"><div class="stat"><div class="k">Binance Card 商店刷卡 · 示例</div><div class="v">50 EUR</div></div>发卡行 → 卡组织 → 收单行 → 商户</div>
+    </div>
+    <div class="card gold" data-step="2" style="max-width:1640px;font-size:32px">Pay、礼品卡：只改账本，不上链　·　Card：走出交易所，经过持牌机构</div>
+    <ol class="say">
+      <li>同样是付钱。用 Binance Pay 转100 USDT 给朋友。币安宣传零 gas、零手续费，对方即时到账。</li>
+      <li>换成 Binance Card 刷卡50欧元，钱要经过发卡行、卡组织和收单行。最后才变成商户收到的法币。</li>
+      <li>这一集看交易所账本里的数字，怎样变成别人能用的价值。Pay 和礼品卡只改账本，不上链。卡要走出交易所，经过持牌机构。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图：三个产品的边界" data-onstep="bdStep">
+    <div class="kicker">Roadmap · Boundaries</div>
+    <h2>三个产品，三条边界</h2>
+    <table class="t bd" id="bd">
+      <tr><th>产品</th><th>上链？</th><th>外部机构？</th><th>账本动作</th><th>平台主要收入</th></tr>
+      <tr><td>Pay 个人转账</td><td>否</td><td>否</td><td>划转</td><td>无直接收入 · 资金留存</td></tr>
+      <tr><td>Pay 商户收款</td><td>否 · 提现时才可能</td><td>否 · 法币结算除外</td><td>冻结 → 划转 → 手续费</td><td>商户手续费 · 示例</td></tr>
+      <tr><td>礼品卡</td><td>否</td><td>否</td><td>冻结 → 消耗 → 划转</td><td>创建手续费</td></tr>
+      <tr><td>Binance Card</td><td>否 · 币不上链</td><td class="hl">发卡行 · 卡组织 · 收单行</td><td>冻结 → 卖币 → 法币清算</td><td>兑换价差 · 交换费分成</td></tr>
+    </table>
+    <div class="card info" data-step="3" style="font-size:29px;padding:16px 26px">不上链 = 资金在币安账本内移动 · 最终提币到外部地址，仍走提币流程</div>
+    <ol class="say">
+      <li>本集三个产品，Binance Pay、礼品卡和 Binance Card。先用一张表看它们的边界。</li>
+      <li>Pay 个人转账，不上链，不经过外部机构，账本动作只是划转。商户收款多了冻结和手续费分录，平台收商户手续费。</li>
+      <li>礼品卡是冻结、消耗、划转，平台收创建手续费。Binance Card 的币也不上链，但要经过发卡行、卡组织和收单行。平台收兑换价差和交换费分成。</li>
+      <li>注意，这里的不上链，指资金在币安账本内移动。用户最终提币到外部地址，仍然走提币流程。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="Binance Pay：用户看到什么">
+    <div class="kicker">Binance Pay · 截至 2026 年公开资料</div>
+    <h2>个人转账、商户收款与费用</h2>
+    <div class="layers">
+      <div class="layer row mini">
+        <div class="col">
+          <div class="card buy" data-step="0" data-until="2"><h3>个人转账</h3>输入 Pay ID、邮箱或手机号 → 选币种和数量 → 对方即时到账<br><span class="muted">Pay ID：币安分配的数字标识，代替链上地址</span></div>
+          <div class="card info" data-step="2" data-until="2"><h3>退款</h3>可多次部分退款 · 累计 ≤ 订单金额 · 退回付款人原账户</div>
+        </div>
+        <div class="col">
+          <div class="card gold" data-step="1" data-until="2"><h3>商户收款 C2B</h3>商户调用下单接口 → 预支付单 prepayId + 二维码 / 收银台链接 → 用户用 App 扫码付款</div>
+          <div class="card" data-step="1" data-until="2"><h3>订单有效期 orderExpireTime</h3>不填默认 <b class="hl">1 小时</b> · 最长 <b class="hl">15 天</b> · 开发者文档</div>
+        </div>
+      </div>
+      <div class="layer" data-step="3">
+        <table class="t fee">
+          <tr><th>币安官方 FAQ《Binance Pay Fees》· 2026-01-02 更新</th><th>费用</th></tr>
+          <tr><td>小程序平台商户</td><td>交易额 <b class="hl">1%</b> · 季度 &lt; 9 万美元另收每月 1,000 美元最低费 · 2024-01-28 起</td></tr>
+          <tr><td>商户批量付款 Payout</td><td><b class="hl">0.80%</b> · 单笔上限 5 美元 · 2024-12-01 起</td></tr>
+          <tr data-step="4"><td>Send Cash · P2P 方式</td><td>&lt; 100 美元收 0.5 美元 · ≥ 100 美元收 1 美元</td></tr>
+          <tr data-step="4"><td>转到自己的 Web3/DeFi 钱包</td><td>链上网络费 + 平台费：BSC、opBNB 为提币费 50%，其他 80%，上限 10 USDC 等值</td></tr>
+          <tr data-step="4"><td>普通收银台商户费率</td><td class="muted">官方未列统一数字 → 本集用 <b class="hl">1% · 示例</b></td></tr>
+        </table>
+      </div>
+    </div>
+    <ol class="say">
+      <li>先看 Binance Pay。个人转账时，输入对方的 Pay ID、邮箱或手机号，选择币种和数量。Pay ID 是币安分配的数字标识，代替链上地址。</li>
+      <li>商户收款时，商户调用下单接口，拿到二维码或收银台链接，用户用 App 扫码付款。根据开发者文档，订单有效期不填默认1小时，最长15天。</li>
+      <li>商户可以多次部分退款，累计不能超过订单金额，退款回到付款人原账户。</li>
+      <li>费用以币安官方 FAQ 为准，2026年1月更新。小程序平台商户收交易额的1%。季度交易额低于9万美元的，另收每月1000美元最低费用。批量付款收0.80%，单笔上限5美元。</li>
+      <li>Send Cash 低于100美元收0.5美元，以上收1美元。转到自己的 Web3 钱包，另收平台费。普通收银台的商户费率，官方没有统一数字，本集按1%作示例。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="Pay 资金流：链上与链下" data-onstep="payFlow">
+    <div class="kicker">Money Flow · 在途账户为业界通用做法</div>
+    <h2 id="pf-h">Pay 本身从不碰链</h2>
+    <svg id="pf" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>先看资金流。个人转账只有一步，借 A，贷 B。两个账户在同一个账本里，没有链上交易，所以没有 gas。</li>
+      <li>商户付款要经过在途账户。示例，用户付100 USDT，费率1%，99进商户，1进平台手续费收入。在途账户让用户已付和商户已入账可以分开对账，这是业界做法。</li>
+      <li>商户还可以选择自动兑换成结算币种，走闪兑通道。</li>
+      <li>链上边界只出现在商户提币时，法币边界只出现在法币结算时，而且只在部分地区。Pay 本身从不碰链。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="Pay 商户订单状态机" data-onstep="paySM">
+    <div class="kicker">Order State Machine · 参考开发者文档</div>
+    <h2>PAID 是唯一的“资金已动”分界点</h2>
+    <svg id="psm" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>商户订单的状态机。商户下单，状态是初始。用户扫码打开收银台，变成待支付。</li>
+      <li>用户确认，账本划转成功，变成已支付。这是唯一的资金已动分界点。在这之前，用户余额没变，失败只需关单。</li>
+      <li>商户关单是已取消，超过有效期是已过期。取消和过期都不产生分录，失败路径非常便宜。</li>
+      <li>已支付之后可以退款，部分退款可以多次，累计等于订单金额就是全额退款。系统必须校验累计退款不超过订单金额，否则平台自掏腰包。</li>
+      <li>剩余金额进入商户结算周期。注意，结算这个状态是本集为说明加入的示意。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="Pay 调用链与分录" data-onstep="payChain">
+    <div class="kicker">Call Chain · pay-service 为业界通用拆分</div>
+    <h2 id="pc-h">两次幂等：下单一次，扣款一次</h2>
+    <svg id="pc" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>来看调用链。商户服务器经网关创建订单，带上商户订单号。Pay 服务按这个订单号幂等落库，返回预支付单号和二维码。</li>
+      <li>用户扫码确认，经过2FA或生物识别。Pay 服务先问风控，检查付款人限额和商户风险等级。</li>
+      <li>通过后写账本，借用户，贷商户和手续费，幂等键是预支付单号。账本成功之后才改成已支付。顺序反了，就会出现显示成功、却没扣款的错账。</li>
+      <li>最后用 Webhook 通知商户。Webhook 是异步的，收不到回调时，商户应主动查询订单，不能直接判定失败。</li>
+      <li>落到分录上。示例订单100 USDT，商户选择自动兑换，价差0.1%。商户收到的99 USDT 卖给平台做市账户，换回98.901个稳定币。</li>
+      <li>平台真正的价值不在这1 USDT。Pay 把资金留在账本内。每少一次提币，就少付一次 gas，少一次热钱包出金风险。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="Pay 的风险与故障" data-onstep="payRisk">
+    <div class="kicker">Risks · Failure Cases · 业界通用做法</div>
+    <h2 id="pr-h">站内转账：快，也危险</h2>
+    <svg id="pr" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>Pay 的风险有四类。第一是洗钱通道，站内转账不上链，链上分析工具看不到。所以收付双方都要 KYC，再对转账关系做关联分析。</li>
+      <li>第二是账户盗用，盗号者用 Pay 秒转资金，比提币更快。对策是新设备或改密后限制额度。第三是商户欺诈，对策是企业认证、结算延迟和保证金。第四是汇率风险，平台用闪兑即时对冲。</li>
+      <li>再看两个故障。一是 Webhook 丢失。商户宕机10分钟，误判订单失败，让用户再付一次。对策是以查询结果为准，并按商户订单号拒绝重复下单。</li>
+      <li>二是退款超额。两个退款请求并发，各自读到剩余可退100，各退100。对策是在同一事务里锁订单行，或者用乐观锁版本号。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="礼品卡：资金流" data-onstep="gcFlow">
+    <div class="kicker">Gift Card · Prepaid Voucher</div>
+    <h2 id="gf-h">兑换码不携带资产，只携带提取权</h2>
+    <svg id="gf" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>第二个产品，礼品卡。用户从余额创建礼品卡，选币种和金额，生成一串兑换码，还可以加一串密码。收到码的人在 App 里输入，资产即时到账。</li>
+      <li>示例，创建时冻结100 USDT，另收1 USDT 手续费。根据币安开发者文档，2023年8月21日起，购买或创建礼品卡收1%手续费。兑换不收费，以官网为准。</li>
+      <li>兑换码在站外传递，微信、邮件、实体卡都行。但码本身不携带资产，只携带提取权。</li>
+      <li>兑换时，消耗冻结，把100 USDT 划给兑换者。另一种做法，是创建时就转入平台的礼品卡负债账户。区别在于未兑换的钱算谁的，这会影响储备金证明和会计处理。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="礼品卡：并发兑换与风险" data-onstep="gcRace">
+    <div class="kicker">State Machine · CAS · 业界通用做法</div>
+    <h2 id="gr-h">一张卡，只能兑换一次</h2>
+    <svg id="gr" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>礼品卡状态机的关键，是兑换中这个状态。两个人同时输入同一个兑换码，只有一个能把状态从可用改成兑换中。</li>
+      <li>调用链上，网关先按用户和 IP 限流。礼品卡服务计算兑换码的哈希去查卡，数据库只存哈希，不存明文。</li>
+      <li>然后用比较并交换，也就是 CAS，把可用改成兑换中。再写账本，幂等键是卡片 ID。缺了 CAS，两个并发请求都会划转，平台多付100。</li>
+      <li>平台收入等于创建金额乘以费率。示例，某月创建100万 USDT，收入1万。月末还有20万没兑换，留在账本内，这就是沉淀资金。</li>
+      <li>风险也很典型。兑换码泄露就等于资金被盗，平台无法追回。诈骗者常要求受害者用礼品卡付款。另外，批量创建的 API 只对通过企业认证的机构开放。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="Binance Card：用户看到什么" data-onstep="cardTL">
+    <div class="kicker">Binance Card · 地区变化频繁，以官网为准</div>
+    <h2>一张借记卡，命脉在合作方</h2>
+    <svg id="ctl" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>第三个产品，Binance Card，一张借记卡。在受理该卡组织的商户刷卡，系统从资金账户实时卖币付款。发卡行是持牌机构，交易所本身不发卡。</li>
+      <li>它的地区变化很频繁。据新闻报道，2023年1月，币安与 Mastercard 在巴西推出卡产品。同年9月前后，Mastercard 结束了拉美和巴林的合作。</li>
+      <li>2023年12月20日，币安在欧洲经济区停止 Visa 借记卡服务。2025年10月起，币安在巴西重新上线 Mastercard 卡。</li>
+      <li>返现和费用来自多个第三方来源。欧洲版历史上按 BNB 月均持仓分7档，从0.1%到8%。巴西版最高2%，每月上限120雷亚尔。刷卡兑换法币收0.9%费用，以 App 内披露为准。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="刷卡：授权与清算两阶段" data-onstep="authStep">
+    <div class="kicker">Authorization → Clearing · 示例</div>
+    <h2 id="au-h">第一阶段：授权，同步、强实时</h2>
+    <svg id="au" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>刷卡分两个阶段，先授权，后清算。商户 POS 发出50欧元授权请求，经卡组织转到发卡处理商。发卡处理商再回调币安的卡服务。卡组织通常要求数百毫秒内响应。</li>
+      <li>卡服务先问风控，检查卡状态、商户类别、地区和限额。再向报价服务要 BTC 兑欧元报价，示例1个 BTC 等于6万欧元。</li>
+      <li>接着冻结0.00084083个 BTC，已经含0.9%兑换费。冻结成功，批准消息一路返回，收银台显示成功。</li>
+      <li>1到3天后，清算消息到达。卡服务消耗冻结，记卖币和法币应付的分录。授权是同步的，清算是异步的，要和授权记录逐笔对账。</li>
+      <li>注意边界。币从不上链，BTC 在币安账本内被卖掉。法币边界在平台兑换账户到发卡行这一步，走银行转账。发卡行通常要求平台预存法币，否则授权会因余额不足失败。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="授权不等于清算" data-onstep="diffStep">
+    <div class="kicker">Auth ≠ Clearing · Failure Cases</div>
+    <h2 id="df-h">授权金额 ≠ 清算金额</h2>
+    <svg id="df" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>授权金额和清算金额可以不同。酒店预授权200欧元，退房清算160欧元。加油站预授权1欧元，实际清算60欧元。</li>
+      <li>差额是平台的问题。如果授权时已卖出200欧元等值的 BTC，清算160后要退40欧元。退欧元还是买回 BTC，汇率风险由谁承担，取决于产品规则。</li>
+      <li>退货通常以法币或稳定币退回，不按原 BTC 数量退，用户承担期间的价格变化。</li>
+      <li>三个失败场景。2023年合作方退出，卡在多个地区下线。报价服务延迟2秒，卡组织判超时拒绝。清算比授权多出3欧元，用户余额又不足，平台只能先垫付再追收。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="单笔经济学" data-onstep="econStep">
+    <div class="kicker">Unit Economics · 全部为示例</div>
+    <h2>刷一次 50 欧元，平台赚多少</h2>
+    <svg id="ec" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>最后算一笔单笔账，全部是示例。消费50欧元，用户付出50除以6万，再乘以1.009。约等于0.00084083个 BTC。</li>
+      <li>平台兑换费收入0.45欧元。交换费是收单行付给发卡行的费用，欧盟借记卡上限0.2%。按50%分成，平台拿0.05欧元。</li>
+      <li>返现按1%算，支出0.5欧元。发卡与卡组织成本约0.1欧元。</li>
+      <li>单笔净收入是负0.1欧元。高返现会让卡业务亏损。平台用卡获客、锁定 BNB 持仓，而不是靠卡本身赚钱。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与下集预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">Pay 是<span class="hl">划转</span>，礼品卡是<span class="hl">冻结 → 消耗 → 划转</span>：只改账本，不上链。</li>
+      <li data-step="1">卡要走出交易所：<span class="hl">授权</span>同步冻结并卖币，<span class="hl">清算</span>异步结算，金额可以不同。</li>
+      <li data-step="2">平台的钱不全靠手续费：资金留存、沉淀资金、<span class="hl">BNB 锁定</span>。</li>
+    </ul>
+    <div class="grid3" data-step="0">
+      <div class="card stat"><div class="k">Pay 商户入账 · 示例</div><div class="v hl" style="font-size:50px">99 USDT</div></div>
+      <div class="card stat"><div class="k">礼品卡创建费</div><div class="v" style="font-size:50px">1%</div></div>
+      <div class="card stat"><div class="k">卡单笔净收入 · 示例</div><div class="v down" style="font-size:50px">−0.10 EUR</div></div>
+    </div>
+    <div class="card gold" data-step="3" style="font-size:34px">下集 P10 · Web3 钱包：MPC、DEX 聚合与授权风险</div>
+    <ol class="say">
+      <li>小结一下。第一，Pay 和礼品卡只改账本。Pay 是划转，礼品卡是冻结、消耗、划转，都不上链。</li>
+      <li>第二，卡要走出交易所。授权时同步冻结并卖币，清算时异步结算，两者金额可以不同。</li>
+      <li>第三，平台的钱不全来自手续费。资金留存、沉淀资金和 BNB 锁定，往往比单笔收入更重要。</li>
+      <li>下一集，我们离开交易所账本，看 Web3 钱包。MPC 密钥、DEX 聚合，还有授权风险。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10', dim: '#5a5f6a' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const fmt = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 28}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.mono ? ' font-family="JetBrains Mono, SF Mono, Menlo, monospace"' : ''}${o.op != null ? ` opacity="${o.op}"` : ''}${o.plain ? '' : ` stroke="${C.bg}" stroke-width="7" paint-order="stroke"`}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op != null ? ` opacity="${o.op}"` : ''}/>`;
+  const Ln = (x1, y1, x2, y2, o = {}) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${o.c || C.t2}" stroke-width="${o.w || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op != null ? ` opacity="${o.op}"` : ''}/>`;
+  function A(x1, y1, x2, y2, o = {}) {
+    const c = o.c || C.t2, w = o.w || 4, a = Math.atan2(y2 - y1, x2 - x1), hl = 18, hw = 10;
+    const bx = x2 - Math.cos(a) * hl, by = y2 - Math.sin(a) * hl;
+    const p1 = [bx + Math.sin(a) * hw, by - Math.cos(a) * hw], p2 = [bx - Math.sin(a) * hw, by + Math.cos(a) * hw];
+    return `<g${o.op != null ? ` opacity="${o.op}"` : ''}><line x1="${x1}" y1="${y1}" x2="${bx}" y2="${by}" stroke="${c}" stroke-width="${w}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/><polygon points="${x2},${y2} ${p1} ${p2}" fill="${c}"/></g>`;
+  }
+  const Box = (x, y, w, h, t, s, o = {}) => R(x, y, w, h, o) + T(x + w / 2, y + (s ? h / 2 - 4 : h / 2 + 11), t, { anchor: 'middle', size: o.size || 30, bold: true, fill: o.tc || C.text, plain: true, op: o.op }) + (s ? T(x + w / 2, y + h / 2 + 30, s, { anchor: 'middle', size: o.ss || 22, fill: o.sc || C.t2, plain: true, op: o.op }) : '');
+  // sequence helper
+  function seq(L, X, M, st, o = {}) {
+    let h = '';
+    const top = o.top || 0, hh = o.hh || 84, bot = o.bot || 600, y0 = o.y0 || 130, dy = o.dy || 46;
+    L.forEach(([c, e], i) => { h += Ln(X(i), top + hh, X(i), bot, { c: C.line, dash: '6 6' }) + R(X(i) - (o.bw || 110), top, (o.bw || 110) * 2, hh, { fill: C.panel2 }) + T(X(i), top + 40, c, { anchor: 'middle', size: o.hs || 26, bold: true, plain: true }) + (e ? T(X(i), top + 70, e, { anchor: 'middle', size: 17, fill: C.t2, plain: true, mono: true }) : ''); });
+    M.forEach(([a, b, t, s, dash], i) => {
+      if (s > st) return;
+      const y = y0 + i * dy, cur = s === st, c = cur ? C.gold : C.t2;
+      if (a === b) h += `<path d="M ${X(a) + 6} ${y - 14} h 44 v 28 h -38" fill="none" stroke="${c}" stroke-width="3"/>` + T(X(a) + 58, y + 8, t, { size: o.ms || 23, fill: cur ? C.gold : C.text });
+      else { h += A(X(a) + (b > a ? 8 : -8), y, X(b) + (b > a ? -8 : 8), y, { c, w: 3, dash: dash ? '8 6' : null }); h += T(Math.min(X(a), X(b)) + 14, y - 9, t, { size: o.ms || 23, fill: cur ? C.gold : C.text }); }
+    });
+    return h;
+  }
+
+  // 2. boundary table
+  function bdStep(el, st) {
+    const show = [[1], [1, 2], [1, 2, 3, 4], [1, 2, 3, 4]][st];
+    el.querySelectorAll('#bd tr').forEach((r, i) => { if (i) { r.style.opacity = show.includes(i) ? 1 : .15; r.style.background = (st === 1 && i <= 2) || (st === 2 && i >= 3) ? 'var(--gold-soft)' : ''; } });
+  }
+
+  // 4. pay money flow
+  function payFlow(el, st) {
+    el.querySelector('#pf-h').textContent = ['个人转账：借 A，贷 B', '商户付款：经过在途账户', '可选：自动兑换成结算币种', 'Pay 本身从不碰链'][st];
+    let h = '';
+    h += R(10, 10, 1120, 590, { fill: 'rgba(240,185,11,.04)', stroke: C.gold, dash: '10 6' }) + T(30, 50, '链下：币安账本内部', { size: 28, bold: true, fill: C.gold });
+    h += R(1170, 10, 460, 590, { fill: 'rgba(91,156,255,.05)', stroke: C.info, dash: '10 6' }) + T(1190, 50, '链上 / 外部', { size: 28, bold: true, fill: C.info });
+    const on = k => st >= k;
+    h += Box(40, 90, 280, 110, '用户 A', '资金账户 USDT', { stroke: C.info });
+    h += Box(40, 330, 280, 110, '用户 B', '资金账户 USDT', { stroke: st === 0 ? C.gold : C.line, op: 1 });
+    h += A(180, 200, 180, 330, { c: st === 0 ? C.gold : C.t2, w: st === 0 ? 6 : 4 }) + T(196, 272, '个人转账：直接划转', { size: 24, fill: st === 0 ? C.gold : C.t2 });
+    if (st === 0) h += T(40, 520, '借 A · 贷 B · 同一账本 · 没有链上交易 → 没有 gas', { size: 30, bold: true, fill: C.gold });
+    h += Box(440, 90, 300, 110, 'Pay 在途账户', '平台过渡科目', { stroke: on(1) ? C.gold : C.line, op: on(1) ? 1 : .3 });
+    h += Box(840, 90, 260, 110, '商户', 'Pay 收款账户', { stroke: on(1) ? C.buy : C.line, op: on(1) ? 1 : .3 });
+    h += Box(440, 330, 300, 110, '平台手续费收入', '', { stroke: on(1) ? C.buy : C.line, op: on(1) ? 1 : .3, size: 28 });
+    h += A(320, 130, 440, 130, { c: on(1) ? C.gold : C.line, op: on(1) ? 1 : .3 }) + (on(1) ? T(380, 116, '100', { anchor: 'middle', size: 26, bold: true, fill: C.gold, mono: true }) : '');
+    h += A(740, 145, 840, 145, { c: on(1) ? C.buy : C.line, op: on(1) ? 1 : .3 }) + (on(1) ? T(790, 130, '99', { anchor: 'middle', size: 26, bold: true, fill: C.buy, mono: true }) : '');
+    h += A(590, 200, 590, 330, { c: on(1) ? C.buy : C.line, op: on(1) ? 1 : .3 }) + (on(1) ? T(606, 272, '1 · 费率 1% 示例', { size: 24, fill: C.buy }) : '');
+    if (st === 1) h += T(440, 520, '在途账户：用户已付 / 商户已入账 分开对账', { size: 28, bold: true, fill: C.gold });
+    h += Box(840, 330, 260, 110, '自动兑换', '闪兑通道', { stroke: on(2) ? C.gold : C.line, op: on(2) ? 1 : .3 });
+    h += A(970, 200, 970, 330, { c: on(2) ? C.gold : C.line, op: on(2) ? 1 : .3 });
+    h += Box(1220, 90, 380, 110, '外部钱包地址', '链上', { stroke: on(3) ? C.info : C.line, op: on(3) ? 1 : .3 });
+    h += Box(1220, 330, 380, 110, '商户银行账户', '法币结算 · 部分地区', { stroke: on(3) ? C.info : C.line, op: on(3) ? 1 : .3 });
+    h += A(1100, 120, 1220, 120, { c: on(3) ? C.info : C.line, w: on(3) ? 6 : 4, op: on(3) ? 1 : .3 }) + (on(3) ? T(1160, 100, '提币', { anchor: 'middle', size: 24, fill: C.info, bold: true }) : '');
+    h += A(1100, 385, 1220, 385, { c: on(3) ? C.info : C.line, w: on(3) ? 6 : 4, op: on(3) ? 1 : .3 }) + (on(3) ? T(1160, 368, '出金', { anchor: 'middle', size: 24, fill: C.info, bold: true }) : '');
+    if (st === 2) h += T(840, 520, '商户可选结算币种', { size: 28, bold: true, fill: C.gold });
+    if (st === 3) h += Ln(1150, 20, 1150, 590, { c: C.sell, w: 6 }) + T(1150, 580, '边界只在这里', { anchor: 'middle', size: 28, bold: true, fill: C.sell });
+    svgEl(el.querySelector('#pf'), h);
+  }
+
+  // 5. pay state machine
+  function paySM(el, st) {
+    const N = {
+      INI: [40, 60, 'INITIAL', '初始', 0], PEN: [420, 60, 'PENDING', '待支付', 0], PAID: [820, 60, 'PAID', '已支付', 1],
+      CAN: [420, 260, 'CANCELED', '已取消', 2], EXP: [40, 260, 'EXPIRED', '已过期', 2],
+      PR: [820, 300, 'PARTIAL_REFUND', '部分退款', 3], FR: [1240, 300, 'FULL_REFUND', '全额退款', 3], SET: [1240, 60, 'SETTLED', '结算 · 示意', 4],
+    };
+    let h = '';
+    const E = [[340, 110, 420, 110, 0], [720, 110, 820, 110, 1], [570, 160, 570, 260, 2], [190, 160, 190, 260, 2], [460, 160, 300, 260, 2],
+      [970, 160, 970, 300, 3], [1120, 350, 1240, 350, 3], [1120, 80, 1240, 80, 4], [1090, 300, 1260, 160, 4], [1120, 140, 1260, 300, 3]];
+    E.forEach(([a, b, c, d, s]) => h += A(a, b, c, d, { c: s === st ? C.gold : s < st ? C.t2 : C.line, op: s <= st ? 1 : .3 }));
+    h += `<path d="M 900 400 C 900 470, 1040 470, 1040 400" fill="none" stroke="${st >= 3 ? C.t2 : C.line}" stroke-width="3" opacity="${st >= 3 ? 1 : .3}"/><polygon points="1040,398 1030,418 1050,418" fill="${st >= 3 ? C.t2 : C.line}" opacity="${st >= 3 ? 1 : .3}"/>`;
+    Object.values(N).forEach(([x, y, e, c, k]) => {
+      const cur = k === st, paid = e === 'PAID' && st >= 1;
+      h += R(x, y, 300, 100, { fill: cur ? 'rgba(240,185,11,.14)' : C.panel, stroke: paid ? C.buy : cur ? C.gold : k < st ? C.dim : C.line, sw: paid ? 5 : 3, op: k <= st ? 1 : .3 });
+      h += T(x + 150, y + 44, c, { anchor: 'middle', size: 30, bold: true, plain: true, op: k <= st ? 1 : .3, fill: paid ? C.buy : C.text });
+      h += T(x + 150, y + 80, e, { anchor: 'middle', size: 20, plain: true, mono: true, fill: C.t2, op: k <= st ? 1 : .3 });
+    });
+    const notes = [['商户下单 → INITIAL', '用户扫码打开收银台 → PENDING'], ['PAID 之前：余额没变，失败只需关单', 'PAID：账本划转成功'], ['取消、过期：不产生分录', '失败路径非常便宜'], ['退款 = 反向划转', '校验 累计退款 ≤ 订单金额'], ['剩余金额进入结算周期', 'SETTLED 为本集示意状态']][st];
+    h += R(40, 450, 720, 140, { fill: 'rgba(240,185,11,.08)', stroke: C.gold });
+    h += T(70, 506, notes[0], { size: 30, bold: true, fill: C.gold, plain: true }) + T(70, 556, notes[1], { size: 28, plain: true });
+    svgEl(el.querySelector('#psm'), h);
+  }
+
+  // 6. pay call chain + entries
+  function payChain(el, st) {
+    el.querySelector('#pc-h').textContent = st <= 3 ? '两次幂等：下单一次，扣款一次' : st === 4 ? '分录：100 USDT 订单 · 示例' : '真正的价值：资金留在账本内';
+    let h = '';
+    if (st <= 3) {
+      const L = [['商户服务器', ''], ['网关', 'api-gateway'], ['Pay 服务', 'pay-service'], ['用户 App', ''], ['风控', 'risk-service'], ['账本', 'ledger-service']];
+      const X = i => 130 + i * 276;
+      const M = [[0, 1, '创建订单 merchantTradeNo, 100 USDT', 0], [1, 2, '验签后转发', 0], [2, 2, '按 merchantTradeNo 幂等落库', 0], [2, 0, '返回 prepayId、二维码', 0],
+        [3, 2, '扫码，确认付款 · 2FA', 1], [2, 4, '付款人限额、商户风险', 1], [2, 5, '记分录 · 幂等键 = prepayId', 2], [2, 2, '账本成功后 → PAID', 2], [2, 0, 'Webhook 通知 PAID · 失败重试', 3, 1]];
+      h += seq(L, X, M, st, { bw: 124, y0: 128, dy: 46, ms: 23, bot: 500 });
+      const nt = ['幂等 ① merchantTradeNo：防重复下单', '风控通过才动钱', '幂等 ② prepayId：防重复扣款 · 先记账再改状态', '收不到回调 → 主动查询订单，不能判失败'][st];
+      h += R(130, 516, 1380, 48, { fill: 'rgba(240,185,11,.12)', stroke: C.gold, rx: 10 }) + T(820, 550, nt, { anchor: 'middle', size: 26, bold: true, fill: C.gold, plain: true });
+    } else if (st === 4) {
+      const rows = [['1', '用户-USDT-可用', '商户-USDT-可用', '99 USDT'], ['2', '用户-USDT-可用', '平台手续费收入-USDT', '1 USDT'], ['3 · 自动兑换', '商户-USDT-可用', '平台做市账户-USDT', '99 USDT'], ['4 · 自动兑换', '平台做市账户-稳定币 X', '商户-稳定币 X-可用', '98.901 X']];
+      const cx = [40, 300, 760, 1260];
+      ['分录', '借方', '贷方', '金额'].forEach((t, i) => h += T(cx[i], 60, t, { size: 26, fill: C.t2 }));
+      rows.forEach((r, k) => { const y = 120 + k * 90; h += R(20, y - 50, 1600, 76, { fill: k >= 2 ? 'rgba(91,156,255,.08)' : C.panel, stroke: k >= 2 ? C.info : C.line, rx: 10 }); r.forEach((c, i) => h += T(cx[i], y, c, { size: 28, plain: true, mono: i === 3, bold: i === 3, fill: i === 3 ? C.gold : C.text })); });
+      h += T(40, 520, '商户入账 = 100 × (1 − 1%) = 99 · 兑换价差 0.1%：99 × 0.999 = 98.901', { size: 28, fill: C.text });
+      h += T(40, 570, '平台收入 = 订单金额 × 商户费率 + 自动兑换价差', { size: 28, bold: true, fill: C.gold });
+    } else {
+      h += Box(60, 80, 560, 160, '手续费 1 USDT', '看得见的收入', { stroke: C.dim, size: 38, ss: 26 });
+      h += Box(760, 80, 820, 160, '资金留在账本内', '少一次提币 = 少一次 gas + 少一次热钱包出金风险', { stroke: C.gold, size: 40, ss: 26, fill: 'rgba(240,185,11,.1)' });
+      h += T(690, 172, '≪', { anchor: 'middle', size: 60, bold: true, fill: C.gold });
+      for (let i = 0; i < 10; i++) h += R(80 + i * 150, 330, 120, 120, { fill: i < 7 ? 'rgba(46,189,133,.15)' : 'rgba(246,70,93,.12)', stroke: i < 7 ? C.buy : C.sell }) + T(140 + i * 150, 400, i < 7 ? '站内' : '提币', { anchor: 'middle', size: 26, plain: true, fill: i < 7 ? C.buy : C.sell });
+      h += T(820, 520, '站内流转越多，链上出金越少 · 示意', { anchor: 'middle', size: 30, fill: C.text });
+    }
+    svgEl(el.querySelector('#pc'), h);
+  }
+
+  // 7. pay risks
+  function payRisk(el, st) {
+    el.querySelector('#pr-h').textContent = st <= 1 ? '站内转账：快，也危险' : st === 2 ? '故障一：Webhook 丢失' : '故障二：并发退款超额';
+    let h = '';
+    if (st <= 1) {
+      const cards = [['洗钱通道', '不上链，链上分析看不到', '收付双方 KYC · 转账关联分析', 0], ['账户盗用', '盗号者用 Pay 秒转，比提币快', '新设备、改密后限制 Pay 额度', 1], ['商户欺诈', '虚假商户收款后跑路', 'KYB · 结算延迟 · 保证金', 1], ['汇率风险', '法币计价，用户付加密货币', '短报价锁定期 · 闪兑即时对冲', 1]];
+      cards.forEach(([t, a, b, k], i) => { const x = 20 + (i % 2) * 810, y = 20 + Math.floor(i / 2) * 290, on = k <= st; h += R(x, y, 790, 260, { fill: on ? 'rgba(246,70,93,.07)' : C.panel, stroke: on ? C.sell : C.line, op: on ? 1 : .3 }) + T(x + 36, y + 70, t, { size: 40, bold: true, fill: C.sell, plain: true, op: on ? 1 : .3 }) + T(x + 36, y + 140, a, { size: 30, plain: true, op: on ? 1 : .3 }) + T(x + 36, y + 206, '对策：' + b, { size: 28, fill: C.buy, plain: true, op: on ? 1 : .3 }); });
+    } else if (st === 2) {
+      const X = m => 120 + m * 120;
+      h += Ln(X(0), 300, X(11), 300, { c: C.t2 });
+      for (let m = 0; m <= 11; m++) h += T(X(m), 336, m + '分', { anchor: 'middle', size: 20, fill: C.t2 });
+      h += R(X(0.5), 200, X(10.5) - X(0.5), 80, { fill: 'rgba(246,70,93,.15)', stroke: C.sell }) + T((X(0.5) + X(10.5)) / 2, 250, '商户服务器宕机 10 分钟 · 示例', { anchor: 'middle', size: 28, bold: true, fill: C.sell, plain: true });
+      h += A(X(1), 110, X(1), 196, { c: C.sell }) + T(X(1) + 12, 100, 'Webhook PAID ✗ 丢失', { size: 26, fill: C.sell, bold: true });
+      h += T(X(11), 100, '商户误判失败 → 让用户再付一次', { anchor: 'end', size: 26, fill: C.warn, bold: true });
+      h += R(120, 400, 1380, 170, { fill: 'rgba(46,189,133,.08)', stroke: C.buy });
+      h += T(160, 460, '对策 ①：以「查询订单」结果为准', { size: 32, bold: true, fill: C.buy, plain: true });
+      h += T(160, 524, '对策 ②：按 merchantTradeNo 拒绝重复下单', { size: 32, bold: true, fill: C.buy, plain: true });
+    } else {
+      h += Box(620, 40, 400, 120, '订单 · 已付 100', '剩余可退 100', { stroke: C.gold });
+      h += Box(60, 260, 420, 110, '退款请求 ①', '读到剩余 100 → 退 100', { stroke: C.sell });
+      h += Box(1160, 260, 420, 110, '退款请求 ②', '读到剩余 100 → 退 100', { stroke: C.sell });
+      h += A(620, 120, 480, 280, { c: C.sell }) + A(1020, 120, 1160, 280, { c: C.sell });
+      h += T(820, 330, '合计退 200 > 100', { anchor: 'middle', size: 40, bold: true, fill: C.sell });
+      h += T(820, 380, '平台自掏腰包 100', { anchor: 'middle', size: 28, fill: C.sell });
+      h += R(60, 440, 1520, 130, { fill: 'rgba(46,189,133,.08)', stroke: C.buy });
+      h += T(820, 498, '对策：同一事务内锁订单行 · 或乐观锁版本号', { anchor: 'middle', size: 32, bold: true, fill: C.buy, plain: true });
+      h += T(820, 544, '累计退款 ≤ 订单金额', { anchor: 'middle', size: 28, plain: true });
+    }
+    svgEl(el.querySelector('#pr'), h);
+  }
+
+  // 8. gift card flow
+  function gcFlow(el, st) {
+    el.querySelector('#gf-h').textContent = ['礼品卡：创建与兑换', '① 创建：冻结 + 1% 手续费', '② 兑换码在站外传递', '④ 兑换：消耗冻结，划转'][st];
+    let h = '';
+    h += R(10, 10, 1080, 590, { fill: 'rgba(240,185,11,.04)', stroke: C.gold, dash: '10 6' }) + T(30, 50, '链下：币安账本内部', { size: 28, bold: true, fill: C.gold });
+    const a = st === 0 ? '100 + 1' : st >= 3 ? '0' : '0', lk = st >= 1 && st < 3 ? '100 USDT' : st >= 3 ? '0' : '—';
+    h += Box(40, 90, 320, 120, '创建者 USDT 可用', st === 0 ? '101 · 示例' : '0', { stroke: C.info, ss: 26 });
+    h += Box(40, 380, 320, 130, '创建者 USDT 冻结', '或礼品卡负债账户', { stroke: st >= 1 ? C.gold : C.line, ss: 22 }) + (st >= 1 ? T(200, 545, lk, { anchor: 'middle', size: 30, bold: true, fill: C.gold, mono: true }) : '');
+    h += Box(500, 90, 300, 120, '平台手续费收入', st >= 1 ? '+1 USDT' : '', { stroke: st >= 1 ? C.buy : C.line, ss: 26 });
+    h += Box(700, 380, 360, 130, '兑换者 USDT 可用', st >= 3 ? '+100 USDT' : '0', { stroke: st >= 3 ? C.buy : C.line, ss: 28, sc: st >= 3 ? C.buy : C.t2 });
+    h += A(200, 210, 200, 380, { c: st >= 1 ? C.gold : C.line, w: 5 }) + (st >= 1 ? T(216, 300, '① 冻结 100', { size: 26, fill: C.gold, bold: true }) : '');
+    h += A(360, 150, 500, 150, { c: st >= 1 ? C.buy : C.line, w: 4 }) + (st >= 1 ? T(430, 134, '1%', { anchor: 'middle', size: 24, fill: C.buy }) : '');
+    h += A(360, 445, 700, 445, { c: st >= 3 ? C.buy : C.line, w: st >= 3 ? 6 : 3, op: st >= 3 ? 1 : .4 }) + (st >= 3 ? T(530, 430, '④ 消耗冻结，划转', { anchor: 'middle', size: 26, fill: C.buy, bold: true }) : '');
+    // code outside
+    h += R(1180, 200, 420, 200, { fill: st >= 2 ? 'rgba(91,156,255,.12)' : C.panel, stroke: st >= 2 ? C.info : C.line, rx: 18 });
+    h += T(1390, 260, '兑换码', { anchor: 'middle', size: 30, bold: true, plain: true }) + T(1390, 312, 'GC-7F3K-…-Q9', { anchor: 'middle', size: 30, mono: true, fill: C.info, plain: true }) + T(1390, 364, '+ 可选密码', { anchor: 'middle', size: 24, fill: C.t2, plain: true });
+    h += T(1390, 170, '站外：微信 · 邮件 · 实体卡', { anchor: 'middle', size: 24, fill: st >= 2 ? C.info : C.t2 });
+    if (st >= 1) h += A(360, 390, 1180, 290, { c: st >= 2 ? C.info : C.line, dash: '8 6', w: 3 }).replace('<g', '<g') + T(800, 600 - 40, '', {});
+    if (st >= 2) h += A(1300, 400, 1060, 470, { c: C.info, dash: '8 6', w: 3 }) + T(1240, 470, '③ 输入', { size: 24, fill: C.info });
+    const note = ['创建 → 兑换码 → 输入 → 即时到账', '2023-08-21 起：购买或创建收 1% · 兑换不收费 · 以官网为准', '码不携带资产，只携带提取权 · 泄露 = 被盗', '冻结 vs 负债账户：未兑换的钱算谁的 → 影响储备金证明'][st];
+    h += T(560, 270, '', {});
+    h += R(380, 240, 680, 80, { fill: 'rgba(240,185,11,.1)', stroke: C.gold, rx: 10, op: 0 });
+    h += T(40, 578, note, { size: 26, bold: true, fill: C.gold });
+    svgEl(el.querySelector('#gf'), h);
+  }
+
+  // 9. gift card race
+  function gcRace(el, st) {
+    el.querySelector('#gr-h').textContent = st <= 2 ? '一张卡，只能兑换一次' : st === 3 ? '收入与沉淀资金 · 示例' : '礼品卡的风险';
+    let h = '';
+    if (st <= 2) {
+      // state machine top
+      const S = [['ACTIVE', '可用', 40], ['REDEEMING', '兑换中', 400], ['REDEEMED', '已兑换', 760]];
+      S.forEach(([e, c, x], i) => h += R(x, 20, 300, 96, { fill: i === 1 ? 'rgba(240,185,11,.14)' : C.panel, stroke: i === 1 ? C.gold : C.dim }) + T(x + 150, 62, c, { anchor: 'middle', size: 30, bold: true, plain: true }) + T(x + 150, 96, e, { anchor: 'middle', size: 18, fill: C.t2, plain: true, mono: true }));
+      h += A(340, 68, 400, 68) + A(700, 68, 760, 68);
+      h += R(1120, 20, 230, 96, { fill: C.panel, stroke: C.dim }) + T(1235, 62, '已锁定', { anchor: 'middle', size: 28, bold: true, plain: true }) + T(1235, 96, '连续猜码失败', { anchor: 'middle', size: 18, fill: C.t2, plain: true });
+      h += R(1380, 20, 230, 96, { fill: C.panel, stroke: C.dim }) + T(1495, 62, '已撤销', { anchor: 'middle', size: 28, bold: true, plain: true }) + T(1495, 96, '仅限可用状态', { anchor: 'middle', size: 18, fill: C.t2, plain: true });
+      // race
+      const y = 190;
+      h += Box(40, y, 300, 90, '用户甲 输入码', '', { stroke: C.info, size: 26 }) + Box(40, y + 130, 300, 90, '用户乙 输入码', '', { stroke: C.info, size: 26 });
+      const steps = [['网关限流', '用户 + IP'], ['hash(code)', '只存哈希'], ['CAS', 'ACTIVE → REDEEMING']];
+      steps.forEach(([t, s], i) => { const x = 420 + i * 300, on = i <= st; h += Box(x, y + 50, 260, 110, t, s, { stroke: on ? C.gold : C.line, op: on ? 1 : .35, size: 28 }); if (i) h += A(x - 40, y + 105, x, y + 105, { op: on ? 1 : .35 }); });
+      h += A(340, y + 45, 420, y + 90, { op: 1 }) + A(340, y + 175, 420, y + 120);
+      if (st === 2) {
+        h += A(1300, y + 80, 1360, y + 40, { c: C.buy }) + T(1370, y + 40, '甲 成功 → 记账', { size: 26, bold: true, fill: C.buy }) + T(1370, y + 76, '幂等键 = 卡片 ID', { size: 22, fill: C.t2 });
+        h += A(1300, y + 130, 1360, y + 170, { c: C.sell }) + T(1370, y + 180, '乙 失败：状态已变', { size: 26, bold: true, fill: C.sell });
+        h += R(40, 460, 1560, 120, { fill: 'rgba(246,70,93,.08)', stroke: C.sell }) + T(820, 512, '缺了 CAS：两个请求都读到 ACTIVE，各划转一次 → 平台多付 100', { anchor: 'middle', size: 30, bold: true, fill: C.sell, plain: true }) + T(820, 556, 'CAS 第一道防线 · 账本幂等第二道防线', { anchor: 'middle', size: 26, plain: true });
+      } else h += R(40, 460, 1560, 120, { fill: 'rgba(91,156,255,.06)', stroke: C.line }) + T(820, 530, st === 0 ? '两人同时输入同一兑换码：只有一个能改成兑换中' : '数据库泄露也拿不到可用的码 · 码太短会被枚举', { anchor: 'middle', size: 30, bold: true, plain: true, fill: C.info });
+    } else if (st === 3) {
+      const base = 520, sc = 0.0004;
+      const bar = (x, v, t, c, lbl) => `<rect x="${x}" y="${base - v * sc}" width="260" height="${v * sc}" rx="8" fill="${c}"/>` + T(x + 130, base - v * sc - 16, t, { anchor: 'middle', size: 32, bold: true, fill: c, mono: true }) + T(x + 130, base + 40, lbl, { anchor: 'middle', size: 26, fill: C.t2 });
+      h += Ln(60, base, 1200, base, { c: C.t2 });
+      h += bar(100, 1000000, '1,000,000', C.info, '某月创建 · 示例');
+      h += bar(480, 800000, '800,000', C.buy, '已兑换 · 示意');
+      h += bar(860, 200000, '200,000', C.gold, '月末未兑换');
+      h += R(1240, 120, 380, 300, { fill: C.panel, stroke: C.gold });
+      h += T(1260, 180, '平台收入', { size: 26, fill: C.t2, plain: true }) + T(1260, 236, '1,000,000 × 1%', { size: 28, mono: true, plain: true }) + T(1260, 290, '= 10,000 USDT', { size: 34, bold: true, fill: C.buy, mono: true, plain: true });
+      h += T(1260, 350, '沉淀资金', { size: 26, fill: C.t2, plain: true }) + T(1260, 396, '200,000 留在账本', { size: 28, bold: true, fill: C.gold, plain: true });
+      h += T(60, 60, '沉淀资金 = 已创建 − 已兑换 − 已撤销', { size: 32, bold: true, fill: C.gold });
+    } else {
+      const cards = [['码泄露', '晒卡未遮挡 → 他人抢先兑换，无法追回'], ['诈骗工具', '诈骗者要求「用礼品卡付款」，兑换后不可追回'], ['枚举攻击', '码足够长随机 · 账户/IP/设备限流 · 超阈值锁定'], ['洗钱与价格风险', '记录创建者与兑换者 · 锁定的是币，不是法币价值 · 批量创建 API 仅限 KYB 机构']];
+      cards.forEach(([t, s], i) => { const x = 20 + (i % 2) * 810, y = 20 + Math.floor(i / 2) * 290; h += R(x, y, 790, 260, { fill: 'rgba(246,70,93,.07)', stroke: i === 3 ? C.warn : C.sell }) + T(x + 36, y + 76, t, { size: 40, bold: true, fill: i === 3 ? C.warn : C.sell, plain: true }); const parts = s.split(' · '); parts.forEach((p, k) => h += T(x + 36, y + 140 + k * 44, p, { size: 27, plain: true })); });
+    }
+    svgEl(el.querySelector('#gr'), h);
+  }
+
+  // 10. card timeline
+  function cardTL(el, st) {
+    let h = '';
+    if (st === 0) {
+      h += Box(40, 60, 340, 130, '用户刷卡', '受理该卡组织的商户', { stroke: C.info });
+      h += A(380, 125, 500, 125);
+      h += Box(500, 60, 420, 130, '实时卖币付款', '从币安资金账户', { stroke: C.gold });
+      h += A(920, 125, 1040, 125);
+      h += Box(1040, 60, 560, 130, '发卡行：持牌机构', '通常为持牌电子货币机构', { stroke: C.buy });
+      h += T(40, 300, '交易所本身不发卡', { size: 44, bold: true, fill: C.gold });
+      const terms = [['卡组织', 'Visa、Mastercard：传递授权与清算消息'], ['发卡行', '发行卡片的持牌机构'], ['收单行', '为商户开通刷卡收款']];
+      terms.forEach(([a, b], i) => h += T(40, 380 + i * 64, a, { size: 32, bold: true, fill: C.info }) + T(200, 380 + i * 64, b, { size: 30 }));
+      svgEl(el.querySelector('#ctl'), h); return;
+    }
+    const ev = [['2023-01', '巴西推出 · Mastercard', C.buy, 1], ['2023-09 前后', 'Mastercard 结束拉美、巴林合作', C.sell, 1], ['2023-12-20', '欧洲经济区停止 Visa 借记卡 · 发卡方 Contis', C.sell, 2], ['2025-10', '巴西重新上线 Mastercard 卡', C.buy, 2]];
+    const X = i => 120 + i * 420;
+    h += Ln(60, 140, 1600, 140, { c: C.t2, w: 4 });
+    ev.forEach(([d, t, c, k], i) => {
+      const on = k <= st;
+      h += `<circle cx="${X(i)}" cy="140" r="16" fill="${on ? c : C.line}"/>` + T(X(i), 100, d, { anchor: 'middle', size: 28, bold: true, fill: on ? c : C.dim, mono: true });
+      const parts = t.split(' · ');
+      parts.forEach((p, j) => h += T(X(i), 200 + j * 38, p, { anchor: 'middle', size: 25, fill: on ? C.text : C.dim }));
+    });
+    h += T(60, 40, '新闻报道 · 地区变化频繁', { size: 24, fill: C.t2 });
+    if (st >= 3) {
+      h += R(40, 320, 760, 270, { fill: C.panel, stroke: C.gold }) + T(70, 370, '返现 · 多个第三方来源', { size: 28, fill: C.t2, plain: true });
+      h += T(70, 430, '欧洲版：BNB 月均持仓 7 档', { size: 30, bold: true, plain: true }) + T(70, 478, '0 BNB 0.1% → 600 BNB 8%', { size: 30, fill: C.gold, plain: true, mono: true });
+      h += T(70, 540, '巴西版：最高 2% · 每月上限 120 雷亚尔', { size: 28, plain: true });
+      h += R(840, 320, 760, 270, { fill: C.panel, stroke: C.warn }) + T(870, 370, '兑换费 · 多个第三方来源', { size: 28, fill: C.t2, plain: true });
+      h += T(870, 440, '加密货币 → 法币：0.9%', { size: 36, bold: true, fill: C.warn, plain: true });
+      h += T(870, 500, '巴西版外币交易另收 1%–2%', { size: 28, plain: true }) + T(870, 550, '以 App 内披露为准', { size: 26, fill: C.t2, plain: true });
+    } else {
+      h += R(40, 340, 1560, 160, { fill: 'rgba(246,70,93,.06)', stroke: C.line });
+      h += T(820, 410, st === 1 ? '卡业务依赖持牌合作方：合作方一退出，产品就下线' : '欧洲停卡时，币安公开建议用户改用 Binance Pay', { anchor: 'middle', size: 32, bold: true, plain: true, fill: st === 1 ? C.sell : C.info });
+      h += T(820, 460, st === 1 ? '交易所无法单方面保证可用性' : 'Pay 不依赖卡组织 · 新闻报道 2023 年', { anchor: 'middle', size: 26, plain: true, fill: C.t2 });
+    }
+    svgEl(el.querySelector('#ctl'), h);
+  }
+
+  // 11. authorization vs clearing
+  function authStep(el, st) {
+    el.querySelector('#au-h').textContent = st <= 2 ? '第一阶段：授权，同步、强实时' : st === 3 ? '第二阶段：清算，1–3 天后，异步' : '边界：币不上链，法币走银行';
+    let h = '';
+    // zones
+    h += R(0, 0, 690, 610, { fill: 'rgba(91,156,255,.05)', stroke: st === 4 ? C.info : C.line, dash: '10 6' }) + T(20, 600 - 14, '法币世界 · 持牌机构', { size: 24, bold: true, fill: C.info });
+    h += R(700, 0, 940, 610, { fill: 'rgba(240,185,11,.04)', stroke: st === 4 ? C.gold : C.line, dash: '10 6' }) + T(1620, 600 - 14, '链下 · 币安账本内', { anchor: 'end', size: 24, bold: true, fill: C.gold });
+    const L = [['商户 POS', ''], ['卡组织', 'Visa / MC'], ['发卡处理商', 'Issuer'], ['卡服务', 'card-service'], ['风控', 'risk-service'], ['报价', 'quote'], ['账本', 'ledger-service']];
+    const X = i => [110, 340, 570, 850, 1060, 1270, 1500][i];
+    const M = [[0, 1, '授权 50 EUR', 0], [1, 2, '转发', 0], [2, 3, '实时回调 · 数百毫秒', 0], [3, 4, '卡状态、商户类别、限额', 1], [3, 5, 'BTC/EUR 报价', 1], [5, 3, '1 BTC = 60,000 EUR', 1, 1],
+      [3, 6, '冻结 0.00084083 BTC', 2], [3, 2, '批准', 2, 1], [2, 0, '批准 → 交易成功', 2, 1], [2, 3, '1–3 天后：清算 50 EUR', 3], [3, 6, '消耗冻结 · 卖币 · 法币应付', 3]];
+    h += (st === 4 ? '<g opacity=".22">' : '<g>') + seq(L, X, M, st, { bw: 100, y0: 124, dy: 40, ms: 21, hs: 24, bot: 540 }) + '</g>';
+    if (st === 3) h += Ln(20, 124 + 8.5 * 40, 1620, 124 + 8.5 * 40, { c: C.warn, w: 2, dash: '10 6' }) + T(1620, 124 + 8.5 * 40 - 8, '— 1–3 天 —', { anchor: 'end', size: 22, fill: C.warn });
+    if (st === 4) {
+      h += R(740, 560 - 4, 0, 0, {});
+      h += R(160, 230, 1320, 200, { fill: 'rgba(13,14,16,.92)', stroke: C.sell, rx: 16 });
+      h += T(820, 290, '区块链：整条链路都不经过', { anchor: 'middle', size: 34, bold: true, fill: C.sell, plain: true });
+      h += T(820, 344, 'BTC 在币安账本内被卖掉 → 平台兑换账户 → 银行转账 → 发卡行', { anchor: 'middle', size: 28, plain: true });
+      h += T(820, 396, '发卡行要求预存法币 Prefunding：余额不足，授权失败', { anchor: 'middle', size: 28, fill: C.warn, plain: true });
+    }
+    svgEl(el.querySelector('#au'), h);
+  }
+
+  // 12. auth ≠ clearing
+  function diffStep(el, st) {
+    el.querySelector('#df-h').textContent = st <= 1 ? '授权金额 ≠ 清算金额' : st === 2 ? '退货：退法币或稳定币，不退原币' : '卡业务的三个失败场景';
+    let h = '';
+    if (st <= 2) {
+      const base = 480, sc = 1.6;
+      const pair = (x, title, a, c, col) => {
+        let s = T(x + 210, 40, title, { anchor: 'middle', size: 32, bold: true });
+        s += `<rect x="${x}" y="${base - a * sc}" width="180" height="${a * sc}" rx="8" fill="${C.info}" opacity=".7"/>` + T(x + 90, base - a * sc - 14, '授权 ' + a, { anchor: 'middle', size: 28, bold: true, fill: C.info });
+        s += `<rect x="${x + 240}" y="${base - c * sc}" width="180" height="${c * sc}" rx="8" fill="${col}" opacity=".85"/>` + T(x + 330, base - c * sc - 14, '清算 ' + c, { anchor: 'middle', size: 28, bold: true, fill: col });
+        return s;
+      };
+      h += Ln(40, base, 1100, base, { c: C.t2 });
+      h += pair(80, '酒店', 200, 160, C.buy) + pair(620, '加油站', 1, 60, C.warn);
+      h += T(80, base + 50, 'EUR · 示例', { size: 24, fill: C.t2 });
+      const side = [['授权时冻结并卖币', '清算时按最终金额结算'], ['已卖 200 EUR 等值 BTC', '清算 160 → 要退 40 EUR', '退 EUR？还是买回 BTC？', '汇率风险由谁承担 → 产品规则'], ['退货 REFUNDED', '通常以法币或稳定币退回', '不按原 BTC 数量退', '用户承担期间价格变化 · 业界']][st];
+      h += R(1160, 100, 460, 380, { fill: C.panel, stroke: st === 2 ? C.warn : C.gold });
+      side.forEach((s, k) => h += T(1190, 170 + k * 70, s, { size: 28, bold: k === 0, fill: k === 0 ? (st === 2 ? C.warn : C.gold) : C.text, plain: true }));
+      if (st === 1) h += A(530, base - 200 * sc + 10, 530, base - 160 * sc - 4, { c: C.sell }) + T(546, base - 180 * sc + 12, '−40', { size: 30, bold: true, fill: C.sell });
+    } else {
+      const cards = [['2023 合作方退出', 'Mastercard 结束拉美合作 · 欧洲发卡方停止服务', '命脉在持牌合作方手里', C.sell], ['授权超时', '报价服务延迟 2 秒 · 卡组织已判超时拒绝', '对策：报价缓存 · 降级为固定价差', C.warn], ['清算 > 授权', '小费、汇率差多出 3 EUR · 冻结已释放、余额不足', '平台形成垫付 · 事后追收', C.sell]];
+      cards.forEach(([t, a, b, c], i) => { const y = 10 + i * 196; h += R(20, y, 1600, 180, { fill: 'rgba(246,70,93,.06)', stroke: c }) + T(60, y + 64, t, { size: 36, bold: true, fill: c, plain: true }) + T(60, y + 118, a, { size: 28, plain: true }) + T(60, y + 160, b, { size: 26, fill: C.t2, plain: true }); });
+    }
+    svgEl(el.querySelector('#df'), h);
+  }
+
+  // 13. unit economics waterfall
+  function econStep(el, st) {
+    let h = '';
+    const items = [['兑换费 50 × 0.9%', 0.45, 1], ['交换费分成 50 × 0.2% × 50%', 0.05, 1], ['返现 50 × 1%', -0.5, 2], ['发卡与卡组织成本', -0.1, 2]];
+    const base = 360, sc = 360, x0 = 120, bw = 220, gap = 60;
+    h += Ln(80, base, 1600, base, { c: C.t2, w: 2 }) + T(70, base + 8, '0', { anchor: 'end', size: 22, fill: C.t2 });
+    h += R(40, 20, 1560, 90, { fill: C.panel, stroke: st === 0 ? C.gold : C.line });
+    h += T(70, 76, '用户付出 = 50 ÷ 60,000 × (1 + 0.9%) ≈ 0.00084083 BTC', { size: 32, bold: true, fill: st === 0 ? C.gold : C.text, mono: true, plain: true });
+    let cum = 0;
+    items.forEach(([t, v, k], i) => {
+      const on = k <= st, x = x0 + i * (bw + gap);
+      const y1 = base - cum * sc, y2 = base - (cum + v) * sc;
+      if (on) {
+        h += `<rect x="${x}" y="${Math.min(y1, y2)}" width="${bw}" height="${Math.max(Math.abs(y1 - y2), 3)}" rx="6" fill="${v > 0 ? C.buy : C.sell}" opacity=".85"/>`;
+        h += T(x + bw / 2, Math.min(y1, y2) - 14, (v > 0 ? '+' : '−') + Math.abs(v).toFixed(2), { anchor: 'middle', size: 30, bold: true, fill: v > 0 ? C.buy : C.sell, mono: true });
+        if (i < 3) h += Ln(x + bw, y2, x + bw + gap, y2, { c: C.dim, w: 2, dash: '4 4' });
+      }
+      h += T(x + bw / 2, 500, t.split(' ')[0], { anchor: 'middle', size: 26, bold: true, fill: on ? C.text : C.dim }) + T(x + bw / 2, 534, t.split(' ').slice(1).join(' '), { anchor: 'middle', size: 20, fill: C.t2, mono: true });
+      cum += on ? v : 0;
+    });
+    if (st === 3) {
+      const x = x0 + 4 * (bw + gap), y = base - (-0.1) * sc;
+      h += `<rect x="${x}" y="${base}" width="${bw}" height="${0.1 * sc}" rx="6" fill="${C.sell}"/>` + T(x + bw / 2, y + 40, '−0.10', { anchor: 'middle', size: 34, bold: true, fill: C.sell, mono: true }) + T(x + bw / 2, 500, '单笔净收入', { anchor: 'middle', size: 26, bold: true, fill: C.sell });
+      h += R(1100, 140, 500, 80, { fill: 'rgba(240,185,11,.1)', stroke: C.gold }) + T(1350, 192, '用卡获客、锁定 BNB 持仓', { anchor: 'middle', size: 30, bold: true, fill: C.gold, plain: true });
+    }
+    if (st === 1) h += T(1580, 190, '欧盟借记卡交换费上限 0.2%', { anchor: 'end', size: 28, fill: C.info });
+    svgEl(el.querySelector('#ec'), h);
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

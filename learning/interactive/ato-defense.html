@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>盗号攻防实验</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .layout { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+  .def-list { list-style: none; margin: 0; padding: 0; }
+  .def-list li { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; background: var(--surface); transition: border-color .15s, background .15s; }
+  .def-list li.on { border-color: var(--buy); background: var(--buy-soft); }
+  .def-list label.sw { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer; }
+  .def-list input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--buy); flex: none; }
+  .def-list .cost { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--warn); font-weight: 600; white-space: nowrap; }
+  .def-list .ux { font-size: 12px; color: var(--text-2); margin: 3px 0 0 24px; }
+
+  .scen-row button.on { background: var(--sell-soft); border-color: var(--sell); color: var(--sell); font-weight: 600; }
+
+  .chain { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; counter-reset: st; }
+  .step { position: relative; border: 1.5px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 10px; min-height: 118px; transition: border-color .2s, background .2s, opacity .2s, transform .2s; }
+  .step .no { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
+  .step .t { font-weight: 650; font-size: 13.5px; margin: 2px 0 4px; line-height: 1.35; }
+  .step .d { font-size: 12px; color: var(--text-2); line-height: 1.45; }
+  .step .tag { display: none; margin-top: 6px; font-size: 12px; font-weight: 600; line-height: 1.4; }
+  .step.active { border-color: var(--sell); background: var(--sell-soft); transform: translateY(-2px); }
+  .step.passed { border-color: var(--sell); opacity: .85; }
+  .step.blocked { border-color: var(--buy); background: var(--buy-soft); border-width: 2.5px; }
+  .step.blocked .tag { display: block; color: var(--buy); }
+  .step.soft { border-color: var(--warn); background: var(--warn-soft); border-width: 2.5px; }
+  .step.soft .tag { display: block; color: var(--warn); }
+  .step.stolen { border-color: var(--sell); background: var(--sell-soft); border-width: 2.5px; }
+  .step.stolen .tag { display: block; color: var(--sell); }
+  .step.skipped { opacity: .35; }
+  .step .marks { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .step .marks .pill { font-size: 11px; font-weight: 500; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+  .meter { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-top: 4px; }
+  .meter > i { display: block; height: 100%; width: 0; transition: width .3s; }
+  .meter.good > i { background: var(--buy); }
+  .meter.bad > i { background: var(--warn); }
+  .verdict { font-weight: 650; }
+
+  .mx td, .mx th { white-space: nowrap; }
+  .mx td.res-block { color: var(--buy); font-weight: 600; }
+  .mx td.res-soft { color: var(--warn); font-weight: 600; }
+  .mx td.res-lost { color: var(--sell); font-weight: 600; }
+  .mx tr.cur td { background: var(--accent-soft); }
+
+  .resultbox { margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../backstage/B03-account-security.md">📖 对应章节：B03 账户安全风控</a>
+  </header>
+  <h1>盗号攻防实验</h1>
+  <p class="lead">选择一个盗号剧本，打开或关闭左侧的防线，然后发动攻击。观察攻击在哪一步被拦住、被哪道防线拦住，以及这道防线让正常用户多付出多少体验成本。目标是找到"拦得住"和"不烦人"之间的平衡点。</p>
+
+  <div class="callout info small">
+    <b>怎么玩：</b>
+    1. 在左侧勾选防线。每道防线右侧的数字是它的"摩擦分"（正常用户的体验成本）。
+    2. 在上方选择攻击剧本。
+    3. 点"发动攻击"，看攻击链逐步推进。绿色 = 硬拦截；橙色 = 软拦截（依赖用户自己醒悟，按 0.5 计）；红色 = 资产被盗。
+    4. 看下方统计面板：拦截率按全部 5 个剧本计算，摩擦分是全部已开防线的成本之和。
+  </div>
+
+  <h2>1. 选择攻击剧本</h2>
+  <div class="btn-row scen-row" id="scenRow"></div>
+  <p class="small muted" id="scenDesc"></p>
+  <div class="btn-row">
+    <button id="btnRun" class="primary">发动攻击 ▶</button>
+    <button id="btnStep">单步</button>
+    <button id="btnReset">重置</button>
+  </div>
+
+  <div class="layout">
+    <div class="card">
+      <h3>防线开关</h3>
+      <div class="btn-row">
+        <button id="pNone" class="small">全关</button>
+        <button id="pAll" class="small">全开</button>
+        <button id="pBase" class="small">常见默认</button>
+      </div>
+      <ul class="def-list" id="defList"></ul>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3 id="chainTitle">攻击链</h3>
+        <div class="chain" id="chain"></div>
+        <div class="resultbox" id="result"></div>
+      </div>
+
+      <div class="card">
+        <h3>统计面板</h3>
+        <div class="stats">
+          <div class="stat"><span class="k">拦截率（5 个剧本）</span><span class="v" id="sRate">0%</span><div class="meter good"><i id="mRate"></i></div></div>
+          <div class="stat"><span class="k">正常用户摩擦分</span><span class="v" id="sFric">0</span><div class="meter bad"><i id="mFric"></i></div></div>
+          <div class="stat"><span class="k">每 1 分摩擦换来的拦截</span><span class="v" id="sEff">—</span></div>
+        </div>
+        <p class="small verdict" id="verdict"></p>
+        <div class="table-wrap">
+          <table class="mx">
+            <thead><tr><th>剧本</th><th>结果</th><th>首个拦截点</th><th>命中防线（硬 / 软）</th></tr></thead>
+            <tbody id="matrix"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>过程日志</h3>
+        <div class="log" id="log">点"发动攻击"开始。</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>2. 试一试</h2>
+  <div class="grid cols-3">
+    <div class="card small">
+      <h3>试一试 A：只靠一把锁</h3>
+      <p>点"全关"，然后只打开 <b>Passkey</b>。分别运行 5 个剧本。Passkey 拦住了哪几个？为什么它对"恶意插件盗 API Key"和"客服冒充"无效？</p>
+    </div>
+    <div class="card small">
+      <h3>试一试 B：邮件确认为什么失效</h3>
+      <p>只打开"提币邮件确认"，运行"钓鱼站"和"撞库"。同一道防线，为什么一个拦住、一个漏过？再打开"改密后冷却"，钓鱼站剧本在哪一步被拦？</p>
+    </div>
+    <div class="card small">
+      <h3>试一试 C：找平衡点</h3>
+      <p>只拦住一次不够可靠。找出一组防线：除"客服冒充"外，每个剧本都有至少 2 道<b>硬</b>拦截（看矩阵最后一列），且摩擦分最低。最低能做到几分？为什么"客服冒充"始终只能软拦截？回到 <a href="../backstage/B03-account-security.md">B03 第 7 节</a>，想想技术之外还能做什么。</p>
+    </div>
+  </div>
+
+  <footer class="note">
+    本页是教学模型。拦截关系和摩擦分是简化的示例值，用于说明"纵深防御"与"体验成本"的权衡，不代表币安的真实规则或参数。
+    攻击链只描述到理解防线所需的程度。阅读 <a href="../backstage/B03-account-security.md">B03-account-security.md</a> 了解完整说明。
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- 防线 ----------
+  // cost：正常用户摩擦分（示例）；ux：正常用户实际感受
+  var DEFENSES = [
+    { id: 'fp', name: '设备指纹', cost: 1, ux: '几乎无感；后台识别设备与 IP 信誉' },
+    { id: 'geo', name: '异地 / 新设备二次验证', cost: 3, ux: '换手机、出差时多一次验证，约 30 秒' },
+    { id: 'passkey', name: 'Passkey / FIDO2', cost: 2, ux: '首次设置约 1 分钟；之后登录更快' },
+    { id: 'cool', name: '改密 / 改 2FA 后提币冷却', cost: 3, ux: '改安全设置后 24–48 小时不能提币' },
+    { id: 'wl', name: '新地址白名单冷却', cost: 3, ux: '新提币地址要等 24 小时（示例）' },
+    { id: 'mail', name: '提币邮件确认', cost: 2, ux: '每次提币多点一次邮件链接' },
+    { id: 'apiip', name: 'API Key IP 白名单', cost: 1, ux: '开发者配置一次服务器 IP' },
+    { id: 'apc', name: '反钓鱼码', cost: 1, ux: '设置一次；收邮件时看一眼' },
+    { id: 'beh', name: '行为异常评分', cost: 2, ux: '偶尔误判，需要补一次验证' }
+  ];
+  var MAX_FRIC = DEFENSES.reduce(function (s, d) { return s + d.cost; }, 0);
+  var defById = {};
+  DEFENSES.forEach(function (d) { defById[d.id] = d; });
+
+  // ---------- 剧本 ----------
+  // blocks[defId] = { at: 步骤下标, soft: 是否软拦截, why: 原因 }
+  // miss[defId] = 该防线开启但漏过的原因
+  var SCENARIOS = [
+    {
+      id: 'phish', name: '钓鱼站',
+      desc: '攻击者发送仿冒邮件，把用户引到仿冒域名。用户输入密码和 2FA 码，攻击者实时转发到真站登录。',
+      steps: [
+        { t: '仿冒邮件', d: '邮件伪装成官方安全通知，附带仿冒域名链接。' },
+        { t: '实时转发登录', d: '用户在仿冒站输入密码和验证码，攻击者同步提交到真站。' },
+        { t: '改绑 2FA 与邮箱', d: '攻击者换成自己的验证器和邮箱，把用户锁在门外。' },
+        { t: '添加新提币地址', d: '攻击者把自己的地址加入地址簿。' },
+        { t: '发起提币', d: '攻击者提交全额提币。' },
+        { t: '资产离开平台', d: '链上转出，不可逆。' }
+      ],
+      blocks: {
+        apc: { at: 0, soft: true, why: '官方邮件带用户设置的反钓鱼码，仿冒邮件没有。拦截依赖用户自己核对。' },
+        passkey: { at: 1, soft: false, why: 'Passkey 签名绑定真实域名。仿冒域名拿不到可用的签名，转发失败。' },
+        cool: { at: 4, soft: false, why: '改绑 2FA 后进入冷却期，提币被拒绝。真实用户收到通知并冻结账户。' },
+        wl: { at: 4, soft: false, why: '新地址仍在冷却期，不能作为提币目标。' }
+      },
+      miss: {
+        fp: '设备指纹只给出"新设备"信号，本身不拦截。',
+        geo: '二次验证码也被仿冒站实时转发了。',
+        beh: '风险分升高后系统要求挑战升级，但仿冒站把挑战码也实时转发了。',
+        mail: '攻击者已在第 3 步改绑邮箱，确认邮件发给了攻击者。',
+        apiip: '本剧本不使用 API Key。'
+      }
+    },
+    {
+      id: 'stuff', name: '撞库',
+      desc: '攻击者用其他网站泄露的"邮箱 + 密码"批量尝试登录。该用户在多个网站使用同一密码，未绑定验证器。',
+      steps: [
+        { t: '获取泄露密码库', d: '其他网站的数据库泄露，被打包流通。' },
+        { t: '批量尝试登录', d: '脚本用同一批设备和代理 IP 尝试大量账户。' },
+        { t: '登录成功', d: '这个用户的密码与泄露库一致。' },
+        { t: '添加新提币地址', d: '攻击者不改安全设置，直接加地址，避免触发冷却。' },
+        { t: '发起提币', d: '提交全额提币。' },
+        { t: '资产离开平台', d: '链上转出，不可逆。' }
+      ],
+      blocks: {
+        fp: { at: 1, soft: false, why: '同一设备指纹在短时间内登录大量账户，IP 来自代理池，批量登录被阻断。' },
+        beh: { at: 1, soft: false, why: '输入节奏是脚本特征，风险分进入高档。' },
+        passkey: { at: 2, soft: false, why: '账户只接受 Passkey 登录，单有密码无法登录。' },
+        geo: { at: 2, soft: false, why: '新设备登录要求邮箱验证码，攻击者没有用户邮箱。' },
+        wl: { at: 4, soft: false, why: '新地址在冷却期内，不能提币。' },
+        mail: { at: 4, soft: false, why: '确认邮件发到用户本人邮箱，攻击者无法点击确认。' }
+      },
+      miss: {
+        cool: '攻击者没有修改安全设置，冷却期不触发。',
+        apc: '本剧本不依赖邮件诱导。',
+        apiip: '本剧本不使用 API Key。'
+      }
+    },
+    {
+      id: 'sim', name: 'SIM 卡劫持',
+      desc: '攻击者收集用户的个人信息，冒充用户在运营商补办手机卡，从而接收用户的短信验证码。',
+      steps: [
+        { t: '收集个人信息', d: '来自数据泄露和社交网络。' },
+        { t: '运营商补卡', d: '用户手机突然无信号。短信开始发到攻击者手里。' },
+        { t: '短信重置密码并登录', d: '账户只绑定了短信验证。' },
+        { t: '改绑邮箱与 2FA', d: '攻击者接管全部恢复渠道。' },
+        { t: '添加新提币地址', d: '加入攻击者地址。' },
+        { t: '发起提币', d: '提交全额提币。' },
+        { t: '资产离开平台', d: '链上转出，不可逆。' }
+      ],
+      blocks: {
+        passkey: { at: 2, soft: false, why: '启用 Passkey 后，短信不能单独完成登录或重置。' },
+        wl: { at: 5, soft: false, why: '新地址在冷却期内，不能提币。' },
+        cool: { at: 5, soft: false, why: '重置密码与改绑 2FA 触发冷却，提币被拒绝。' }
+      },
+      miss: {
+        fp: '设备指纹只给出"新设备"信号，本身不拦截。',
+        geo: '二次验证码通过短信发送，攻击者已控制手机号。',
+        beh: '风险分升高后系统发短信做挑战升级，攻击者已控制手机号。',
+        mail: '攻击者已在第 4 步改绑邮箱。',
+        apc: '本剧本不依赖邮件诱导。',
+        apiip: '本剧本不使用 API Key。'
+      }
+    },
+    {
+      id: 'plugin', name: '恶意插件盗 API Key',
+      desc: '用户安装了一个伪装成行情工具的浏览器插件。插件读取页面上的 API Key，攻击者用它在站内"拉盘出货"（参考 2018 年公开报道的 VIA 事件）。',
+      steps: [
+        { t: '安装恶意插件', d: '插件申请了"读取所有网站数据"权限。' },
+        { t: '窃取 API Key', d: '插件读取 Key 与 Secret，发给攻击者。' },
+        { t: '攻击者服务器调用 API', d: '请求来自攻击者自己的服务器。' },
+        { t: '被盗账户高价买入', d: '用受害者余额买入一个冷门币，推高价格。' },
+        { t: '攻击者账户卖出', d: '攻击者预先充值的账户在高位卖出。' },
+        { t: '攻击者提走获利', d: '从攻击者自己的账户提币。受害者账户没有提币记录。' }
+      ],
+      blocks: {
+        apiip: { at: 2, soft: false, why: '请求 IP 不在该 Key 的 IP 白名单内，签名正确也被拒绝。' },
+        beh: { at: 3, soft: false, why: '账户突然用全部余额市价买入冷门币，与历史交易模式不符，交易风控暂停该 Key。' }
+      },
+      miss: {
+        fp: 'API 请求不经过网页登录，设备指纹不参与。',
+        geo: 'API 请求不经过网页登录，不触发二次验证。',
+        passkey: 'API Key 是独立凭证，不经过 Passkey。',
+        cool: '攻击者没有修改安全设置。',
+        wl: '攻击者从自己的账户提币，不受受害者白名单约束。',
+        mail: '攻击者从自己的账户提币，确认邮件发给攻击者自己。',
+        apc: '本剧本不依赖邮件诱导。'
+      }
+    },
+    {
+      id: 'social', name: '客服冒充',
+      desc: '攻击者在社交软件上冒充官方客服，声称"账户存在风险，需要把资产转到安全地址"。用户自己完成全部操作。',
+      steps: [
+        { t: '假客服主动联系', d: '对方能说出用户的部分个人信息，显得可信。' },
+        { t: '制造紧急感', d: '"30 分钟内不处理，资产会被冻结。"' },
+        { t: '诱导添加"安全地址"', d: '用户本人把攻击者地址加入地址簿。' },
+        { t: '用户本人发起提币', d: '用户在自己的常用设备上操作。' },
+        { t: '用户本人确认邮件', d: '每一步验证都由真实用户完成。' },
+        { t: '资产离开平台', d: '链上转出，不可逆。' }
+      ],
+      blocks: {
+        apc: { at: 0, soft: true, why: '用户被教育"官方只通过带反钓鱼码的邮件联系你"，有机会识破。依赖用户自己判断。' },
+        wl: { at: 3, soft: true, why: '新地址要等 24 小时。用户有时间冷静、向官方渠道核实。依赖用户醒悟。' },
+        beh: { at: 3, soft: true, why: '首次向新地址全额提币，触发风险提示和反诈弹窗。用户仍可坚持提交。' }
+      },
+      miss: {
+        fp: '用户在自己的常用设备上操作，设备可信。',
+        geo: '用户在常用地点操作。',
+        passkey: '用户本人用 Passkey 通过验证。',
+        cool: '没有修改安全设置。',
+        mail: '用户本人点击了确认邮件。',
+        apiip: '本剧本不使用 API Key。'
+      }
+    }
+  ];
+
+  // ---------- 状态 ----------
+  var on = {};
+  var BASE = ['fp', 'geo', 'mail', 'apc'];
+  BASE.forEach(function (id) { on[id] = true; });
+  var cur = SCENARIOS[0];
+  var timer = null;
+  var pos = -1;
+  var outcome = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- 评估 ----------
+  function evaluate(sc) {
+    var hits = [];
+    Object.keys(sc.blocks).forEach(function (id) {
+      if (on[id]) {
+        var b = sc.blocks[id];
+        hits.push({ id: id, at: b.at, soft: b.soft, why: b.why });
+      }
+    });
+    hits.sort(function (a, b) {
+      if (a.at !== b.at) return a.at - b.at;
+      return (a.soft ? 1 : 0) - (b.soft ? 1 : 0);
+    });
+    var hard = hits.filter(function (h) { return !h.soft; });
+    var first = hits.length ? hits[0] : null;
+    var firstHard = hard.length ? hard[0] : null;
+    var stopAt;
+    var result;
+    if (firstHard) {
+      result = 'block'; stopAt = firstHard.at;
+    } else if (hits.length) {
+      result = 'soft'; stopAt = hits[0].at;
+    } else {
+      result = 'lost'; stopAt = sc.steps.length - 1;
+    }
+    return { hits: hits, first: first, firstHard: firstHard, result: result, stopAt: stopAt };
+  }
+  function scoreOf(r) { return r.result === 'block' ? 1 : (r.result === 'soft' ? 0.5 : 0); }
+  function friction() {
+    return DEFENSES.reduce(function (s, d) { return s + (on[d.id] ? d.cost : 0); }, 0);
+  }
+
+  // ---------- 渲染：防线 ----------
+  function renderDefs() {
+    var ul = $('defList');
+    ul.innerHTML = '';
+    DEFENSES.forEach(function (d) {
+      var li = document.createElement('li');
+      if (on[d.id]) li.className = 'on';
+      var lab = document.createElement('label');
+      lab.className = 'sw';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!on[d.id];
+      cb.addEventListener('change', function () {
+        on[d.id] = cb.checked;
+        li.className = cb.checked ? 'on' : '';
+        resetRun();
+        renderStats();
+      });
+      var nm = document.createElement('span');
+      nm.textContent = d.name;
+      var cost = document.createElement('span');
+      cost.className = 'cost';
+      cost.textContent = '摩擦 ' + d.cost;
+      lab.appendChild(cb); lab.appendChild(nm); lab.appendChild(cost);
+      var ux = document.createElement('div');
+      ux.className = 'ux';
+      ux.textContent = d.ux;
+      li.appendChild(lab); li.appendChild(ux);
+      ul.appendChild(li);
+    });
+  }
+
+  // ---------- 渲染：剧本按钮 ----------
+  function renderScenButtons() {
+    var row = $('scenRow');
+    row.innerHTML = '';
+    SCENARIOS.forEach(function (sc) {
+      var b = document.createElement('button');
+      b.textContent = sc.name;
+      if (sc === cur) b.className = 'on';
+      b.addEventListener('click', function () {
+        cur = sc;
+        renderScenButtons();
+        resetRun();
+        renderStats();
+      });
+      row.appendChild(b);
+    });
+    $('scenDesc').textContent = cur.desc;
+  }
+
+  // ---------- 渲染：攻击链 ----------
+  function renderChain() {
+    var box = $('chain');
+    box.innerHTML = '';
+    $('chainTitle').textContent = '攻击链：' + cur.name + '（' + cur.steps.length + ' 步）';
+    var r = evaluate(cur);
+    cur.steps.forEach(function (s, i) {
+      var el = document.createElement('div');
+      el.className = 'step';
+      el.id = 'st' + i;
+      var no = document.createElement('div'); no.className = 'no'; no.textContent = '第 ' + (i + 1) + ' 步';
+      var t = document.createElement('div'); t.className = 't'; t.textContent = s.t;
+      var d = document.createElement('div'); d.className = 'd'; d.textContent = s.d;
+      var tag = document.createElement('div'); tag.className = 'tag'; tag.id = 'tag' + i;
+      var marks = document.createElement('div'); marks.className = 'marks';
+      r.hits.forEach(function (h) {
+        if (h.at === i) {
+          var p = document.createElement('span');
+          p.className = 'pill ' + (h.soft ? 'warn' : 'buy');
+          p.textContent = '🛡 ' + defById[h.id].name;
+          marks.appendChild(p);
+        }
+      });
+      el.appendChild(no); el.appendChild(t); el.appendChild(d); el.appendChild(marks); el.appendChild(tag);
+      box.appendChild(el);
+    });
+  }
+
+  // ---------- 动画 ----------
+  function stepOnce() {
+    var r = outcome || (outcome = evaluate(cur));
+    if (pos === -1) {
+      $('log').innerHTML = '';
+      $('result').innerHTML = '';
+      log('note', '剧本：' + cur.name + '。已开启防线 ' + countOn() + ' 道。');
+    }
+    if (pos >= r.stopAt) { finish(r); return false; }
+    if (pos >= 0) {
+      var prev = $('st' + pos);
+      prev.classList.remove('active');
+      prev.classList.add('passed');
+    }
+    pos += 1;
+    var el = $('st' + pos);
+    el.classList.add('active');
+    log('', '第 ' + (pos + 1) + ' 步：' + cur.steps[pos].t);
+    // 本步开启但漏过的防线：只在相关步骤提示一次
+    if (pos === r.stopAt) { finish(r); return false; }
+    var softHere = r.hits.filter(function (h) { return h.at === pos && h.soft; });
+    softHere.forEach(function (h) {
+      log('note', '  ⚠ ' + defById[h.id].name + ' 发出提醒，但用户仍可继续（软拦截）。');
+    });
+    return true;
+  }
+
+  function finish(r) {
+    stopTimer();
+    var el = $('st' + r.stopAt);
+    el.classList.remove('active');
+    var tag = $('tag' + r.stopAt);
+    var res = $('result');
+    var html = '';
+    if (r.result === 'block') {
+      el.classList.add('blocked');
+      tag.textContent = '✔ 被「' + defById[r.firstHard.id].name + '」拦截';
+      log('ok', '✔ 在第 ' + (r.stopAt + 1) + ' 步被拦截：' + defById[r.firstHard.id].name);
+      log('ok', '  ' + r.firstHard.why);
+      html += '<div class="callout" style="border-color:var(--buy);background:var(--buy-soft)"><b>拦截成功</b>：攻击停在第 ' + (r.stopAt + 1) + ' 步「' + esc(cur.steps[r.stopAt].t) + '」。<br>防线：<b>' + esc(defById[r.firstHard.id].name) + '</b>。' + esc(r.firstHard.why) + '<br><span class="small">这道防线的体验成本：' + esc(defById[r.firstHard.id].ux) + '（摩擦 ' + defById[r.firstHard.id].cost + '）。</span></div>';
+    } else if (r.result === 'soft') {
+      el.classList.add('soft');
+      var softs = r.hits.map(function (h) { return defById[h.id].name; }).join('、');
+      tag.textContent = '⚠ 软拦截：' + defById[r.hits[0].id].name;
+      log('note', '⚠ 只有软拦截：' + softs + '。结果取决于用户是否醒悟（按 0.5 计）。');
+      html += '<div class="callout warn"><b>软拦截</b>：' + esc(softs) + ' 能提醒用户，但不能替用户做决定。<br>' + esc(r.hits[0].why) + '</div>';
+    } else {
+      el.classList.add('stolen');
+      tag.textContent = '✘ 资产被盗';
+      log('err', '✘ 攻击链走完，资产被盗。');
+      html += '<div class="callout" style="border-color:var(--sell);background:var(--sell-soft)"><b>资产被盗</b>：没有任何已开启的防线覆盖这个剧本。</div>';
+    }
+    // 其余命中（纵深）
+    var others = r.hits.filter(function (h) { return h !== r.firstHard && !(r.result === 'soft' && h === r.hits[0]); });
+    if (others.length) {
+      html += '<p class="small"><b>纵深：</b>即使第一道失效，后面还有 ' + others.length + ' 道：' + others.map(function (h) {
+        return esc(defById[h.id].name) + '（第 ' + (h.at + 1) + ' 步' + (h.soft ? '，软' : '') + '）';
+      }).join('、') + '。</p>';
+    }
+    // 已开启但漏过
+    var missed = DEFENSES.filter(function (d) { return on[d.id] && cur.miss[d.id]; });
+    if (missed.length) {
+      html += '<p class="small muted"><b>已开启但对本剧本无效：</b>' + missed.map(function (d) {
+        return esc(d.name) + ' —— ' + esc(cur.miss[d.id]);
+      }).join('；') + '</p>';
+      missed.forEach(function (d) { log('', '  · ' + d.name + ' 漏过：' + cur.miss[d.id]); });
+    }
+    for (var i = r.stopAt + 1; i < cur.steps.length; i++) $('st' + i).classList.add('skipped');
+    res.innerHTML = html;
+    pos = cur.steps.length;
+    $('btnRun').disabled = false;
+    $('btnStep').disabled = true;
+  }
+
+  function run() {
+    resetRun();
+    $('btnRun').disabled = true;
+    $('btnStep').disabled = true;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var delay = reduce ? 120 : 650;
+    stepOnce();
+    timer = setInterval(function () {
+      if (!stepOnce()) stopTimer();
+    }, delay);
+  }
+  function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
+
+  function resetRun() {
+    stopTimer();
+    pos = -1;
+    outcome = null;
+    renderChain();
+    $('result').innerHTML = '';
+    $('log').textContent = '点"发动攻击"开始。';
+    $('btnRun').disabled = false;
+    $('btnStep').disabled = false;
+  }
+
+  // ---------- 统计 ----------
+  function renderStats() {
+    var tb = $('matrix');
+    tb.innerHTML = '';
+    var total = 0;
+    SCENARIOS.forEach(function (sc) {
+      var r = evaluate(sc);
+      total += scoreOf(r);
+      var tr = document.createElement('tr');
+      if (sc === cur) tr.className = 'cur';
+      var c1 = document.createElement('td'); c1.textContent = sc.name;
+      var c2 = document.createElement('td');
+      var c3 = document.createElement('td');
+      if (r.result === 'block') {
+        c2.className = 'res-block'; c2.textContent = '拦截';
+        c3.textContent = '第 ' + (r.firstHard.at + 1) + ' 步 · ' + defById[r.firstHard.id].name;
+      } else if (r.result === 'soft') {
+        c2.className = 'res-soft'; c2.textContent = '软拦截';
+        c3.textContent = '第 ' + (r.hits[0].at + 1) + ' 步 · ' + defById[r.hits[0].id].name;
+      } else {
+        c2.className = 'res-lost'; c2.textContent = '被盗';
+        c3.textContent = '—';
+      }
+      var nh = r.hits.filter(function (h) { return !h.soft; }).length;
+      var c4 = document.createElement('td'); c4.className = 'num'; c4.textContent = nh + ' / ' + (r.hits.length - nh);
+      tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3); tr.appendChild(c4);
+      tb.appendChild(tr);
+    });
+    var rate = total / SCENARIOS.length;
+    var fr = friction();
+    $('sRate').textContent = Math.round(rate * 100) + '%';
+    $('mRate').style.width = Math.round(rate * 100) + '%';
+    $('sFric').textContent = fr + ' / ' + MAX_FRIC;
+    $('mFric').style.width = Math.round(fr / MAX_FRIC * 100) + '%';
+    $('sEff').textContent = fr > 0 ? (rate * 100 / fr).toFixed(1) + '%' : '—';
+    var v;
+    if (fr === 0) v = '没有任何防线：所有剧本都会得手。';
+    else if (rate >= 0.8 && fr <= 12) v = '✔ 平衡良好：拦截率高，正常用户负担可接受。';
+    else if (rate >= 0.8) v = '拦得住，但正常用户负担偏重。试试关掉哪一道防线不影响拦截率？';
+    else if (fr <= 8) v = '用户很轻松，但漏洞明显。看看矩阵里哪个剧本被盗。';
+    else v = '花了不少体验成本，拦截率仍不够。检查是否开了"对当前剧本无效"的防线。';
+    $('verdict').textContent = v;
+  }
+
+  // ---------- 工具 ----------
+  function countOn() { return DEFENSES.filter(function (d) { return on[d.id]; }).length; }
+  function log(cls, text) {
+    var box = $('log');
+    var line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = text;
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function preset(ids) {
+    on = {};
+    ids.forEach(function (id) { on[id] = true; });
+    renderDefs();
+    resetRun();
+    renderStats();
+  }
+
+  // ---------- 绑定 ----------
+  $('btnRun').addEventListener('click', run);
+  $('btnStep').addEventListener('click', function () {
+    if (!stepOnce()) $('btnStep').disabled = true;
+  });
+  $('btnReset').addEventListener('click', resetRun);
+  $('pNone').addEventListener('click', function () { preset([]); });
+  $('pAll').addEventListener('click', function () { preset(DEFENSES.map(function (d) { return d.id; })); });
+  $('pBase').addEventListener('click', function () { preset(BASE); });
+
+  renderDefs();
+  renderScenButtons();
+  resetRun();
+  renderStats();
+})();
+</script>
+</body>
+</html>

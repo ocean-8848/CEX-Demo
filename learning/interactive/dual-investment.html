@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>双币投资拆解</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .seg { display: flex; gap: 6px; }
+  .seg button { flex: 1; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 8px 0; }
+  .stats .stat .v { font-size: 18px; word-break: break-all; }
+  .chart { width: 100%; height: auto; display: block; background: var(--surface-2); border-radius: 8px; }
+  .chart .grid-line { stroke: var(--border); stroke-width: 1; }
+  .chart .l-di { stroke: var(--accent); stroke-width: 5; fill: none; opacity: .55; }
+  .chart .l-dec { stroke: var(--info); stroke-width: 2; fill: none; stroke-dasharray: 6 4; }
+  .chart .l-hold { stroke: var(--text-2); stroke-width: 1.5; fill: none; }
+  .chart .l-k { stroke: var(--sell); stroke-width: 1.2; stroke-dasharray: 4 4; }
+  .chart .l-s { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 2 4; }
+  .chart .l-p { stroke: var(--buy); stroke-width: 1.4; }
+  .chart .dot { fill: var(--buy); }
+  .chart .t-axis { fill: var(--text-2); font-size: 11px; }
+  .chart .t-k { fill: var(--sell); font-size: 12px; }
+  .chart .t-p { fill: var(--buy); font-size: 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 4px; border-radius: 2px; }
+  .formula { font-family: var(--mono); font-size: 13px; background: var(--surface-2); border-radius: 8px; padding: 10px; overflow-x: auto; white-space: pre; }
+  .settle-box { font-size: 16px; font-weight: 650; padding: 10px 12px; border-radius: 8px; margin: 8px 0; }
+  .settle-box.base { background: var(--buy-soft); color: var(--buy); }
+  .settle-box.alt { background: var(--warn-soft); color: var(--warn); }
+  .hint { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+  tr.total td { font-weight: 650; border-top: 2px solid var(--border); }
+  .bar { height: 14px; border-radius: 4px; display: flex; overflow: hidden; margin: 8px 0 4px; background: var(--surface-2); }
+  .bar span { display: block; height: 100%; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../products/P06-structured-products.md">配套章节：P06 结构化产品</a>
+  </header>
+  <h1>双币投资拆解实验</h1>
+  <p class="lead">双币投资 = 存款 + 卖出期权。本页把一笔双币投资拆成两条腿，画出到期价值曲线，证明两者完全等价；再用 Black-Scholes 公式算出期权的公允价格，看平台从中抽走多少。全部数值都是示例。</p>
+
+  <div class="callout warn small">⚠️ 本页仅用于学习产品结构，不构成投资建议。模型为简化版：欧式期权、无手续费、BTC 不计利息，结算价取单一到期价。币安的真实报价和结算规则以官网为准。</div>
+
+  <div class="card small">
+    <strong>怎么玩</strong>
+    <ol style="margin:6px 0 0; padding-left:20px;">
+      <li>选择方向（低买或高卖），填写本金、当前价、目标价、期限。</li>
+      <li>选择 APR 来源："直接输入 APR"，或"波动率→APR"（由隐含波动率计算公允期权费，再扣平台抽成）。</li>
+      <li>拖动"到期价"滑块。看你拿回哪种币、多少；看金色粗线（双币投资）和蓝色虚线（存款 + 卖期权）始终重合。</li>
+      <li>看"定价与平台抽成"卡片：公允期权费和给你的收益之差，就是平台收入。</li>
+    </ol>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+      <h3>产品参数</h3>
+      <label>方向</label>
+      <div class="seg">
+        <button id="btnBuy" class="buy" type="button">低买 Buy Low</button>
+        <button id="btnSell" type="button">高卖 Sell High</button>
+      </div>
+      <div class="hint" id="dirHint"></div>
+      <label for="principal" id="principalLabel">本金（USDT）</label>
+      <input id="principal" type="number" value="1000" min="0" step="any">
+      <label for="spot">当前 BTC 价格 S（USDT）</label>
+      <input id="spot" type="number" value="100000" min="1" step="100">
+      <label for="strike">目标价 K（USDT）</label>
+      <input id="strike" type="number" value="95000" min="1" step="500">
+      <label for="days">期限（天）</label>
+      <div class="range-row"><input id="days" type="range" min="1" max="90" step="1" value="7"><output id="daysOut">7 天</output></div>
+
+      <label>APR 来源</label>
+      <div class="seg">
+        <button id="modeApr" class="primary" type="button">直接输入 APR</button>
+        <button id="modeVol" type="button">波动率→APR</button>
+      </div>
+      <div id="aprBox">
+        <label for="apr">给用户的 APR（%）</label>
+        <input id="apr" type="number" value="36.5" min="0" step="0.1">
+      </div>
+      <label for="iv">隐含波动率 IV（用于公允定价）</label>
+      <div class="range-row"><input id="iv" type="range" min="10" max="150" step="1" value="50"><output id="ivOut">50%</output></div>
+      <div id="takeBox" style="display:none">
+        <label for="take">平台抽成（占公允 APR 的比例）</label>
+        <div class="range-row"><input id="take" type="range" min="0" max="60" step="1" value="27"><output id="takeOut">27%</output></div>
+      </div>
+      <label for="rate">无风险利率 r（USDT 年化 %，示例）</label>
+      <input id="rate" type="number" value="0" min="0" max="20" step="0.5">
+    </div>
+
+    <div class="card">
+      <h3>到期结算</h3>
+      <label for="pexp">到期结算价 P（拖动）</label>
+      <div class="range-row"><input id="pexp" type="range" min="60000" max="140000" step="100" value="85000"><output id="pexpOut">85000</output></div>
+      <div id="settleBox" class="settle-box base">-</div>
+      <div class="stats">
+        <div class="stat"><span class="k">期限收益率 y</span><span class="v" id="sY">-</span></div>
+        <div class="stat"><span class="k">本息（未换币时）</span><span class="v" id="sPI">-</span></div>
+        <div class="stat"><span class="k">到期价值（USDT）</span><span class="v" id="sVal">-</span></div>
+        <div class="stat"><span class="k" id="sHoldK">对比：直接持有</span><span class="v" id="sHold">-</span></div>
+        <div class="stat"><span class="k">相对本金盈亏（USDT 计）</span><span class="v" id="sPnl">-</span></div>
+        <div class="stat"><span class="k">被换币概率（风险中性）</span><span class="v" id="sProb">-</span></div>
+      </div>
+      <h3>拆解：存款 + 卖出期权</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>腿</th><th>内容</th><th class="num">到期价值</th></tr></thead>
+          <tbody>
+            <tr><td>① 存款</td><td id="legDepDesc">-</td><td class="num" id="legDep">-</td></tr>
+            <tr><td>② 卖出期权</td><td id="legOptDesc">-</td><td class="num" id="legOpt">-</td></tr>
+            <tr class="total"><td>① + ②</td><td>拆解合计</td><td class="num" id="legSum">-</td></tr>
+            <tr><td>双币</td><td>直接按规则结算</td><td class="num" id="legDI">-</td></tr>
+            <tr><td>差值</td><td>两者之差</td><td class="num" id="legDiff">-</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>到期价值曲线（横轴：到期价；纵轴：按到期价折算的 USDT 价值）</h3>
+    <svg id="chart" class="chart" viewBox="0 0 640 280" role="img" aria-label="到期价值曲线"></svg>
+    <div class="legend">
+      <span><i style="background:var(--accent)"></i>双币投资到期价值</span>
+      <span><i style="background:var(--info)"></i>拆解：存款 + 卖期权（虚线）</span>
+      <span><i style="background:var(--text-2)"></i><span id="legHoldTxt">直接持有</span></span>
+      <span><i style="background:var(--sell)"></i>目标价 K</span>
+      <span><i style="background:var(--buy)"></i>当前到期价 P</span>
+    </div>
+    <p class="small muted" id="chartNote"></p>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+      <h3>定价与平台抽成</h3>
+      <div class="stats">
+        <div class="stat"><span class="k" id="fOptK">期权公允价格（每 1 BTC）</span><span class="v" id="fOpt">-</span></div>
+        <div class="stat"><span class="k">公允期权费（本笔）</span><span class="v" id="fPrem">-</span></div>
+        <div class="stat"><span class="k">公允 APR</span><span class="v" id="fApr">-</span></div>
+        <div class="stat"><span class="k">给用户的 APR</span><span class="v" id="fUser">-</span></div>
+        <div class="stat"><span class="k">平台差价（本笔，USDT）</span><span class="v" id="fEdge">-</span></div>
+        <div class="stat"><span class="k">用户 APR 对应的 IV</span><span class="v" id="fImpIv">-</span></div>
+      </div>
+      <div class="bar" id="splitBar"><span id="barUser" style="background:var(--buy)"></span><span id="barPlat" style="background:var(--accent)"></span></div>
+      <div class="legend"><span><i style="background:var(--buy)"></i>给用户的收益</span><span><i style="background:var(--accent)"></i>平台差价</span></div>
+      <div class="formula" id="formulaBox" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h3>三种情形对照</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>情形</th><th class="num">到期价</th><th>拿回</th><th class="num">USDT 价值</th><th class="num" id="thHold">直接持有</th></tr></thead>
+          <tbody id="scenBody"></tbody>
+        </table>
+      </div>
+      <p class="small muted" id="scenNote"></p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>试一试</h3>
+    <ol class="small" style="padding-left:20px;margin:0">
+      <li>默认参数（低买，1000 USDT，S = 100,000，K = 95,000，7 天，APR 36.5%）。把到期价拖到 85,000。你应拿回 0.0106 BTC，价值 901 USDT。确认拆解表的"差值"始终为 0。</li>
+      <li>切到"波动率→APR"，抽成设为 0。把 IV 从 40% 拉到 80%。APR 怎么变？"被换币概率"怎么变？这就是"高收益 = 卖出波动率"。</li>
+      <li>切到高卖，目标价 105,000。把到期价拖到 130,000。双币曲线在 K 右侧变平，灰线继续上涨。两线之间的距离就是你卖出的看涨期权的赔付。</li>
+    </ol>
+  </div>
+
+  <footer class="note">数据为模拟示例。结算规则参考币安双币投资公开说明（截至 2026 年公开资料，以官网为准）；定价使用 Black-Scholes 公式（欧式期权、BTC 不计利息），平台对冲与抽成方式为业界通用做法的简化模型。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  /* MATH-START */
+  function ncdf(x) {
+    // Abramowitz-Stegun 7.1.26, |error| < 1.5e-7
+    var a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+    var s = x < 0 ? -1 : 1;
+    var z = Math.abs(x) / Math.SQRT2;
+    var t = 1 / (1 + p * z);
+    var y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-z * z);
+    return 0.5 * (1 + s * y);
+  }
+  // Black-Scholes, no dividend. T in years, r and v as decimals.
+  function bs(S, K, T, r, v) {
+    var sq = v * Math.sqrt(T);
+    var d1 = (Math.log(S / K) + (r + v * v / 2) * T) / sq;
+    var d2 = d1 - sq;
+    var df = Math.exp(-r * T);
+    return {
+      call: S * ncdf(d1) - K * df * ncdf(d2),
+      put: K * df * ncdf(-d2) - S * ncdf(-d1),
+      d2: d2
+    };
+  }
+  // Fair period yield y so that PV(product payoff) equals the principal.
+  // buy (Buy Low, deposit USDT): PV = A(1+y)(e^{-rT} - Put/K)  ->  y = 1/(e^{-rT} - Put/K) - 1
+  // sell (Sell High, deposit BTC): PV = Q(1+y)(S - Call)       ->  y = S/(S - Call) - 1
+  function fairYield(dir, S, K, T, r, v) {
+    var o = bs(S, K, T, r, v);
+    if (dir === 'buy') return 1 / (Math.exp(-r * T) - o.put / K) - 1;
+    return S / (S - o.call) - 1;
+  }
+  // Settlement by product rule. principal: USDT for buy, BTC for sell.
+  function settle(dir, principal, K, y, P) {
+    var pi = principal * (1 + y);
+    if (dir === 'buy') {
+      if (P <= K) return { coin: 'BTC', amount: pi / K, value: pi / K * P, converted: true };
+      return { coin: 'USDT', amount: pi, value: pi, converted: false };
+    }
+    if (P >= K) return { coin: 'USDT', amount: pi * K, value: pi * K, converted: true };
+    return { coin: 'BTC', amount: pi, value: pi * P, converted: false };
+  }
+  // Decomposition: deposit leg + short option leg, both valued in USDT at expiry.
+  function decompose(dir, principal, K, y, P) {
+    var pi = principal * (1 + y);
+    if (dir === 'buy') {
+      var n = pi / K; // number of puts sold
+      return { deposit: pi, option: -n * Math.max(K - P, 0), n: n };
+    }
+    return { deposit: pi * P, option: -pi * Math.max(P - K, 0), n: pi };
+  }
+  function holdValue(dir, principal, P) { return dir === 'buy' ? principal : principal * P; }
+  // Platform edge at t=0 in USDT: initial value minus fair PV of the payoff given to the user.
+  function platformEdge(dir, principal, S, K, T, r, v, y) {
+    var o = bs(S, K, T, r, v);
+    var pi = principal * (1 + y);
+    if (dir === 'buy') return principal - (pi * Math.exp(-r * T) - (pi / K) * o.put);
+    return principal * S - pi * (S - o.call);
+  }
+  // Implied vol that makes fairYield equal the offered yield (bisection; fairYield rises with v).
+  function impliedVol(dir, S, K, T, r, y) {
+    var lo = 0.005, hi = 5;
+    if (fairYield(dir, S, K, T, r, lo) > y) return -1;
+    if (fairYield(dir, S, K, T, r, hi) < y) return Infinity;
+    for (var i = 0; i < 80; i++) {
+      var mid = (lo + hi) / 2;
+      if (fairYield(dir, S, K, T, r, mid) < y) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+  /* MATH-END */
+
+  if (typeof document === 'undefined') {
+    if (typeof module !== 'undefined') module.exports = { ncdf: ncdf, bs: bs, fairYield: fairYield, settle: settle, decompose: decompose, holdValue: holdValue, platformEdge: platformEdge, impliedVol: impliedVol };
+    return;
+  }
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function $(id) { return document.getElementById(id); }
+  function num(id, d) { var v = parseFloat($(id).value); return isFinite(v) ? v : d; }
+  function fmt(x, d) {
+    if (!isFinite(x)) return '-';
+    if (d === undefined) d = 2;
+    return x.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function pct(x, d) { return isFinite(x) ? (x * 100).toFixed(d === undefined ? 2 : d) + '%' : '-'; }
+  function amt(coin, x) { return coin === 'BTC' ? fmt(x, 6) + ' BTC' : fmt(x, 2) + ' USDT'; }
+  function el(name, attrs, text) {
+    var e = document.createElementNS(SVGNS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function svgW(svg) { var w = svg.getBoundingClientRect().width; return Math.round(Math.max(300, Math.min(1100, w || 640))); }
+
+  var dir = 'buy', mode = 'apr', resetP = false;
+  var DEFAULTS = {
+    buy: { principal: 1000, strike: 95000 },
+    sell: { principal: 0.01, strike: 105000 }
+  };
+
+  function params() {
+    var S = Math.max(1, num('spot', 100000));
+    var K = Math.max(1, num('strike', 95000));
+    var days = num('days', 7);
+    var T = days / 365;
+    var r = Math.max(0, num('rate', 0)) / 100;
+    var v = num('iv', 50) / 100;
+    var fy = fairYield(dir, S, K, T, r, v);
+    var y;
+    if (mode === 'vol') {
+      var take = num('take', 27) / 100;
+      y = fy * (1 - take);
+    } else {
+      y = Math.max(0, num('apr', 36.5)) / 100 * days / 365;
+    }
+    return { S: S, K: K, days: days, T: T, r: r, v: v, fy: fy, y: y, A: Math.max(0, num('principal', 1000)) };
+  }
+
+  function setRange(p) {
+    var lo = Math.min(p.S, p.K) * 0.7, hi = Math.max(p.S, p.K) * 1.3;
+    var step = Math.max(1, Math.pow(10, Math.floor(Math.log10((hi - lo) / 400))));
+    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+    var sl = $('pexp');
+    var cur = parseFloat(sl.value);
+    sl.min = lo; sl.max = hi; sl.step = step;
+    if (resetP || !(cur >= lo && cur <= hi)) sl.value = dir === 'buy' ? Math.round(p.K * 0.9 / step) * step : Math.round(p.K * 1.1 / step) * step;
+    resetP = false;
+    return { lo: lo, hi: hi };
+  }
+
+  function render() {
+    var p = params();
+    var rg = setRange(p);
+    var P = parseFloat($('pexp').value);
+    $('pexpOut').textContent = fmt(P, 0);
+    $('daysOut').textContent = p.days + ' 天';
+    $('ivOut').textContent = Math.round(p.v * 100) + '%';
+    $('takeOut').textContent = $('take').value + '%';
+    var base = dir === 'buy' ? 'USDT' : 'BTC';
+    var alt = dir === 'buy' ? 'BTC' : 'USDT';
+
+    // direction hints
+    $('principalLabel').textContent = '本金（' + base + '）';
+    var badK = dir === 'buy' ? p.K >= p.S : p.K <= p.S;
+    $('dirHint').innerHTML = (dir === 'buy'
+      ? '投入 USDT，目标价应低于当前价。到期价 ≤ K 时，你按 K 买入 BTC。'
+      : '投入 BTC，目标价应高于当前价。到期价 ≥ K 时，你按 K 卖出 BTC。')
+      + (badK ? ' <span class="pill warn">目标价方向反了：期权已是实值，APR 会异常高</span>' : '');
+
+    if (mode === 'vol') $('apr').value = (p.y * 365 / p.days * 100).toFixed(2);
+
+    // settlement
+    var st = settle(dir, p.A, p.K, p.y, P);
+    var dc = decompose(dir, p.A, p.K, p.y, P);
+    var hv = holdValue(dir, p.A, P);
+    var startValue = dir === 'buy' ? p.A : p.A * p.S;
+    var sb = $('settleBox');
+    sb.className = 'settle-box ' + (st.converted ? 'alt' : 'base');
+    sb.textContent = (st.converted ? '已换币：' : '未换币：') + '拿回 ' + amt(st.coin, st.amount)
+      + (st.converted ? (dir === 'buy' ? '（按 K = ' + fmt(p.K, 0) + ' 买入）' : '（按 K = ' + fmt(p.K, 0) + ' 卖出）') : '（原币本息）');
+    $('sY').textContent = pct(p.y, 3);
+    $('sPI').textContent = amt(base, p.A * (1 + p.y));
+    $('sVal').textContent = fmt(st.value, 2);
+    $('sHoldK').textContent = dir === 'buy' ? '对比：一直持有 USDT' : '对比：一直持有 BTC';
+    $('sHold').textContent = fmt(hv, 2);
+    var pnl = st.value - startValue;
+    $('sPnl').innerHTML = '<span class="' + (pnl >= 0 ? 'up' : 'down') + '">' + (pnl >= 0 ? '+' : '') + fmt(pnl, 2) + '</span>';
+    var o = bs(p.S, p.K, p.T, p.r, p.v);
+    var prob = dir === 'buy' ? ncdf(-o.d2) : ncdf(o.d2);
+    $('sProb').textContent = pct(prob, 1);
+
+    // decomposition table
+    if (dir === 'buy') {
+      $('legDepDesc').textContent = '存入 ' + fmt(p.A, 2) + ' USDT，到期本息 ' + fmt(p.A * (1 + p.y), 2) + ' USDT（含期权费）';
+      $('legOptDesc').textContent = '卖出 ' + fmt(dc.n, 6) + ' 份看跌期权，行权价 ' + fmt(p.K, 0) + '：赔付 n × max(K − P, 0)';
+    } else {
+      $('legDepDesc').textContent = '存入 ' + fmt(p.A, 6) + ' BTC，到期 ' + fmt(p.A * (1 + p.y), 6) + ' BTC（含期权费），按 P 折算';
+      $('legOptDesc').textContent = '卖出 ' + fmt(dc.n, 6) + ' 份看涨期权，行权价 ' + fmt(p.K, 0) + '：赔付 n × max(P − K, 0)';
+    }
+    $('legDep').textContent = fmt(dc.deposit, 2);
+    $('legOpt').innerHTML = '<span class="' + (dc.option < 0 ? 'down' : '') + '">' + fmt(dc.option, 2) + '</span>';
+    $('legSum').textContent = fmt(dc.deposit + dc.option, 2);
+    $('legDI').textContent = fmt(st.value, 2);
+    var diff = dc.deposit + dc.option - st.value;
+    $('legDiff').innerHTML = Math.abs(diff) < 1e-6 ? '<span class="pill buy">0.00 等价</span>' : '<span class="pill sell">' + fmt(diff, 6) + '</span>';
+
+    // pricing card
+    var optUnit = dir === 'buy' ? o.put : o.call;
+    var nOpt = dc.n;
+    var fairPrem = nOpt * optUnit;
+    var edge = platformEdge(dir, p.A, p.S, p.K, p.T, p.r, p.v, p.y);
+    var userPremUSDT = fairPrem - edge;
+    $('fOptK').textContent = (dir === 'buy' ? '看跌' : '看涨') + '期权公允价格（每 1 BTC）';
+    $('fOpt').textContent = fmt(optUnit, 2);
+    $('fPrem').textContent = fmt(fairPrem, 2);
+    $('fApr').textContent = pct(p.fy * 365 / p.days, 2);
+    $('fUser').textContent = pct(p.y * 365 / p.days, 2);
+    $('fEdge').innerHTML = '<span class="' + (edge >= 0 ? '' : 'down') + '">' + fmt(edge, 2) + '</span>';
+    var iv = impliedVol(dir, p.S, p.K, p.T, p.r, p.y);
+    $('fImpIv').textContent = iv < 0 ? '< 0.5%' : (iv === Infinity ? '> 500%' : pct(iv, 1));
+    var share = fairPrem > 0 ? Math.min(1, Math.max(0, userPremUSDT / fairPrem)) : 0;
+    $('barUser').style.width = (share * 100).toFixed(1) + '%';
+    $('barPlat').style.width = ((1 - share) * 100).toFixed(1) + '%';
+    $('formulaBox').textContent =
+      'y（期限收益率） = APR × ' + p.days + ' / 365 = ' + pct(p.y, 4) + '\n' +
+      (dir === 'buy'
+        ? '公允 y = 1 / (e^(−rT) − Put/K) − 1 = ' + pct(p.fy, 4) + '\n'
+        : '公允 y = S / (S − Call) − 1 = ' + pct(p.fy, 4) + '\n') +
+      '公允期权费 = ' + fmt(nOpt, 6) + ' × ' + fmt(optUnit, 2) + ' = ' + fmt(fairPrem, 2) + ' USDT\n' +
+      '给用户（折现后） ≈ ' + fmt(userPremUSDT, 2) + ' USDT\n' +
+      '平台差价 = 本金价值 − 用户收益的公允现值 = ' + fmt(edge, 2) + ' USDT' +
+      (edge < 0 ? '\n⚠ 差价为负：平台给出的 APR 高于公允值，平台在补贴。' : '');
+
+    // scenarios
+    var scen = dir === 'buy'
+      ? [['A 高于目标价', p.K + (p.S - p.K) * 0.6], ['B 等于目标价', p.K], ['C 远低于目标价', p.K - Math.abs(p.S - p.K) * 2]]
+      : [['A 低于目标价', p.K - (p.K - p.S) * 0.6], ['B 等于目标价', p.K], ['C 远高于目标价', p.K + Math.abs(p.K - p.S) * 3]];
+    if (Math.abs(p.S - p.K) < 1) { scen[0][1] = p.K * 1.05; scen[2][1] = p.K * 0.85; }
+    var rows = '';
+    scen.forEach(function (sc) {
+      var sp = Math.max(1, sc[1]);
+      var r = settle(dir, p.A, p.K, p.y, sp);
+      rows += '<tr><td>' + sc[0] + '</td><td class="num">' + fmt(sp, 0) + '</td><td>' + amt(r.coin, r.amount)
+        + '</td><td class="num">' + fmt(r.value, 2) + '</td><td class="num">' + fmt(holdValue(dir, p.A, sp), 2) + '</td></tr>';
+    });
+    $('scenBody').innerHTML = rows;
+    $('thHold').textContent = dir === 'buy' ? '持有 USDT' : '持有 BTC';
+    $('scenNote').textContent = dir === 'buy'
+      ? '低买：情形 A 只赚期权费；情形 C 以 K 接下贬值的 BTC，以 USDT 计亏损。'
+      : '高卖：情形 A 拿回更多 BTC；情形 C 按 K 卖出，错过 K 以上的全部涨幅。';
+
+    drawChart(p, rg, P);
+  }
+
+  function drawChart(p, rg, P) {
+    var svg = $('chart');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var W = svgW(svg), H = 280, padL = 8, padR = 74, padT = 14, padB = 22;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    var n = 160, xs = [], di = [], dec = [], hold = [];
+    for (var i = 0; i <= n; i++) {
+      var x = rg.lo + (rg.hi - rg.lo) * i / n;
+      xs.push(x);
+      di.push(settle(dir, p.A, p.K, p.y, x).value);
+      var d = decompose(dir, p.A, p.K, p.y, x);
+      dec.push(d.deposit + d.option);
+      hold.push(holdValue(dir, p.A, x));
+    }
+    // include K exactly so the kink is drawn sharply
+    var all = di.concat(hold);
+    var lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
+    var sp = hi - lo || 1; lo -= sp * 0.08; hi += sp * 0.08;
+    function X(v) { return padL + (W - padL - padR) * (v - rg.lo) / (rg.hi - rg.lo); }
+    function Y(v) { return padT + (H - padT - padB) * (1 - (v - lo) / (hi - lo)); }
+    for (var g = 0; g <= 4; g++) {
+      var gv = lo + (hi - lo) * g / 4;
+      svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(gv), y2: Y(gv), 'class': 'grid-line' }));
+      svg.appendChild(el('text', { x: W - padR + 4, y: Y(gv) + 4, 'class': 't-axis' }, fmt(gv, gv >= 1000 ? 0 : 2)));
+    }
+    [rg.lo, (rg.lo + rg.hi) / 2, rg.hi].forEach(function (v, idx) {
+      svg.appendChild(el('text', { x: X(v) + (idx === 0 ? 2 : idx === 2 ? -44 : -20), y: H - 6, 'class': 't-axis' }, fmt(v, 0)));
+    });
+    svg.appendChild(el('line', { x1: X(p.S), x2: X(p.S), y1: padT, y2: H - padB, 'class': 'l-s' }));
+    svg.appendChild(el('line', { x1: X(p.K), x2: X(p.K), y1: padT, y2: H - padB, 'class': 'l-k' }));
+    svg.appendChild(el('text', { x: X(p.K) + 4, y: padT + 12, 'class': 't-k' }, 'K ' + fmt(p.K, 0)));
+    function poly(xv, yv, cls) {
+      // insert K point to keep the kink exact
+      var pts = [];
+      for (var i = 0; i < xv.length; i++) pts.push([xv[i], yv[i]]);
+      svg.appendChild(el('polyline', { points: pts.map(function (q) { return X(q[0]).toFixed(1) + ',' + Y(q[1]).toFixed(1); }).join(' '), 'class': cls }));
+    }
+    function withKink(fn) {
+      var xv = xs.slice(), yv;
+      xv.push(p.K); xv.sort(function (a, b) { return a - b; });
+      yv = xv.map(fn);
+      return [xv, yv];
+    }
+    var h = withKink(function (x) { return holdValue(dir, p.A, x); });
+    poly(h[0], h[1], 'l-hold');
+    var a = withKink(function (x) { return settle(dir, p.A, p.K, p.y, x).value; });
+    poly(a[0], a[1], 'l-di');
+    var b = withKink(function (x) { var d = decompose(dir, p.A, p.K, p.y, x); return d.deposit + d.option; });
+    poly(b[0], b[1], 'l-dec');
+    var vP = settle(dir, p.A, p.K, p.y, P).value;
+    svg.appendChild(el('line', { x1: X(P), x2: X(P), y1: padT, y2: H - padB, 'class': 'l-p' }));
+    svg.appendChild(el('circle', { cx: X(P), cy: Y(vP), r: 4.5, 'class': 'dot' }));
+    var tx = X(P) + 6 > W - padR - 70 ? X(P) - 76 : X(P) + 6;
+    svg.appendChild(el('text', { x: tx, y: Y(vP) - 8, 'class': 't-p' }, fmt(vP, 2)));
+
+    $('legHoldTxt').textContent = dir === 'buy' ? '直接持有 USDT（水平线）' : '直接持有 BTC（斜线）';
+    $('chartNote').textContent = dir === 'buy'
+      ? '低买曲线 = 水平线（K 右侧，拿回 USDT 本息）+ 斜线（K 左侧，拿回 BTC，随价格下跌）。形状与"卖出看跌期权"完全相同。灰色虚线为当前价 S。'
+      : '高卖曲线 = 斜线（K 左侧，拿回 BTC 本息）+ 水平线（K 右侧，按 K 换成 USDT）。形状与"持币 + 卖出看涨期权"完全相同。灰色虚线为当前价 S。';
+  }
+
+  function setDir(d) {
+    dir = d;
+    $('btnBuy').className = d === 'buy' ? 'buy' : '';
+    $('btnSell').className = d === 'sell' ? 'sell' : '';
+    $('principal').value = DEFAULTS[d].principal;
+    $('principal').step = d === 'buy' ? '100' : '0.001';
+    $('strike').value = DEFAULTS[d].strike;
+    resetP = true;
+    render();
+  }
+  function setMode(m) {
+    mode = m;
+    $('modeApr').className = m === 'apr' ? 'primary' : '';
+    $('modeVol').className = m === 'vol' ? 'primary' : '';
+    $('takeBox').style.display = m === 'vol' ? 'block' : 'none';
+    $('apr').disabled = m === 'vol';
+    render();
+  }
+
+  $('btnBuy').addEventListener('click', function () { setDir('buy'); });
+  $('btnSell').addEventListener('click', function () { setDir('sell'); });
+  $('modeApr').addEventListener('click', function () { setMode('apr'); });
+  $('modeVol').addEventListener('click', function () { setMode('vol'); });
+  ['principal', 'spot', 'strike', 'days', 'apr', 'iv', 'take', 'rate', 'pexp'].forEach(function (id) {
+    $(id).addEventListener('input', render);
+  });
+  window.addEventListener('resize', render);
+  render();
+})();
+</script>
+</body>
+</html>

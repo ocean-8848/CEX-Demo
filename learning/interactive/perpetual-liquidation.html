@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>永续合约实验室</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .seg { display: flex; gap: 6px; }
+  .seg button { flex: 1; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 8px 0; }
+  .stats .stat .v { font-size: 18px; word-break: break-all; }
+  .chart { width: 100%; height: auto; display: block; background: var(--surface-2); border-radius: 8px; }
+  .chart .grid-line { stroke: var(--border); stroke-width: 1; }
+  .chart .l-mark { stroke: var(--accent); stroke-width: 2.2; fill: none; }
+  .chart .l-last { stroke: var(--text-2); stroke-width: 1.2; fill: none; opacity: .75; }
+  .chart .l-index { stroke: var(--info); stroke-width: 1.4; fill: none; stroke-dasharray: 3 3; }
+  .chart .l-entry { stroke: var(--info); stroke-width: 1.2; stroke-dasharray: 6 4; }
+  .chart .l-liq { stroke: var(--sell); stroke-width: 1.8; }
+  .chart .l-bk { stroke: var(--warn); stroke-width: 1.2; stroke-dasharray: 4 4; }
+  .chart .t-liq { fill: var(--sell); font-size: 12px; }
+  .chart .t-bk { fill: var(--warn); font-size: 12px; }
+  .chart .t-entry { fill: var(--info); font-size: 12px; }
+  .chart .t-axis { fill: var(--text-2); font-size: 11px; }
+  .chart .dot-liq { fill: var(--sell); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 4px; border-radius: 2px; }
+  .flow { list-style: none; padding: 0; margin: 8px 0; }
+  .flow li { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 6px 0; color: var(--text-2); background: var(--surface); transition: background .2s, border-color .2s; }
+  .flow li.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+  .flow li.bad { border-color: var(--sell); background: var(--sell-soft); color: var(--text); }
+  .flow li.good { border-color: var(--buy); background: var(--buy-soft); color: var(--text); }
+  .flow li.skip { opacity: .4; }
+  .lights { font-family: var(--mono); letter-spacing: 1px; color: var(--sell); }
+  .formula { font-family: var(--mono); font-size: 13px; background: var(--surface-2); border-radius: 8px; padding: 10px; overflow-x: auto; white-space: pre; }
+  .arrow-box { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; font-weight: 600; }
+  .arrow-box .side { padding: 8px 14px; border-radius: 8px; }
+  .verdict { font-weight: 650; }
+  .inline-check { display: flex; align-items: center; gap: 6px; margin: 10px 0 4px; font-size: 13px; color: var(--text-2); }
+  .inline-check input { margin: 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../10-derivatives-futures.md">配套章节：10 合约与永续合约</a>
+  </header>
+  <h1>永续合约实验室</h1>
+  <p class="lead">调整杠杆、仓位和维持保证金率，观察强平价格。播放行情，看强平引擎如何接管仓位、保险基金如何补亏、ADL 如何减对手仓位。全部数值都是示例。</p>
+
+  <div class="callout warn small">⚠️ 本页仅用于学习交易所系统设计，不构成投资建议。公式为简化版：逐仓、单一仓位、维持保证金速算额 cum = 0，忽略手续费和资金费。</div>
+
+  <div class="card small">
+    <strong>怎么玩</strong>
+    <ol style="margin:6px 0 0; padding-left:20px;">
+      <li>在"仓位与强平"里选择方向、杠杆、仓位大小。右侧立即显示强平价格。</li>
+      <li>拖动"标记价格"滑块，或点"播放行情"。价格碰到红色强平线时，下方展示强平流程。</li>
+      <li>切换到"资金费率"计算每 8 小时谁付钱给谁；切换到"插针对比"看标记价格如何防误强平。</li>
+    </ol>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button class="primary" data-tab="p1" role="tab">① 仓位与强平</button>
+    <button data-tab="p2" role="tab">② 资金费率</button>
+    <button data-tab="p3" role="tab">③ 插针对比</button>
+  </nav>
+
+  <!-- ============ Tab 1 ============ -->
+  <section id="p1" class="panel active">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>开仓参数</h3>
+        <label>方向</label>
+        <div class="seg">
+          <button id="btnLong" class="buy" type="button">做多</button>
+          <button id="btnShort" type="button">做空</button>
+        </div>
+        <label for="ep">开仓价 EP（USDT）</label>
+        <input id="ep" type="number" value="50000" min="1" step="100">
+        <label for="lev">杠杆 L</label>
+        <div class="range-row"><input id="lev" type="range" min="1" max="125" step="1" value="10"><output id="levOut">10x</output></div>
+        <label for="qty">仓位数量 Q（BTC）</label>
+        <input id="qty" type="number" value="1" min="0.001" step="0.1">
+        <label for="mmr">维持保证金率 MMR（示例）</label>
+        <div class="range-row"><input id="mmr" type="range" min="0.1" max="5" step="0.1" value="0.4"><output id="mmrOut">0.4%</output></div>
+        <label>保证金模式</label>
+        <div class="seg">
+          <button id="btnIso" class="primary" type="button">逐仓</button>
+          <button id="btnCross" type="button">全仓</button>
+        </div>
+        <div id="crossBox" style="display:none">
+          <label for="extra">全仓账户其他可用余额（USDT）</label>
+          <input id="extra" type="number" value="2000" min="0" step="100">
+        </div>
+        <div class="formula" style="margin-top:12px" id="formulaBox"></div>
+      </div>
+
+      <div class="card">
+        <h3>实时指标</h3>
+        <div class="stats">
+          <div class="stat"><span class="k">名义价值</span><span class="v" id="sNotional">-</span></div>
+          <div class="stat"><span class="k">初始保证金</span><span class="v" id="sIM">-</span></div>
+          <div class="stat"><span class="k">强平价格</span><span class="v down" id="sLiq">-</span></div>
+          <div class="stat"><span class="k">破产价格</span><span class="v" id="sBk">-</span></div>
+          <div class="stat"><span class="k">未实现盈亏</span><span class="v" id="sPnl">-</span></div>
+          <div class="stat"><span class="k">ROE</span><span class="v" id="sRoe">-</span></div>
+          <div class="stat"><span class="k">保证金率（≥100% 强平）</span><span class="v" id="sMR">-</span></div>
+          <div class="stat"><span class="k">距强平</span><span class="v" id="sDist">-</span></div>
+        </div>
+        <label for="mark">标记价格（拖动）</label>
+        <div class="range-row"><input id="mark" type="range" min="25000" max="75000" step="10" value="50000"><output id="markOut">50000</output></div>
+        <div class="btn-row">
+          <button id="play" class="primary" type="button">▶ 播放行情</button>
+          <button id="reset" type="button">重置仓位</button>
+        </div>
+        <label for="trend">行情倾向</label>
+        <select id="trend">
+          <option value="0">随机游走</option>
+          <option value="-1">偏向下跌</option>
+          <option value="1">偏向上涨</option>
+        </select>
+        <label class="inline-check"><input id="spike" type="checkbox" checked> 加入最新价插针（标记价格不跟随）</label>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>价格走势</h3>
+      <svg id="chart" class="chart" viewBox="0 0 640 260" role="img" aria-label="价格走势图"></svg>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>标记价格（判断强平）</span>
+        <span><i style="background:var(--text-2)"></i>最新价（可能插针）</span>
+        <span><i style="background:var(--info)"></i>开仓价</span>
+        <span><i style="background:var(--sell)"></i>强平价</span>
+        <span><i style="background:var(--warn)"></i>破产价</span>
+      </div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card">
+        <h3>强平环境（示例）</h3>
+        <label for="liquidity">强平时的市场流动性</label>
+        <select id="liquidity">
+          <option value="good">充足：成交价优于破产价</option>
+          <option value="thin">稀薄：成交价劣于破产价 0.4%</option>
+          <option value="dry">枯竭：强平单无法成交</option>
+        </select>
+        <label for="fund">保险基金余额（USDT）</label>
+        <input id="fund" type="number" value="300" min="0" step="50">
+        <p class="small muted">提示：把流动性设为"稀薄"，保险基金设为 0，就能看到 ADL。</p>
+      </div>
+      <div class="card">
+        <h3>强平流程</h3>
+        <ol class="flow" id="flow">
+          <li data-s="0">0. 等待：标记价格未触及强平价。</li>
+          <li data-s="1">1. 撤销该账户全部挂单，重算保证金率。</li>
+          <li data-s="2">2. 强平引擎接管仓位，用户失去控制权。</li>
+          <li data-s="3">3. 以破产价向市场发出平仓单（IOC）。</li>
+          <li data-s="4">4. 结算差额：盈余进保险基金，或保险基金补亏。</li>
+          <li data-s="5">5. 自动减仓 ADL：按排名减少盈利对手仓位。</li>
+        </ol>
+        <div class="log" id="liqLog">尚未触发强平。</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px" id="adlCard">
+      <h3>ADL 对手方队列（示例数据）</h3>
+      <p class="small muted">排名分 = 收益率 × 有效杠杆（收益率 &gt; 0 时）。分数最高者先被按破产价减仓。指示灯越多，越先被减。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>对手</th><th class="num">收益率</th><th class="num">有效杠杆</th><th class="num">排名分</th><th>指示灯</th><th class="num">持仓</th><th class="num">被减仓</th></tr></thead>
+          <tbody id="adlBody"><tr><td colspan="7" class="muted">触发 ADL 后显示。</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Tab 2 ============ -->
+  <section id="p2" class="panel">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>资金费率输入</h3>
+        <label for="prem">平均溢价指数 P</label>
+        <div class="range-row"><input id="prem" type="range" min="-0.5" max="0.5" step="0.005" value="0.03"><output id="premOut">0.030%</output></div>
+        <label for="irate">利率 I（每 8 小时，默认 0.01%）</label>
+        <input id="irate" type="number" value="0.01" step="0.005">
+        <label for="fnotional">持仓名义价值（USDT）= 标记价格 × 数量</label>
+        <input id="fnotional" type="number" value="10000" min="0" step="1000">
+        <label for="interval">结算周期 N（小时）</label>
+        <select id="interval">
+          <option value="8">8 小时（默认）</option>
+          <option value="4">4 小时</option>
+          <option value="1">1 小时</option>
+        </select>
+        <label>我的方向</label>
+        <div class="seg">
+          <button id="fLong" class="buy" type="button">多头</button>
+          <button id="fShort" type="button">空头</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>计算结果</h3>
+        <div class="formula" id="fFormula"></div>
+        <div class="stats">
+          <div class="stat"><span class="k">clamp 项</span><span class="v" id="fClamp">-</span></div>
+          <div class="stat"><span class="k">本周期资金费率 F</span><span class="v" id="fRate">-</span></div>
+          <div class="stat"><span class="k">本周期我付/收</span><span class="v" id="fPay">-</span></div>
+          <div class="stat"><span class="k">每天合计（费率不变）</span><span class="v" id="fDay">-</span></div>
+        </div>
+        <div class="arrow-box" id="fArrow"></div>
+        <p class="small muted" id="fNote"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Tab 3 ============ -->
+  <section id="p3" class="panel">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>场景设置</h3>
+        <p class="small muted">固定仓位：多仓，开仓价 50,000，20x，MMR 0.4%（示例）。强平价 = 50000 × (1 − 1/20) / (1 − 0.004) ≈ <span class="mono" id="wLiqTxt"></span>。</p>
+        <label for="wDepth">最新价插针深度</label>
+        <div class="range-row"><input id="wDepth" type="range" min="0" max="20" step="0.5" value="8"><output id="wDepthOut">8%</output></div>
+        <label class="inline-check"><input id="wReal" type="checkbox"> 真实下跌：全部现货交易所同时下跌（指数价格也跌）</label>
+        <div class="btn-row"><button id="wRegen" type="button">重新生成行情</button></div>
+        <div class="formula">标记价格 = 中位数(价格1, 价格2, 合约最新价)
+价格1 = 指数 × (1 + 资金费率 × 剩余时间比例)
+价格2 = 指数 + 30 秒基差移动平均</div>
+      </div>
+      <div class="card">
+        <h3>判定</h3>
+        <div class="stats">
+          <div class="stat"><span class="k">最新价最低</span><span class="v" id="wMinLast">-</span></div>
+          <div class="stat"><span class="k">标记价格最低</span><span class="v" id="wMinMark">-</span></div>
+        </div>
+        <p>若用<strong>最新价</strong>判断强平：<span class="verdict" id="wVLast"></span></p>
+        <p>若用<strong>标记价格</strong>判断强平：<span class="verdict" id="wVMark"></span></p>
+        <p class="small muted" id="wExplain"></p>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <svg id="wChart" class="chart" viewBox="0 0 640 260" role="img" aria-label="插针对比图"></svg>
+      <div class="legend">
+        <span><i style="background:var(--text-2)"></i>合约最新价</span>
+        <span><i style="background:var(--info)"></i>指数价格</span>
+        <span><i style="background:var(--accent)"></i>标记价格</span>
+        <span><i style="background:var(--sell)"></i>强平价</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="card" style="margin-top:20px">
+    <h3>试一试</h3>
+    <ol class="small" style="padding-left:20px;margin:0">
+      <li>多仓 50,000、MMR 0.4%，杠杆依次设为 10x、50x、125x。记下"距强平"。杠杆翻 5 倍，距离缩小多少？（10x 时强平价应约为 45,181）</li>
+      <li>切到全仓，把"其他可用余额"从 0 拖到 20,000。强平价如何移动？为什么全仓"更难爆仓，但爆仓时亏得更多"？</li>
+      <li>在"插针对比"里把插针深度拉到 15%。再勾选"真实下跌"。两次判定结果有何不同？</li>
+    </ol>
+  </div>
+
+  <footer class="note">数据为模拟示例。公式来源：币安公开的 U 本位合约强平价格与资金费率说明（截至 2026 年公开资料，以官网为准）；ADL 排序为业界通用做法。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var SVGNS = 'http://www.w3.org/2000/svg';
+
+  function fmt(n, d) {
+    if (!isFinite(n)) return '—';
+    if (d === undefined) d = 2;
+    return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function pct(n, d) { return isFinite(n) ? (n * 100).toFixed(d === undefined ? 2 : d) + '%' : '—'; }
+  function gauss() { var u = 1 - Math.random(), v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+  function svgW(svg) { var w = svg.getBoundingClientRect().width; return Math.round(Math.max(300, Math.min(1100, w || 640))); }
+  function el(name, attrs, text) {
+    var e = document.createElementNS(SVGNS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  /* ---------- tabs ---------- */
+  document.querySelectorAll('.tabs button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.tabs button').forEach(function (x) { x.classList.toggle('primary', x === b); });
+      document.querySelectorAll('.panel').forEach(function (p) { p.classList.toggle('active', p.id === b.dataset.tab); });
+      if (b.dataset.tab === 'p3') renderWick();
+    });
+  });
+
+  /* ---------- Tab 1 state ---------- */
+  var side = 1;          // 1 long, -1 short
+  var cross = false;
+  var history = [];      // {mark, last}
+  var timer = null;
+  var liquidated = false;
+  var flowTimers = [];
+
+  function params() {
+    var ep = Math.max(1, parseFloat($('ep').value) || 50000);
+    var L = parseInt($('lev').value, 10);
+    var q = Math.max(0.0001, parseFloat($('qty').value) || 1);
+    var mmr = parseFloat($('mmr').value) / 100;
+    var extra = cross ? Math.max(0, parseFloat($('extra').value) || 0) : 0;
+    var notional = q * ep;
+    var im = notional / L;
+    var wb = im + extra;
+    // Binance general formula with TMM1 = UPNL1 = cum = 0:
+    // LP = (WB - side*Q*EP) / (Q*MMR - side*Q)
+    var lp = (wb - side * q * ep) / (q * mmr - side * q);
+    var bp = ep - side * wb / q;
+    return { ep: ep, L: L, q: q, mmr: mmr, extra: extra, notional: notional, im: im, wb: wb, lp: lp, bp: bp };
+  }
+
+  function metrics(p, mark) {
+    var upnl = side * (mark - p.ep) * p.q;
+    var mm = mark * p.q * p.mmr;
+    var mb = p.wb + upnl;
+    var mr = mb > 0 ? mm / mb : Infinity;
+    return { upnl: upnl, roe: upnl / p.im, mr: mr, mb: mb };
+  }
+
+  function lpValid(p) { return isFinite(p.lp) && p.lp > 0; }
+
+  function setupMarkSlider(p) {
+    var lo = Math.max(1, p.ep * 0.5), hi = p.ep * 1.5;
+    var m = $('mark');
+    m.min = lo.toFixed(0); m.max = hi.toFixed(0);
+    m.step = Math.max(0.01, p.ep / 5000).toFixed(2);
+  }
+
+  function resetPosition() {
+    stop();
+    clearFlow();
+    liquidated = false;
+    var p = params();
+    setupMarkSlider(p);
+    $('mark').value = p.ep;
+    history = [{ mark: p.ep, last: p.ep }];
+    update();
+  }
+
+  function update() {
+    var p = params();
+    var mark = parseFloat($('mark').value);
+    $('levOut').textContent = p.L + 'x';
+    $('mmrOut').textContent = (p.mmr * 100).toFixed(1) + '%';
+    $('markOut').textContent = fmt(mark, 0);
+    var m = metrics(p, mark);
+    $('sNotional').textContent = fmt(p.notional);
+    $('sIM').textContent = fmt(p.im);
+    $('sLiq').textContent = lpValid(p) ? fmt(p.lp) : '无（不会强平）';
+    $('sBk').textContent = p.bp > 0 ? fmt(p.bp) : '无';
+    $('sPnl').textContent = (m.upnl >= 0 ? '+' : '') + fmt(m.upnl);
+    $('sPnl').className = 'v ' + (m.upnl >= 0 ? 'up' : 'down');
+    $('sRoe').textContent = (m.roe >= 0 ? '+' : '') + pct(m.roe);
+    $('sRoe').className = 'v ' + (m.roe >= 0 ? 'up' : 'down');
+    $('sMR').textContent = isFinite(m.mr) ? pct(m.mr) : '∞';
+    $('sMR').className = 'v ' + (m.mr >= 1 ? 'down' : (m.mr >= 0.8 ? '' : 'up'));
+    $('sDist').textContent = lpValid(p) ? pct(Math.abs(mark - p.lp) / mark) : '—';
+
+    var sym = side === 1 ? '多' : '空';
+    var f = side === 1
+      ? '多仓强平价 = EP × (1 − 1/L) / (1 − MMR)\n= ' + fmt(p.ep, 0) + ' × (1 − 1/' + p.L + ') / (1 − ' + (p.mmr * 100).toFixed(1) + '%)'
+      : '空仓强平价 = EP × (1 + 1/L) / (1 + MMR)\n= ' + fmt(p.ep, 0) + ' × (1 + 1/' + p.L + ') / (1 + ' + (p.mmr * 100).toFixed(1) + '%)';
+    if (cross) {
+      f = '全仓（单一仓位简化）\nLP = (WB − Side×Q×EP) / (Q×MMR − Side×Q)\nWB = 初始保证金 + 其他余额 = ' + fmt(p.wb) + '\nSide = ' + (side === 1 ? '1（多）' : '−1（空）');
+    }
+    $('formulaBox').textContent = f + '\n≈ ' + (lpValid(p) ? fmt(p.lp) : '无') + '（' + sym + '仓）';
+
+    drawChart(p);
+    if (!liquidated && lpValid(p) && m.mr >= 1) triggerLiquidation(p, mark);
+  }
+
+  function drawChart(p) {
+    var svg = $('chart');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var W = svgW(svg), H = 260, padL = 8, padR = 70, padT = 12, padB = 18;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    var vals = [p.ep];
+    history.forEach(function (h) { vals.push(h.mark, h.last); });
+    if (lpValid(p)) vals.push(p.lp);
+    if (p.bp > 0) vals.push(p.bp);
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    var span = Math.max(hi - lo, p.ep * 0.01);
+    lo -= span * 0.08; hi += span * 0.08;
+    var n = Math.max(history.length, 60);
+    function X(i) { return padL + (W - padL - padR) * i / (n - 1); }
+    function Y(v) { return padT + (H - padT - padB) * (1 - (v - lo) / (hi - lo)); }
+    for (var g = 0; g <= 4; g++) {
+      var gv = lo + (hi - lo) * g / 4;
+      svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(gv), y2: Y(gv), 'class': 'grid-line' }));
+      svg.appendChild(el('text', { x: W - padR + 4, y: Y(gv) + 4, 'class': 't-axis' }, fmt(gv, 0)));
+    }
+    function hline(v, cls, tcls, label, below) {
+      if (!(v > lo && v < hi)) return;
+      svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v), 'class': cls }));
+      svg.appendChild(el('text', { x: padL + 4, y: below ? Y(v) + 13 : Y(v) - 4, 'class': tcls }, label + ' ' + fmt(v, 0)));
+    }
+    hline(p.ep, 'l-entry', 't-entry', '开仓');
+    if (p.bp > 0) hline(p.bp, 'l-bk', 't-bk', '破产', side === 1);
+    if (lpValid(p)) hline(p.lp, 'l-liq', 't-liq', '强平');
+    function poly(key, cls) {
+      var pts = history.map(function (h, i) { return X(i).toFixed(1) + ',' + Y(h[key]).toFixed(1); }).join(' ');
+      svg.appendChild(el('polyline', { points: pts, 'class': cls }));
+    }
+    poly('last', 'l-last');
+    poly('mark', 'l-mark');
+    if (liquidated && history.length) {
+      var i = history.length - 1;
+      svg.appendChild(el('circle', { cx: X(i), cy: Y(history[i].mark), r: 5, 'class': 'dot-liq' }));
+    }
+  }
+
+  /* ---------- play ---------- */
+  function step() {
+    var p = params();
+    var prev = history[history.length - 1].mark;
+    var trend = parseInt($('trend').value, 10);
+    var vol = 0.004;
+    var next = prev * (1 + vol * gauss() + trend * 0.0025);
+    var last = next * (1 + 0.0008 * gauss());
+    if ($('spike').checked && Math.random() < 0.08) {
+      // wick in last price only: mark is a median and ignores it
+      last = next * (1 - side * (0.04 + Math.random() * 0.08));
+    }
+    next = Math.min(Math.max(next, parseFloat($('mark').min)), parseFloat($('mark').max));
+    history.push({ mark: next, last: Math.max(1, last) });
+    if (history.length > 120) history.shift();
+    $('mark').value = next;
+    update();
+  }
+  function stop() {
+    if (timer) { clearInterval(timer); timer = null; }
+    $('play').textContent = '▶ 播放行情';
+  }
+  $('play').addEventListener('click', function () {
+    if (timer) { stop(); return; }
+    if (liquidated) resetPosition();
+    $('play').textContent = '⏸ 暂停';
+    timer = setInterval(step, 160);
+  });
+  $('reset').addEventListener('click', resetPosition);
+  $('mark').addEventListener('input', function () {
+    var v = parseFloat($('mark').value);
+    history.push({ mark: v, last: v });
+    if (history.length > 120) history.shift();
+    update();
+  });
+
+  /* ---------- liquidation flow ---------- */
+  function clearFlow() {
+    flowTimers.forEach(clearTimeout); flowTimers = [];
+    document.querySelectorAll('#flow li').forEach(function (li) { li.className = li.dataset.s === '0' ? 'on' : ''; });
+    $('liqLog').textContent = '尚未触发强平。';
+    $('adlBody').innerHTML = '<tr><td colspan="7" class="muted">触发 ADL 后显示。</td></tr>';
+  }
+  function flowMark(s, cls) {
+    var li = document.querySelector('#flow li[data-s="' + s + '"]');
+    if (li) li.className = cls;
+  }
+  function log(html) { $('liqLog').innerHTML += '\n' + html; $('liqLog').scrollTop = 1e9; }
+
+  function triggerLiquidation(p, trigMark) {
+    liquidated = true;
+    stop();
+    drawChart(p);
+    var liq = $('liquidity').value;
+    var fund = Math.max(0, parseFloat($('fund').value) || 0);
+    var fill = null;
+    if (liq === 'good') fill = trigMark * (1 - side * 0.0005);
+    if (liq === 'thin') fill = p.bp * (1 - side * 0.004);
+    // signed result vs bankruptcy price: >0 surplus, <0 shortfall
+    var diff = fill === null ? null : side * (fill - p.bp) * p.q;
+    $('liqLog').innerHTML = '<span class="err">标记价格 ' + fmt(trigMark) + ' 触及强平价 ' + fmt(p.lp) + '，保证金率 ≥ 100%。</span>';
+    document.querySelectorAll('#flow li').forEach(function (li) { li.className = ''; });
+    var t = 0, D = 750;
+    function at(fn) { t += D; flowTimers.push(setTimeout(fn, t)); }
+    at(function () { flowMark(1, 'on'); log('撤销挂单：本示例无挂单，保证金率不变。'); });
+    at(function () { flowMark(1, 'good'); flowMark(2, 'on'); log('强平引擎接管 ' + p.q + ' BTC ' + (side === 1 ? '多' : '空') + '仓。'); });
+    at(function () {
+      flowMark(2, 'good'); flowMark(3, 'on');
+      log('以破产价 ' + fmt(p.bp) + ' 发出 IOC ' + (side === 1 ? '卖出' : '买入') + '平仓单。');
+      if (fill === null) log('<span class="err">订单簿流动性枯竭，平仓单无法成交。</span>');
+      else log('成交均价 ' + fmt(fill) + '。');
+    });
+    at(function () {
+      flowMark(3, fill === null ? 'bad' : 'good');
+      if (fill === null) { flowMark(4, 'skip'); goADL(); return; }
+      flowMark(4, 'on');
+      if (diff >= 0) {
+        log('<span class="ok">成交价优于破产价。盈余 ' + fmt(diff) + ' USDT 注入保险基金。</span>');
+        log('保险基金：' + fmt(fund) + ' → ' + fmt(fund + diff) + ' USDT。');
+        $('fund').value = (fund + diff).toFixed(2);
+        flowTimers.push(setTimeout(function () { flowMark(4, 'good'); flowMark(5, 'skip'); log('无需 ADL。用户损失全部仓位保证金 ' + fmt(p.wb) + ' USDT。'); }, D));
+      } else {
+        var loss = -diff;
+        log('<span class="err">成交价劣于破产价。穿仓亏损 ' + fmt(loss) + ' USDT。</span>');
+        if (fund >= loss) {
+          log('<span class="ok">保险基金补亏：' + fmt(fund) + ' → ' + fmt(fund - loss) + ' USDT。</span>');
+          $('fund').value = (fund - loss).toFixed(2);
+          flowTimers.push(setTimeout(function () { flowMark(4, 'good'); flowMark(5, 'skip'); log('无需 ADL。'); }, D));
+        } else {
+          log('<span class="err">保险基金余额 ' + fmt(fund) + ' 不足以覆盖 ' + fmt(loss) + '。</span>');
+          flowMark(4, 'bad');
+          goADL();
+        }
+      }
+    });
+    function goADL() {
+      flowTimers.push(setTimeout(function () {
+        flowMark(5, 'bad');
+        log('<span class="note">触发 ADL：按排名减少' + (side === 1 ? '空头' : '多头') + '盈利者的仓位，按破产价 ' + fmt(p.bp) + ' 成交。</span>');
+        renderADL(p);
+      }, D));
+    }
+  }
+
+  function renderADL(p) {
+    var names = ['对手 A', '对手 B', '对手 C', '对手 D', '对手 E', '对手 F'];
+    var rows = names.map(function (n) {
+      var roe = 0.05 + Math.random() * 2.5;
+      var lev = 1 + Math.floor(Math.random() * 50);
+      return { n: n, roe: roe, lev: lev, score: roe * lev, size: +(p.q * (0.2 + Math.random() * 0.8)).toFixed(3), cut: 0 };
+    });
+    rows.sort(function (a, b) { return b.score - a.score; });
+    var remain = p.q;
+    rows.forEach(function (r) { var c = Math.min(r.size, remain); r.cut = c; remain -= c; });
+    var max = rows[0].score;
+    $('adlBody').innerHTML = rows.map(function (r) {
+      var lights = Math.max(1, Math.ceil(5 * r.score / max));
+      return '<tr><td>' + r.n + '</td><td class="num up">+' + pct(r.roe, 1) + '</td><td class="num">' + r.lev + 'x</td><td class="num">' + r.score.toFixed(2) +
+        '</td><td class="lights">' + '■'.repeat(lights) + '□'.repeat(5 - lights) + '</td><td class="num">' + r.size + '</td><td class="num">' +
+        (r.cut > 0 ? '<span class="pill sell">−' + r.cut.toFixed(3) + '</span>' : '<span class="muted">0</span>') + '</td></tr>';
+    }).join('');
+    log('ADL 完成：共减仓 ' + (p.q - Math.max(0, remain)).toFixed(3) + ' BTC。被减仓者保留已实现盈利，但失去后续收益。');
+  }
+
+  /* ---------- tab1 controls ---------- */
+  function setSide(s) {
+    side = s;
+    $('btnLong').className = s === 1 ? 'buy' : '';
+    $('btnShort').className = s === -1 ? 'sell' : '';
+    resetPosition();
+  }
+  function setCross(c) {
+    cross = c;
+    $('btnIso').className = c ? '' : 'primary';
+    $('btnCross').className = c ? 'primary' : '';
+    $('crossBox').style.display = c ? 'block' : 'none';
+    resetPosition();
+  }
+  $('btnLong').addEventListener('click', function () { setSide(1); });
+  $('btnShort').addEventListener('click', function () { setSide(-1); });
+  $('btnIso').addEventListener('click', function () { setCross(false); });
+  $('btnCross').addEventListener('click', function () { setCross(true); });
+  ['ep', 'qty', 'extra'].forEach(function (id) { $(id).addEventListener('change', resetPosition); });
+  ['lev', 'mmr'].forEach(function (id) { $(id).addEventListener('input', function () { if (liquidated) { clearFlow(); liquidated = false; } update(); }); });
+  ['extra'].forEach(function (id) { $(id).addEventListener('input', function () { if (!liquidated) update(); }); });
+
+  /* ---------- Tab 2: funding ---------- */
+  var fSide = 1;
+  function clamp(x, lo, hi) { return Math.min(hi, Math.max(lo, x)); }
+  function updateFunding() {
+    var P = parseFloat($('prem').value) / 100;
+    var I = (parseFloat($('irate').value) || 0) / 100;
+    var N = parseInt($('interval').value, 10);
+    var notional = Math.max(0, parseFloat($('fnotional').value) || 0);
+    var c = clamp(I - P, -0.0005, 0.0005);
+    var F8 = P + c;
+    var F = F8 / (8 / N);
+    var capped = clamp(F, -0.02, 0.02);   // 示例上下限 ±2%
+    var isCapped = capped !== F; F = capped;
+    $('premOut').textContent = (P * 100).toFixed(3) + '%';
+    $('fClamp').textContent = (c * 100).toFixed(4) + '%';
+    $('fRate').textContent = (F * 100).toFixed(4) + '%';
+    var amt = notional * F;              // long pays when >0
+    var mine = -fSide * amt;             // + receive, − pay
+    $('fPay').textContent = (mine >= 0 ? '收 +' : '付 −') + fmt(Math.abs(mine), 4);
+    $('fPay').className = 'v ' + (mine >= 0 ? 'up' : 'down');
+    var day = mine * 24 / N;
+    $('fDay').textContent = (day >= 0 ? '+' : '−') + fmt(Math.abs(day), 4);
+    $('fDay').className = 'v ' + (day >= 0 ? 'up' : 'down');
+    $('fFormula').textContent =
+      'F = [P + clamp(I − P, −0.05%, +0.05%)] / (8 / N)\n' +
+      '  = [' + (P * 100).toFixed(3) + '% + clamp(' + ((I - P) * 100).toFixed(3) + '%)] / (8 / ' + N + ')\n' +
+      '  = ' + (F * 100).toFixed(4) + '%' + (isCapped ? '（触及示例上下限 ±2%）' : '') + '\n' +
+      '资金费 = 名义价值 × F = ' + fmt(notional, 0) + ' × ' + (F * 100).toFixed(4) + '% = ' + fmt(amt, 4);
+    var box = $('fArrow');
+    if (F > 0) box.innerHTML = '<span class="side" style="background:var(--buy-soft);color:var(--buy)">多头</span> → 支付 ' + fmt(Math.abs(amt), 4) + ' USDT → <span class="side" style="background:var(--sell-soft);color:var(--sell)">空头</span>';
+    else if (F < 0) box.innerHTML = '<span class="side" style="background:var(--sell-soft);color:var(--sell)">空头</span> → 支付 ' + fmt(Math.abs(amt), 4) + ' USDT → <span class="side" style="background:var(--buy-soft);color:var(--buy)">多头</span>';
+    else box.innerHTML = '<span class="muted">资金费率为 0，双方都不付。</span>';
+    var inBand = Math.abs(I - P) <= 0.0005;
+    $('fNote').textContent = inBand
+      ? '提示：P 与 I 的差在 ±0.05% 以内，clamp 项把 P 抵消，F 恰好等于利率 I（再按周期折算）。这是行情平静时资金费率常年为 0.01% 的原因。'
+      : '提示：P 偏离 I 超过 0.05%，clamp 项被截断，F 随溢价指数变化。合约越贵，多头付得越多。';
+  }
+  ['prem', 'irate', 'fnotional', 'interval'].forEach(function (id) { $(id).addEventListener('input', updateFunding); });
+  $('fLong').addEventListener('click', function () { fSide = 1; $('fLong').className = 'buy'; $('fShort').className = ''; updateFunding(); });
+  $('fShort').addEventListener('click', function () { fSide = -1; $('fShort').className = 'sell'; $('fLong').className = ''; updateFunding(); });
+
+  /* ---------- Tab 3: wick vs mark ---------- */
+  var W_EP = 50000, W_L = 20, W_MMR = 0.004;
+  var W_LP = W_EP * (1 - 1 / W_L) / (1 - W_MMR);
+  $('wLiqTxt').textContent = fmt(W_LP);
+  var noise = [];
+  function regenNoise() { noise = []; for (var i = 0; i < 80; i++) noise.push({ a: gauss(), b: gauss() }); }
+  regenNoise();
+  function median3(a, b, c) { return Math.max(Math.min(a, b), Math.min(Math.max(a, b), c)); }
+  function renderWick() {
+    var depth = parseFloat($('wDepth').value) / 100;
+    var real = $('wReal').checked;
+    $('wDepthOut').textContent = (depth * 100).toFixed(1) + '%';
+    var n = 80, spikeAt = 55, fr = 0.0001;
+    var idx = [], last = [], mk = [];
+    var base = 50200;
+    for (var i = 0; i < n; i++) {
+      var ix = base * (1 + 0.0006 * noise[i].a);
+      if (real && i >= spikeAt - 6) ix = base * (1 - depth * Math.min(1, (i - spikeAt + 6) / 6)) * (1 + 0.0006 * noise[i].a);
+      var lp = ix * (1 + 0.0002 + 0.0004 * noise[i].b);
+      if (!real && (i === spikeAt || i === spikeAt + 1)) lp = base * (1 - depth) * (i === spikeAt ? 1 : 1.01);
+      if (!real && i === spikeAt + 2) lp = ix * (1 - depth * 0.3);
+      idx.push(ix); last.push(lp);
+      var from = Math.max(0, i - 29), sum = 0;
+      for (var j = from; j <= i; j++) sum += last[j] - idx[j];
+      var p2 = ix + sum / (i - from + 1);
+      var p1 = ix * (1 + fr * ((n - i) / n));
+      mk.push(median3(p1, p2, lp));
+    }
+    var minLast = Math.min.apply(null, last), minMark = Math.min.apply(null, mk);
+    $('wMinLast').textContent = fmt(minLast);
+    $('wMinMark').textContent = fmt(minMark);
+    var liqLast = minLast <= W_LP, liqMark = minMark <= W_LP;
+    $('wVLast').innerHTML = liqLast ? '<span class="pill sell">被强平</span>' : '<span class="pill buy">安全</span>';
+    $('wVMark').innerHTML = liqMark ? '<span class="pill sell">被强平</span>' : '<span class="pill buy">安全</span>';
+    var ex;
+    if (!real && liqLast && !liqMark) ex = '最新价被一笔大单打穿强平价，但指数价格没动。标记价格取三者中位数，插针被"投票否决"，仓位不会被误强平。';
+    else if (real && liqMark) ex = '全部现货交易所同时下跌，指数价格也下跌。标记价格跟随真实行情，仓位被正常强平。标记价格只防"假"波动。';
+    else if (!liqLast) ex = '插针深度不足以触及强平价。把深度拉到 5% 以上再看。';
+    else ex = '标记价格仍有小幅下移（30 秒基差均值吸收了部分插针），但远小于最新价的波动。';
+    $('wExplain').textContent = ex;
+
+    var svg = $('wChart');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var Wd = svgW(svg), H = 260, padL = 8, padR = 70, padT = 12, padB = 18;
+    svg.setAttribute('viewBox', '0 0 ' + Wd + ' ' + H);
+    var all = idx.concat(last, mk, [W_LP]);
+    var lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
+    var sp = hi - lo; lo -= sp * 0.08; hi += sp * 0.08;
+    function X(i) { return padL + (Wd - padL - padR) * i / (n - 1); }
+    function Y(v) { return padT + (H - padT - padB) * (1 - (v - lo) / (hi - lo)); }
+    for (var g = 0; g <= 4; g++) {
+      var gv = lo + (hi - lo) * g / 4;
+      svg.appendChild(el('line', { x1: padL, x2: Wd - padR, y1: Y(gv), y2: Y(gv), 'class': 'grid-line' }));
+      svg.appendChild(el('text', { x: Wd - padR + 4, y: Y(gv) + 4, 'class': 't-axis' }, fmt(gv, 0)));
+    }
+    svg.appendChild(el('line', { x1: padL, x2: Wd - padR, y1: Y(W_LP), y2: Y(W_LP), 'class': 'l-liq' }));
+    svg.appendChild(el('text', { x: padL + 4, y: Y(W_LP) - 4, 'class': 't-liq' }, '强平 ' + fmt(W_LP, 0)));
+    function poly(arr, cls) {
+      svg.appendChild(el('polyline', { points: arr.map(function (v, i) { return X(i).toFixed(1) + ',' + Y(v).toFixed(1); }).join(' '), 'class': cls }));
+    }
+    poly(last, 'l-last'); poly(idx, 'l-index'); poly(mk, 'l-mark');
+  }
+  $('wDepth').addEventListener('input', renderWick);
+  $('wReal').addEventListener('change', renderWick);
+  $('wRegen').addEventListener('click', function () { regenNoise(); renderWick(); });
+
+  window.addEventListener('resize', function () { drawChart(params()); renderWick(); });
+  /* ---------- init ---------- */
+  resetPosition();
+  updateFunding();
+  renderWick();
+})();
+</script>
+</body>
+</html>

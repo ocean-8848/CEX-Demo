@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="application-name" content="market-board" />
+    <meta name="theme-color" content="#0b0e13" />
+    <title>Web3 CEX Trader</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f5a524'/%3E%3Cpath d='M16 7l9 9-9 9-9-9z' fill='%23111'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/base.css" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script>
+      // Apply the saved theme before first paint to avoid a flash.
+      try {
+        var prefs = JSON.parse(localStorage.getItem("trader-web:prefs") || "{}");
+        if (prefs.theme === "light") document.documentElement.dataset.theme = "light";
+      } catch (error) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Trader Web 需要启用 JavaScript。</noscript>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

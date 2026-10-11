@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B05 业务风控</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .scene > h2 { font-size: 58px; }
+  .hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; max-width: 1640px; }
+  .hero .card { display: flex; flex-direction: column; gap: 10px; min-height: 250px; }
+  .hero .card .k { font-size: 28px; color: var(--text-2); }
+  .hero .card .big { font-size: 74px; }
+
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .cmp .card { font-size: 32px; }
+  .cmp .card h3 { font-size: 40px; }
+  .ana { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .ana .card { font-size: 30px; padding: 22px 26px; }
+  .ana .card b { color: var(--gold); display: block; font-size: 32px; margin-bottom: 6px; }
+
+  .six { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .six .card { padding: 18px 24px; font-size: 30px; line-height: 1.4; }
+  .six .card h3 { font-size: 36px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+  .six .card .s { color: var(--text-2); font-size: 30px; }
+
+  .layers { display: flex; flex-direction: column; gap: 14px; }
+  .layers .ly { display: grid; grid-template-columns: 220px 1fr 560px; gap: 20px; align-items: center; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 14px 24px; font-size: 30px; transition: all .35s; }
+  .layers .ly .n { font-family: var(--mono); color: var(--gold); font-weight: 700; font-size: 30px; }
+  .layers .ly .leak { color: var(--sell); font-size: 28px; }
+  .layers .ly.pend { opacity: .15; }
+  .layers .ly.cur { border-color: var(--gold); background: #221e10; box-shadow: 0 0 0 6px var(--gold-soft); }
+
+  svg text { font-size: 28px; }
+  .g text { dominant-baseline: middle; text-anchor: middle; }
+  .side { display: flex; flex-direction: column; gap: 18px; width: 520px; flex: 0 0 520px; }
+  .side .card { font-size: 30px; padding: 20px 26px; }
+  .side .card h3 { font-size: 34px; margin-bottom: 6px; }
+
+  /* order book */
+  .ob { width: 760px; font-family: var(--mono); font-size: 32px; }
+  .ob .lv { display: grid; grid-template-columns: 210px 1fr 150px; align-items: center; height: 46px; padding: 0 18px; position: relative; border-radius: 6px; transition: all .3s; }
+  .ob .lv .bar { position: absolute; top: 6px; bottom: 6px; right: 0; border-radius: 4px; opacity: .22; }
+  .ob .lv.a { color: var(--sell); } .ob .lv.a .bar { background: var(--sell); }
+  .ob .lv.b { color: var(--buy); } .ob .lv.b .bar { background: var(--buy); }
+  .ob .lv .q { text-align: right; position: relative; } .ob .lv .p { position: relative; }
+  .ob .lv .who { font-family: var(--sans); font-size: 24px; color: var(--gold); position: relative; text-align: center; }
+  .ob .lv.wall { background: rgba(240,185,11,.16); outline: 2px solid var(--gold); }
+  .ob .lv.gone { opacity: .25; text-decoration: line-through; }
+  .ob .lv.hit { background: rgba(246,70,93,.2); }
+  .ob .mid { text-align: center; font-size: 30px; color: var(--text); padding: 8px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 4px 0; font-family: var(--sans); }
+  .chk { display: grid; grid-template-columns: 1fr 190px; gap: 8px 12px; font-size: 30px; align-items: center; }
+  .chk .ok { font-family: var(--mono); text-align: right; }
+  .alarm { background: var(--sell-soft); border: 2px solid var(--sell); color: var(--sell); border-radius: 12px; padding: 14px 20px; font-size: 32px; font-weight: 700; text-align: center; }
+
+  .ft { border-collapse: collapse; font-size: 30px; width: 100%; }
+  .ft td { padding: 9px 14px; border-bottom: 1px solid var(--line); }
+  .ft td.m { text-align: center; font-family: var(--mono); width: 90px; }
+
+  .cc { display: grid; grid-template-columns: 1fr 70px 1fr 70px 1fr; gap: 0; align-items: stretch; }
+  .cc .colh { font-size: 28px; font-weight: 700; margin-bottom: 12px; letter-spacing: .1em; }
+  .cc .stack { display: flex; flex-direction: column; gap: 14px; }
+  .cc .nd { background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 14px 20px; font-size: 30px; line-height: 1.4; transition: opacity .4s, box-shadow .4s, border-color .4s; }
+  .cc .r .nd { border-color: var(--sell); } .cc .i .nd { border-color: var(--warn); } .cc .f .nd { border-color: var(--buy); }
+  .cc .r .colh { color: var(--sell); } .cc .i .colh { color: var(--warn); } .cc .f .colh { color: var(--buy); }
+  .cc .ar { display: flex; align-items: center; justify-content: center; font-size: 52px; color: var(--text-2); transition: opacity .4s; }
+  .pend { opacity: .1 !important; }
+  .cc .nd.cur { box-shadow: 0 0 0 6px var(--gold-soft); border-color: var(--gold) !important; }
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .facts .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 22px; transition: opacity .4s; }
+  .facts .stat .k { font-size: 26px; } .facts .stat .v { font-size: 44px; }
+
+  .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .rules .card { font-size: 30px; padding: 18px 24px; }
+  .rules .card .id { font-family: var(--mono); color: var(--gold); font-weight: 700; margin-right: 10px; }
+  .panel { display: none; }
+  .panel.on { display: flex; }
+  .trade { width: 100%; }
+  .trade td { font-size: 30px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="B05" data-title="业务风控：薅羊毛、市场操纵与信用风险">
+
+  <!-- 1 开场 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 幕后核心 · B05</div>
+    <h1>单笔都正常，<span class="hl">合起来是作弊</span></h1>
+    <div class="hero">
+      <div class="card gold" data-step="0"><div class="k">2024-06 · Megadrop 活动</div><div class="big">297</div><div>个账户被封禁，每个都已实名</div></div>
+      <div class="card warn" data-step="1"><div class="k">2024-12 · MOVE 上线次日</div><div class="big">约 6,600 万</div><div>枚 MOVE 被做市商卖出</div></div>
+      <div class="card info" data-step="2"><div class="k">2025-03 · 员工抢跑</div><div class="big">10 万$</div><div>分给 4 名举报人</div></div>
+    </div>
+    <div class="muted" data-step="0" style="font-size:28px">以上据公开报道</div>
+    <ol class="say">
+      <li>大家好，欢迎来到幕后核心第5集，业务风控。据公开报道，2024年6月，币安在一次活动里封禁了297个账户。这些账户每一个都通过了实名认证。</li>
+      <li>再看第二个数字。一家做市商在代币上线次日，卖出约6600万枚 MOVE。它几乎没有提供买方支撑。</li>
+      <li>第三个数字。币安停职了一名员工，并向4名举报人分配10万美元奖励。这名员工利用未公开信息，提前买入了一个代币。</li>
+      <li>这三件事有个共同点。单看每一笔请求，都没有异常。今天就来拆解，平台怎样发现它们。</li>
+    </ol>
+  </section>
+
+  <!-- 2 是什么 -->
+  <section class="scene" data-title="业务风控是什么" style="gap:26px">
+    <div class="kicker">一句话理解</div>
+    <h2>不看单笔请求，看一群账户</h2>
+    <div class="cmp">
+      <div class="card" data-step="0"><h3>09 集 · 交易风控</h3><div class="muted">门口安检</div><div>拦截<b>单笔请求</b>：下单查余额、提币查盗号</div><div class="muted">同步执行，当场拦下</div></div>
+      <div class="card gold" data-step="1"><h3>B05 · 业务风控</h3><div class="muted">保安监控室</div><div><b>一群账户 · 一段时间 · 一批订单</b></div><div class="muted">异步检测为主，事后处置为主</div></div>
+    </div>
+    <div class="ana" data-step="2">
+      <div class="card"><b>羊毛党</b>30 人一小时办 30 张会员卡，领完赠品就走</div>
+      <div class="card"><b>幌骗</b>摊位摆满货，顾客一靠近就收起来</div>
+      <div class="card"><b>对敲</b>两个摊主互相买卖，刷销量</div>
+    </div>
+    <div class="card warn" data-step="3" style="font-size:30px; padding:18px 26px">比喻不准的地方：保安能当场拦人；监控引擎在撮合之后运行，发现时操纵往往已完成。</div>
+    <ol class="say">
+      <li>第09集讲的风控，是对单笔请求的拦截。比如下单前查余额，提币前查盗号。</li>
+      <li>业务风控不同。这类风险看不出单笔异常，只在一群账户、一段时间、一批订单里显现。所以它以异步检测和事后处置为主。</li>
+      <li>打个比方，交易所像大商场。门口安检查危险品，业务风控是保安监控室。30个人办了30张会员卡，领完赠品就走，这是羊毛党。摊位摆满货，顾客一靠近就收，这是幌骗。两个摊主互相买卖刷销量，这是对敲。</li>
+      <li>但这个比喻有不准的地方。商场保安能当场拦人。监控引擎运行在撮合之后，它发现操纵时，操纵往往已经完成。</li>
+    </ol>
+  </section>
+
+  <!-- 3 六类风险 -->
+  <section class="scene" data-title="六类业务风险">
+    <div class="kicker">问题模型</div>
+    <h2>六类风险：谁在做、看什么信号</h2>
+    <div class="six">
+      <div class="card" data-step="0"><h3>营销作弊 <span class="chip gold">羊毛党</span></h3><div class="s">设备、IP、行为聚类；资金归集</div></div>
+      <div class="card" data-step="0"><h3>市场操纵 <span class="chip sell">操纵者</span></h3><div class="s">撤单率、关联账户成交、量价异常</div></div>
+      <div class="card" data-step="1"><h3>内幕交易 <span class="chip info">内部人</span></h3><div class="s">交易时间早于公告；与内部人关联</div></div>
+      <div class="card" data-step="2"><h3>信用风险</h3><div class="s">抵押率、集中度、强平失败</div></div>
+      <div class="card" data-step="2"><h3>资产风险</h3><div class="s">价格偏离、单一源异常、链上解锁</div></div>
+      <div class="card sell" data-step="3"><h3>参数风险</h3><div class="s">杠杆或限额设错 → 系统性损失</div></div>
+    </div>
+    <div class="card warn" data-step="4" style="font-size:30px; padding:18px 26px">本集的信号、阈值和规则是<b>业界通用做法的示例</b>。币安未公开其业务风控内部规则。</div>
+    <ol class="say">
+      <li>先建一个问题模型。业务风险分六类。第一类是营销作弊，来自羊毛党和设备农场，信号是设备聚类和资金归集。第二类是市场操纵，制造虚假价格或成交量，信号是撤单率和关联成交。</li>
+      <li>第三类是内幕交易，利用未公开的上币信息提前交易。信号是交易时间早于公告。</li>
+      <li>第四类是信用风险，借出的资产收不回。第五类是资产风险，比如稳定币脱锚、指数源被操纵、项目方跑路。</li>
+      <li>第六类最容易被忽略，是参数风险。杠杆或限额设错，会造成系统性损失。</li>
+      <li>注意，本集的信号、阈值和规则，都是业界通用做法的示例。币安没有公开它的内部规则。</li>
+    </ol>
+  </section>
+
+  <!-- 4 五层防线 -->
+  <section class="scene" data-title="五层防线" data-onstep="layerStep">
+    <div class="kicker">防线分层</div>
+    <h2>每一层都会漏，漏的东西不同</h2>
+    <div class="layers">
+      <div class="ly" data-l="0"><span class="n">第 1 层 准入</span><span>KYC 一人一号、设备指纹</span><span class="leak">漏：购买来的实名账户</span></div>
+      <div class="ly" data-l="2"><span class="n">第 2 层 实时</span><span>STP、价格保护带、持仓限额</span><span class="leak">漏：不同账户之间的对敲</span></div>
+      <div class="ly" data-l="3"><span class="n">第 3 层 检测</span><span>撤单率、关联成交、量价突增</span><span class="leak">漏：低频、跨平台操纵</span></div>
+      <div class="ly" data-l="3"><span class="n">第 4 层 调查</span><span>图关联分析、人工调查、证据留存</span><span class="leak muted" style="color:#9ea3ad">发现时损失多已发生</span></div>
+      <div class="ly" data-l="4"><span class="n">第 5 层 处置</span><span>取消奖励、冻结收益、做市商下线、监控标签、下架</span><span></span></div>
+    </div>
+    <div class="card gold" data-step="5" style="font-size:30px; padding:18px 26px">设计原则：检测有延迟 → <b>奖励发放后置</b>，给检测留时间。</div>
+    <ol class="say">
+      <li>再看防线。业务风控分五层。第1层是准入，靠 KYC 一人一号和设备指纹，拦住一个人注册很多号。</li>
+      <li>它漏过的是买来的实名账户。KYC 是真的，只是账户被买卖了。</li>
+      <li>第2层是实时规则，比如自成交预防 STP、价格保护带和单账户持仓限额。它同步执行，只能处理同一账户的问题。两个关联账户之间的对敲，它挡不住。</li>
+      <li>第3层是准实时检测，盯撤单率、关联成交和量价突增。第4层是事后调查，做图关联和人工取证。它们发现问题时，损失往往已经发生。</li>
+      <li>第5层是处置。取消奖励、冻结收益、做市商下线、加监控标签，直到下架。</li>
+      <li>由此得出一条设计原则。检测有延迟，奖励发放就要后置，给检测留出时间。</li>
+    </ol>
+  </section>
+
+  <!-- 5 设备农场 -->
+  <section class="scene" data-title="营销反作弊：图关联" data-onstep="farmStep">
+    <div class="kicker">营销反作弊 · 示例数字</div>
+    <h2>把账户画成图，团伙就是连通分量</h2>
+    <div class="row">
+      <svg class="g" id="farm" width="1060" height="560" viewBox="0 0 1060 560"></svg>
+      <div class="side" id="farmSide"></div>
+    </div>
+    <ol class="say">
+      <li>先看营销反作弊。作弊的经济账很简单。举个示例，新账户奖励10 USDT，注册和养号成本3 USDT。每个号净赚7 USDT，1万个号就是7万 USDT。只要奖励大于成本，就一定有人批量注册。</li>
+      <li>怎么识别？第一类信号是设备。比如200个账户只共享5个设备指纹，或者用了模拟器和改机工具。</li>
+      <li>第二类是网络和行为。注册集中在同一个 IP 网段。每个账户都在注册后3分钟，完成同一套任务。真人的操作不会这么整齐。</li>
+      <li>第三类信号最稳定，是资金归集。领完奖励后，这些账户把钱转给同一个账户。这是羊毛党变现的必经之路。</li>
+      <li>把这些信号画成一张图。账户是节点，共享设备、IP、地址和转账是边。连通分量大的子图，就是疑似团伙。旁边零散的节点，是正常用户。</li>
+    </ol>
+  </section>
+
+  <!-- 6 奖励后置 -->
+  <section class="scene" data-title="奖励后置" data-onstep="rewardStep">
+    <div class="kicker">奖励发放后置 · 示例</div>
+    <h2>评分完成之前，奖励不进可用余额</h2>
+    <svg class="g" id="rw" width="1640" height="480" viewBox="0 0 1640 480"></svg>
+    <div class="card" id="rwNote" style="font-size:30px; padding:16px 26px"></div>
+    <ol class="say">
+      <li>用户完成任务后，系统不直接发钱，只记一条待发奖励。奖励不进可用余额。</li>
+      <li>接着进入冷静期，举个示例，7天。这段时间里，反作弊模型和图关联持续给账户打分。</li>
+      <li>冷静期结束，按分数分流。低风险自动发放，中风险进入人工审核，高风险或团伙命中直接取消。</li>
+      <li>中风险为什么要人工通道？因为被误拒的真实用户会投诉，人工审核是给误判留的出口。</li>
+      <li>如果奖励已经发放，事后才确认作弊，就进入追回，冻结奖励及其收益。但追回的前提是钱还在平台内。作弊者通常领完就提走，所以后置比追回更重要。</li>
+      <li>冷静期是个权衡，越长检测越准，真实用户体验越差。规则 MKT-06 是个例子。同一设备指纹有5个以上账户领同一奖励，就转人工审核。</li>
+    </ol>
+  </section>
+
+  <!-- 7 幌骗 -->
+  <section class="scene" data-title="幌骗与分层挂单" data-onstep="spoofStep">
+    <div class="kicker">市场监控 · Spoofing · 示例订单簿</div>
+    <h2>挂出来不是为了成交，是为了被看见</h2>
+    <div class="row">
+      <div class="ob" id="ob"></div>
+      <div class="side" style="width:640px; flex-basis:640px" id="spSide"></div>
+    </div>
+    <ol class="say">
+      <li>进入市场监控。先看幌骗，英文叫 spoofing。这是一个示例订单簿，盘口每档的平均挂单量约2个 BTC。</li>
+      <li>操纵者在买一下方，突然挂出一笔12个 BTC 的大买单。看起来，买盘一下子变得很强。</li>
+      <li>其他人以为要涨，开始主动买入。操纵者挂在卖一的卖单被吃掉了。</li>
+      <li>卖单成交后，那笔大买单在1.6秒内就撤掉了。它从来没打算成交。</li>
+      <li>对照检测规则 MKT-01。订单量是均量的6倍，超过5倍。存活不到2秒。该账户撤单率95%，超过90%。撤单前对侧有成交。四条全中，触发告警。</li>
+      <li>它的变体叫分层挂单。同一账户在同一侧3个以上价位同时挂单，又同时撤销。注意，幌骗的证据在撤单里。所以监控引擎必须消费全部订单事件。</li>
+    </ol>
+  </section>
+
+  <!-- 8 对敲 -->
+  <section class="scene" data-title="对敲与关联度" data-onstep="washStep">
+    <div class="kicker">市场监控 · Wash Trading · 示例</div>
+    <h2>两个账户互相成交，STP 拦不住</h2>
+    <div class="row">
+      <svg class="g" id="wash" width="900" height="560" viewBox="0 0 900 560"></svg>
+      <div class="col" id="washSide"></div>
+    </div>
+    <ol class="say">
+      <li>再看对敲，也叫 wash trading。账户 U7 和 U8 互相买卖。示例里成交量不断上涨，价格却几乎不动。</li>
+      <li>STP 会拦截同一用户的自成交。但 U7 和 U8 是两个用户，STP 拦不住。</li>
+      <li>于是监控引擎去查两人的关联度。我们比较6个特征。设备指纹、IP、充值来源、提币地址、KYC 信息和下单时间。</li>
+      <li>两人共享其中5个。相似度等于5除以6，约0.83。这叫 Jaccard 相似度，是一个示例公式。</li>
+      <li>规则 MKT-02 的阈值是0.7。0.83超过阈值，触发告警，这些成交量也要从统计里剔除。分析师的结论会回填为真值标签，用来计算精确率和召回率。</li>
+    </ol>
+  </section>
+
+  <!-- 9 拉盘砸盘 -->
+  <section class="scene" data-title="拉盘砸盘" data-onstep="pumpStep">
+    <div class="kicker">市场监控 · Pump and Dump · 示例数字</div>
+    <h2>量价突增，随后同一批账户净卖出</h2>
+    <svg id="pump" width="1640" height="520" viewBox="0 0 1640 520"></svg>
+    <div class="card" id="pumpNote" style="font-size:30px; padding:14px 26px"></div>
+    <ol class="say">
+      <li>第三种操纵是拉盘砸盘。这是一个小币的示例走势，每根柱子是5分钟的成交量。平时的基线，大约每5分钟100万 USDT。</li>
+      <li>突然，一批账户集中买入。这5分钟的成交量到了450万，是基线的4.5倍。价格涨了12%。</li>
+      <li>跟风的买家进场，价格继续往上走。</li>
+      <li>随后，同一批账户集中净卖出，价格回落，跟风的人接了盘。</li>
+      <li>规则 MKT-03 这样写。5分钟成交量大于等于基线的4倍，并且涨幅大于等于8%，就告警。同时标记这一时段大额净买入的账户。</li>
+    </ol>
+  </section>
+
+  <!-- 10 内幕与做市商 -->
+  <section class="scene" data-title="内幕抢跑与做市商" data-onstep="mmStep">
+    <div class="kicker" id="mmK">内部人与签约方</div>
+    <h2 id="mmH"></h2>
+    <div class="panel col" id="mmA">
+      <div class="grid3 only0" data-step="0" data-until="0">
+        <div class="card info"><h3>上币</h3>何时上、上哪个</div>
+        <div class="card warn"><h3>下架</h3>哪个币要下</div>
+        <div class="card gold"><h3>重大公告</h3>合作、活动、TGE</div>
+      </div>
+      <div class="card sell only0" data-step="0" data-until="0" style="font-size:32px">信息差 + 提前交易 = 抢跑。信号：交易时间早于公告；账户与员工、项目方关联；收益异常集中</div>
+      <div class="rules">
+        <div class="card" data-step="1">1 · 员工及直系亲属账户<b>申报</b></div>
+        <div class="card" data-step="1">2 · 获知敏感信息 → <b>禁止交易窗口</b></div>
+        <div class="card" data-step="1">3 · 交易预先申请，设<b>最短持有期</b></div>
+        <div class="card" data-step="1">4 · 申报账户与疑似关联账户<b>重点监控</b></div>
+      </div>
+      <div class="card info" data-step="2" style="font-size:30px"><span class="mono hl">MKT-04</span> 公告前 24 小时内，员工关联账户买入该币 → <b>P1 告警</b>，合规介入</div>
+      <div class="card gold" data-step="2" style="font-size:30px">据公开报道 · 2025-03：一名员工用调岗前获得的未公开信息，在 TGE 前买入后卖出部分获利 → 停职；4 名举报人分得 10 万美元</div>
+    </div>
+    <div class="panel col" id="mmB">
+      <div class="grid2 only3">
+        <div class="card buy"><h3>平台给做市商</h3>费率优惠</div>
+        <div class="card gold"><h3>做市商给市场</h3>持续的买卖双边报价、足够的深度</div>
+      </div>
+      <table class="t">
+        <thead><tr><th>义务或禁止</th><th>监控指标 · 示例</th></tr></thead>
+        <tbody>
+          <tr data-step="4"><td>双边报价</td><td>两侧都有挂单的时间占比 ≥ 90%</td></tr>
+          <tr data-step="4"><td>价差上限 · 最小深度</td><td>价差 ≤ 0.5%；盘口 ±2% 内挂单 ≥ 约定值</td></tr>
+          <tr data-step="4"><td>禁止单边倾销 · 过度撤单</td><td>净卖出占比；订单成交比</td></tr>
+        </tbody>
+      </table>
+      <div class="card warn" data-step="5" style="font-size:30px"><span class="mono hl">MKT-05</span> 双边报价占比 &lt; 90%，连续 3 天 → 警告，扣减费率优惠</div>
+      <div class="cc" data-step="6">
+        <div class="r"><div class="stack"><div class="nd">2024-12 MOVE 上线次日卖出约 6,600 万枚，几乎无买方支撑</div></div></div>
+        <div class="ar">→</div>
+        <div class="i"><div class="stack"><div class="nd">获利约 3,800 万 USDT</div></div></div>
+        <div class="ar">→</div>
+        <div class="f"><div class="stack"><div class="nd">2025-03 下线做市商，冻结收益，通知项目方</div></div></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>第四种是内幕抢跑。最危险的来源是平台员工，他们可能提前知道上币、下架和重大公告。</li>
+      <li>业界通常这样做。员工和直系亲属的账户要申报。获知敏感信息后，进入禁止交易窗口。交易要预先申请，并设最短持有期。另外还要设举报渠道。</li>
+      <li>对应规则 MKT-04。公告前24小时内，员工关联账户买入该币，直接 P1 告警。据公开报道，2025年3月，币安停职了一名员工。他用调岗前获得的未公开信息，在代币发行前买入。</li>
+      <li>再看做市商。它和平台签约，持续提供买卖报价，用报价义务换取费率优惠。</li>
+      <li>义务要写成可监控的指标。比如双边报价时间占比大于等于90%，价差不超过0.5%。还要看净卖出占比和订单成交比。</li>
+      <li>规则 MKT-05 规定，双边报价占比低于90%连续3天，就警告并扣减费率优惠。</li>
+      <li>据公开报道，2024年12月 MOVE 上线次日，一家做市商卖出约6600万枚。它几乎没有提供买方支撑，获利约3800万 USDT。2025年3月，币安下线了它，冻结相关收益，并通知项目方。</li>
+      <li>教训是，协议要写明可监控的义务，平台还要有冻结收益的合同依据。</li>
+    </ol>
+  </section>
+
+  <!-- 11 信用与资产 -->
+  <section class="scene" data-title="信用风险与资产风险" data-onstep="assetStep">
+    <div class="kicker" id="asK">信用风险</div>
+    <h2 id="asH"></h2>
+    <div class="panel col" id="asA">
+      <div class="grid2">
+        <div class="card"><h3>杠杆借贷</h3>抵押品跌得比强平快 → 分层保证金率、借贷限额</div>
+        <div class="card"><h3>VIP 借贷</h3>大额、低抵押率 → 单客户敞口上限、人工授信</div>
+        <div class="card"><h3>合约穿仓</h3>强平价差于破产价 → 保险基金、ADL</div>
+        <div class="card"><h3>集中度</h3>少数账户持大部分借款 → 单币种、单账户上限</div>
+      </div>
+      <div class="card gold" data-step="1" style="font-size:30px"><span class="mono">CRD-01</span> 单币种借出总额 ≥ 平台可借上限 × 90% → 暂停新增借款</div>
+    </div>
+    <div class="panel col" id="asB">
+      <div class="grid2">
+        <div class="card sell"><h3>稳定币脱锚</h3>2022-05 UST 脱锚崩溃<br>2023-03 USDC 短暂跌破 1 美元</div>
+        <div class="card sell" data-step="3"><h3>指数源污染</h3>2022-10 Mango Markets 预言机被操纵，损失超过 1 亿美元</div>
+      </div>
+      <div class="card warn"><span class="mono">AST-01</span> 偏离 1 美元 ≥ 2%，持续 10 分钟 → 降低抵押折算率，通知风险委员会</div>
+      <div class="card info" data-step="3" style="font-size:30px">指数多源加权；单一来源偏离中位数时截断；薄流动性来源降权</div>
+    </div>
+    <div class="panel col" id="asC">
+      <svg class="g" id="tagf" width="1640" height="430" viewBox="0 0 1640 430"></svg>
+      <div class="muted" style="font-size:26px">监控标签：截至 2026 年公开资料</div>
+    </div>
+    <ol class="say">
+      <li>下面看信用风险，也就是借出的资产收不回。场景有杠杆借贷、VIP 借贷、合约穿仓和持仓集中。</li>
+      <li>控制手段有分层保证金率、单客户敞口上限、保险基金和 ADL。规则 CRD-01 是，单币种借出达到可借上限的90%，就暂停新增借款。</li>
+      <li>再看资产风险。第一类是稳定币脱锚。2022年5月 UST 崩溃，2023年3月 USDC 短暂跌破1美元。规则 AST-01 是，偏离1美元2%以上并持续10分钟，就降低抵押折算率。</li>
+      <li>第二类是指数源污染。2022年10月，链上协议 Mango Markets 的预言机被操纵。协议损失超过1亿美元。所以指数要多源加权，偏离中位数的来源要截断。</li>
+      <li>第三类是项目方风险，靠监控标签处理。币安对风险明显偏高的代币加监控标签。用户交易前要通过风险测验，每90天重测一次。</li>
+      <li>标签是下架前的黄灯，指标恢复就回到持续监控。持续不达标，就公告下架，并保留提币窗口。严重事件可以直接下架。</li>
+    </ol>
+  </section>
+
+  <!-- 12 参数治理 -->
+  <section class="scene" data-title="风险参数治理" data-onstep="govStep">
+    <div class="kicker">风险参数治理</div>
+    <h2>改一个数字影响全部用户，要像代码一样审</h2>
+    <svg class="g" id="gov" width="1640" height="440" viewBox="0 0 1640 440"></svg>
+    <div class="card" id="govNote" style="font-size:30px; padding:16px 26px"></div>
+    <ol class="say">
+      <li>风险参数包括杠杆上限、保证金率、借贷限额和指数权重等。改一个数字，影响全部用户。</li>
+      <li>所以参数要像代码一样治理。先提出变更，附上影响评估。再做独立复核，用历史行情回测，看会多出多少强平和穿仓。</li>
+      <li>然后审批，提出人和审批人必须分开。批准后先走灰度或影子模式，再正式生效并公告。</li>
+      <li>每次变更都写审计日志，记下谁、何时、旧值和新值。复盘时才能回答，那一刻的参数是什么。</li>
+      <li>紧急时，比如稳定币脱锚，值班风险官可以立即降低折算率，24小时内补审批。</li>
+      <li>注意，紧急路径只允许收紧风险。降杠杆、降限额可以走这条路。放宽风险，必须走正常审批。</li>
+    </ol>
+  </section>
+
+  <!-- 13 案例 -->
+  <section class="scene" data-title="案例：2024 Lista Megadrop" data-onstep="caseStep">
+    <div class="kicker">真实案例 · 2024-06 · 据公开报道</div>
+    <h2>Megadrop 批量账户：在卖出前拦住</h2>
+    <div class="cc">
+      <div class="r"><div class="colh">原因</div><div class="stack">
+        <div class="nd" data-k="1">批量购买已实名账户</div>
+        <div class="nd" data-k="1">每个账户参与 Megadrop</div>
+      </div></div>
+      <div class="ar" data-k="2">→</div>
+      <div class="i"><div class="colh">影响</div><div class="stack">
+        <div class="nd" data-k="2">领取奖励代币</div>
+        <div class="nd" data-k="2">归集到同一账户，准备卖出</div>
+      </div></div>
+      <div class="ar" data-k="3">→</div>
+      <div class="f"><div class="colh">处置</div><div class="stack">
+        <div class="nd" data-k="3">资金归集 + 账户关联 → 拦截卖出</div>
+        <div class="nd" data-k="4">冻结代币用于项目活动，返还真实参与者</div>
+      </div></div>
+    </div>
+    <div class="facts">
+      <div class="stat" data-k="1"><div class="k">第 1 层 KYC</div><div class="v down">未拦住</div></div>
+      <div class="stat" data-k="3"><div class="k">封禁账户</div><div class="v hl">297</div></div>
+      <div class="stat" data-k="5"><div class="k">发现点</div><div class="v">资金归集</div></div>
+      <div class="stat" data-k="5"><div class="k">局限</div><div class="v" style="font-size:34px">分散卖出会削弱信号</div></div>
+    </div>
+    <ol class="say">
+      <li>来看一个完整案例。据公开报道，这是2024年6月 Lista DAO 的 Megadrop 活动。币安在活动中识别出大量作弊账户。</li>
+      <li>作弊者批量购买了已实名的账户，每个账户都参加活动。所以第1层 KYC 没有拦住。</li>
+      <li>领到奖励代币后，他们把代币归集到同一个账户，准备卖出。</li>
+      <li>风控通过资金归集和账户关联发现了团伙，拦截了归集后的卖出，并封禁了297个账户。</li>
+      <li>币安表示，冻结的代币将用于项目活动，返还给真实参与者。</li>
+      <li>复盘一下。发现点在资金归集，这是最稳定的信号。奖励虽已发出，卖出前拦截仍挽回了损失。局限是，如果作弊者分散卖出、分散提币，归集信号就会变弱。</li>
+    </ol>
+  </section>
+
+  <!-- 14 权衡、小结、预告 -->
+  <section class="scene" data-title="权衡、小结与预告" data-onstep="endStep">
+    <div class="kicker">局限与权衡 · 小结</div>
+    <h2 class="pA">每个阈值都是一次取舍</h2>
+    <table class="t trade pA">
+      <thead><tr><th>权衡</th><th>一端</th><th>另一端</th></tr></thead>
+      <tbody>
+        <tr data-step="0"><td>误杀 vs 漏放</td><td>撤单率阈值低：抓到更多幌骗</td><td>正常做市商被误报</td></tr>
+        <tr data-step="1"><td>体验 vs 反作弊</td><td>奖励即时到账：拉新好</td><td>羊毛党领完即走</td></tr>
+        <tr data-step="1"><td>透明 vs 对抗</td><td>公开规则：用户可预期</td><td>作弊者按规则调整</td></tr>
+        <tr data-step="2"><td>平台利益 vs 市场公平</td><td>刷量抬高排名和手续费</td><td>误导用户，招致处罚</td></tr>
+      </tbody>
+    </table>
+    <h2 class="pB">记住三件事</h2>
+    <ul class="bullets pB">
+      <li data-step="3">看<span class="hl">一群账户、一段时间、一批订单</span>；奖励后置，给检测留时间。</li>
+      <li data-step="4">幌骗看<span class="hl">撤单</span>，对敲看<span class="hl">关联度</span>，拉盘看<span class="hl">量价</span>，内幕看<span class="hl">时间</span>。</li>
+      <li data-step="5">风险参数像代码一样治理：提出与审批分离，<span class="hl">紧急只许收紧</span>。</li>
+    </ul>
+    <div class="row pB" data-step="6">
+      <div class="card gold" style="flex:1; font-size:30px"><div>下一集 <b class="mono">B06</b> 金库与流动性</div><div class="muted" style="margin-top:8px">钱放在哪里？挤兑来了付不付得出？</div></div>
+      <div class="card info" style="flex:1; font-size:30px"><div>交互实验 · 市场监控</div><div class="muted" style="margin-top:8px">拖动阈值，看误报和漏报怎样变化</div></div>
+    </div>
+    <ol class="say">
+      <li>最后看权衡。第一对是误杀和漏放。撤单率阈值调低，能抓到更多幌骗，但正常做市商会被误报。</li>
+      <li>体验和反作弊也是一对。奖励即时到账，拉新效果好，但羊毛党领完就走。公开规则让用户可预期，也让作弊者调整行为。</li>
+      <li>还有平台利益和市场公平。刷量能抬高排名，但虚假成交量误导用户，还会招来处罚。</li>
+      <li>小结三点。第一，业务风险看不出单笔异常。要看一群账户、一段时间、一批订单，并且让奖励后置。</li>
+      <li>第二，市场监控消费全部订单事件。幌骗看撤单，对敲看关联度，拉盘看量价，内幕看时间。</li>
+      <li>第三，风险参数像代码一样治理。提出和审批分离，紧急路径只许收紧。</li>
+      <li>下一集是 B06 金库与流动性，看用户的钱放在哪里，挤兑来了付不付得出。也可以先打开市场监控实验，拖动阈值试一试。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+  function svgEl(tag, attrs, text) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text !== undefined) e.textContent = text; return e; }
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', text: '#eceae4', t2: '#9ea3ad', line: '#2c3038', panel: '#16181c' };
+  function box(svg, x, y, w, h, t, o = {}) {
+    svg.appendChild(svgEl('rect', { x, y, width: w, height: h, rx: 12, fill: o.fill || C.panel, stroke: o.stroke || C.line, 'stroke-width': o.sw || 3, opacity: o.op ?? 1 }));
+    const lines = Array.isArray(t) ? t : [t];
+    lines.forEach((s, i) => svg.appendChild(svgEl('text', { x: x + w / 2, y: y + h / 2 + (i - (lines.length - 1) / 2) * 34, fill: i ? C.t2 : (o.tc || C.text), opacity: o.op ?? 1, style: 'font-size:' + (i ? 26 : (o.fs || 30)) + 'px' }, s)));
+  }
+  function arrow(svg, x1, y1, x2, y2, color, dash, w) {
+    const id = 'ah' + svg.id + color.slice(1);
+    if (!svg.querySelector('#' + id)) {
+      let defs = svg.querySelector('defs'); if (!defs) { defs = svgEl('defs', {}); svg.appendChild(defs); }
+      const m = svgEl('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' });
+      m.appendChild(svgEl('path', { d: 'M0,0 L10,5 L0,10 z', fill: color })); defs.appendChild(m);
+    }
+    svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': w || 4, 'marker-end': `url(#${id})`, 'stroke-dasharray': dash ? '10 8' : '' }));
+  }
+
+  // 4: layers
+  function layerStep(el, st) {
+    const cur = [0, 0, 1, 2, 4, -1][st];
+    el.querySelectorAll('.ly').forEach((n, i) => {
+      const k = +n.dataset.l; const show = st >= Math.min(k, 5) || st === 5;
+      n.classList.toggle('pend', !show);
+      n.classList.toggle('cur', st === 3 ? (i === 2 || i === 3) : i === cur);
+      n.querySelector('.leak') && (n.querySelector('.leak').style.opacity = (i === 0 && st < 1) ? 0 : 1);
+    });
+  }
+
+  // 5: device farm graph
+  function farmStep(el, st) {
+    const svg = el.querySelector('#farm'); svg.innerHTML = '';
+    const A = [[170, 140], [260, 90], [330, 170], [230, 230], [120, 250], [310, 280], [190, 330]];
+    const B = [[620, 120], [720, 80], [790, 160], [690, 210], [600, 260], [760, 270]];
+    const N = [[470, 470], [900, 420], [80, 470], [960, 120], [520, 60]];
+    const agg = [470, 330];
+    svg.appendChild(svgEl('rect', { x: 2, y: 2, width: 1056, height: 556, rx: 16, fill: 'none', stroke: C.line, 'stroke-width': 2 }));
+    if (st >= 4) {
+      svg.appendChild(svgEl('ellipse', { cx: 225, cy: 210, rx: 165, ry: 170, fill: 'rgba(246,70,93,.08)', stroke: C.sell, 'stroke-width': 3, 'stroke-dasharray': '12 8' }));
+      svg.appendChild(svgEl('ellipse', { cx: 695, cy: 175, rx: 150, ry: 140, fill: 'rgba(246,70,93,.08)', stroke: C.sell, 'stroke-width': 3, 'stroke-dasharray': '12 8' }));
+      svg.appendChild(svgEl('text', { x: 225, y: 410, fill: C.sell, style: 'font-size:28px;font-weight:700' }, '团伙 A · 7 个账户'));
+      svg.appendChild(svgEl('text', { x: 720, y: 345, fill: C.sell, style: 'font-size:28px;font-weight:700' }, '团伙 B · 6 个账户'));
+    }
+    const edge = (p, q, c, d) => svg.appendChild(svgEl('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], stroke: c, 'stroke-width': 3, 'stroke-dasharray': d ? '8 6' : '' }));
+    if (st >= 1) { [[0, 1], [1, 2], [0, 3], [3, 4]].forEach(([a, b]) => edge(A[a], A[b], C.gold)); [[0, 1], [1, 2], [2, 3]].forEach(([a, b]) => edge(B[a], B[b], C.gold)); }
+    if (st >= 2) { [[2, 5], [5, 6], [4, 6], [3, 5]].forEach(([a, b]) => edge(A[a], A[b], C.info, true)); [[3, 4], [4, 5], [0, 4]].forEach(([a, b]) => edge(B[a], B[b], C.info, true)); }
+    if (st >= 3) { [...A, ...B].forEach(p => arrow(svg, p[0], p[1], p[0] + (agg[0] - p[0]) * .86, p[1] + (agg[1] - p[1]) * .86, C.sell, false, 2)); }
+    const dot = (p, c, r) => svg.appendChild(svgEl('circle', { cx: p[0], cy: p[1], r: r || 20, fill: '#1e2127', stroke: c, 'stroke-width': 4 }));
+    A.forEach(p => dot(p, st >= 1 ? C.gold : C.t2)); B.forEach(p => dot(p, st >= 1 ? C.gold : C.t2)); N.forEach(p => dot(p, C.buy));
+    if (st >= 3) { dot(agg, C.sell, 34); svg.appendChild(svgEl('text', { x: agg[0], y: agg[1] + 62, fill: C.sell, style: 'font-size:28px;font-weight:700' }, '归集账户')); }
+    if (st >= 4) svg.appendChild(svgEl('text', { x: 820, y: 500, fill: C.buy, style: 'font-size:26px' }, '零散节点 = 正常用户'));
+    const legend = [['共享设备', C.gold, 1], ['同网段 IP', C.info, 2], ['资金归集', C.sell, 3]].filter(l => st >= l[2]);
+    legend.forEach((l, i) => { svg.appendChild(svgEl('rect', { x: 30 + i * 200, y: 515, width: 26, height: 8, fill: l[1] })); svg.appendChild(svgEl('text', { x: 130 + i * 200, y: 520, fill: l[1], style: 'font-size:24px' }, l[0])); });
+    const side = [
+      `<div class="card gold"><h3>作弊的经济账 · 示例</h3>奖励 10 USDT − 成本 3 USDT<br>= 每号净赚 <b class="hl">7 USDT</b></div><div class="card"><div class="muted">注册 1 万个号</div><div class="mono" style="font-size:52px;font-weight:700">7 万 USDT</div></div>`,
+      `<div class="card gold"><h3>信号 1 · 设备</h3>200 个账户共享 5 个设备指纹；模拟器、改机工具</div>`,
+      `<div class="card gold"><h3>信号 1 · 设备</h3>200 个账户共享 5 个设备指纹</div><div class="card info"><h3>信号 2 · 网络与行为</h3>注册集中在一个 IP 网段；注册后 3 分钟完成同一套任务</div>`,
+      `<div class="card sell"><h3>信号 3 · 资金归集</h3>领奖后转给同一个账户：变现必经之路，最稳定</div><div class="card"><div class="muted">还有身份信号</div>证件同一批次、人脸相似、手机号段连续</div>`,
+      `<div class="card"><h3>图关联</h3>节点 = 账户<br>边 = 共享设备、IP、地址、转账</div><div class="card sell"><h3>连通分量大</h3>→ 疑似团伙</div>`,
+    ];
+    el.querySelector('#farmSide').innerHTML = side[st];
+  }
+
+  // 6: deferred reward state machine
+  function rewardStep(el, st) {
+    const svg = el.querySelector('#rw'); svg.innerHTML = '';
+    const on = { task: st === 0, pend: st <= 1, score: st >= 1 && st <= 2, rel: st >= 2, rev: st >= 2, rej: st >= 2, claw: st >= 4 };
+    const cur = [['task', 'pend'], ['score'], ['rel', 'rev', 'rej'], ['rev'], ['claw'], ['score', 'rev']][st];
+    const S = { task: [10, 150, 220, 90, ['完成任务', '活动规则']], pend: [290, 150, 240, 90, ['待发奖励', 'Pending']], score: [600, 150, 270, 90, ['冷静期评分', '示例 7 天']], rel: [960, 10, 260, 90, ['自动发放', '低风险']], rev: [960, 150, 260, 90, ['人工审核', '中风险']], rej: [960, 290, 260, 90, ['取消资格', '高风险 · 团伙']], claw: [1330, 10, 290, 90, ['追回', '冻结奖励及收益']] };
+    const col = { rel: C.buy, rev: C.warn, rej: C.sell, claw: C.sell };
+    const reach = k => k === 'task' || k === 'pend' || (k === 'score' && st >= 1) || (['rel', 'rev', 'rej'].includes(k) && st >= 2) || (k === 'claw' && st >= 4);
+    const ar = (a, b, c, dash) => arrow(svg, a[0], a[1], b[0], b[1], c, dash, 4);
+    ar([230, 195], [286, 195], C.t2); ar([530, 195], [596, 195], st >= 1 ? C.gold : C.t2);
+    ar([870, 185], [956, 60], st >= 2 ? C.buy : C.line); ar([870, 195], [956, 195], st >= 2 ? C.warn : C.line); ar([870, 205], [956, 330], st >= 2 ? C.sell : C.line);
+    ar([1090, 150], [1090, 104], st >= 3 ? C.buy : C.line, true); ar([1090, 240], [1090, 286], st >= 3 ? C.sell : C.line, true);
+    ar([1220, 55], [1326, 55], st >= 4 ? C.sell : C.line, true);
+    for (const k in S) {
+      const [x, y, w, h, t] = S[k]; const r = reach(k); const c = cur.includes(k);
+      box(svg, x, y, w, h, t, { stroke: c ? C.gold : (r ? (col[k] || C.info) : C.line), fill: c ? '#2a2412' : C.panel, op: r ? 1 : .3, sw: c ? 5 : 3 });
+    }
+    // timeline
+    const days = 7, x0 = 300, x1 = 1300, y = 430;
+    svg.appendChild(svgEl('line', { x1: x0, y1: y, x2: x1, y2: y, stroke: C.line, 'stroke-width': 8 }));
+    if (st >= 1) svg.appendChild(svgEl('line', { x1: x0, y1: y, x2: st >= 2 ? x1 : x0 + (x1 - x0) * 3 / 7, y2: y, stroke: C.gold, 'stroke-width': 8 }));
+    for (let d = 0; d <= days; d++) svg.appendChild(svgEl('text', { x: x0 + (x1 - x0) * d / days, y: y + 30, fill: C.t2, style: 'font-size:24px' }, 'D' + d));
+    svg.appendChild(svgEl('text', { x: 160, y: y + 4, fill: C.t2, style: 'font-size:26px' }, '冷静期 · 示例'));
+    const notes = [
+      '奖励只记账为<b class="hl">待发</b>：不进入可用余额，不能交易、不能提走',
+      '冷静期内：反作弊模型 + 图关联<b class="hl">持续评分</b>',
+      '按分数分流：<span class="up">低 → 自动发放</span> · <span style="color:#f0a340">中 → 人工审核</span> · <span class="down">高 → 取消</span>',
+      '人工通道：给被误判的<b class="hl">真实用户</b>留出口',
+      '追回的前提是钱还在平台内 → <b class="hl">后置比追回更重要</b>',
+      '<span class="mono hl">MKT-06</span> 同一设备指纹 ≥ 5 个账户领同一活动奖励 → 人工审核',
+    ];
+    el.querySelector('#rwNote').innerHTML = notes[st];
+  }
+
+  // 7: spoofing order book
+  function spoofStep(el, st) {
+    const asks = [[60050, 2.1], [60040, 1.8], [60030, 2.4], [60020, 1.9], [60010, 3.0, 'S']];
+    const bids = [[60000, 2.2], [59990, 12, 'W'], [59980, 1.7], [59970, 2.3]];
+    const max = 12;
+    const fmt = p => p.toLocaleString('en-US');
+    let h = '';
+    asks.forEach(([p, q, f]) => {
+      const hit = f === 'S' && st >= 2 && st <= 4;
+      h += `<div class="lv a ${hit ? 'hit gone' : ''}"><div class="bar" style="width:${q / max * 100}%"></div><span class="p">${fmt(p)}</span><span class="who">${f === 'S' && st >= 1 ? '操纵者卖单' : ''}</span><span class="q">${q.toFixed(1)}</span></div>`;
+    });
+    const last = st >= 2 ? 60010 : 60005;
+    h += `<div class="mid">${st >= 2 ? '最新成交 <b class="down">60,010 ↑</b> 跟风买入' : '盘口均量约 2 BTC · 示例'}</div>`;
+    bids.forEach(([p, q, f]) => {
+      if (f === 'W') {
+        if (st === 0) { q = 1.9; }
+        const wall = st >= 1 && st <= 2, gone = st >= 3;
+        if (st >= 1) q = 12;
+        h += `<div class="lv b ${wall ? 'wall' : ''} ${gone ? 'gone' : ''}"><div class="bar" style="width:${(gone ? 0 : q) / max * 100}%"></div><span class="p">${fmt(p)}</span><span class="who">${st >= 1 ? (gone ? '1.6 秒后撤单' : '大买单 · 操纵者') : ''}</span><span class="q">${q.toFixed(1)}</span></div>`;
+      } else h += `<div class="lv b"><div class="bar" style="width:${q / max * 100}%"></div><span class="p">${fmt(p)}</span><span class="who"></span><span class="q">${q.toFixed(1)}</span></div>`;
+    });
+    el.querySelector('#ob').innerHTML = h;
+    const rows = [
+      ['订单量 12 ÷ 均量 2 = 6 倍', '≥ 5 倍', st >= 1],
+      ['存活 1.6 秒', '< 2 秒', st >= 3],
+      ['账户撤单率 95%', '> 90%', st >= 4],
+      ['撤单前对侧有成交', '是', st >= 2],
+    ];
+    let s = '';
+    if (st <= 4) {
+      s = `<div class="card"><h3><span class="mono hl">MKT-01</span> 幌骗规则</h3><div class="chk">${rows.map(([a, b, ok]) => `<span style="opacity:${ok ? 1 : .3}">${a}</span><span class="ok ${ok && st >= 4 ? 'up' : 'muted'}" style="opacity:${ok ? 1 : .3}">${st >= 4 ? '✓ ' : ''}${b}</span>`).join('')}</div></div>`;
+      if (st >= 4) s += '<div class="alarm">四条全中 → 告警，人工复核</div>';
+      else s += `<div class="card ${st >= 1 ? 'gold' : ''}" style="font-size:30px">${['先看正常盘口：每档约 2 BTC', '大单出现在买一下方：离成交近，又不容易被成交', '对侧成交：操纵者的卖单在 60,010 被吃掉', '目的达成，立即撤单'][st]}</div>`;
+    } else {
+      s = '<div class="card gold"><h3>分层挂单 Layering</h3>同一账户在同一侧 ≥ 3 个价位同时挂单，短时间内同时撤销</div><div class="card sell"><h3>证据在撤单里</h3>监控引擎要消费<b>全部订单事件</b>，不能只看成交</div>';
+      el.querySelectorAll('#ob .lv.b').forEach((n, i) => { if (i <= 2) { n.classList.add('wall'); n.classList.remove('gone'); } });
+    }
+    el.querySelector('#spSide').innerHTML = s;
+  }
+
+  // 8: wash trading
+  function washStep(el, st) {
+    const svg = el.querySelector('#wash'); svg.innerHTML = '';
+    const u7 = [190, 200], u8 = [710, 200];
+    svg.appendChild(svgEl('path', { d: 'M250,150 C380,40 520,40 650,150', fill: 'none', stroke: C.gold, 'stroke-width': 5 }));
+    svg.appendChild(svgEl('path', { d: 'M650,250 C520,360 380,360 250,250', fill: 'none', stroke: C.gold, 'stroke-width': 5 }));
+    svg.appendChild(svgEl('polygon', { points: '650,150 622,138 636,166', fill: C.gold }));
+    svg.appendChild(svgEl('polygon', { points: '250,250 278,262 264,234', fill: C.gold }));
+    svg.appendChild(svgEl('text', { x: 450, y: 60, fill: C.gold, style: 'font-size:28px' }, 'U7 卖 → U8 买'));
+    svg.appendChild(svgEl('text', { x: 450, y: 345, fill: C.gold, style: 'font-size:28px' }, 'U8 卖 → U7 买'));
+    [[u7, 'U7'], [u8, 'U8']].forEach(([p, n]) => { svg.appendChild(svgEl('circle', { cx: p[0], cy: p[1], r: 64, fill: '#1e2127', stroke: st >= 4 ? C.sell : C.info, 'stroke-width': 5 })); svg.appendChild(svgEl('text', { x: p[0], y: p[1], fill: C.text, style: 'font-size:40px;font-weight:700' }, n)); });
+    if (st >= 1) { svg.appendChild(svgEl('rect', { x: 330, y: 160, width: 240, height: 80, rx: 12, fill: '#2a1418', stroke: C.sell, 'stroke-width': 3 })); svg.appendChild(svgEl('text', { x: 450, y: 200, fill: C.sell, style: 'font-size:28px' }, 'STP：不同用户 ✗')); }
+    // volume bars vs price line
+    const vols = [1, 1.6, 2.4, 3.3, 4.2], show = Math.min(st + 1, 5);
+    svg.appendChild(svgEl('text', { x: 140, y: 510, fill: C.t2, style: 'font-size:24px' }, '成交量 · 示例'));
+    for (let i = 0; i < show; i++) svg.appendChild(svgEl('rect', { x: 260 + i * 110, y: 530 - vols[i] * 28, width: 70, height: vols[i] * 28, fill: C.info, opacity: .8 }));
+    svg.appendChild(svgEl('line', { x1: 240, y1: 400, x2: 260 + show * 110, y2: 400, stroke: C.buy, 'stroke-width': 4 }));
+    svg.appendChild(svgEl('text', { x: 140, y: 400, fill: C.buy, style: 'font-size:24px' }, '价格 · 平'));
+    svg.appendChild(svgEl('text', { x: 520, y: 382, fill: C.buy, style: 'font-size:26px' }, '价格几乎不动'));
+    const feats = [['设备指纹', 1], ['IP', 1], ['充值来源地址', 1], ['提币目标地址', 1], ['KYC 信息', 0], ['下单时间模式', 1]];
+    let side = '';
+    if (st <= 1) side = `<div class="card"><h3>表面上</h3>两个独立用户，各自下单，订单都合规</div><div class="card ${st >= 1 ? 'sell' : ''}"><h3>STP 自成交预防</h3>${st >= 1 ? '只认同一用户 → <b>拦不住</b>关联账户' : '同一用户的买卖不撮合'}</div>`;
+    else {
+      side = `<table class="ft"><tr><td class="muted">特征</td><td class="m muted">共享</td></tr>${feats.map(([f, s]) => `<tr><td>${f}</td><td class="m ${s ? 'up' : 'down'}">${st >= 3 ? (s ? '✓' : '✗') : '?'}</td></tr>`).join('')}</table>`;
+      if (st === 3) side += `<div class="formula" style="font-size:34px; padding:16px 24px">相似度 = 5 ÷ 6 ≈ <b class="hl">0.83</b></div>`;
+      if (st >= 4) side += `<div class="alarm" style="font-size:30px">MKT-02：5 ÷ 6 ≈ 0.83 ≥ 0.7 → 告警</div>`;
+    }
+    el.querySelector('#washSide').innerHTML = side;
+  }
+
+  // 9: pump and dump
+  function pumpStep(el, st) {
+    const svg = el.querySelector('#pump'); svg.innerHTML = '';
+    const vol = [1.0, 0.9, 1.1, 1.0, 0.95, 4.5, 3.2, 2.0, 5.0, 3.8, 1.4, 1.0];
+    const px = [100, 100.5, 99.8, 100.2, 100, 112, 117, 119, 104, 98, 97, 97.5];
+    const shown = [5, 6, 8, 12, 12][st];
+    const X = i => 120 + i * 120, base = 470, vs = 52;
+    const py = p => 300 - (p - 96) * 11;
+    svg.appendChild(svgEl('line', { x1: 80, y1: base, x2: 1600, y2: base, stroke: C.line, 'stroke-width': 3 }));
+    const bl = base - 1 * vs;
+    svg.appendChild(svgEl('line', { x1: 80, y1: bl, x2: 1600, y2: bl, stroke: C.t2, 'stroke-width': 2, 'stroke-dasharray': '8 8' }));
+    svg.appendChild(svgEl('text', { x: 1520, y: bl - 18, fill: C.t2, style: 'font-size:24px', 'text-anchor': 'middle' }, '基线 100 万'));
+    if (st >= 4) { const t4 = base - 4 * vs; svg.appendChild(svgEl('line', { x1: 80, y1: t4, x2: 1600, y2: t4, stroke: C.warn, 'stroke-width': 2, 'stroke-dasharray': '8 8' })); svg.appendChild(svgEl('text', { x: 1520, y: t4 - 18, fill: C.warn, style: 'font-size:24px', 'text-anchor': 'middle' }, '基线 × 4')); }
+    for (let i = 0; i < shown; i++) {
+      const sell = i >= 8 && i <= 9, spike = i === 5;
+      svg.appendChild(svgEl('rect', { x: X(i) - 34, y: base - vol[i] * vs, width: 68, height: vol[i] * vs, rx: 4, fill: sell ? C.sell : (i >= 5 && i <= 7 ? C.buy : '#3a3f4a'), opacity: spike && st >= 1 ? 1 : .85, stroke: spike && st >= 1 ? C.gold : 'none', 'stroke-width': 4 }));
+    }
+    let d = ''; for (let i = 0; i < shown; i++) d += (i ? 'L' : 'M') + X(i) + ',' + py(px[i]);
+    svg.appendChild(svgEl('path', { d, fill: 'none', stroke: C.gold, 'stroke-width': 5 }));
+    for (let i = 0; i < shown; i++) svg.appendChild(svgEl('circle', { cx: X(i), cy: py(px[i]), r: 7, fill: C.gold }));
+    svg.appendChild(svgEl('text', { x: 90, y: 40, fill: C.gold, style: 'font-size:26px' }, '价格 · 示例'));
+    svg.appendChild(svgEl('text', { x: 90, y: 505, fill: C.t2, style: 'font-size:24px' }, '每根柱子 = 5 分钟成交量'));
+    if (st >= 1) svg.appendChild(svgEl('text', { x: X(5) - 50, y: 335, fill: C.buy, style: 'font-size:30px;font-weight:700', 'text-anchor': 'end' }, '4.5 倍 · +12%'));
+    if (st >= 3) svg.appendChild(svgEl('text', { x: 1260, y: 200, fill: C.sell, style: 'font-size:30px;font-weight:700', 'text-anchor': 'start' }, '← 同一批账户净卖出'));
+    const notes = [
+      '平时：每 5 分钟约 100 万 USDT 成交，价格平稳',
+      '集中买入：450 万 ÷ 100 万 = <b class="hl">4.5 倍</b>，涨幅 <b class="hl">12%</b>',
+      '跟风盘进场，价格继续上行',
+      '同一批账户集中<b class="down">净卖出</b> → 价格回落，跟风者接盘',
+      '<span class="mono hl">MKT-03</span> 成交量 ≥ 基线 × 4 且涨幅 ≥ 8% → 告警；标记该时段大额净买入账户',
+    ];
+    el.querySelector('#pumpNote').innerHTML = notes[st];
+  }
+
+  // 10: insider vs market maker panels
+  function mmStep(el, st) {
+    const a = st <= 2;
+    el.querySelector('#mmA').classList.toggle('on', a);
+    el.querySelector('#mmB').classList.toggle('on', !a);
+    el.querySelector('#mmK').textContent = a ? '内幕抢跑 · 业界通用做法' : '做市商行为监控 · 据公开报道';
+    el.querySelector('#mmH').textContent = a ? '最危险的内部人：平台员工' : '做市商：拿了优惠，就要履行义务';
+    if (!a) { el.querySelector('#mmB .cc').style.display = st >= 6 ? '' : 'none'; el.querySelector('#mmB .card.warn').style.display = st >= 6 ? 'none' : ''; }
+    el.querySelector('#mmA .rules').style.display = st === 1 ? '' : 'none';
+    el.querySelectorAll('#mmA .only0').forEach(n => n.style.display = st === 0 ? '' : 'none');
+    el.querySelectorAll('#mmB .only3').forEach(n => n.style.display = st === 3 ? '' : 'none');
+    el.querySelector('#mmB table').style.display = st === 3 ? 'none' : '';
+  }
+
+  // 11: credit / asset / tag
+  function assetStep(el, st) {
+    const p = st <= 1 ? 'A' : st <= 3 ? 'B' : 'C';
+    ['A', 'B', 'C'].forEach(k => el.querySelector('#as' + k).classList.toggle('on', p === k));
+    el.querySelector('#asK').textContent = ['信用风险 · 业界通用做法', '资产风险 · 据公开报道', '监控标签 · 币安公开资料'][' ABC'.indexOf(p) - 1];
+    el.querySelector('#asH').textContent = { A: '借出去的资产，收不回来怎么办', B: '抵押品和价格源本身出问题', C: '监控标签：下架之前的黄灯' }[p];
+    if (p !== 'C') return;
+    const svg = el.querySelector('#tagf'); svg.innerHTML = '';
+    const tag = st === 5 ? 1 : 1;
+    box(svg, 10, 150, 180, 100, '上币');
+    box(svg, 290, 150, 450, 100, ['持续监控', '流动性 · 波动 · 项目方链上行为'], { stroke: C.info });
+    box(svg, 860, 150, 380, 100, ['加监控标签', '交易前需通过风险测验'], { stroke: C.warn, fill: st === 4 ? '#2a2412' : C.panel, sw: st === 4 ? 5 : 3 });
+    box(svg, 1360, 150, 270, 100, ['公告下架', '保留提币窗口'], { stroke: C.sell, op: st >= 5 ? 1 : .3, fill: st === 5 ? '#2a1418' : C.panel });
+    arrow(svg, 190, 200, 286, 200, C.t2);
+    arrow(svg, 740, 180, 856, 180, C.warn); svg.appendChild(svgEl('text', { x: 800, y: 140, fill: C.warn, style: 'font-size:24px' }, '指标恶化'));
+    arrow(svg, 856, 225, 744, 225, st >= 5 ? C.buy : C.line); svg.appendChild(svgEl('text', { x: 800, y: 272, fill: st >= 5 ? C.buy : '#555b66', style: 'font-size:24px' }, '指标恢复'));
+    arrow(svg, 1240, 200, 1356, 200, st >= 5 ? C.sell : C.line); svg.appendChild(svgEl('text', { x: 1300, y: 140, fill: st >= 5 ? C.sell : '#555b66', style: 'font-size:24px' }, '持续不达标'));
+    svg.appendChild(svgEl('path', { d: 'M515,250 C700,400 1300,400 1495,254', fill: 'none', stroke: st >= 5 ? C.sell : C.line, 'stroke-width': 4, 'stroke-dasharray': '10 8' }));
+    svg.appendChild(svgEl('text', { x: 1000, y: 385, fill: st >= 5 ? C.sell : '#555b66', style: 'font-size:26px' }, '严重事件：合约漏洞等，直接下架'));
+    svg.appendChild(svgEl('text', { x: 1020, y: 60, fill: C.gold, style: 'font-size:30px' }, '风险测验 · 每 90 天重测'));
+  }
+
+  // 12: governance flow
+  function govStep(el, st) {
+    const svg = el.querySelector('#gov'); svg.innerHTML = '';
+    const N = [['提出变更', '附影响评估'], ['独立复核', '历史行情回测'], ['审批', '提出人 ≠ 审批人'], ['灰度', '影子模式'], ['生效 + 公告', '分批生效']];
+    const act = [[], [0, 1], [2, 3, 4], [5], [4], [4]][st];
+    const lit = [0, 1, 4, 5, 5, 5][st];
+    N.forEach((n, i) => {
+      const x = 20 + i * 330;
+      box(svg, x, 40, 270, 110, n, { stroke: act.includes(i) ? C.gold : (i <= lit ? C.info : C.line), fill: act.includes(i) ? '#2a2412' : C.panel, op: (st === 0 || i <= lit) ? 1 : .3, sw: act.includes(i) ? 5 : 3 });
+      if (i < 4) arrow(svg, x + 270, 95, x + 326, 95, i < lit ? C.gold : C.line);
+    });
+    if (st >= 2) { svg.appendChild(svgEl('path', { d: 'M760,150 C760,200 160,200 155,154', fill: 'none', stroke: C.sell, 'stroke-width': 3, 'stroke-dasharray': '8 6' })); svg.appendChild(svgEl('text', { x: 460, y: 210, fill: C.sell, style: 'font-size:24px' }, '驳回')); }
+    // audit log
+    const al = st >= 3 ? 1 : .25;
+    box(svg, 1340, 240, 280, 110, ['审计日志', '谁 · 何时 · 旧值 · 新值'], { stroke: st === 3 ? C.gold : C.line, op: al, sw: st === 3 ? 5 : 3 });
+    arrow(svg, 1475, 150, 1475, 236, st >= 3 ? C.gold : C.line);
+    // emergency lane
+    const em = st >= 4;
+    box(svg, 20, 290, 420, 110, ['紧急收紧', '值班风险官 · 例：脱锚降折算率'], { stroke: em ? C.sell : C.line, op: em ? 1 : .25, fill: em ? '#2a1418' : C.panel, sw: em ? 5 : 3 });
+    if (em) {
+      svg.appendChild(svgEl('path', { d: 'M440,345 C900,345 1200,330 1340,160', fill: 'none', stroke: C.sell, 'stroke-width': 4 }));
+      svg.appendChild(svgEl('text', { x: 800, y: 380, fill: C.sell, style: 'font-size:26px' }, '立即生效'));
+      svg.appendChild(svgEl('path', { d: 'M230,290 C300,240 640,250 690,154', fill: 'none', stroke: C.warn, 'stroke-width': 3, 'stroke-dasharray': '8 6' }));
+      svg.appendChild(svgEl('text', { x: 1000, y: 260, fill: C.warn, style: 'font-size:26px' }, '24 小时内补审批'));
+    }
+    const notes = [
+      '风险参数：杠杆上限 · 保证金率 · 借贷限额 · 持仓上限 · 指数权重 · 价格保护带',
+      '复核用历史行情<b class="hl">回测</b>：新参数下会多出多少强平、多少穿仓',
+      '<b class="hl">职责分离</b>：提出人 ≠ 审批人；批准后先灰度，再正式生效并公告',
+      '每次变更留下<b class="hl">旧值和新值</b>：复盘时能回答"那一刻参数是什么"',
+      '紧急路径：先生效，<b class="hl">24 小时内补审批</b>',
+      '紧急路径<b class="down">只许收紧</b>：降杠杆、降限额可以；放宽必须走正常审批',
+    ];
+    el.querySelector('#govNote').innerHTML = notes[st];
+  }
+
+  function caseStep(el, st) {
+    el.querySelectorAll('[data-k]').forEach(n => { const k = +n.dataset.k; n.classList.toggle('pend', st < k); n.classList.toggle('cur', st === k); });
+  }
+  function endStep(el, st) {
+    el.querySelectorAll('.pA').forEach(n => n.style.display = st <= 2 ? '' : 'none');
+    el.querySelectorAll('.pB').forEach(n => n.style.display = st >= 3 ? '' : 'none');
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP09 订单簿与撮合规则</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .book { font-family: var(--mono); font-size: 30px; display: flex; flex-direction: column; gap: 6px; }
+  .book .lv { display: grid; grid-template-columns: 150px 110px 1fr; align-items: center; gap: 14px; padding: 6px 16px; border-radius: 8px; min-height: 58px; transition: background .3s, opacity .3s; border: 2px solid transparent; }
+  .book .lv .px { font-weight: 700; }
+  .book .lv .tot { color: var(--text-2); text-align: right; }
+  .book .lv.ask .px { color: var(--sell); } .book .lv.bid .px { color: var(--buy); }
+  .book .lv.hit { background: var(--gold-soft); border-color: var(--gold); }
+  .book .lv.best { background: var(--panel-2); }
+  .book .lv.gone { opacity: .2; text-decoration: line-through; }
+  .book .lv.new { background: var(--info-soft); border-color: var(--info); }
+  .book .spread { text-align: center; font-size: 26px; color: var(--text-2); padding: 4px; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); }
+  .book .spread.hit { color: var(--gold); border-color: var(--gold); }
+  .book .hdr { display: grid; grid-template-columns: 150px 110px 1fr; gap: 14px; padding: 0 16px; font-family: var(--sans); font-size: 24px; color: var(--text-2); }
+  .q { display: flex; gap: 8px; flex-wrap: nowrap; align-items: center; }
+  .ord { display: inline-block; padding: 3px 12px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); font-size: 26px; white-space: nowrap; }
+  .ord.hit { border-color: var(--gold); background: var(--gold-soft); color: var(--gold); }
+  .ord.gone { opacity: .25; text-decoration: line-through; }
+  .ord.new { border-color: var(--info); background: var(--info-soft); color: var(--info); }
+  .ord.part { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); }
+  .qarrow { color: var(--text-2); font-size: 22px; }
+  .tag { font-family: var(--sans); font-size: 22px; padding: 2px 10px; border-radius: 6px; background: var(--gold); color: #000; font-weight: 700; }
+  .order-card { font-family: var(--mono); font-size: 34px; }
+  .log { font-family: var(--mono); font-size: 28px; display: flex; flex-direction: column; gap: 8px; }
+  .log .r { display: grid; grid-template-columns: 70px 1fr 1fr 1fr; padding: 8px 14px; border-radius: 8px; background: var(--panel-2); }
+  .log .r.h { background: none; color: var(--text-2); font-family: var(--sans); font-size: 24px; }
+  .fifo-lane { display: flex; align-items: center; gap: 18px; font-family: var(--mono); font-size: 32px; padding: 14px 20px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); min-height: 86px; transition: opacity .3s; }
+  .fifo-lane .px { width: 150px; color: var(--sell); font-weight: 700; }
+  .fifo-lane .head { font-family: var(--sans); font-size: 22px; color: var(--text-2); width: 70px; }
+  .fifo-lane .ord { font-size: 30px; padding: 8px 18px; }
+  .rule { display: flex; gap: 20px; align-items: center; font-size: 34px; }
+  .rule .n { font-family: var(--mono); font-size: 40px; color: var(--gold); font-weight: 700; }
+  .mini { display: flex; flex-direction: column; gap: 8px; }
+  .mini .ttl { font-family: var(--mono); font-size: 36px; font-weight: 700; text-align: center; line-height: 1.2; }
+  .mini .book .lv { grid-template-columns: 120px 90px 1fr; min-height: 50px; }
+  .mini .res { text-align: center; font-size: 28px; min-height: 40px; }
+  .ice { display: flex; gap: 12px; }
+  .ice .blk { flex: 1; height: 110px; border-radius: 12px; border: 3px dashed var(--line); display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 30px; color: var(--text-2); transition: all .3s; }
+  .ice .blk.show { border: 3px solid var(--sell); background: var(--sell-soft); color: var(--text); }
+  .ice .blk.done { opacity: .25; text-decoration: line-through; border-style: solid; }
+  .pill { font-family: var(--mono); font-size: 30px; padding: 10px 20px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel-2); }
+  .pill.ok { border-color: var(--buy); color: var(--buy); background: var(--buy-soft); }
+  .pill.no { border-color: var(--sell); color: var(--sell); background: var(--sell-soft); }
+  .box { border: 2px solid var(--line); border-radius: 14px; padding: 18px 22px; background: var(--panel); font-size: 30px; transition: all .3s; }
+  .box.on { border-color: var(--gold); background: var(--gold-soft); }
+  .box h3 { font-size: 30px; margin-bottom: 10px; font-family: var(--sans); color: var(--text-2); font-weight: 600; }
+  .fsm .nd rect { fill: var(--panel); stroke: var(--line); stroke-width: 2; transition: all .3s; }
+  .fsm .nd text { font-family: var(--mono); font-size: 28px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
+  .fsm .nd.on rect { stroke: var(--gold); fill: rgba(240,185,11,.16); stroke-width: 3; }
+  .fsm .nd.term rect { stroke-dasharray: none; }
+  .fsm .nd.end rect { stroke: var(--buy); stroke-width: 4; }
+  .fsm .ed path { fill: none; stroke: #4a4f5a; stroke-width: 3; marker-end: url(#ah); transition: all .3s; }
+  .fsm .ed.on path { stroke: var(--gold); stroke-width: 5; marker-end: url(#ahg); }
+  .fsm .ed text { font-size: 24px; fill: var(--text-2); opacity: 0; transition: opacity .3s; }
+  .fsm .ed.on text { opacity: 1; fill: var(--gold); }
+  .seqq { display: flex; gap: 14px; align-items: center; font-family: var(--mono); font-size: 30px; }
+  .seqq .cell { padding: 16px 22px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel); transition: all .3s; }
+  .seqq .cell.on { border-color: var(--gold); background: var(--gold-soft); }
+  .seqq .cell.bad { border-color: var(--sell); background: var(--sell-soft); }
+  .seqq .cell small { display: block; font-family: var(--sans); font-size: 22px; color: var(--text-2); }
+  .chart text { font-family: var(--mono); font-size: 24px; }
+  .stack { display: grid; } .stack > * { grid-area: 1 / 1; align-self: start; }
+  .mb { font-family: var(--mono); font-size: 30px; display: flex; flex-direction: column; gap: 6px; }
+  .mb .r { display: flex; justify-content: space-between; padding: 6px 18px; border-radius: 8px; border: 2px solid transparent; min-height: 44px; align-items: center; transition: all .3s; }
+  .mb .r.ask .px { color: var(--sell); font-weight: 700; } .mb .r.bid .px { color: var(--buy); font-weight: 700; }
+  .mb .r.hit { background: var(--gold-soft); border-color: var(--gold); }
+  .mb .r.gone { opacity: .2; text-decoration: line-through; }
+  .mb .r.new { background: var(--info-soft); border-color: var(--info); }
+  .mb .r.ph { visibility: hidden; }
+  .mb .sp { border-top: 1px dashed var(--line); margin: 2px 0; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP09" data-title="订单簿与撮合规则">
+
+  <!-- 1 开场 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解</div>
+    <h1>订单簿与<span class="hl">撮合规则</span></h1>
+    <div class="row" style="gap:28px; align-items:center" data-step="1">
+      <div class="card sell" style="font-size:36px">卖一价 <span class="mono">100</span></div>
+      <div class="card buy" style="font-size:36px">你挂买单 <span class="mono">101</span></div>
+      <div class="card" style="font-size:36px">成交价是多少？</div>
+    </div>
+    <div class="card gold" style="font-size:38px" data-step="2">答案：<span class="mono hl">100</span>。成交价取挂单方 Maker 的价格。</div>
+    <ol class="say">
+      <li>大家好，欢迎回到交易所系统技术讲解。这一集，我们走进交易所的心脏，订单簿和撮合规则。</li>
+      <li>先问一个问题。卖盘最低价是 100。你挂了一个 101 的买单。你最后按什么价格成交？</li>
+      <li>很多人会说 101，因为那是我出的价。正确答案是 100。为什么？这就是今天要拆的撮合规则。</li>
+    </ol>
+  </section>
+
+  <!-- 2 路线图 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">本集路线图</div>
+    <h2>五段内容</h2>
+    <div class="grid3" style="grid-template-columns: repeat(5, 1fr); gap:22px">
+      <div class="card info" data-step="0"><div class="mono hl" style="font-size:44px">01</div>订单簿结构</div>
+      <div class="card info" data-step="0"><div class="mono hl" style="font-size:44px">02</div>价格优先<br>时间优先</div>
+      <div class="card" data-step="1"><div class="mono hl" style="font-size:44px">03</div>六种<br>订单类型</div>
+      <div class="card" data-step="1"><div class="mono hl" style="font-size:44px">04</div>GTC<br>IOC · FOK</div>
+      <div class="card" data-step="2"><div class="mono hl" style="font-size:44px">05</div>状态机<br>与误区</div>
+    </div>
+    <p class="lead" data-step="2">所有价格、数量都是<span class="hl">示例</span>。API 名称来自币安现货公开文档，截至 2026 年。</p>
+    <ol class="say">
+      <li>本集分五段。先看订单簿长什么样，再看价格优先、时间优先这条核心规则。</li>
+      <li>然后过一遍六种订单类型，以及 GTC、IOC、FOK 三种有效方式。</li>
+      <li>最后看订单的状态机，和几个常见误区。今天用到的价格和数量，都是示例数字。配套的撮合实验页，可以边看边操作。</li>
+    </ol>
+  </section>
+
+  <!-- 3 订单簿结构 -->
+  <section class="scene" data-title="订单簿结构" data-onstep="structStep">
+    <div class="kicker">01 · 订单簿结构</div>
+    <h2>两排队伍：卖盘在上，买盘在下</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="card" style="width:900px; padding:16px 24px"><div class="book" id="b3"></div></div>
+      <div class="col" style="gap:22px; align-self:flex-start">
+        <div class="stack">
+          <div class="card sell" data-step="1" data-until="2" style="font-size:30px">卖盘：价格从低到高<br>买盘：价格从高到低<br><span class="muted">最好的价格离中间最近</span></div>
+          <div class="card" data-step="3" data-until="3">一行 = 一个<span class="hl">价格档位</span><br>档内订单按到达顺序排队<br><span class="muted">100.10 档：S1 → S2</span></div>
+          <div class="card info" data-step="4" data-until="5"><b>Maker 挂单方</b><br><span class="muted">在簿里等待，提供流动性</span></div>
+          <div class="card warn" data-step="6">比喻失效处：菜市场能讨价还价。撮合引擎不会，成交价 = <span class="hl">Maker 价格</span>。</div>
+        </div>
+        <div class="stack">
+          <div class="card gold" data-step="2" data-until="2"><div class="stat"><div class="k">价差 Spread</div><div class="v hl">0.10</div></div><span class="mono" style="font-size:28px">100.10 − 100.00</span></div>
+          <div class="card buy" data-step="4" data-until="5"><b>Taker 吃单方</b><br><span class="muted">一到就成交，消耗流动性</span></div>
+        </div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>来看一个示例订单簿。它分成两半。上面红色的是卖盘，下面绿色的是买盘。</li>
+      <li>卖盘按价格从低到高排，最便宜的卖单离中间最近。买盘反过来，出价最高的离中间最近。</li>
+      <li>卖一价是 100.10，买一价是 100.00。两者之差 0.10，就是价差。价差越小，市场越活跃。</li>
+      <li>每一行叫一个价格档位。同一档里可能有好几个订单，按到达顺序排队。比如 100.10 这一档，S1 排在 S2 前面。</li>
+      <li>在订单簿里等待的订单，叫挂单方 Maker，它提供流动性。一到就成交的订单，叫吃单方 Taker，它消耗流动性。</li>
+      <li>打个比方，订单簿像菜市场的两排摊位。出价最好的人站最前面。管理员拿新顾客和对面第一位比价。</li>
+      <li>但这个比喻有一处不成立。菜市场可以讨价还价，撮合引擎不会。成交价永远取挂单方的价格。所以你挂 101 买，卖一价是 100，你会以 100 成交。多出的 1 不会白付。</li>
+    </ol>
+  </section>
+
+  <!-- 4 价格优先 时间优先 -->
+  <section class="scene" data-title="价格优先、时间优先" data-onstep="fifoStep">
+    <div class="kicker">02 · 撮合规则</div>
+    <h2>价格优先，时间优先：FIFO</h2>
+    <div class="row" style="gap:40px">
+      <div class="rule" data-step="0"><span class="n">1</span>价格更好的先成交</div>
+      <div class="rule" data-step="1"><span class="n">2</span>同价先到的先成交</div>
+    </div>
+    <div class="col" id="fifo" style="gap:16px; flex:0 0 auto"></div>
+    <div class="card" id="fifoNote" style="padding:16px 28px; min-height:72px"></div>
+    <ol class="say">
+      <li>撮合的核心规则只有两条。第一，价格更好的先成交。买单越高越好，卖单越低越好。</li>
+      <li>第二，价格相同时，先到的先成交。这叫时间优先，也叫 FIFO，先进先出。</li>
+      <li>来看动画。现在来了一个新卖单 S6，价格 100.10，数量 0.5。它排到这一档的队尾，在 S2 后面。</li>
+      <li>这时一个买单要吃 1.0。引擎从队头开始取。S1 的 0.8 全部成交，S2 再成交 0.2。</li>
+      <li>S6 的价格和 S1 一样，但它来得晚，一点都没轮到。这就是时间优先。想排在前面，要么出更好的价，要么来得更早。</li>
+      <li>如果有人挂 100.05 卖出，它的价格更好。不管来得多晚，它都排到最前面，成为新的卖一。</li>
+    </ol>
+  </section>
+
+  <!-- 5 逐档吃单 -->
+  <section class="scene" data-title="一笔撮合的全过程" data-onstep="walkStep">
+    <div class="kicker">02 · 逐档吃单</div>
+    <h2>限价买 100.20 × 2.5，引擎怎么配对</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="col" style="flex:0 0 760px; gap:16px">
+        <div class="card order-card buy" style="padding:16px 24px">限价买 <span class="hl">100.20</span> × <span class="hl">2.5</span> · 剩余 <span id="w5rem" class="hl">2.5</span></div>
+        <div class="card" style="padding:18px 22px"><div class="book" id="b5"></div></div>
+      </div>
+      <div class="col">
+        <div class="log" id="log5"></div>
+        <div class="stack">
+          <div class="card gold" data-step="4" data-until="5" style="font-size:28px"><span class="mono">(2.0×100.10 + 0.5×100.20) ÷ 2.5</span><br>成交均价 = <span class="mono hl" style="font-size:44px">100.12</span></div>
+          <div class="card info" data-step="6" style="font-size:30px">循环：能成交吗 → 吃队头一个 → 扣减数量 → 还有剩余吗？<br><span class="up">无剩余 → FILLED</span></div>
+        </div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>现在看一笔完整的撮合。用户下了一个限价买单，价格 100.20，数量 2.5。</li>
+      <li>引擎先看卖一价 100.10。买价 100.20 不低于它，能成交。和队头 S1 成交 0.8，还剩 1.7。</li>
+      <li>继续，和 S2 成交 1.2，成交价还是 100.10。100.10 这一档被吃空，订单还剩 0.5。</li>
+      <li>卖一价变成 100.20。买价等于它，仍然能成交。和 S3 成交 0.5，订单全部成交。</li>
+      <li>算一下均价。2.0 个成交在 100.10，金额 200.20。0.5 个成交在 100.20，金额 50.10。合计 250.30，除以 2.5，得到 100.12。</li>
+      <li>注意前两笔的成交价是 100.10，不是用户出的 100.20。这就是开头的答案，成交价取 Maker 价格。</li>
+      <li>引擎每次只吃一个挂单，吃完回到开头再检查。没有剩余就结束，订单状态变成 FILLED。</li>
+    </ol>
+  </section>
+
+  <!-- 6 限价与市价 -->
+  <section class="scene" data-title="限价单与市价单" data-onstep="mktStep">
+    <div class="kicker">03 · 订单类型</div>
+    <h2>限价单与市价单</h2>
+    <div class="row">
+      <div class="col" style="flex:0 0 560px; gap:18px">
+        <div class="card" data-step="0"><b>LIMIT 限价单</b><br><span class="muted">指定价格。能成交就成交，剩余挂单。</span></div>
+        <div class="card sell" data-step="1"><b>MARKET 市价单</b><br><span class="muted">不指定价格，逐档吃，直到吃够或吃空。</span></div>
+        <div class="card warn" data-step="4">盘口越薄，吃穿的档位越多，<span class="hl">滑点</span>越大。</div>
+      </div>
+      <div class="col">
+        <div class="card order-card" style="padding:16px 24px" data-step="2">市价买 <span class="hl">4.0</span> · 已成交 <span id="m6f" class="hl">0.0</span> · 均价 <span id="m6a" class="hl">—</span></div>
+        <div class="card" style="padding:18px 22px"><div class="book" id="b6"></div></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>先看最基础的两种订单。限价单指定价格。能成交的部分立即成交，剩下的挂进订单簿。立即成交的部分，它是 Taker。挂进去的部分，它就是 Maker。</li>
+      <li>市价单不指定价格。它没有限价，所以总能成交。它一档一档往上吃，直到吃够，或者对手盘被吃空。</li>
+      <li>举个示例，市价买 4.0。先吃完 100.10 这一档，一共 2.0。</li>
+      <li>还差 2.0，再吃 100.20 这一档。成交均价是 100.15，比屏幕上的卖一价贵了 0.05。</li>
+      <li>这个差距就是滑点。盘口越薄，市价单吃穿的档位越多，均价离屏幕价越远。如果对手盘被吃空还没买够，剩余部分会被取消，状态是 EXPIRED。想亲手体验，可以打开配套的深度与滑点实验页。</li>
+    </ol>
+  </section>
+
+  <!-- 7 止损与 OCO -->
+  <section class="scene" data-title="止损单与 OCO" data-onstep="stopStep">
+    <div class="kicker">03 · 条件订单</div>
+    <h2>止损限价单与 OCO 二选一</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="card" style="flex:0 0 780px; padding:12px 16px">
+        <svg class="chart" id="ch7" viewBox="0 0 780 420" width="740" height="398"></svg>
+      </div>
+      <div class="col" style="gap:18px">
+        <div class="stack">
+          <div class="col" style="gap:18px" data-step="0" data-until="2">
+            <div class="box" id="svc7"><h3>条件单服务 · 业界通用做法</h3><span id="svc7t" class="mono">止损卖 1.0<br>触发 99.50 · 限价 99.40</span></div>
+            <div class="box" id="bk7"><h3>订单簿</h3><span id="bk7t" class="mono muted">还没有这笔订单</span></div>
+          </div>
+          <div class="col" style="gap:18px" data-step="3">
+            <div class="box" id="oco1"><h3>OCO · 腿 1</h3><span class="mono">止盈 限价卖 101.00</span> <span id="oco1s" class="chip"></span></div>
+            <div class="box" id="oco2"><h3>OCO · 腿 2</h3><span class="mono">止损 触发 99.50</span> <span id="oco2s" class="chip"></span></div>
+            <div class="muted" style="font-size:26px">币安：订单列表 · contingencyType=OCO</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>再看止损限价单。它带一个触发价和一个限价。示例，触发价 99.50，限价 99.40，卖出 1.0。</li>
+      <li>注意，触发之前，它不在订单簿里。业界通常由一个独立的条件单服务，盯着最新价。</li>
+      <li>最新价跌到 99.50，条件触发。系统这时才生成一个普通限价卖单，送进撮合。币安对应的类型叫 STOP_LOSS_LIMIT。</li>
+      <li>OCO 是二选一订单。两个订单绑在一起。比如一个止盈限价卖单，加一个止损单。</li>
+      <li>只要其中一个成交，另一个自动撤销。币安把它做成订单列表，联动类型叫 OCO。币安的订单列表还支持 OTO 类型，这里不展开。</li>
+    </ol>
+  </section>
+
+  <!-- 8 冰山与 Post-Only -->
+  <section class="scene" data-title="冰山单与 Post-Only" data-onstep="iceStep">
+    <div class="kicker">03 · 订单类型</div>
+    <h2>冰山单与只做 Maker</h2>
+    <div class="grid2">
+      <div class="card" style="display:flex; flex-direction:column; gap:20px">
+        <h3>冰山单 · icebergQty</h3>
+        <div class="mono" style="font-size:30px">卖 3.0 · 每次显示 1.0</div>
+        <div class="ice" id="ice"></div>
+        <div class="mono" id="iceNote" style="font-size:28px; min-height:84px"></div>
+      </div>
+      <div class="card" style="display:flex; flex-direction:column; gap:18px" data-step="3">
+        <h3>Post-Only · LIMIT_MAKER</h3>
+        <div class="mono" style="font-size:30px">卖一价 <span class="down">100.10</span> · 买一价 <span class="up">100.00</span></div>
+        <div class="pill" id="po1" data-step="4">挂买 100.10 → <span id="po1r"></span></div>
+        <div class="pill" id="po2" data-step="5">挂买 100.05 → <span id="po2r"></span></div>
+        <div class="muted" data-step="5" style="font-size:28px">做市商常用：Maker 手续费通常低于 Taker</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>冰山单是给大额订单用的。示例，挂卖 3.0，但每次只在订单簿里显示 1.0。</li>
+      <li>别人从深度里只能看到 1.0。拆分份数等于总量除以显示量，向上取整，这里是 3 份。</li>
+      <li>显示的部分成交以后，系统补上下一份。份数上限由 ICEBERG_PARTS 过滤器限制。这样，大单不会一下子全部暴露在深度里。</li>
+      <li>再看 Post-Only，币安的订单类型叫 LIMIT_MAKER。它保证这笔订单只当挂单方。</li>
+      <li>示例，卖一价 100.10，你用 Post-Only 挂 100.10 买入。这单会立刻成交，所以系统直接拒绝它。</li>
+      <li>改成挂 100.05 买入，就不会立刻成交，它进订单簿排队。做市商常用它，因为 Maker 手续费通常更低。费率的细节，第 11 集会讲。</li>
+    </ol>
+  </section>
+
+  <!-- 9 TIF -->
+  <section class="scene" data-title="GTC、IOC、FOK" data-onstep="tifStep">
+    <div class="kicker">04 · 有效方式 Time In Force</div>
+    <h2>同一本订单簿，同一笔订单，试三遍</h2>
+    <div class="card order-card" style="padding:14px 24px" data-step="1">限价买 <span class="hl">100.10</span> × <span class="hl">3.0</span> · 100.10 以内可吃 <span class="hl">2.0</span>，差 <span class="down">1.0</span></div>
+    <div class="grid3" id="tif"></div>
+    <ol class="say">
+      <li>下单时还要选有效方式，也就是 TIF。它决定没成交的部分怎么处理。我们拿同一本订单簿试三遍。</li>
+      <li>订单是限价买 100.10，数量 3.0。卖盘在 100.10 只有 2.0，所以最多成交 2.0，还差 1.0。</li>
+      <li>第一遍用 GTC。2.0 立即成交，剩下的 1.0 挂进买盘，成为新的买一。它会一直挂着，直到成交或撤单。</li>
+      <li>第二遍用 IOC。同样成交 2.0，但剩下的 1.0 立即取消。订单最终状态是 EXPIRED。</li>
+      <li>第三遍用 FOK。引擎先预演，累加 100.10 以内能吃的量。只有 2.0，不够 3.0。</li>
+      <li>于是整单取消，一笔也不成交，订单簿完全没被改动。FOK 要么全部成交，要么什么都不发生。实现上，关键就是先算总量，再决定动不动订单簿。</li>
+    </ol>
+  </section>
+
+  <!-- 10 状态机 -->
+  <section class="scene" data-title="订单状态机" data-onstep="fsmStep">
+    <div class="kicker">05 · 订单生命周期</div>
+    <h2>订单状态机：只能向前走</h2>
+    <div class="row" style="align-items:flex-start">
+      <svg class="fsm" id="fsm" viewBox="0 0 1640 520" width="1640" height="520">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a4f5a"/></marker>
+          <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f0b90b"/></marker>
+        </defs>
+        <g id="fsmE"></g><g id="fsmN"></g>
+      </svg>
+    </div>
+    <ol class="say">
+      <li>订单从进入系统到结束，会经过一组状态。先看最短的一条路。校验没通过，比如价格不符合 tickSize，直接 REJECTED。</li>
+      <li>引擎接受订单，状态是 NEW。部分成交以后，变成 PARTIALLY_FILLED。剩余也成交了，就是 FILLED。</li>
+      <li>用户撤单，走向 CANCELED。IOC 或 FOK 没能成交的部分被系统取消，走向 EXPIRED。</li>
+      <li>终态一共四个，FILLED、CANCELED、REJECTED、EXPIRED。订单进入终态，就不再变化。REJECTED 表示订单根本没进入撮合。EXPIRED 表示订单按规则被系统取消。</li>
+      <li>币安还定义了 EXPIRED_IN_MATCH，表示订单因为自成交预防被取消。下一集细讲。</li>
+      <li>状态只能往前走。假设下游先收到 FILLED，后来又收到一条旧的部分成交消息。这时必须按序号丢掉它。</li>
+    </ol>
+  </section>
+
+  <!-- 11 误区 -->
+  <section class="scene" data-title="常见误区" data-onstep="mythStep">
+    <div class="kicker">常见误区</div>
+    <h2>三个误区</h2>
+    <div class="col" style="gap:18px; flex:0 0 auto">
+      <div class="card" data-step="0" data-dim="1"><b class="down">✗ 挂高价买会多付钱</b> <span class="muted">→ 成交价取 Maker 价格，多出的不会白付</span></div>
+      <div class="card" data-step="1" data-dim="3"><b class="down">✗ 撤单立即生效</b> <span class="muted">→ 撤单也要排队定序</span></div>
+      <div class="seqq" data-step="2" data-until="2" id="q11"></div>
+      <div class="card" data-step="3"><b class="down">✗ 市价单按最新价成交</b> <span class="muted">→ 薄盘口会吃穿多档，热门币上线时尤其明显</span></div>
+    </div>
+    <ol class="say">
+      <li>最后看三个常见误区。第一个，挂高价买会多付钱。不会，成交价取 Maker 价格，多出的部分不会白付。</li>
+      <li>第二个，撤单立即生效。也不对。撤单指令同样要排队，同样要分配序号。</li>
+      <li>看这个队列。序号 41 是别人的吃单，序号 42 才是你的撤单。引擎先处理 41，你的挂单已经成交了。所以撤单要预留时间，别指望最后一刻撤掉。</li>
+      <li>第三个，市价单按最新价成交。在薄盘口里，市价单会吃穿多个档位。热门币刚上线时尤其明显。业界常见的缓解办法，是上线初期只开放限价单，暂停市价单。</li>
+    </ol>
+  </section>
+
+  <!-- 12 小结 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">订单簿按价格档组织，<span class="hl">价格优先、时间优先</span>，成交价取 Maker 价格。</li>
+      <li data-step="0">订单类型决定怎么进场；<span class="hl">TIF</span> 决定没成交的部分去哪。</li>
+      <li data-step="1">状态只能向前走，终态有四个，下游<span class="hl">按序号</span>处理消息。</li>
+    </ul>
+    <div class="card info" data-step="3" style="font-size:34px">下一集 EP10 · 撮合引擎内部：<span class="hl">单线程、数据结构、定序与重放</span></div>
+    <ol class="say">
+      <li>小结一下。第一，订单簿按价格档组织。撮合遵守价格优先、时间优先，成交价取 Maker 价格。</li>
+      <li>第二，订单类型决定订单怎么进场。TIF 决定没成交的部分去哪。GTC 挂着，IOC 取消剩余，FOK 全有或全无。</li>
+      <li>第三，订单状态只能向前走，终态有四个。下游必须按序号处理消息。</li>
+      <li>下一集，我们拆开撮合引擎。看它为什么是单线程，内存里用什么数据结构，崩溃后怎样靠重放恢复。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  // Prices are integer ticks of 0.01, quantities are integer tenths: no floats in display math.
+  const P = t => (t / 100).toFixed(2);
+  const Q = q => (q / 10).toFixed(1);
+  // level: {side, p, orders:[{id,q,cls}], cls}
+  function bookHTML(levels, spread) {
+    let h = '<div class="hdr"><span>价格</span><span style="text-align:right">总量</span><span>队列 · 队头在左</span></div>';
+    levels.forEach(lv => {
+      if (lv.spread) { h += `<div class="spread ${lv.cls || ''}">${lv.text}</div>`; return; }
+      const tot = lv.orders.filter(o => !/gone/.test(o.cls || '')).reduce((a, o) => a + o.q, 0);
+      const chips = lv.orders.map((o, i) => (i ? '<span class="qarrow">→</span>' : '') + `<span class="ord ${o.cls || ''}">${o.id} ${Q(o.q)}</span>`).join('');
+      h += `<div class="lv ${lv.side} ${lv.cls || ''}"><span class="px">${P(lv.p)}</span><span class="tot">${Q(tot)}</span><span class="q">${chips}</span></div>`;
+    });
+    return h;
+  }
+  const baseAsks = () => [
+    { side: 'ask', p: 10030, orders: [{ id: 'S5', q: 10 }] },
+    { side: 'ask', p: 10020, orders: [{ id: 'S3', q: 5 }, { id: 'S4', q: 20 }] },
+    { side: 'ask', p: 10010, orders: [{ id: 'S1', q: 8 }, { id: 'S2', q: 12 }] },
+  ];
+  const baseBids = () => [
+    { side: 'bid', p: 10000, orders: [{ id: 'B1', q: 15 }, { id: 'B2', q: 3 }] },
+    { side: 'bid', p: 9990, orders: [{ id: 'B3', q: 20 }] },
+    { side: 'bid', p: 9980, orders: [{ id: 'B4', q: 7 }, { id: 'B5', q: 11 }] },
+  ];
+
+  function structStep(el, st) {
+    const a = baseAsks(), b = baseBids();
+    if (st === 1) { a[2].cls = 'best'; b[0].cls = 'best'; }
+    if (st === 3) { a[2].cls = 'hit'; a[2].orders[0].cls = 'hit'; }
+    if (st >= 4 && st <= 5) { a.forEach(l => l.orders.forEach(o => o.cls = 'new')); }
+    const sp = { spread: true, text: '价差 Spread = 0.10', cls: st === 2 ? 'hit' : '' };
+    el.querySelector('#b3').innerHTML = bookHTML([...a, sp, ...b]);
+  }
+
+  function fifoStep(el, st) {
+    const lanes = [];
+    if (st >= 5) lanes.push({ p: 10005, orders: [{ id: 'S7', q: 4, cls: 'new' }], tag: '新卖一' });
+    const l1 = { p: 10010, orders: [{ id: 'S1', q: 8 }, { id: 'S2', q: 12 }] };
+    if (st >= 2) l1.orders.push({ id: 'S6', q: 5, cls: st === 2 ? 'new' : '' });
+    if (st >= 3) { l1.orders[0].cls = 'gone'; l1.orders[1].q = 10; l1.orders[1].cls = 'part'; }
+    if (st === 4) l1.orders[2].cls = 'hit';
+    lanes.push(l1);
+    lanes.push({ p: 10020, orders: [{ id: 'S3', q: 5 }, { id: 'S4', q: 20 }] });
+    el.querySelector('#fifo').innerHTML = lanes.map(l =>
+      `<div class="fifo-lane"><span class="px">${P(l.p)}</span><span class="head">队头</span>` +
+      l.orders.map((o, i) => (i ? '<span class="qarrow">→</span>' : '') + `<span class="ord ${o.cls || ''}">${o.id} ${Q(o.q)}</span>`).join('') +
+      `<span class="head" style="width:auto">← 队尾</span>${l.tag ? '<span class="tag">' + l.tag + '</span>' : ''}</div>`).join('');
+    const notes = ['卖单：价格越低越优先。买单：价格越高越优先。',
+      '同一价格档内：先到先得，First In First Out。',
+      'S6 到达：同价，排到 100.10 档<span class="hl">队尾</span>。',
+      '买 1.0：S1 成交 0.8，S2 成交 0.2，剩 1.0。',
+      'S6 同价但晚到：<span class="hl">一点都没轮到</span>。',
+      'S7 挂 100.05：价格更好，直接成为<span class="hl">新卖一</span>。'];
+    el.querySelector('#fifoNote').innerHTML = notes[st];
+  }
+
+  function walkStep(el, st) {
+    const a = baseAsks();
+    const fills = [[], [['S1', 10010, 8]], [['S1', 10010, 8], ['S2', 10010, 12]], [['S1', 10010, 8], ['S2', 10010, 12], ['S3', 10020, 5]]][Math.min(st, 3)];
+    a.forEach(l => l.orders.forEach(o => { const f = fills.find(x => x[0] === o.id); if (f) o.cls = 'gone'; }));
+    const last = fills[fills.length - 1];
+    if (last && st <= 3) a.forEach(l => l.orders.forEach(o => { if (o.id === last[0]) o.cls = 'hit gone'; }));
+    a.forEach(l => { if (l.orders.every(o => /gone/.test(o.cls || ''))) l.cls = 'gone'; });
+    const b = baseBids().slice(0, 1);
+    el.querySelector('#b5').innerHTML = bookHTML([...a, { spread: true, text: '— 价差 —' }, ...b]);
+    const filled = fills.reduce((s, f) => s + f[2], 0);
+    el.querySelector('#w5rem').textContent = Q(25 - filled);
+    let h = '<div class="r h"><span>#</span><span>对手</span><span>成交价</span><span>数量</span></div>';
+    fills.forEach((f, i) => { h += `<div class="r" style="${i === fills.length - 1 && st <= 3 ? 'outline:2px solid var(--gold)' : ''}"><span>${i + 1}</span><span>${f[0]}</span><span class="${st === 5 && f[1] === 10010 ? 'hl' : ''}">${P(f[1])}</span><span>${Q(f[2])}</span></div>`; });
+    if (st >= 3) h += `<div class="r" style="background:var(--buy-soft)"><span></span><span class="up">FILLED</span><span></span><span>${Q(filled)}</span></div>`;
+    el.querySelector('#log5').innerHTML = h;
+  }
+
+  function mktStep(el, st) {
+    const a = baseAsks();
+    // market buy 4.0: S1 0.8, S2 1.2 at 100.10, then S3 0.5 + S4 1.5 at 100.20
+    const plan = [['S1', 8], ['S2', 12], ['S3', 5], ['S4', 15]];
+    const upto = st < 2 ? 0 : st === 2 ? 2 : 4;
+    let qty = 0, cost = 0;
+    plan.slice(0, upto).forEach(([id, q]) => a.forEach(l => l.orders.forEach(o => {
+      if (o.id === id) { qty += q; cost += l.p * q; if (q === o.q) o.cls = 'gone'; else { o.q -= q; o.cls = 'part'; } }
+    })));
+    a.forEach(l => { if (l.orders.every(o => /gone/.test(o.cls || ''))) l.cls = 'gone'; });
+    if (st >= 3) a[1].cls = 'hit';
+    if (st === 2) a[2].cls = 'hit gone';
+    el.querySelector('#b6').innerHTML = bookHTML([...a, { spread: true, text: '— 价差 —' }, ...baseBids().slice(0, 1)]);
+    el.querySelector('#m6f').textContent = Q(qty);
+    el.querySelector('#m6a').textContent = qty ? P(Math.round(cost / qty)) : '—';
+  }
+
+  function stopStep(el, st) {
+    // price path in ticks; trigger at 9950
+    const path = [10040, 10030, 10045, 10020, 10010, 10015, 9995, 9980, 9970, 9960, 9950];
+    const shown = st >= 2 ? path.length : 8;
+    const x = i => 70 + i * 66, y = p => 30 + (10060 - p) * 3.2;
+    let s = '';
+    [10050, 10000, 9950].forEach(p => s += `<text x="0" y="${y(p) + 8}" style="fill:var(--text-2)">${P(p).slice(0, 6)}</text>`);
+    s += `<line x1="70" x2="770" y1="${y(9950)}" y2="${y(9950)}" stroke="#f6465d" stroke-width="3" stroke-dasharray="10 8"/>`;
+    s += `<text x="560" y="${y(9950) + 36}" style="fill:var(--sell)">触发价 99.50</text>`;
+    s += `<polyline fill="none" stroke="#eceae4" stroke-width="4" points="${path.slice(0, shown).map((p, i) => x(i) + ',' + y(p)).join(' ')}"/>`;
+    const lp = path[shown - 1];
+    s += `<circle cx="${x(shown - 1)}" cy="${y(lp)}" r="10" fill="${st >= 2 ? '#f6465d' : '#f0b90b'}"/>`;
+    s += `<text x="470" y="40" style="fill:var(--text-2)">最新价</text><text x="570" y="42" style="fill:${st >= 2 ? 'var(--sell)' : 'var(--gold)'}; font-size:34px; font-weight:700">${P(lp)}</text>`;
+    if (st >= 2) s += `<text x="${x(shown - 1) - 120}" y="${y(lp) - 24}" style="fill:var(--gold)">触发！</text>`;
+    el.querySelector('#ch7').innerHTML = s;
+    el.querySelector('#svc7').classList.toggle('on', st === 1);
+    el.querySelector('#bk7').classList.toggle('on', st === 2);
+    el.querySelector('#svc7t').innerHTML = st >= 2 ? '<span class="muted">已触发，移交撮合</span>' : '止损卖 1.0<br>触发 99.50 · 限价 99.40';
+    el.querySelector('#bk7t').innerHTML = st >= 2 ? '<span class="down">限价卖 99.40 × 1.0</span> 进入撮合' : '<span class="muted">还没有这笔订单</span>';
+    const s1 = el.querySelector('#oco1s'), s2 = el.querySelector('#oco2s');
+    s2.textContent = st >= 4 ? '触发并成交' : '等待'; s2.className = 'chip ' + (st >= 4 ? 'buy' : '');
+    s1.textContent = st >= 4 ? '自动撤销' : '等待'; s1.className = 'chip ' + (st >= 4 ? 'sell' : '');
+    el.querySelector('#oco2').classList.toggle('on', st >= 4);
+  }
+
+  function iceStep(el, st) {
+    const k = Math.min(st, 2);
+    const cls = i => (k >= 2 && i === 0) ? 'blk done' : (i === (k >= 2 ? 1 : 0)) ? 'blk show' : 'blk';
+    el.querySelector('#ice').innerHTML = [0, 1, 2].map(i => `<div class="${cls(i)}">${cls(i) === 'blk' ? '隐藏 1.0' : cls(i) === 'blk done' ? '已成交 1.0' : '显示 1.0'}</div>`).join('');
+    el.querySelector('#iceNote').innerHTML = [
+      '订单簿深度里只看到 1.0',
+      '份数 = 向上取整(3.0 ÷ 1.0) = <span class="hl">3</span>',
+      '第 1 份成交 → 补上第 2 份<br><span class="muted">上限：ICEBERG_PARTS</span>'][k];
+    const po1 = el.querySelector('#po1'), po2 = el.querySelector('#po2');
+    po1.classList.toggle('no', st >= 4);
+    el.querySelector('#po1r').textContent = '会立即成交 → REJECTED';
+    po2.classList.toggle('ok', st >= 5);
+    el.querySelector('#po2r').textContent = '不会成交 → 挂单排队';
+  }
+
+  function tifStep(el, st) {
+    const cols = [['GTC', 2], ['IOC', 3], ['FOK', 4]];
+    el.querySelector('#tif').innerHTML = cols.map(([name, at]) => {
+      const done = st >= at && !(name === 'FOK' && st < 5);
+      const pre = name === 'FOK' && st === 4;
+      const asks = [{ side: 'ask', p: 10020, orders: [{ id: 'S3', q: 5 }, { id: 'S4', q: 20 }] },
+                    { side: 'ask', p: 10010, orders: [{ id: 'S1', q: 8 }, { id: 'S2', q: 12 }] }];
+      const bids = [{ side: 'bid', p: 10000, orders: [{ id: 'B1', q: 15 }] }];
+      let res = '<span class="muted">待演示</span>';
+      if (pre) { asks[1].cls = 'hit'; res = '预演：可吃 2.0 &lt; 3.0'; }
+      if (done && name !== 'FOK') {
+        asks[1].cls = 'gone'; asks[1].orders.forEach(o => o.cls = 'gone');
+        if (name === 'GTC') { bids.unshift({ side: 'bid', p: 10010, orders: [{ id: '我', q: 10, cls: 'new' }], cls: 'new' }); res = '成交 2.0 · 剩余 1.0 <span class="hl">挂单</span>'; }
+        else res = '成交 2.0 · 剩余 1.0 <span class="down">取消</span>';
+      }
+      if (done && name === 'FOK') res = '<span class="down">整单取消</span> · 簿未改动';
+      if (bids.length === 1) bids.unshift({ side: 'bid', p: 10010, orders: [], ph: true });
+      const rows = [...asks, null, ...bids].map(l => l === null ? '<div class="sp"></div>' : `<div class="r ${l.side} ${l.cls || ''} ${l.ph ? 'ph' : ''}"><span class="px">${P(l.p)}</span><span>${Q(l.orders.filter(o => !/gone/.test(o.cls || '')).reduce((a, o) => a + o.q, 0))}${l.orders[0] && l.orders[0].id === '我' ? ' <span class="blue">← 我</span>' : ''}</span></div>`).join('');
+      const status = !done && !pre ? '' : name === 'GTC' ? '<span class="chip gold">PARTIALLY_FILLED</span>' : pre ? '<span class="chip">预演中</span>' : '<span class="chip sell">EXPIRED</span>';
+      return `<div class="card mini" style="padding:16px 22px; ${st >= at ? 'border-color:var(--gold)' : ''}"><div class="ttl ${st >= at ? 'hl' : ''}">${name}</div><div class="mb">${rows}</div><div class="res">${res}</div><div style="text-align:center; min-height:36px; margin-top:-4px">${status}</div></div>`;
+    }).join('');
+  }
+
+  function fsmStep(el, st) {
+    const N = {
+      S: [60, 200, 0], NEW: [300, 200, 200], REJ: [300, 420, 260], PF: [800, 200, 380],
+      FIL: [1400, 60, 250], CAN: [1400, 200, 250], EXP: [1400, 340, 250], EIM: [1400, 460, 330],
+    };
+    const label = { NEW: 'NEW', REJ: 'REJECTED', PF: 'PARTIALLY_FILLED', FIL: 'FILLED', CAN: 'CANCELED', EXP: 'EXPIRED', EIM: 'EXPIRED_IN_MATCH' };
+    const E = [
+      ['S-NEW', 'M70,200 L196,200', '接受', 100, 185],
+      ['S-REJ', 'M60,212 L60,420 L166,420', '校验失败', 75, 330],
+      ['NEW-PF', 'M400,200 L606,200', '部分成交', 440, 185],
+      ['NEW-FIL', 'M300,160 C300,60 700,60 1271,60', '全部成交', 600, 52],
+      ['NEW-CAN', 'M330,240 C420,300 1100,300 1271,215', '撤单', 760, 315],
+      ['NEW-EXP', 'M270,240 C300,380 1000,380 1271,345', 'IOC / FOK', 620, 400],
+      ['PF-FIL', 'M990,185 L1271,72', '剩余成交', 1060, 105],
+      ['PF-CAN', 'M990,200 L1271,200', '撤剩余', 1080, 185],
+      ['PF-EXP', 'M990,215 L1271,330', 'IOC 剩余', 1080, 300],
+    ];
+    const onE = [[], ['S-NEW', 'NEW-PF', 'PF-FIL'], ['NEW-CAN', 'PF-CAN', 'NEW-EXP', 'PF-EXP'], [], [], []][st];
+    if (st === 0) onE.push('S-REJ');
+    const onN = [['REJ'], ['NEW', 'PF', 'FIL'], ['CAN', 'EXP'], ['FIL', 'CAN', 'REJ', 'EXP'], ['EIM'], ['FIL']][st];
+    const eh = E.map(([id, d, t, tx, ty]) => `<g class="ed ${onE.includes(id) ? 'on' : ''}"><path d="${d}"/><text x="${tx}" y="${ty}">${t}</text></g>`).join('');
+    let nh = `<circle cx="60" cy="200" r="16" fill="#eceae4"/>`;
+    Object.entries(N).forEach(([k, [cx, cy, w]]) => {
+      if (k === 'S' || (k === 'EIM' && st < 4)) return;
+      const term = ['FIL', 'CAN', 'REJ', 'EXP', 'EIM'].includes(k);
+      nh += `<g class="nd ${onN.includes(k) ? 'on' : ''} ${term && st === 3 ? 'end' : ''}"><rect x="${cx - w / 2}" y="${cy - 36}" width="${w}" height="72" rx="14" ${k === 'EIM' ? 'stroke-dasharray="8 6"' : ''}/><text x="${cx}" y="${cy + 2}">${label[k]}</text></g>`;
+    });
+    if (st === 5) nh += `<g><rect x="430" y="440" width="760" height="70" rx="12" fill="rgba(246,70,93,.14)" stroke="#f6465d"/><text x="810" y="476" style="font-size:28px; text-anchor:middle; dominant-baseline:middle">seq 88 FILLED 之后到达 seq 87 PARTIALLY → 丢弃</text></g>`;
+    el.querySelector('#fsmE').innerHTML = eh;
+    el.querySelector('#fsmN').innerHTML = nh;
+  }
+
+  function mythStep(el, st) {
+    const cells = [
+      ['seq 40', '你挂卖 S1 0.8', ''], ['seq 41', '别人买 0.8 吃单', 'on'], ['seq 42', '你撤销 S1', 'bad'],
+    ];
+    el.querySelector('#q11').innerHTML = '<span class="muted" style="font-family:var(--sans)">引擎按序号处理 →</span>' +
+      cells.map(c => `<div class="cell ${c[2]}">${c[0]}<small>${c[1]}</small></div>`).join('<span class="qarrow">→</span>') +
+      '<div class="cell bad">S1 已 FILLED<small>撤单失败</small></div>';
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

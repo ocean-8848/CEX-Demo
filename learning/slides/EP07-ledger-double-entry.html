@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP07 账本：双分录与冻结</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: center; font-size: 38px; padding: 40px 36px; }
+  .num-card .n { font-family: var(--mono); font-size: 56px; font-weight: 700; color: var(--gold); line-height: 1.1; }
+  .vs { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .vs .card { font-size: 34px; }
+  /* T accounts */
+  .tacct { background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 22px 26px; flex: 1; min-width: 0; }
+  .tacct .hd { text-align: center; font-size: 32px; font-weight: 700; padding-bottom: 14px; border-bottom: 4px solid var(--text-2); }
+  .tacct .hd small { display: block; font-size: 24px; color: var(--text-2); font-weight: 400; }
+  .tacct .tb { display: grid; grid-template-columns: 1fr 1fr; min-height: 190px; }
+  .tacct .tb > div { padding: 14px 18px; font-family: var(--mono); font-size: 40px; }
+  .tacct .tb > div:first-child { border-right: 4px solid var(--text-2); }
+  .tacct .lab { font-family: var(--sans); font-size: 24px; color: var(--text-2); margin-bottom: 8px; }
+  .tacct .e { color: var(--gold); animation: none; }
+  .tacct.bad { border-color: var(--sell); }
+  .check { font-family: var(--mono); font-size: 38px; padding: 22px 28px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel); text-align: center; line-height: 1.5; }
+  .check.ok { border-color: var(--buy); background: var(--buy-soft); color: var(--buy); }
+  .check.bad { border-color: var(--sell); background: var(--sell-soft); color: var(--sell); }
+  .check small { display: block; font-family: var(--sans); font-size: 28px; }
+  /* balance layers */
+  .layer { display: flex; align-items: center; gap: 22px; padding: 18px 24px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel); font-size: 32px; }
+  .layer .tag { font-family: var(--mono); font-weight: 700; width: 64px; }
+  .layer.liab { border-color: var(--gold); } .layer.liab .tag { color: var(--gold); }
+  .layer.asset { border-color: var(--buy); } .layer.asset .tag { color: var(--buy); }
+  .layer small { color: var(--text-2); font-size: 26px; margin-left: auto; }
+  /* lifecycle */
+  .bar-row { display: grid; grid-template-columns: 220px 1fr 220px; align-items: center; gap: 18px; font-size: 38px; }
+  .bar { height: 64px; background: var(--panel-2); border-radius: 8px; overflow: hidden; }
+  .bar i { display: block; height: 100%; transition: width .5s ease; }
+  .bar-row .v { font-family: var(--mono); font-size: 48px; text-align: right; }
+  .jl { font-family: var(--mono); font-size: 30px; line-height: 1.55; }
+  .jl .r { display: grid; grid-template-columns: 110px 1fr 120px; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  .jl .r.new { background: var(--gold-soft); }
+  .jl .dr { color: var(--info); } .jl .cr { color: var(--buy); }
+  .prog { height: 18px; background: var(--panel-2); border-radius: 9px; overflow: hidden; margin-top: 10px; }
+  .prog i { display: block; height: 100%; background: var(--buy); transition: width .5s; }
+  /* float */
+  .calc { font-family: var(--mono); font-size: 46px; padding: 26px 32px; border-radius: 14px; background: var(--panel); border: 2px solid var(--line); min-height: 112px; }
+  .calc.bad { border-color: var(--sell); color: var(--sell); }
+  .calc.ok { border-color: var(--buy); color: var(--buy); }
+  .calc .k { font-family: var(--sans); font-size: 26px; color: var(--text-2); display: block; margin-bottom: 6px; }
+  .hide { visibility: hidden; }
+  svg .box { fill: var(--panel); stroke: var(--line); stroke-width: 2; }
+  svg .box.a { stroke: var(--buy); } svg .box.l { stroke: var(--gold); } svg .box.m { stroke: var(--info); } svg .box.f { stroke: var(--warn); }
+  svg .ln { stroke: var(--text-2); stroke-width: 4; fill: none; }
+  svg .ln.g { stroke: var(--gold); }
+  svg text.s { font-size: 24px; fill: var(--text-2); }
+  svg text.t { font-size: 32px; }
+  svg text.gl { font-size: 26px; fill: var(--text-2); }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP07" data-title="账本：双分录与冻结">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解</div>
+    <h1>账本：<span class="hl">双分录</span>与冻结</h1>
+    <p class="lead" data-step="1">撮合决定谁和谁成交，账本决定成交后每个人的钱是多少。</p>
+    <div class="vs" data-step="2">
+      <div class="card info">撮合出错 → 影响<b>一笔订单</b></div>
+      <div class="card sell">账本出错 → 影响<b>平台偿付能力</b></div>
+    </div>
+    <div class="card gold" data-step="3">比喻：撮合 = 叫号机，账本 = 金库总账簿。<span class="muted">不准之处：真实账本是只追加的流水，余额是算出来的。</span></div>
+    <ol class="say">
+      <li>用户点了买入，钱到底什么时候扣掉？扣掉以后，又记在了哪里？今天我们讲交易所最核心的系统，账本。</li>
+      <li>很多人以为，交易所的核心是撮合引擎。撮合决定谁和谁成交。账本决定成交以后，每个人的钱变成多少。</li>
+      <li>撮合出错，影响的是一笔订单。账本出错，影响的是整个平台的偿付能力。所以这一集的结论是，交易所的心脏是账本，不是撮合。</li>
+      <li>打个比方。交易所像银行营业厅，撮合是叫号机，账本是金库的总账簿。叫号机坏了，客户多排一会儿队。总账簿错了，银行可能当场破产。不过这个比方有个不准的地方。真实的账本不是一本簿子，而是一条只追加的流水，余额是算出来的。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线">
+    <div class="kicker">本集路线图</div>
+    <h2>五个问题，一条主线</h2>
+    <div class="grid2">
+      <div class="card num-card"><span class="n">01</span><span>为什么是账本，而不是余额表</span></div>
+      <div class="card num-card" data-step="0"><span class="n">02</span><span>双分录：借贷必须平衡</span></div>
+      <div class="card num-card" data-step="1"><span class="n">03</span><span>科目设计与余额分层</span></div>
+      <div class="card num-card" data-step="2"><span class="n">04</span><span>冻结 → 扣减 → 解冻</span></div>
+      <div class="card num-card" data-step="2"><span class="n">05</span><span>金额必须用精确算术</span></div>
+      <div class="card num-card warn" data-step="3"><span class="n">!</span><span>误区：借贷平衡 ≠ 账一定对</span></div>
+    </div>
+    <ol class="say">
+      <li>这一集分五段。先看为什么要用账本，而不是一张余额表。再看双分录记账的规则。</li>
+      <li>然后看账户科目怎样设计，以及用户的一个币，在系统里分成哪几层。</li>
+      <li>接着用一笔买单，完整走一遍冻结、扣减和解冻。最后讲金额为什么不能用浮点数。</li>
+      <li>结尾我们再看一个常见误区。借贷平衡了，账就一定对吗？</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="余额表还是账本">
+    <div class="kicker">01 · 为什么是账本</div>
+    <h2>余额表只存结果，账本存每一次变化</h2>
+    <div class="row">
+      <div class="col">
+        <div class="code">UPDATE balances
+SET amount = amount + x
+WHERE user_id = 'A';</div>
+        <div class="card sell" data-step="1"><b>没有历史</b>：余额错了，不知道哪一步错</div>
+        <div class="card sell" data-step="2"><b>没有约束</b>：bug 能凭空加钱，系统不报错</div>
+        <div class="card sell" data-step="3"><b>无法审计</b>：每笔变化都要有凭证</div>
+      </div>
+      <div class="col" data-step="4">
+        <div class="card gold">
+          <h3>账本：只追加流水</h3>
+          <div class="jl">
+            <div class="r"><span>#1</span><span>充值 +1000</span><span>USDT</span></div>
+            <div class="r"><span>#2</span><span>冻结 −600</span><span>USDT</span></div>
+            <div class="r"><span>#3</span><span>解冻 +600</span><span>USDT</span></div>
+          </div>
+        </div>
+        <div class="flow"><div class="node">流水求和</div><div class="arrow gold"></div><div class="node gold">余额快照<small>可随时重建</small></div></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>先问一个问题。为什么不直接用一张余额表？每个用户每个币一行，变化时加减一下，不是很简单吗？</li>
+      <li>这种做法有三个缺陷。第一，没有历史。余额错了以后，你不知道是哪一步出的错。</li>
+      <li>第二，没有约束。程序里有个 bug，就能凭空给某个人加钱，而系统不会报错。</li>
+      <li>第三，无法审计。审计和监管要求，每一笔资金变化都要有凭证。</li>
+      <li>账本的做法是，只记录变化，也就是流水。余额由流水算出来。余额表仍然存在，但它只是流水的快照，随时可以从流水重建。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="双分录记账" data-onstep="tStep">
+    <div class="kicker">02 · 双分录 Double-Entry · 示例</div>
+    <h2>用户 A 充值 1000 USDT，怎么记？</h2>
+    <div class="row">
+      <div class="tacct" id="t1"><div class="hd">热钱包资产-USDT<small>资产类</small></div>
+        <div class="tb"><div><div class="lab">借 Debit</div><span class="dv"></span></div><div><div class="lab">贷 Credit</div><span class="cv"></span></div></div></div>
+      <div class="tacct" id="t2"><div class="hd">用户A-USDT-可用<small>负债类</small></div>
+        <div class="tb"><div><div class="lab">借 Debit</div><span class="dv"></span></div><div><div class="lab">贷 Credit</div><span class="cv"></span></div></div></div>
+    </div>
+    <div class="row">
+      <div class="check" id="chk" style="flex:1"></div>
+      <div class="card gold" id="rule" style="flex:1.2">同一资产：<b>Σ借 = Σ贷</b><br><span class="muted">钱只能移动，不能凭空出现或消失</span></div>
+    </div>
+    <ol class="say">
+      <li>账本的第一条规则，叫双分录记账。每一笔业务，至少写两条分录。一条记借，一条记贷。</li>
+      <li>举个示例。用户 A 充值 1000 USDT。币到了平台的热钱包，所以先在热钱包资产上，借记 1000。</li>
+      <li>这时只写了一边，借方 1000，贷方是 0，不平衡。所以还要在用户 A 的可用余额上，贷记 1000。现在借贷相等，平衡了。</li>
+      <li>再看一个 bug。程序只写了一条，给用户 A 贷记 1000，热钱包那边什么都没写。借贷不等，账本直接拒绝提交。</li>
+      <li>这条规则叫借贷平衡。同一资产的借方合计，必须等于贷方合计。钱不能凭空出现，也不能凭空消失，只能从一个账户移到另一个账户。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="借和贷的方向">
+    <div class="kicker">02 · 借贷方向取决于账户类型</div>
+    <h2>借 ≠ 增加，贷 ≠ 减少</h2>
+    <table class="t">
+      <tr><th>账户类型</th><th>例子</th><th>借 Debit</th><th>贷 Credit</th></tr>
+      <tr data-step="1"><td class="up">资产类</td><td>热钱包资产</td><td class="up">增加</td><td class="down">减少</td></tr>
+      <tr data-step="2"><td class="hl">负债类</td><td>用户可用、用户冻结</td><td class="down">减少</td><td class="up">增加</td></tr>
+      <tr data-step="2"><td class="hl">收入类</td><td>平台手续费收入</td><td class="down">减少</td><td class="up">增加</td></tr>
+      <tr data-step="3"><td class="blue">中间类</td><td>清算中间户、在途</td><td colspan="2" class="blue">记账后必须归零</td></tr>
+    </table>
+    <div class="card gold" data-step="4">站在平台角度：<b>用户余额 = 平台负债</b>。充值 1 BTC → 资产 +1 BTC，负债 +1 BTC。</div>
+    <ol class="say">
+      <li>这里有个容易搞混的地方。借和贷，并不等于增加和减少。它们的含义，取决于账户类型。</li>
+      <li>资产类账户，比如热钱包资产，借是增加，贷是减少。</li>
+      <li>负债类账户，比如用户可用和用户冻结，方向正好相反。贷是增加，借是减少。收入类账户，比如平台手续费收入，也是贷方增加。</li>
+      <li>还有一类中间账户，比如清算中间户和在途账户。钱只是路过，记完账以后，余额必须归零。</li>
+      <li>注意，站在平台的角度看，用户的余额是平台的负债。用户充值 1 BTC，平台资产多了 1 BTC，欠用户的也多了 1 BTC。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="账户科目">
+    <div class="kicker">03 · 科目 Chart of Accounts · 业界通用做法</div>
+    <h2>按 所有者 × 资产 × 用途 拆账户</h2>
+    <svg viewBox="0 0 1640 580" width="1640" height="580">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9ea3ad"/></marker>
+        <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f0b90b"/></marker></defs>
+      <g data-step="0">
+        <rect class="box a" x="0" y="110" width="340" height="100" rx="14"/><text class="t" x="170" y="172" text-anchor="middle">热钱包资产</text>
+        <rect class="box a" x="0" y="290" width="340" height="100" rx="14"/><text class="t" x="170" y="352" text-anchor="middle">冷钱包 · 托管资产</text>
+        <text class="gl" x="170" y="440" text-anchor="middle">资产 · 平台持有</text>
+        <rect class="box l" x="440" y="110" width="340" height="100" rx="14"/><text class="t" x="610" y="172" text-anchor="middle">用户可用</text>
+        <rect class="box l" x="440" y="290" width="340" height="100" rx="14"/><text class="t" x="610" y="352" text-anchor="middle">用户冻结</text>
+        <text class="gl" x="610" y="440" text-anchor="middle">负债 · 欠用户</text>
+      </g>
+      <g data-step="1">
+        <path class="ln" d="M340 160 L438 160" marker-end="url(#ah)"/><text class="s" x="390" y="145" text-anchor="middle">充值</text>
+        <path class="ln" d="M610 210 L610 288" marker-end="url(#ah)"/><text class="s" x="624" y="258">下单 · 提币申请</text>
+      </g>
+      <g data-step="2">
+        <rect class="box m" x="880" y="110" width="360" height="100" rx="14"/><text class="t" x="1060" y="172" text-anchor="middle">清算中间户</text>
+        <rect class="box m" x="880" y="290" width="360" height="100" rx="14"/><text class="t" x="1060" y="352" text-anchor="middle">充值 · 提币在途</text>
+        <text class="gl" x="1060" y="440" text-anchor="middle">中间户 · 应归零</text>
+        <rect class="box f" x="1340" y="110" width="300" height="100" rx="14"/><text class="t" x="1490" y="172" text-anchor="middle">手续费收入</text>
+        <text class="gl" x="1490" y="250" text-anchor="middle">收入 · 平台</text>
+        <path class="ln g" d="M780 320 L878 190" marker-end="url(#ahg)"/><text class="s" x="842" y="280">成交</text>
+        <path class="ln" d="M780 365 L878 365" marker-end="url(#ah)"/><text class="s" x="830" y="400" text-anchor="middle">提币</text>
+        <path class="ln g" d="M1240 160 L1338 160" marker-end="url(#ahg)"/><text class="s" x="1290" y="145" text-anchor="middle">手续费</text>
+        <path class="ln g" d="M1060 110 C1060 30, 640 30, 640 106" marker-end="url(#ahg)"/><text class="s" x="850" y="40" text-anchor="middle">成交净额</text>
+      </g>
+      <g data-step="3">
+        <text x="820" y="540" text-anchor="middle" style="font-size:52px;font-weight:700;fill:#f0b90b">资产 = 负债 + 权益</text>
+      </g>
+    </svg>
+    <ol class="say">
+      <li>有了借贷规则，下一步是设计账户。业界通常按所有者、资产和用途三个维度组合出账户。左边是资产，平台手里实际有的币，比如热钱包和冷钱包。旁边是负债，也就是欠用户的钱，分成可用和冻结。</li>
+      <li>用户充值，钱从热钱包资产对应到用户可用。用户下单或者申请提币，钱从可用移到冻结。</li>
+      <li>右边是中间户和收入。成交时，冻结的钱先进清算中间户，再按净额转给对手方，手续费进收入账户。中间户就像走廊，钱只是路过。如果它长期不为 0，说明有结算卡住或者漏记。</li>
+      <li>整张表要满足一个恒等式。资产等于负债加权益。根据币安公开资料，币安账户分成现货、资金、合约、杠杆等多个钱包。用户可以在钱包之间划转。这说明内部账本也是按用途拆分账户的。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="余额分层">
+    <div class="kicker">03 · 余额分层</div>
+    <h2>界面上的 1 BTC，系统里有四层</h2>
+    <div class="row">
+      <div class="col" style="flex:1.1">
+        <div class="layer liab" data-step="0"><span class="tag">L1</span>available 可用<small>账本 · 负债</small></div>
+        <div class="layer liab" data-step="0"><span class="tag">L2</span>frozen 冻结<small>账本 · 负债</small></div>
+        <div class="layer asset" data-step="1"><span class="tag">L3</span>链上余额<small>区块链 · 资产</small></div>
+        <div class="layer asset" data-step="1"><span class="tag">L4</span>托管余额<small>冷钱包 / 托管方 · 资产</small></div>
+        <div class="card gold" data-step="5">资产少了，负债不变 → 差额由<b>平台权益</b>来补</div>
+      </div>
+      <div class="col">
+        <div class="formula" data-step="3" style="font-size:36px">Σ 用户(<span class="hl">可用 + 冻结</span>)<br>≤ <span class="up">链上余额 + 托管余额</span></div>
+        <div class="card info" data-step="3" style="font-size:28px">币安储备金证明 PoR：证明这个不等式成立<span class="muted"> · 币安公开资料</span></div>
+        <div class="card warn" data-step="4" style="font-size:28px">2019 年 5 月热钱包被盗约 <b>7000 BTC</b>，SAFU 基金承担损失，用户余额未受影响<span class="muted"> · 币安官方公告</span></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>再看余额分层。用户在界面上看到的 1 BTC，在系统里有不同层面的含义。</li>
+      <li>第一层是可用，用户能立即下单、提币。第二层是冻结，被挂单或者提币占用。这两层由账本维护，是平台对用户的负债。根据币安公开资料，现货界面也分别显示可用和冻结。</li>
+      <li>第三层是链上余额，也就是平台地址在链上的真实余额。第四层是托管余额，在冷钱包或者第三方托管方手里。这两层是平台的资产。</li>
+      <li>平台健康的条件是，所有用户的可用加冻结，小于等于链上余额加托管余额。币安的储备金证明，就是在向用户证明这个不等式成立。</li>
+      <li>根据币安官方公告，2019 年 5 月，币安热钱包被盗约 7000 BTC。币安用 SAFU 基金承担了损失，用户余额没有受影响。</li>
+      <li>这说明负债和资产是两本账。资产少了，欠用户的一分不变，差额由平台自己的权益来补。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="冻结扣减解冻" data-onstep="lifeStep">
+    <div class="kicker">04 · 资金生命周期 · 示例数字</div>
+    <h2 id="lifeH">用户 A 买 0.1 BTC，价格 60,000 USDT</h2>
+    <div class="row">
+      <div class="col" style="flex:1.15;gap:34px">
+        <div class="card" style="padding:20px 28px">
+          <div style="display:flex;justify-content:space-between"><span>订单成交进度</span><span class="mono" id="fillTxt">0 / 0.1 BTC</span></div>
+          <div class="prog"><i id="fillBar" style="width:0"></i></div>
+        </div>
+        <div class="bar-row"><span>A 可用</span><div class="bar"><i id="bAv" style="background:var(--buy)"></i></div><span class="v" id="vAv"></span></div>
+        <div class="bar-row"><span>A 冻结</span><div class="bar"><i id="bFz" style="background:var(--gold)"></i></div><span class="v" id="vFz"></span></div>
+        <div class="bar-row"><span>清算中间户</span><div class="bar"><i id="bCl" style="background:var(--info)"></i></div><span class="v" id="vCl"></span></div>
+        <div class="card" id="lifeNote" style="font-size:36px;padding:24px 28px"></div>
+      </div>
+      <div class="col">
+        <div class="card" style="padding:20px 22px">
+          <div class="muted" style="font-size:26px;margin-bottom:8px">分录流水 · USDT</div>
+          <div class="jl" id="jl" style="font-size:34px;line-height:1.7"></div>
+        </div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>下面用一笔买单，走一遍资金的生命周期。示例数字：用户 A 有 10000 USDT 可用。他要买 0.1 BTC，价格 60000。</li>
+      <li>下单时，系统不直接扣钱，而是先冻结。0.1 乘以 60000，等于 6000 USDT。分录是借用户 A 可用，贷用户 A 冻结。可用剩 4000，冻结 6000。</li>
+      <li>注意，冻结的钱仍然属于用户，只是暂时不能动。它防止的是，同一笔钱被两个订单同时使用。</li>
+      <li>接着订单部分成交 0.04 BTC。成交额是 0.04 乘以 60000，等于 2400 USDT。账本从冻结里扣减 2400，转入清算中间户。冻结还剩 3600。</li>
+      <li>然后用户撤单。剩下的 3600 解冻，回到可用。可用变成 7600，冻结归零。清算户里的 2400，会继续转给卖方。这部分留到讲清算结算的那一集再展开。</li>
+      <li>核对一下。冻结的 6000，等于扣减的 2400，加上解冻的 3600。每一步都有一对借贷，每一步都是平衡的。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="冻结状态机">
+    <div class="kicker">04 · 冻结记录的状态机</div>
+    <h2>终态不可逆，挡住撤单与成交的竞态</h2>
+    <svg viewBox="0 0 1640 300" width="1640" height="300">
+      <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9ea3ad"/></marker></defs>
+      <g data-step="0">
+        <rect class="box" x="0" y="100" width="300" height="100" rx="50"/><text class="t" x="150" y="148" text-anchor="middle">冻结 freeze</text><text class="s" x="150" y="180" text-anchor="middle">订单号作引用</text>
+        <path class="ln" d="M300 150 L478 150" marker-end="url(#ah2)"/>
+      </g>
+      <g data-step="1">
+        <rect class="box l" x="480" y="95" width="360" height="110" rx="14"/><text class="t" x="660" y="148" text-anchor="middle">Locked 冻结中</text><text class="s" x="660" y="182" text-anchor="middle">remaining 逐步减少</text>
+        <path class="ln" d="M600 95 C600 20, 720 20, 720 92" marker-end="url(#ah2)"/><text class="s" x="660" y="28" text-anchor="middle">部分成交 consume</text>
+      </g>
+      <g data-step="2">
+        <path class="ln" d="M840 130 L1098 60" marker-end="url(#ah2)"/><text class="s" x="960" y="72" text-anchor="middle">全部成交</text>
+        <path class="ln" d="M840 170 L1098 240" marker-end="url(#ah2)"/><text class="s" x="960" y="250" text-anchor="middle">撤单 · 失败</text>
+        <rect class="box a" x="1100" y="10" width="420" height="100" rx="14"/><text class="t" x="1310" y="72" text-anchor="middle">Consumed 终态</text>
+        <rect class="box m" x="1100" y="190" width="420" height="100" rx="14"/><text class="t" x="1310" y="252" text-anchor="middle">Released 终态</text>
+      </g>
+    </svg>
+    <div class="row">
+      <div class="card info" data-step="3" style="flex:1;font-size:34px"><b>① 撤单先到</b><br>记录 → Released，3600 退回可用</div>
+      <div class="card sell" data-step="4" style="flex:1;font-size:34px"><b>② 成交后到</b><br>扣减失败：终态不能再扣</div>
+      <div class="card gold" data-step="4" style="flex:1;font-size:34px"><b>③ 进入补偿流程</b><br>而不是把退回的钱再扣一次</div>
+    </div>
+    <ol class="say">
+      <li>把刚才的过程画成状态机。每条冻结记录，都绑定一个业务引用，比如一个订单号，或者一个提币单号。同一个引用只能冻结一次。</li>
+      <li>冻结以后，记录进入 Locked 状态。部分成交时，状态不变，只是剩余的冻结额减少。</li>
+      <li>全部成交，剩余为 0，进入 Consumed。撤单或者下单失败，剩余部分解冻，进入 Released。这两个都是终态，不能再扣减，也不能再解冻。</li>
+      <li>状态机最大的用处，是挡住竞态。比如撤单和成交几乎同时到达。撤单先到，记录已经变成 Released，钱退回了可用。</li>
+      <li>后到的成交想要扣减，会直接失败，然后进入补偿流程。如果没有这道检查，已经退回的钱，就会被再扣一次。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="精确算术" data-onstep="floatStep">
+    <div class="kicker">05 · 金额必须用精确算术</div>
+    <h2>账本里不能出现 float</h2>
+    <div class="row">
+      <div class="col">
+        <div class="muted" style="font-size:30px">浮点数 double</div>
+        <div class="calc" id="f1"></div>
+        <div class="calc" id="f2"></div>
+      </div>
+      <div class="col">
+        <div class="muted" style="font-size:30px">最小单位整数 · 聪</div>
+        <div class="calc" id="i1"></div>
+        <div class="calc" id="i2"></div>
+      </div>
+    </div>
+    <div class="grid3" data-step="4">
+      <div class="card" style="font-size:28px">数据库定点数<br><span class="mono hl">numeric(36, 18)</span></div>
+      <div class="card" style="font-size:28px">程序里用<br><span class="mono hl">BigInt</span> 或十进制库</div>
+      <div class="card" style="font-size:28px">乘除写明舍入<br>手续费通常<span class="hl">向下取整</span></div>
+    </div>
+    <ol class="say">
+      <li>接下来讲金额怎么存。先问一个问题。在 JavaScript 里，0.1 加 0.2 等于多少？</li>
+      <li>答案不是 0.3，而是 0.3 后面跟着一长串 0，最后还有个 4。这是二进制浮点数的固有误差。</li>
+      <li>再把 0.1 连加 10 次，得到的不是 1，而是一串 9。放在账本里，这种误差会一点点累积，最后变成对账差额。</li>
+      <li>业界通常的做法，是用最小单位的整数存金额。比如 BTC 用聪，1 BTC 等于 1 亿聪。0.1 加 0.2，就是 1000 万聪加 2000 万聪。结果精确等于 3000 万聪。</li>
+      <li>或者用数据库的定点小数类型，程序里用大整数或者十进制库计算。每一次乘除，都要写明舍入方向。手续费通常向下取整，差额留在规则写明的一方。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="常见误区">
+    <div class="kicker">误区 · 局限</div>
+    <h2>借贷平衡了，账就一定对吗？</h2>
+    <div class="grid2">
+      <div class="card buy" data-step="0">
+        <h3>能拦住：漏记一行</h3>
+        <div class="jl"><div class="r"><span class="dr">借</span><span>清算中间户</span><span>2400</span></div><div class="r"><span class="cr">贷</span><span>用户B-可用</span><span>2397.6</span></div><div class="r" style="opacity:.4;text-decoration:line-through"><span class="cr">贷</span><span>手续费收入</span><span>2.4</span></div></div>
+        <div class="check bad" style="margin-top:16px;font-size:32px">2400 ≠ 2397.6 → 拒绝提交</div>
+      </div>
+      <div class="card sell" data-step="2">
+        <h3>拦不住：记错了人</h3>
+        <div class="jl"><div class="r"><span class="dr">借</span><span>热钱包资产</span><span>1000</span></div><div class="r"><span class="cr">贷</span><span>用户<b class="down">B</b>-可用 <span class="muted">应为 A</span></span><span>1000</span></div></div>
+        <div class="check ok" style="margin-top:16px;font-size:32px">1000 = 1000 → 校验通过</div>
+      </div>
+    </div>
+    <div class="card gold" data-step="3">双分录只保证<b>钱不凭空出现</b>，不保证<b>记到正确的人名下</b> → 还要靠幂等、对账、流水回放</div>
+    <ol class="say">
+      <li>讲到这里，有个常见误区。很多人以为，只要借贷平衡，账就一定是对的。</li>
+      <li>平衡校验确实能拦住一类错误。比如成交时漏记了手续费那一行。借方 2400，贷方只有 2397.6，账本会拒绝提交。</li>
+      <li>但它拦不住另一类错误。把用户 A 的充值记给了用户 B，借方贷方金额照样相等，校验完全通过。</li>
+      <li>所以双分录只保证钱不会凭空出现，不保证钱记到了正确的人名下。剩下的错误，要靠幂等、对账和流水回放去发现。这正是下一集的内容。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">交易所的核心是<span class="hl">账本</span>：只记流水，余额是流水的快照。</li>
+      <li data-step="0">双分录：同一资产 <span class="hl">Σ借 = Σ贷</span>；用户余额是平台负债。</li>
+      <li data-step="1">下单<span class="hl">先冻结</span>，成交再扣减，撤单就解冻；金额用整数或定点数。</li>
+    </ul>
+    <div class="card info" data-step="2"><b>下集 EP08 · 账本可靠性</b>：幂等键、三方对账、热点账户、outbox</div>
+    <ol class="say">
+      <li>最后小结三点。第一，交易所的核心是账本。账本只记流水，余额是流水的快照。</li>
+      <li>第二，双分录让每一笔变化都借贷平衡。用户余额是平台的负债，平台资产必须大于等于它。</li>
+      <li>第三，下单先冻结，成交再扣减，撤单就解冻。金额一律用整数或定点数，不用浮点数。</li>
+      <li>下一集，我们讲账本的可靠性。消息重投了怎么办？账和链上对不上怎么办？所有成交都挤向同一个账户，又该怎么办？我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  function tStep(el, st) {
+    const t1 = el.querySelector('#t1'), t2 = el.querySelector('#t2');
+    const set = (t, d, c) => { t.querySelector('.dv').innerHTML = d ? '<span class="e">' + d + '</span>' : ''; t.querySelector('.cv').innerHTML = c ? '<span class="e">' + c + '</span>' : ''; };
+    const states = [
+      [['', ''], ['', '']],
+      [['1000', ''], ['', '']],
+      [['1000', ''], ['', '1000']],
+      [['', ''], ['', '1000']],
+      [['1000', ''], ['', '1000']],
+    ][st];
+    set(t1, ...states[0]); set(t2, ...states[1]);
+    const d = states[0][0] ? 1000 : 0, c = states[1][1] ? 1000 : 0;
+    t1.classList.toggle('bad', st === 3);
+    const chk = el.querySelector('#chk');
+    if (!d && !c) { chk.className = 'check'; chk.innerHTML = 'Σ借 0 = Σ贷 0<small>等待记账</small>'; }
+    else if (d === c) { chk.className = 'check ok'; chk.innerHTML = `Σ借 ${d} = Σ贷 ${c}<small>平衡 · 允许提交</small>`; }
+    else { chk.className = 'check bad'; chk.innerHTML = `Σ借 ${d} ≠ Σ贷 ${c}<small>${st === 3 ? 'bug：凭空加钱 → 拒绝提交' : '不平衡 · 还缺一条分录'}</small>`; }
+  }
+  function lifeStep(el, st) {
+    const S = [
+      { av: 10000, fz: 0, cl: 0, fill: 0, j: [], note: '初始：可用 10,000 USDT · 示例' },
+      { av: 4000, fz: 6000, cl: 0, fill: 0, j: [['freeze', '借 A-可用 / 贷 A-冻结', '6000']], note: '冻结 freeze：available → frozen' },
+      { av: 4000, fz: 6000, cl: 0, fill: 0, j: [['freeze', '借 A-可用 / 贷 A-冻结', '6000']], note: '冻结 ≠ 扣款：钱仍属于用户' },
+      { av: 4000, fz: 3600, cl: 2400, fill: .4, j: [['freeze', '借 A-可用 / 贷 A-冻结', '6000'], ['consume', '借 A-冻结 / 贷 清算户', '2400']], note: '扣减 consume：0.04 × 60,000 = 2,400' },
+      { av: 7600, fz: 0, cl: 2400, fill: .4, j: [['freeze', '借 A-可用 / 贷 A-冻结', '6000'], ['consume', '借 A-冻结 / 贷 清算户', '2400'], ['release', '借 A-冻结 / 贷 A-可用', '3600']], note: '撤单 → 解冻 release 3,600' },
+      { av: 7600, fz: 0, cl: 2400, fill: .4, j: [['freeze', '借 A-可用 / 贷 A-冻结', '6000'], ['consume', '借 A-冻结 / 贷 清算户', '2400'], ['release', '借 A-冻结 / 贷 A-可用', '3600']], note: '核对：6,000 = 2,400 + 3,600 ✓' },
+    ][st];
+    const fmt = n => n.toLocaleString('en-US');
+    const w = n => (n / 10000 * 100) + '%';
+    el.querySelector('#bAv').style.width = w(S.av); el.querySelector('#vAv').textContent = fmt(S.av);
+    el.querySelector('#bFz').style.width = w(S.fz); el.querySelector('#vFz').textContent = fmt(S.fz);
+    el.querySelector('#bCl').style.width = w(S.cl); el.querySelector('#vCl').textContent = fmt(S.cl);
+    el.querySelector('#fillBar').style.width = (S.fill * 100) + '%';
+    el.querySelector('#fillTxt').textContent = (S.fill ? '0.04' : '0') + ' / 0.1 BTC' + (st >= 4 ? ' · 已撤单' : '');
+    const note = el.querySelector('#lifeNote');
+    note.textContent = S.note; note.className = 'card ' + (st === 5 ? 'buy' : st === 0 ? '' : 'gold');
+    const jl = el.querySelector('#jl');
+    jl.innerHTML = S.j.length ? S.j.map((r, i) => `<div class="r${i === S.j.length - 1 && st !== 2 && st !== 5 ? ' new' : ''}" style="grid-template-columns:1fr"><span class="hl">${r[0]} · ${r[2]}</span><span>${r[1]}</span></div>`).join('') : '<div class="muted" style="font-family:var(--sans)">还没有分录</div>';
+  }
+  function floatStep(el, st) {
+    const q = (id, cls, k, v) => { const n = el.querySelector(id); n.className = 'calc ' + cls; n.innerHTML = k ? `<span class="k">${k}</span>${v}` : ''; };
+    q('#f1', st >= 1 ? 'bad' : '', '0.1 + 0.2', st >= 1 ? '0.30000000000000004' : '= ?');
+    q('#f2', st >= 2 ? 'bad' : 'hide', st >= 2 ? '0.1 连加 10 次' : '', st >= 2 ? '0.9999999999999999' : '');
+    q('#i1', st >= 3 ? 'ok' : 'hide', st >= 3 ? '10,000,000 + 20,000,000 聪' : '', st >= 3 ? '= 30,000,000 聪' : '');
+    q('#i2', st >= 3 ? 'ok' : 'hide', st >= 3 ? '换算回 BTC' : '', st >= 3 ? '= 0.3 BTC 精确' : '');
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

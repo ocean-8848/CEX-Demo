@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B01 合规防护</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; padding: 22px 30px; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .meta .card { padding: 16px 22px; font-size: 30px; }
+  .meta .card b { color: var(--gold); margin-right: 10px; }
+  .stack { position: relative; height: 610px; }
+  .stack > div { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-direction: column; gap: 26px; }
+  .dim3 .card h3 { font-size: 36px; }
+  .dim3 .card .k { color: var(--text-2); font-size: 26px; margin-top: 6px; }
+  .flow .node { padding: 20px 22px; min-width: 0; }
+  .flow .arrow { width: 44px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="B01" data-title="合规防护：KYC、反洗钱与 Travel Rule">
+
+  <!-- 1 -->
+  <section class="scene" data-title="开场：纵深防御" data-onstep="defStep">
+    <div class="kicker">CEX 交易所系统 · 幕后核心 · B01</div>
+    <h2>点一下提币，要穿过几道看不见的检查</h2>
+    <svg id="def" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>你在交易所点了一下提币，几秒钟后钱就上链了。但在这几秒里，它要穿过好几道看不见的检查。</li>
+      <li>第一层是账户安全。登录风险评分、2FA 或 Passkey、敏感操作冷却期，确认操作的是本人。</li>
+      <li>第二层是合规，也就是本集的主题。KYC 等级与限额、制裁与地理筛查。还有 KYT 地址风险和 Travel Rule 信息。</li>
+      <li>后面还有业务风控、资金正确性和平台安全。每层只拦自己负责的风险。单独一层都会漏，叠在一起才可靠，这就是纵深防御。</li>
+      <li>任何一层发现严重异常，都会升级到应急响应。这像机场，乘客只看到值机柜台，幕后有护照查验、安检和消防队。</li>
+      <li>这是幕后核心的第一集。本集只讲系统设计，不构成法律意见，以监管原文为准。除标注公开资料外，阈值都是示例。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>本集路线图</h2>
+    <div class="grid2">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>威胁模型与监管地图<br><span class="muted">要防什么 · 规则从哪来</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>六层防线<br><span class="muted">每层拦什么、漏什么</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">3</span><div>三条关键流程<br><span class="muted">KYC 生命周期 · 告警到报告 · Travel Rule</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">4</span><div>KYT · 制裁 · 案例 · 权衡<br><span class="muted">误报与漏报</span></div></div>
+    </div>
+    <div class="meta" data-step="2">
+      <div class="card"><b>收件前</b>核对身份证 = KYC</div>
+      <div class="card"><b>路上</b>X 光扫描 = 监控、KYT</div>
+      <div class="card"><b>跨国</b>运单写清双方 = Travel Rule</div>
+    </div>
+    <ol class="say">
+      <li>本集分四段。第一，威胁模型和监管地图。第二，六层防线，每层拦什么、漏什么。</li>
+      <li>第三，三条关键流程。KYC 生命周期，告警到可疑交易报告，以及 Travel Rule。第四，链上 KYT、制裁筛查、真实案例和权衡。</li>
+      <li>打个比方，合规系统像物流公司的海关申报部。收件前核对身份证，路上用 X 光扫描，跨国时运单写清寄件人和收件人。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="威胁模型与监管地图" data-onstep="threatStep">
+    <div class="kicker">Threat Model · Regulatory Map · 截至 2026 年公开资料</div>
+    <h2 id="th-h">要防什么</h2>
+    <svg id="threat" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>先看威胁模型。合规要防六类事：洗钱、恐怖融资、制裁规避。还有欺诈资金流入、无牌经营和消费者保护违规。</li>
+      <li>洗钱的手法是放置、分层、整合，比如拆分、多跳、跨链和 P2P 套现。制裁规避靠借用账户、VPN 和中间地址。后果从罚款一直到刑事责任。</li>
+      <li>规则从哪来？源头是 FATF，金融行动特别工作组。它只发布标准。各国写进国内法后，交易所才有法定义务。</li>
+      <li>建议15要求各国监管虚拟资产服务商 VASP。建议16要求转账附带双方信息，这就是 Travel Rule。FATF 的门槛是1000美元或欧元。</li>
+      <li>各地落地不同。根据公开资料，欧盟 MiCA 在2024年12月30日全面适用。TFR 同日适用，加密转账没有最低金额豁免。据公开报道，币安 FZE 在2024年4月获得迪拜 VARA 完整牌照。</li>
+      <li>美国有银行保密法、FinCEN 和 OFAC 制裁。制裁不看金额，没有小额豁免。牌照状态变化很快，应以监管机构的登记册为准。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="六层防线" data-onstep="sixStep">
+    <div class="kicker">Layered Defense</div>
+    <h2>六层防线：每层拦一部分，也漏一部分</h2>
+    <svg id="six" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>合规防线分六层。第1层是准入，拦假证件、名单上的人和受限地区居民。它漏过账户买卖、出借和深度伪造。</li>
+      <li>第2层是交易前检查，包括充值和提币 KYT，以及 Travel Rule。它秒级同步，拦住直接来自制裁地址或混币器的钱。漏过的是多跳之后的间接资金。</li>
+      <li>第3层是交易后监控，规则加模型，异步告警。它发现拆分、快进快出和异常 P2P，漏过新手法。</li>
+      <li>第4层调查。第5层处置，报告、冻结或退出关系。第6层治理，不拦资金，只检查前五层是否按规则运转。</li>
+      <li>两个规律。下一层要补上一层的漏洞。越靠后越慢、越贵，第4层靠人工，产能有上限。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="KYC 生命周期" data-onstep="kycStep">
+    <div class="kicker">KYC / KYB Lifecycle</div>
+    <h2>KYC 不是一次性的：认证、复审、再认证</h2>
+    <svg id="kyc" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>第一条关键流程，KYC 生命周期。用户提交证件，企业提交资料，进入准入审核。企业客户叫 KYB，还要识别最终受益所有人。</li>
+      <li>标准核验叫 CDD。通过后按评分进入低风险或中风险。评分高或是政治公众人物，进入强化尽调 EDD。制裁命中或资料造假，直接退出。</li>
+      <li>准入只是起点。客户一直在认证、复审、再认证的循环里。定期复审按评级定周期，触发式复审由事件驱动。</li>
+      <li>典型触发事件有五个。更新国籍或居住地，名单更新后出现新匹配，告警被确认为真，收到协查函，证件到期。</li>
+      <li>资料过期没更新，账户进入受限。受限不等于冻结，通常只许提出。超期不补交，就退出关系。局限是，账户被转卖后，状态机看不见。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="客户风险评级" data-onstep="scoreStep">
+    <div class="kicker">Customer Risk Rating · 示例模型</div>
+    <h2>因子加权打分：输出的是复审周期</h2>
+    <svg id="score" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>评分怎么打？业界通常用因子加权打分。示例模型有六个因子，从地域、客户类型，一直到历史告警。</li>
+      <li>算一个示例客户。一般地区10分，企业客户10分，不是政治公众人物0分。</li>
+      <li>高频使用 P2P，15分。交易量与收入不匹配，20分。没有确认告警，0分。合计55分。</li>
+      <li>示例规则：低于30分是低风险，3年复审。30到59分是中风险，2年复审。60分以上进入 EDD，每年复审。这位客户是中风险。</li>
+      <li>注意，评级输出的是复审周期和监控强度，不是放不放行。制裁命中不进评分，它是硬规则，命中就拦。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="告警、案件与报告" data-onstep="alertStep">
+    <div class="kicker">Transaction Monitoring → SAR / STR</div>
+    <h2>引擎只生成告警，判断和报告靠人</h2>
+    <svg id="alert" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>第二条关键流程，交易监控。充值、提币、成交和 P2P 事件进入事件总线。监控引擎运行规则和模型，生成带证据的告警。</li>
+      <li>一线分析员领取告警。明显误报就关闭，但要写明理由。需要深入的，升级为案件。</li>
+      <li>调查员拉取 KYC、链上图谱、设备和 IP，把结论交给反洗钱报告官 MLRO。MLRO 签发报告，交给金融情报机构。美国叫 SAR，多数地区叫 STR。</li>
+      <li>报告有法定时限。例如美国通常要求30个日历日内提交。多数地区还禁止告诉客户他已被报告，客服话术要为此设计。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="AML 图谱：拆分与分层" data-onstep="amlStep">
+    <div class="kicker">AML Graph · 规则场景示例</div>
+    <h2 id="aml-h">结构化拆分：每笔都不过线，合计过线</h2>
+    <svg id="aml" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>监控规则长什么样？先看结构化拆分，也叫 smurfing。把大额拆成小额，避开报告阈值。</li>
+      <li>示例阈值是10000 USDT。规则 TM-02：24小时内至少3笔，每笔在阈值的50%到100%之间。合计过线就告警。图上6000、7000、8000，合计21000，触发告警。</li>
+      <li>第二个是分层，也叫 layering，用多跳、跨链、换币切断来源。规则 TM-03：连续3跳以上，每跳都在时间窗口内，金额保留90%以上，就告警。</li>
+      <li>图上这笔钱走了4跳，中间跨了一次链。每跳只少一点手续费，几十分钟就转完。正常用户很少这样转钱。</li>
+      <li>其他示例规则还有：充值后2小时内提走90%以上。7天内和20个以上对手方做 P2P。5个以上账户共用一台设备。学生月交易额超过100万 USDT。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="链上 KYT：风险暴露" data-onstep="kytStep">
+    <div class="kicker">KYT · Direct / Indirect Exposure · 示例算法</div>
+    <h2>风险分随跳数衰减</h2>
+    <svg id="kyt" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>交易前的另一道防线是链上 KYT。服务商会给地址打标签，计算风险暴露。1跳内来自高风险实体，叫直接暴露。2跳以上，叫间接暴露。</li>
+      <li>示例算法：风险分等于基础分，乘以衰减系数的跳数减1次方，再乘以资金占比。跳数越多，分数越低。</li>
+      <li>代入示例。制裁地址基础分100，衰减系数0.5，资金占比40%。如果是直接暴露，风险分是100乘以0.4，等于40。</li>
+      <li>图上本平台充值地址离制裁地址3跳。100乘以0.5的平方，再乘以0.4，等于10。假设告警线是20，这笔不告警。</li>
+      <li>交易所这类聚合节点，混着大量正常资金。业界通常在这里停止追溯，否则全网地址都会被标红。</li>
+      <li>攻击者也懂这个算法。他用剥离链拉长跳数，让分数衰减到线下。拉长追溯能抓到它，但误报会增加。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="Travel Rule" data-onstep="trStep">
+    <div class="kicker">Travel Rule · 信息走链下，和提币同行</div>
+    <h2>Travel Rule：一封信，跟着一笔提币走</h2>
+    <svg id="tr" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>第三条关键流程，Travel Rule。VASP 转出资产时，要把双方信息传给接收方。所以用户提币时，还要填受益人姓名和对方平台。</li>
+      <li>钱包服务把请求交给 Travel Rule 网关。网关先查 VASP 目录，这个地址属于谁？这是最难的一步，因为地址不写明归属。</li>
+      <li>找到对方 VASP，网关就加密发送双方信息。对方确认受益人匹配后放行，再签名广播。注意，信息走链下，链上交易不带任何姓名。</li>
+      <li>如果对方是自托管钱包，目录里查不到。系统会要求用户证明地址所有权，或者补充声明。</li>
+      <li>字段以 FATF 释义为基础。发起方要姓名、账号，再加住址、证件号或出生日期之一。受益方要姓名和账号。各家协议不同，不互通时网关要转换。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="制裁筛查与执法协作">
+    <div class="kicker">Sanctions Screening · Law Enforcement</div>
+    <h2>制裁筛查的三个维度</h2>
+    <div class="stack">
+      <div data-step="0" data-until="2">
+        <div class="grid3 dim3">
+          <div class="card gold" data-step="0"><h3>姓名</h3>KYC 姓名、企业名、UBO<div class="k">模糊匹配：音译、编辑距离、别名表 · 难点：常见姓名误报高、转写不统一</div></div>
+          <div class="card info" data-step="1"><h3>地址</h3>充值来源、提币目标<div class="k">精确匹配名单链上地址 + KYT 标签 · 难点：新地址要靠图谱推断</div></div>
+          <div class="card warn" data-step="1"><h3>地理</h3>IP、证件国籍、居住地<div class="k">地理围栏：受限地区直接拒绝 · 难点：VPN、代理、出差误杀</div></div>
+        </div>
+        <div class="row" data-step="2">
+          <div class="card sell col"><div class="stat"><div class="k">2022-08 · OFAC 公开公告</div><div class="v" style="font-size:38px">Tornado Cash 列入</div></div></div>
+          <div class="card buy col"><div class="stat"><div class="k">2025-03 · OFAC 公开公告</div><div class="v" style="font-size:38px">从名单移除</div></div></div>
+          <div class="card col" style="font-size:28px">加入和移除两个方向 · 存量客户和历史交易回溯 · 保留变更前判定记录</div>
+        </div>
+      </div>
+      <div data-step="3">
+        <div class="flow">
+          <div class="node info">来函<small>协查函 · 冻结令</small></div><div class="arrow"></div>
+          <div class="node gold pulse">核验<small>真实性 · 管辖权</small></div><div class="arrow"></div>
+          <div class="node">冻结<small>按指令冻结</small></div><div class="arrow"></div>
+          <div class="node">提供数据<small>记录交付内容</small></div><div class="arrow"></div>
+          <div class="node buy">结案<small>解冻 · 没收 · 返还</small></div>
+        </div>
+        <div class="card warn" data-step="4"><h3>第 2 步不能省</h3>伪造执法函是已知诈骗手法 · 通过已知官方渠道回拨确认，不能只信来函上的联系方式</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>制裁筛查有三个维度。第一是姓名，做模糊匹配，处理音译和别名。难点是常见姓名误报高。</li>
+      <li>第二是地址，精确匹配名单上的链上地址，新地址靠图谱推断。第三是地理，用 IP 和居住地做地理围栏，难点是 VPN 和出差误杀。</li>
+      <li>名单是动态的。根据公开公告，OFAC 在2022年8月把 Tornado Cash 列入名单。2025年3月又把它移除。系统要支持双向变更，回溯筛查，并保留变更前的判定记录。</li>
+      <li>再看执法协作，一共五步。收到协查函或冻结令，核验真实性和管辖权，再按指令冻结。然后提供数据并记录，最后解冻、没收或返还。</li>
+      <li>第二步不能省。伪造执法函是已知的诈骗手法。要通过已知的官方渠道回拨确认，不能只信来函上的电话。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="真实案例：2023 年和解" data-onstep="caseStep">
+    <div class="kicker">Case · 据公开报道和和解文件</div>
+    <h2>2023 年和解：整改落在每一层</h2>
+    <svg id="case" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>来看真实案例。据公开报道和和解文件，2023年11月，币安承认违反银行保密法和制裁规定。它同意支付约43亿美元。</li>
+      <li>按公开文件的叙述，早期增长优先，KYC 不强制。美国用户和受制裁地区用户可以交易，也没有提交可疑交易报告。我们的分析是，根因在于合规不是准入条件。</li>
+      <li>和解要求独立合规监察。司法部的监察员来自 Forensic Risk Alliance，任期3年。FinCEN 监察员来自 Sullivan and Cromwell，任期5年。</li>
+      <li>监察员不运营系统，只检查整改是否有效。整改落在每一层：强制 KYC、实时制裁筛查、监控和报告，还有历史交易回溯。</li>
+      <li>据公开报道，2025年曾讨论提前结束监察。2026年4月有参议员致信询问，结果以官方公告为准。启示是，漏报常在多年后暴露，判定记录必须完整保存。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="指标与权衡" data-onstep="tradeStep">
+    <div class="kicker">Metrics · Trade-offs · 示例</div>
+    <h2>误报与漏报：没有免费的答案</h2>
+    <svg id="trade" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>怎么衡量合规系统？看运营指标，以下都是示例。告警积压超过一线3天产能，处理时长 P90 超过7天，都要告警。</li>
+      <li>真阳性率低于2%，说明规则过宽。SAR 超时率大于0，复审逾期率超过5%，名单更新延迟超过24小时，也要告警。</li>
+      <li>核心权衡是误报和漏报。阈值严，告警淹没调查团队。阈值松，洗钱漏过去，换来处罚。真阳性率低于5%很常见，扩大覆盖会让告警成本线性上升。</li>
+      <li>常见做法是分层阈值，高风险客户收紧。体验和合规之间用分级 KYC。可解释性上，规则兜底，模型排序。隐私上，加密传输，最少字段。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">合规是<span class="hl">纵深防御</span>：准入看人，交易前看地址，交易后看行为。</li>
+      <li data-step="1">KYC 是<span class="hl">持续复审</span>；告警由人判断再报告；Travel Rule 信息<span class="hl">走链下</span>。</li>
+      <li data-step="2">误报与漏报此消彼长；<span class="hl">判定记录</span>是多年后回溯的依据。</li>
+    </ul>
+    <div class="card gold" data-step="3"><h3>下一集 · B02 平台安全</h3>密钥怎么管 · 内控怎么做 · 供应链怎么防 · 2025 年 Bybit 事件：签名界面也会被篡改</div>
+    <ol class="say">
+      <li>小结三点。第一，合规是纵深防御。准入看人，交易前看地址，交易后看行为。</li>
+      <li>第二，KYC 是持续复审，告警要由人判断再报告。Travel Rule 的信息走链下，和提币同行。</li>
+      <li>第三，误报和漏报此消彼长。完整的判定记录，是多年后回溯的依据。</li>
+      <li>下一集是 B02 平台安全。我们看密钥怎么管、内控怎么做、供应链怎么防。2025年的 Bybit 事件说明，签名人看到的界面也可能被篡改。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10', done: '#5a5f6a' };
+  const SOFT = { gold: 'rgba(240,185,11,.16)', buy: 'rgba(46,189,133,.16)', sell: 'rgba(246,70,93,.16)', info: 'rgba(91,156,255,.16)', warn: 'rgba(240,163,64,.16)' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 28}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.mono ? ' font-family="JetBrains Mono, SF Mono, Menlo, monospace"' : ''}${o.plain ? '' : ` stroke="${C.bg}" stroke-width="8" paint-order="stroke"`}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op !== undefined ? ` opacity="${o.op}"` : ''}/>`;
+  function A(x1, y1, x2, y2, o = {}) {
+    const col = o.col || C.t2, w = o.w || 4, a = Math.atan2(y2 - y1, x2 - x1), h = 18;
+    const p = d => `${(x2 - h * Math.cos(a + d)).toFixed(1)},${(y2 - h * Math.sin(a + d)).toFixed(1)}`;
+    return `<line x1="${x1}" y1="${y1}" x2="${x2 - 10 * Math.cos(a)}" y2="${y2 - 10 * Math.sin(a)}" stroke="${col}" stroke-width="${w}"${o.dash ? ' stroke-dasharray="12 9"' : ''}/><polygon points="${x2},${y2} ${p(0.42)} ${p(-0.42)}" fill="${col}"/>`;
+  }
+  const PL = (pts, col, w = 4, dash) => `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="${w}"${dash ? ' stroke-dasharray="12 9"' : ''}/>`;
+  function B(x, y, w, h, title, sub, st = 'done', o = {}) {
+    const m = { on: [SOFT.gold, C.gold, C.text], done: [C.panel, C.done, C.text], off: [C.panel, C.line, C.t2], bad: [SOFT.sell, C.sell, C.text], ok: [SOFT.buy, C.buy, C.text], info: [SOFT.info, C.info, C.text], warn: [SOFT.warn, C.warn, C.text] }[st];
+    const ts = o.size || 30;
+    let s = R(x, y, w, h, { fill: m[0], stroke: m[1], sw: st === 'off' ? 2 : 3, dash: o.dash });
+    if (sub) s += T(x + w / 2, y + h / 2 - 4, title, { anchor: 'middle', size: ts, bold: true, fill: m[2], plain: true }) + T(x + w / 2, y + h / 2 + 32, sub, { anchor: 'middle', size: o.subSize || 24, fill: o.subCol || C.t2, plain: true, bold: !!o.subBold });
+    else s += T(x + w / 2, y + h / 2 + ts * 0.36, title, { anchor: 'middle', size: ts, bold: true, fill: m[2], plain: true });
+    return s;
+  }
+
+  function defStep(el, st) {
+    const svg = el.querySelector('#def');
+    const L = [
+      ['第 1 层 · 账户安全', 'B03', ['登录风险评分', '2FA 或 Passkey', '敏感操作冷却期']],
+      ['第 2 层 · 合规', 'B01', ['KYC 等级与限额', '制裁与地理筛查', 'KYT 地址风险', 'Travel Rule 信息']],
+      ['第 3 层 · 业务风控', 'B05', ['提币风控评分', '营销奖励与受限资产检查']],
+      ['第 4 层 · 资金正确', 'B04·06', ['账本余额与冻结', '对账状态正常', '热钱包水位充足']],
+      ['第 5 层 · 平台安全', 'B02', ['签名策略引擎', 'MPC 或 HSM 签名']],
+    ];
+    const act = i => (st === 1 && i === 0) || (st === 2 && i === 1) || (st === 3 && i >= 2);
+    const seen = i => st === 0 || st >= 4 || i <= (st === 1 ? 0 : st === 2 ? 1 : 4) ;
+    let h = '';
+    h += B(0, 0, 300, 70, '用户点击提币', '', 'on', { size: 28 });
+    L.forEach(([name, ep, items], i) => {
+      const y = 86 + i * 84, a = act(i), cur = i === 1;
+      const k = a ? (cur ? 'on' : 'info') : (st >= 4 ? 'done' : 'off');
+      h += R(0, y, 420, 72, { fill: a ? (cur ? SOFT.gold : SOFT.info) : C.panel, stroke: a ? (cur ? C.gold : C.info) : (st >= 4 ? C.done : C.line) });
+      h += T(20, y + 46, name, { size: 28, bold: true, plain: true, fill: a || st >= 4 ? C.text : C.t2 });
+      h += T(408, y + 46, ep, { anchor: 'end', size: 22, mono: true, plain: true, fill: cur ? C.gold : C.t2 });
+      const n = items.length, w = (1190 - (n - 1) * 14) / n;
+      items.forEach((t, j) => { const x = 450 + j * (w + 14); h += R(x, y, w, 72, { fill: a ? 'rgba(255,255,255,.04)' : C.panel, stroke: a ? (cur ? C.gold : C.info) : C.line, sw: 2 }) + T(x + w / 2, y + 46, t, { anchor: 'middle', size: 27, plain: true, fill: a ? C.text : C.t2 }); });
+      if (a) h += `<circle cx="-2" cy="${y + 36}" r="0"/>`;
+    });
+    // token arrow along left
+    const tokY = [40, 122, 206, 374, 500, 500][st];
+    h += A(1630 - 10, 70, 1630 - 10, 74, { col: C.bg });
+    h += B(0, 518, 300, 72, '广播上链', '', st === 3 ? 'ok' : 'off', { size: 28 });
+    if (st >= 3) h += A(150, 508, 150, 516, { col: C.buy });
+    h += B(1240, 518, 400, 72, '应急响应 B07', '', st >= 4 ? 'bad' : 'off', { size: 28 });
+    if (st >= 4) { [0, 3, 4].forEach(i => { const y = 86 + i * 84 + 36; h += PL(`1640,${y} 1640,${y}`, C.sell); }); h += A(1440, 506, 1440, 514, { col: C.sell }); h += PL('1440,506 1440,500', C.sell); }
+    if (st === 4) h += R(330, 518, 880, 72, { fill: C.panel, stroke: C.line }) + T(770, 564, '比喻：值机柜台 · 护照查验 · 安检 · 行李追踪 · 消防队', { anchor: 'middle', size: 27, plain: true, fill: C.gold });
+    if (st === 5) h += R(330, 518, 880, 72, { fill: SOFT.warn, stroke: C.warn }) + T(770, 564, '仅讲系统设计 · 不构成法律意见 · 以监管原文为准', { anchor: 'middle', size: 28, bold: true, plain: true });
+    if (st === 0) h += T(330, 46, '几秒钟 · 五层检查 · 任一层都能拦下', { size: 30, bold: true, fill: C.gold });
+    if (st === 3) h += T(330, 46, '每层只拦自己负责的风险 · 叠在一起才可靠', { size: 30, bold: true, fill: C.gold });
+    if (st >= 4) { h += `<line x1="1225" y1="${86 + 0 * 84 + 36}" x2="1225" y2="${86 + 0 * 84 + 36}"/>`; }
+    if (st >= 4) h += T(1635, 46, '任一层发现严重异常 → 升级', { anchor: 'end', size: 28, bold: true, fill: C.sell });
+    svgEl(svg, h);
+  }
+
+  function threatStep(el, st) {
+    const svg = el.querySelector('#threat');
+    let h = '';
+    if (st <= 1) {
+      const rows = [
+        ['洗钱', '放置 → 分层 → 整合 · 拆分、多跳、跨链、P2P 套现', 'KYC · 监控 · KYT · SAR'],
+        ['恐怖融资', '小额、高频、多国汇款', '制裁筛查 · 地理围栏'],
+        ['制裁规避', '借用账户 · VPN 隐藏 IP · 中间地址', '姓名 · 地址名单 · 地理'],
+        ['欺诈资金流入', '盗号、杀猪盘、黑客被盗资金充值', 'KYT 充值筛查 · 冻结'],
+        ['无牌经营', '向未取得牌照的地区提供服务', '地区路由 · 产品开关'],
+        ['消费者保护违规', '误导营销 · 高风险产品卖错人', '适当性评估 · 风险披露'],
+      ];
+      h += T(20, 40, '威胁', { size: 26, fill: C.t2, plain: true }) + T(330, 40, '典型手法', { size: 26, fill: C.t2, plain: true }) + T(1150, 40, '主要防线', { size: 26, fill: C.t2, plain: true });
+      rows.forEach(([a, b, c], i) => {
+        const y = 62 + i * 88, hl = st === 1 && (i === 0 || i === 2);
+        h += R(0, y, 1640, 76, { fill: hl ? SOFT.gold : C.panel, stroke: hl ? C.gold : C.line, sw: 2 });
+        h += T(20, y + 49, a, { size: 30, bold: true, plain: true });
+        h += T(330, y + 49, b, { size: 28, plain: true, fill: hl ? C.text : C.t2 });
+        h += T(1150, y + 49, c, { size: 27, plain: true, fill: C.info });
+      });
+    } else {
+      const a3 = st === 3, a4 = st === 4, a5 = st === 5;
+      h += B(620, 0, 400, 100, 'FATF 国际标准', '只发布标准，不直接约束企业', st === 2 ? 'on' : 'done', { subSize: 22 });
+      h += B(140, 150, 640, 110, '建议 15 · VASP 须受监管', '注册或持牌 · 执行 KYC、监控、报告', a3 ? 'on' : 'done', { subSize: 24 });
+      h += B(860, 150, 640, 110, '建议 16 · Travel Rule', '转账附带双方信息 · 门槛 1,000 美元或欧元', a3 ? 'on' : 'done', { subSize: 24 });
+      h += A(760, 102, 520, 146, { col: C.done }) + A(880, 102, 1120, 146, { col: C.done });
+      h += B(620, 310, 400, 90, '各国国内法', '', st === 2 ? 'on' : 'done');
+      h += A(460, 262, 700, 306, { col: C.done }) + A(1180, 262, 940, 306, { col: C.done });
+      h += B(0, 310, 560, 90, '制裁制度', a5 ? '不看金额 · 没有小额豁免' : '联合国 · OFAC · 欧盟 · 英国', a5 ? 'bad' : 'done', { subSize: 24 });
+      h += B(1080, 310, 560, 90, '消费者保护', '营销 · 适当性 · 资产隔离', 'done', { subSize: 24 });
+      h += A(562, 355, 616, 355, { col: C.done }) + A(1078, 355, 1024, 355, { col: C.done });
+      const loc = [[0, '欧盟 · MiCA + TFR', ['2024-12-30 全面适用', 'TFR：无最低金额豁免'], a4], [560, '迪拜 · VARA', ['按活动类别发牌', '币安 FZE 2024-04 完整牌照'], a4], [1120, '美国 · BSA / FinCEN / OFAC', ['MSB 注册 · AML 计划 · SAR', 'SDN 名单含加密地址'], a5]];
+      loc.forEach(([x, t, ls, a]) => { h += R(x, 450, 520, 140, { fill: a ? SOFT.gold : C.panel, stroke: a ? C.gold : C.done }); h += T(x + 22, 494, t, { size: 28, bold: true, plain: true }); ls.forEach((l, i) => { h += T(x + 22, 536 + i * 36, l, { size: 25, plain: true, fill: a ? C.text : C.t2 }); }); });
+      h += A(820, 402, 820, 446, { col: C.done });
+      if (a5) h += R(1060, 0, 580, 110, { fill: SOFT.warn, stroke: C.warn }) + T(1080, 44, '牌照状态变化很快', { size: 28, bold: true, plain: true }) + T(1080, 86, '以监管机构公开登记册为准', { size: 26, plain: true, fill: C.t2 });
+      if (st === 2) h += R(0, 0, 580, 110, { fill: C.panel, stroke: C.line }) + T(20, 44, '标准 → 写进国内法', { size: 28, bold: true, plain: true, fill: C.gold }) + T(20, 86, '交易所的法定义务来自国内法', { size: 26, plain: true, fill: C.t2 });
+    }
+    el.querySelector('#th-h').textContent = st <= 1 ? '威胁模型：合规要防六类事情' : '监管地图：标准 → 国内法 → 交易所';
+    svgEl(svg, h);
+  }
+
+  function sixStep(el, st) {
+    const svg = el.querySelector('#six');
+    let h = '';
+    const rows = [
+      ['第 1 层 · 准入', '假证件 · 名单上的人 · 受限地区', '账户买卖、出借 · 深度伪造', '分钟到天'],
+      ['第 2 层 · 交易前', '直接来自制裁地址、混币器', '多跳之后的间接资金', '秒级 · 同步'],
+      ['第 3 层 · 交易后监控', '拆分 · 快进快出 · 异常 P2P', '规则未覆盖的新手法', '分钟到天'],
+      ['第 4 层 · 调查', '告警中的真问题 · EDD', '告警积压导致超时', '天到周'],
+      ['第 5 层 · 处置', 'SAR/STR · 冻结 · 退出关系', '报告质量低，执法用不上', '法定时限'],
+      ['第 6 层 · 治理', '检查前 5 层是否按规则运转', '不直接拦截资金', '审计 · 监察'],
+    ];
+    const actSet = [[0], [1], [2], [3, 4, 5], []][st];
+    h += T(20, 34, '层', { size: 26, fill: C.t2, plain: true }) + T(400, 34, '拦截什么', { size: 26, fill: C.t2, plain: true }) + T(930, 34, '漏过什么', { size: 26, fill: C.t2, plain: true }) + T(1420, 34, '延迟', { size: 26, fill: C.t2, plain: true });
+    rows.forEach(([a, b, c, d], i) => {
+      const y = 50 + i * 82, act = actSet.includes(i), seen = st === 4 || i <= Math.max(...actSet, -1);
+      h += R(0, y, 1640, 72, { fill: act ? SOFT.gold : C.panel, stroke: act ? C.gold : C.line, sw: 2 });
+      if (!seen) { h += T(20, y + 46, a, { size: 28, bold: true, plain: true, fill: C.t2 }); return; }
+      h += T(20, y + 46, a, { size: 28, bold: true, plain: true });
+      h += T(400, y + 46, b, { size: 27, plain: true, fill: C.buy });
+      h += T(930, y + 46, c, { size: 27, plain: true, fill: C.sell });
+      h += T(1420, y + 46, d, { size: 26, plain: true, fill: C.t2 });
+    });
+    if (st === 4) {
+      for (let i = 0; i < 5; i++) { const y = 50 + i * 82 + 52; h += A(905, y, 905, y + 40, { col: C.sell, w: 3 }); }
+      h += R(0, 548, 1640, 50, { fill: SOFT.warn, stroke: C.warn, rx: 10 });
+      h += T(820, 584, '下一层补上一层的漏洞 · 越往后越慢、越贵 · 第 4 层依赖人工，产能有上限', { anchor: 'middle', size: 28, bold: true, plain: true });
+    }
+    svgEl(svg, h);
+  }
+
+  function kycStep(el, st) {
+    const svg = el.querySelector('#kyc');
+    const W = 260, H = 90;
+    const N = { NEW: [0, 250, '未认证'], ONB: [330, 250, '准入审核'], LOW: [700, 40, '已认证 · 低风险'], MED: [700, 250, '已认证 · 中风险'], EDD: [700, 450, '强化尽调 EDD'], REV: [1080, 250, '复审中'], RES: [1380, 450, '受限'], EXIT: [330, 450, '已退出'] };
+    const on = [['NEW', 'ONB'], ['LOW', 'MED', 'EDD', 'EXIT'], ['REV', 'LOW', 'MED'], ['REV'], ['RES', 'EXIT']][st];
+    const E = [
+      ['NEW', 'ONB', 0, [262, 295, 326, 295]],
+      ['ONB', 'LOW', 1, [560, 270, 696, 100]], ['ONB', 'MED', 1, [592, 295, 696, 295]], ['ONB', 'EDD', 1, [560, 320, 696, 480]], ['ONB', 'EXIT', 1, [460, 342, 460, 446]],
+      ['EDD', 'MED', 1, [830, 448, 830, 344]], ['EDD', 'EXIT', 1, [698, 495, 594, 495]],
+      ['LOW', 'REV', 2, [962, 80, 1100, 246]], ['REV', 'LOW', 2, [1080, 262, 950, 132]], ['MED', 'REV', 2, [962, 280, 1076, 280]], ['REV', 'MED', 2, [1078, 312, 964, 312]], ['REV', 'EDD', 2, [1110, 342, 962, 470]],
+      ['REV', 'RES', 4, [1300, 342, 1440, 446]], ['RES', 'REV', 4, [1400, 448, 1270, 344]],
+    ];
+    let h = '';
+    E.forEach(([a, b, k, [x1, y1, x2, y2]]) => { const act = k === st || (st === 3 && k === 2); h += A(x1, y1, x2, y2, { col: act ? C.gold : C.done, w: act ? 4 : 3 }); });
+    h += PL('1510,542 1510,582 460,582 460,544', st === 4 ? C.sell : C.done, st === 4 ? 4 : 3) + A(460, 560, 460, 542, { col: st === 4 ? C.sell : C.done });
+    Object.entries(N).forEach(([k, [x, y, t]]) => {
+      const a = on.includes(k), bad = k === 'EXIT' || k === 'RES';
+      h += B(x, y, W, H, t, k, a ? (bad ? 'bad' : k === 'EDD' ? 'warn' : 'on') : 'done', { size: 28, subSize: 20 });
+    });
+    const notes = [
+      ['KYB：企业客户尽调', '核验企业本身 + 识别最终受益所有人 UBO'],
+      ['CDD 通过 → 按评分分流', '高分或 PEP → EDD · 制裁命中或造假 → 退出'],
+      ['准入只是起点', '定期复审：按评级定周期 · 触发式：事件驱动'],
+      null,
+      ['受限 ≠ 冻结：通常只许提出', '局限：账户被转卖，状态机看不见'],
+    ][st];
+    if (notes) { h += R(0, 20, 660, 190, { fill: C.panel, stroke: st === 4 ? C.sell : C.gold }); h += T(24, 80, notes[0], { size: 30, bold: true, plain: true, fill: st === 4 ? C.sell : C.gold }); h += T(24, 140, notes[1], { size: 25, plain: true, fill: C.t2 }); }
+    if (st === 3) {
+      h += R(0, 0, 1040, 226, { fill: '#121418', stroke: C.gold });
+      h += T(24, 44, '触发式复审 · 典型事件 · 业界通用做法', { size: 28, bold: true, plain: true, fill: C.gold });
+      ['① 更新国籍或居住地', '② 名单更新后新的模糊匹配', '③ 监控告警确认为真', '④ 执法机构协查函', '⑤ 证件到期'].forEach((t, i) => { h += T(24 + (i % 2) * 520, 96 + Math.floor(i / 2) * 50, t, { size: 28, plain: true }); });
+    }
+    svgEl(svg, h);
+  }
+
+  function scoreStep(el, st) {
+    const svg = el.querySelector('#score');
+    const F = [['地域', '一般地区', 10, '高风险 30 · 一般 10 · 低 0'], ['客户类型', '企业', 10, '个人 0 · 企业 10 · 复杂股权 25'], ['政治公众人物 PEP', '否', 0, '是 30 · 否 0'], ['产品使用', 'P2P 高频', 15, '仅现货 0 · P2P 高频 15 · OTC 15'], ['交易量与收入不匹配', '是', 20, '是 20 · 否 0'], ['近 12 个月确认告警', '无', 0, '有 25 · 无 0']];
+    const filled = st === 0 ? 0 : st === 1 ? 3 : 6;
+    let h = '';
+    h += T(20, 34, '因子', { size: 26, fill: C.t2, plain: true }) + T(400, 34, '示例客户', { size: 26, fill: C.t2, plain: true }) + T(840, 34, '分值', { size: 26, fill: C.t2, plain: true, anchor: 'end' });
+    let sum = 0;
+    F.forEach(([f, v, p, opts], i) => {
+      const y = 50 + i * 82, on = i < filled, cur = (st === 1 && i < 3) || (st === 2 && i >= 3);
+      if (on) sum += p;
+      h += R(0, y, 870, 72, { fill: cur ? SOFT.gold : C.panel, stroke: cur ? C.gold : C.line, sw: 2 });
+      h += T(20, y + 46, f, { size: 28, bold: true, plain: true });
+      h += T(400, y + 46, on ? v : (st === 0 ? opts : ''), { size: on ? 28 : 22, plain: true, fill: on ? C.text : C.t2 });
+      if (on) h += T(840, y + 48, String(p), { size: 34, bold: true, mono: true, anchor: 'end', plain: true, fill: p ? C.gold : C.t2 });
+    });
+    h += T(20, 590, '分值与阈值均为示例', { size: 26, fill: C.t2 });
+    // gauge
+    const gx = 940, gw = 680, X = v => gx + v / 100 * gw;
+    h += T(gx, 60, '合计', { size: 30, fill: C.t2, plain: true });
+    h += T(gx + gw, 100, filled ? String(sum) : '—', { size: 96, bold: true, mono: true, anchor: 'end', plain: true, fill: C.gold });
+    const thr = st >= 3;
+    h += `<rect x="${gx}" y="190" width="${gw}" height="56" rx="10" fill="${C.panel}" stroke="${C.line}" stroke-width="2"/>`;
+    if (thr) { h += `<rect x="${X(0)}" y="190" width="${X(30) - X(0)}" height="56" fill="${C.buy}" opacity=".25"/><rect x="${X(30)}" y="190" width="${X(60) - X(30)}" height="56" fill="${C.gold}" opacity=".25"/><rect x="${X(60)}" y="190" width="${X(100) - X(60)}" height="56" fill="${C.sell}" opacity=".25"/>`; }
+    h += `<rect x="${gx}" y="200" width="${X(sum) - gx}" height="36" rx="6" fill="${C.gold}"/>`;
+    if (thr) {
+      [[30, '30'], [60, '60']].forEach(([v, t]) => { h += `<line x1="${X(v)}" y1="176" x2="${X(v)}" y2="262" stroke="${C.text}" stroke-width="3"/>` + T(X(v), 168, t, { anchor: 'middle', size: 26, mono: true }); });
+      const tiers = [['低风险', '< 30', '复审 3 年', C.buy, 0], ['中风险', '30–59', '复审 2 年', C.gold, 1], ['高风险 · EDD', '≥ 60', '复审 1 年', C.sell, 2]];
+      tiers.forEach(([n, r, p, c, i]) => { const y = 300 + i * 82, me = i === 1; h += R(gx, y, gw, 70, { fill: me ? SOFT.gold : C.panel, stroke: me ? C.gold : C.line, sw: 2 }); h += T(gx + 20, y + 46, n, { size: 28, bold: true, plain: true, fill: c }); h += T(gx + 300, y + 46, r, { size: 28, mono: true, plain: true }); h += T(gx + gw - 20, y + 46, p, { size: 28, anchor: 'end', plain: true }); });
+    }
+    if (st === 4) { h += R(gx, 300, gw, 230, { fill: '#121418', stroke: C.sell }); h += T(gx + 24, 350, '输出 = 复审周期 + 监控强度', { size: 30, bold: true, plain: true, fill: C.gold }); h += T(gx + 24, 400, '不是放不放行', { size: 28, plain: true }); h += T(gx + 24, 465, '制裁命中：不进评分', { size: 30, bold: true, plain: true, fill: C.sell }); h += T(gx + 24, 510, '硬规则，命中就拦', { size: 28, plain: true, fill: C.sell }); }
+    svgEl(svg, h);
+  }
+
+  function alertStep(el, st) {
+    const svg = el.querySelector('#alert');
+    let h = '';
+    const r1 = [['事件总线', '充值 · 提币 · 成交 · P2P'], ['监控引擎', '规则场景 + 模型'], ['告警队列', '规则编号 · 证据'], ['一线分析员', '领取告警']];
+    r1.forEach(([t, s], i) => { const x = i * 420; const k = st === 0 && i < 3 ? 'on' : st === 1 && i === 3 ? 'on' : (i < 3 || st >= 1) ? 'done' : 'off'; h += B(x, 20, 380, 120, t, s, k); if (i < 3) h += A(x + 382, 80, x + 416, 80, { col: k === 'off' || st > 0 ? C.done : C.gold }); });
+    // branch
+    h += B(1260, 200, 380, 100, '关闭告警', st >= 1 ? '写明理由' : '', st === 1 ? 'ok' : st > 1 ? 'done' : 'off', { size: 28 });
+    h += A(1450, 142, 1450, 196, { col: st === 1 ? C.buy : C.line });
+    if (st >= 1) h += T(1462, 180, '明显误报', { size: 24, fill: C.buy });
+    const r2 = [[880, '调查员', 'KYC · 图谱 · 设备 · IP'], [440, 'MLRO', '反洗钱报告官签发'], [0, '金融情报机构', 'SAR · STR']];
+    r2.forEach(([x, t, s], i) => { const k = st === 2 ? (i === 2 ? 'warn' : 'on') : st > 2 ? 'done' : 'off'; h += B(x, 340, 380, 120, t, s, k); });
+    h += PL('1260,82 1230,82 1230,180 1070,180 1070,336', st >= 1 ? C.gold : C.line, st === 1 ? 4 : 3) + A(1070, 320, 1070, 336, { col: st >= 1 ? C.gold : C.line });
+    if (st >= 1) h += T(1090, 236, '升级为案件', { size: 26, bold: true, fill: C.gold });
+    h += A(878, 400, 824, 400, { col: st >= 2 ? C.gold : C.line }) + A(438, 400, 384, 400, { col: st >= 2 ? C.gold : C.line });
+    if (st >= 3) { h += B(1260, 340, 380, 120, '处置下发', '限制或退出关系', 'bad'); h += PL('630,462 630,500 1450,500 1450,464', C.sell, 3); }
+    const note = [
+      ['监控引擎只生成告警', '是否可疑，由人判断', C.gold],
+      ['误报关闭也要留理由', '审计时要能回答：为什么关？', C.buy],
+      ['SAR 是美国叫法 · STR 是多数地区叫法', '指的是同一类报告', C.gold],
+      ['美国：发现可疑事实起，通常 30 个日历日内提交', '多数地区禁止透露“你已被报告” → 客服话术要设计', C.sell],
+    ][st];
+    h += R(0, 520, 1640, 80, { fill: C.panel, stroke: C.line });
+    h += T(24, 558, note[0], { size: 28, bold: true, plain: true, fill: note[2] });
+    h += T(24, 592, '', { size: 1 });
+    h += T(1616, 558, note[1], { size: 26, anchor: 'end', plain: true, fill: C.t2 });
+    svgEl(svg, h);
+  }
+
+  function amlStep(el, st) {
+    const svg = el.querySelector('#aml');
+    let h = '';
+    if (st <= 1) {
+      const tx = [6000, 7000, 8000];
+      h += B(0, 230, 260, 120, '账户 S', '示例', 'done');
+      h += B(620, 230, 300, 120, '同一收款方', '24 小时内', st === 1 ? 'on' : 'done');
+      tx.forEach((v, i) => { const vy = [170, 290, 410][i], ty = [262, 290, 318][i], col = st === 1 ? C.gold : C.done; h += PL(`262,${290 + (i - 1) * 28} 440,${vy}`, col, 4) + A(440, vy, 616, ty, { col }); h += T(440, vy - 16, v.toLocaleString('en-US') + ' USDT', { anchor: 'middle', size: 28, bold: true, mono: true, fill: C.gold }); });
+      // bar chart
+      const bx = 1000, base = 560, sc = 0.022;
+      h += `<line x1="${bx}" y1="${base}" x2="1640" y2="${base}" stroke="${C.t2}" stroke-width="3"/>`;
+      const thrY = base - 10000 * sc, halfY = base - 5000 * sc;
+      tx.forEach((v, i) => { const x = bx + 20 + i * 130; h += `<rect x="${x}" y="${base - v * sc}" width="100" height="${v * sc}" rx="6" fill="${C.gold}" opacity=".8"/>` + T(x + 50, base - v * sc - 10, String(v / 1000) + 'k', { anchor: 'middle', size: 26, mono: true }); });
+      if (st === 1) { const x = bx + 420, v = 21000; h += `<rect x="${x}" y="${base - v * sc}" width="160" height="${v * sc}" rx="6" fill="${C.sell}" opacity=".85"/>` + T(x + 80, base - v * sc - 10, '合计 21k', { anchor: 'middle', size: 28, bold: true, fill: C.sell }); }
+      h += `<line x1="${bx}" y1="${thrY}" x2="1640" y2="${thrY}" stroke="${C.sell}" stroke-width="3" stroke-dasharray="10 8"/>` + T(bx, thrY - 10, '报告阈值 10,000 · 示例', { size: 24, fill: C.sell });
+      h += `<line x1="${bx}" y1="${halfY}" x2="1640" y2="${halfY}" stroke="${C.t2}" stroke-width="2" stroke-dasharray="6 8"/>` + T(1640, halfY - 10, '50%', { anchor: 'end', size: 24, fill: C.t2 });
+      h += R(0, 420, 920, 170, { fill: st === 1 ? SOFT.sell : C.panel, stroke: st === 1 ? C.sell : C.line });
+      h += T(24, 466, st === 1 ? 'TM-02 结构化拆分 → 告警' : 'smurfing：大额拆小额，避开报告阈值', { size: 30, bold: true, plain: true, fill: st === 1 ? C.sell : C.gold });
+      h += T(24, 514, '24 小时内 ≥ 3 笔 · 每笔在阈值 50%–100%', { size: 27, plain: true });
+      h += T(24, 558, '合计 ≥ 阈值', { size: 27, plain: true });
+    } else if (st <= 3) {
+      const nodes = [['地址 A', '21,000'], ['地址 B', '20,900'], ['地址 C', '20,800'], ['链 2 · 地址 D', '20,700'], ['地址 E', '20,600']];
+      nodes.forEach(([t, v], i) => { const x = i * 340; h += B(x, 120, 280, 130, t, v + ' USDT', st === 3 ? (i === 3 ? 'warn' : 'on') : 'done', { subBold: true, subCol: C.text, subSize: 26 }); if (i < 4) { h += A(x + 282, 185, x + 336, 185, { col: st === 3 ? C.gold : C.done }); h += T(x + 310, 290, ['8 分钟', '12 分钟', '跨链', '9 分钟'][i], { anchor: 'middle', size: 24, fill: i === 2 ? C.warn : C.t2 }); h += T(x + 310, 100, '第 ' + (i + 1) + ' 跳', { anchor: 'middle', size: 24, fill: C.gold }); } });
+      h += T(0, 40, '金额与时间均为示例', { size: 24, fill: C.t2 });
+      h += R(0, 340, 1640, 240, { fill: st === 3 ? SOFT.sell : C.panel, stroke: st === 3 ? C.sell : C.line });
+      h += T(24, 392, st === 3 ? 'TM-03 多跳快速转移 → 告警' : 'layering：多跳、跨链、换币，切断来源', { size: 32, bold: true, plain: true, fill: st === 3 ? C.sell : C.gold });
+      h += T(24, 448, '连续 ≥ 3 跳 · 每跳间隔 ≤ 时间窗口 · 金额保留 ≥ 90%', { size: 28, plain: true });
+      h += T(24, 500, '跨链时加权', { size: 28, plain: true, fill: C.warn });
+      if (st === 3) h += T(24, 552, '4 跳 · 每跳只少一点手续费 · 几十分钟内转完', { size: 28, plain: true, fill: C.text });
+    } else {
+      const rules = [['TM-01 快进快出', '充值后 2 小时内提走 ≥ 90%', '几乎没有交易'], ['TM-05 P2P 异常', '7 天内 ≥ 20 个不同对手方', '资金快速转出'], ['TM-07 共享设备', '≥ 5 个已认证账户', '共用一个设备指纹'], ['TM-06 资料与行为不符', '申报为学生', '月交易额 > 100 万 USDT']];
+      rules.forEach(([t, a, b], i) => { const x = (i % 2) * 830, y = Math.floor(i / 2) * 290; h += R(x, y, 810, 270, { fill: C.panel, stroke: i === 3 ? C.info : C.warn }); h += T(x + 30, y + 64, t, { size: 34, bold: true, plain: true, fill: i === 3 ? C.info : C.warn }); h += T(x + 30, y + 140, a, { size: 30, plain: true }); h += T(x + 30, y + 196, b, { size: 30, plain: true, fill: C.t2 }); h += T(x + 780, y + 240, i === 3 ? '触发复审' : '告警', { anchor: 'end', size: 26, bold: true, plain: true, fill: i === 3 ? C.info : C.warn }); });
+    }
+    el.querySelector('#aml-h').textContent = st <= 1 ? '结构化拆分：每笔都不过线，合计过线' : st <= 3 ? '分层：多跳、跨链，几乎不损耗' : '其他规则场景 · 示例';
+    svgEl(svg, h);
+  }
+
+  function kytStep(el, st) {
+    const svg = el.querySelector('#kyt');
+    let h = '';
+    const S = B(0, 20, 300, 110, '制裁地址', '基础分 100', st >= 2 ? 'bad' : 'done', { subBold: true, subCol: C.sell });
+    h += S + B(0, 250, 300, 110, '混币器', '基础分 80', 'done', { subCol: C.warn });
+    h += B(400, 140, 260, 110, '中间地址 A', st === 2 ? '若在此充值：40' : '1 跳', st === 2 ? 'on' : 'done', { subBold: st === 2, subCol: st === 2 ? C.gold : C.t2 });
+    h += B(760, 140, 260, 110, '中间地址 B', '2 跳', 'done');
+    h += B(1120, 20, 500, 110, '本平台充值地址', st === 3 ? '3 跳 · 风险分 10' : '3 跳', st === 3 ? 'on' : 'done', { subBold: st === 3, subCol: st === 3 ? C.gold : C.t2 });
+    h += B(1120, 250, 260, 110, '其他交易所', '热钱包 · 聚合节点', st === 4 ? 'info' : 'done', { size: 28, subSize: 22 });
+    h += B(1440, 250, 200, 110, '其他用户', '', st === 4 ? 'off' : 'done', { size: 28 });
+    const c = st >= 2 ? C.sell : C.done;
+    h += A(302, 75, 396, 175, { col: c }) + A(302, 305, 396, 215, { col: C.done }) + A(662, 195, 756, 195, { col: c }) + A(1022, 170, 1116, 90, { col: c }) + A(1022, 220, 1116, 290, { col: C.done }) + A(1382, 305, 1436, 305, { col: st === 4 ? C.sell : C.done, dash: st === 4 });
+    if (st === 4) h += `<line x1="1392" y1="280" x2="1428" y2="330" stroke="${C.sell}" stroke-width="5"/><line x1="1428" y1="280" x2="1392" y2="330" stroke="${C.sell}" stroke-width="5"/>` + T(1250, 400, '在聚合节点停止追溯', { anchor: 'middle', size: 28, bold: true, fill: C.info });
+    if (st === 0) { h += T(530, 290, '直接暴露 · 1 跳内', { anchor: 'middle', size: 26, bold: true, fill: C.gold }); h += T(1370, 165, '间接暴露 · 2 跳及以上', { anchor: 'middle', size: 26, bold: true, fill: C.gold }); }
+    if (st === 5) {
+      h += R(400, 290, 700, 90, { fill: SOFT.warn, stroke: C.warn });
+      for (let i = 0; i < 7; i++) h += `<circle cx="${440 + i * 100}" cy="335" r="14" fill="${C.warn}"/>` + (i < 6 ? `<line x1="${454 + i * 100}" y1="335" x2="${526 + i * 100}" y2="335" stroke="${C.warn}" stroke-width="4"/>` : '');
+      h += T(750, 280, '剥离链：拉长跳数 → 分数衰减到告警线以下', { anchor: 'middle', size: 28, bold: true, fill: C.warn });
+    }
+    // formula panel
+    const fh = st === 1 || st === 2 || st === 3;
+    h += R(0, 420, 1640, 170, { fill: fh ? SOFT.gold : C.panel, stroke: fh ? C.gold : C.line });
+    h += T(30, 476, '风险分 = 基础分 × 衰减系数^(跳数 − 1) × 资金占比', { size: 34, bold: true, mono: false, plain: true, fill: fh ? C.gold : C.t2 });
+    const calc = ['', '跳数越多，分数越低', '直接暴露：100 × 0.5^0 × 0.4 = 40 · 衰减系数 0.5 与占比 40% 为示例', '3 跳：100 × 0.5^2 × 0.4 = 10 < 告警线 20 · 示例 → 不告警', '否则全网地址都会被标红', '拉长追溯跳数能抓到它 · 但误报增加'][st];
+    h += T(30, 540, calc || 'KYT 服务商：Chainalysis · Elliptic · TRM Labs', { size: 28, plain: true, fill: st === 3 ? C.buy : C.text });
+    svgEl(svg, h);
+  }
+
+  function trStep(el, st) {
+    const svg = el.querySelector('#tr');
+    const X = [130, 405, 680, 955, 1230, 1505];
+    const hd = [['用户', ''], ['钱包服务', ''], ['TR 网关', ''], ['VASP 目录', ''], ['对方 VASP', ''], ['托管签名', '']];
+    let h = '';
+    hd.forEach(([t], i) => { const a = (st === 1 && (i === 2 || i === 3)) || (st === 2 && (i === 4 || i === 5)) || (st === 0 && i === 0); h += B(X[i] - 125, 0, 250, 70, t, '', a ? 'on' : 'done', { size: 28 }); h += `<line x1="${X[i]}" y1="72" x2="${X[i]}" y2="440" stroke="${C.line}" stroke-width="3" stroke-dasharray="6 8"/>`; });
+    const base = [[0, 1, '地址 · 金额 · 受益人姓名 · 对方平台', 0], [1, 2, '请求 Travel Rule 检查', 1], [2, 3, '查询地址归属', 1]];
+    const ok = [[3, 2, '对方 VASP 身份与协议', 2], [2, 4, '加密发送双方信息 ✉', 2], [4, 2, '确认受益人匹配', 2], [2, 1, '放行', 2], [1, 5, '签名并广播', 2]];
+    const no = [[3, 2, '未找到 VASP → 自托管钱包', 3, C.sell], [2, 1, '要求证明地址所有权或补充声明', 3, C.warn]];
+    const M = base.concat(st === 3 ? no : ok);
+    M.forEach(([a, b, lab, k, col], i) => {
+      if (k > st && !(st === 4)) return;
+      const y = 120 + i * 44, act = k === st, c = act ? (col || C.gold) : C.done;
+      h += A(X[a], y, X[b], y, { col: c, w: act ? 4 : 3 });
+      h += T((X[a] + X[b]) / 2, y - 8, lab, { anchor: 'middle', size: 25, fill: act ? (col || C.text) : C.t2 });
+    });
+    // chain strip
+    const chainOn = st === 2 || st === 4;
+    h += R(0, 470, 1640, 120, { fill: chainOn ? SOFT.info : C.panel, stroke: chainOn ? C.info : C.line });
+    h += T(24, 516, '链上交易', { size: 28, bold: true, plain: true, fill: C.info });
+    h += T(24, 562, 'from 0x9f…21 → to 0x3c…a8 · 金额', { size: 28, mono: true, plain: true, fill: chainOn ? C.text : C.t2 });
+    h += T(1616, 540, '不携带任何姓名', { anchor: 'end', size: 30, bold: true, plain: true, fill: chainOn ? C.sell : C.t2 });
+    if (st === 4) {
+      h += R(60, 80, 1520, 370, { fill: '#121418', stroke: C.gold, rx: 18 });
+      h += T(100, 136, '数据字段 · 以 FATF 释义为基础 · 示例', { size: 30, bold: true, plain: true, fill: C.gold });
+      h += T(100, 196, '发起方：姓名 · 账号或钱包地址 · 住址、证件号、出生日期三选一', { size: 28, plain: true });
+      h += T(100, 250, '受益方：姓名 · 账号或钱包地址', { size: 28, plain: true });
+      h += T(100, 316, '协议：TRUST · TRP · GTR · 数据格式 IVMS101 → 不互通时网关转换', { size: 28, plain: true, fill: C.info });
+      h += T(100, 382, 'FATF 门槛 1,000 美元或欧元 · 欧盟 TFR：加密转账无最低金额豁免', { size: 28, plain: true, fill: C.warn });
+    }
+    svgEl(svg, h);
+  }
+
+  function caseStep(el, st) {
+    const svg = el.querySelector('#case');
+    let h = '';
+    const r1 = [['早期：增长优先', 'KYC 不强制'], ['美国与受制裁地区', '用户可交易'], ['未提交 SAR', '未阻断制裁交易'], ['2023-11 认罪和解', '约 43 亿美元']];
+    r1.forEach(([t, s], i) => { const x = i * 420; const k = st === 0 ? (i === 3 ? 'bad' : 'done') : st === 1 ? (i < 3 ? 'warn' : 'done') : 'done'; h += B(x, 10, 380, 120, t, s, k, { subBold: i === 3, subCol: i === 3 ? C.sell : C.t2 }); if (i < 3) h += A(x + 382, 70, x + 416, 70, { col: C.done }); });
+    const r2 = [[1260, '独立监察员', 'DOJ 3 年 · FinCEN 5 年'], [630, '整改', '强制 KYC · 实时筛查 · 回溯'], [0, '监察员评估', '整改是否有效']];
+    r2.forEach(([x, t, s], i) => { const k = (st === 2 && i === 0) || (st === 3 && i === 1) || (st === 4 && i === 2) ? 'on' : st > 1 + i ? 'done' : 'off'; h += B(x, 200, i === 1 ? 560 : 380, 120, t, s, k); });
+    h += PL('1450,132 1450,196', C.done, 3) + A(1450, 180, 1450, 196, { col: C.done }) + A(1258, 260, 1194, 260, { col: st >= 3 ? C.gold : C.line }) + A(628, 260, 384, 260, { col: st >= 4 ? C.gold : C.line });
+    h += R(0, 360, 1640, 230, { fill: C.panel, stroke: C.line });
+    const N = [
+      [['据公开报道和和解文件', C.t2], ['承认违反《银行保密法》和制裁规定', C.text], ['同意支付约 43 亿美元 · 金额细节见主线第 12 章', C.text]],
+      [['【分析】根因不在单个技术缺陷', C.warn], ['而在“合规不是准入条件”的早期策略', C.text], ['按公开文件的叙述', C.t2]],
+      [['DOJ 监察员：Forensic Risk Alliance · 任期 3 年 · 2024-05 任命', C.text], ['FinCEN 监察员：Sullivan & Cromwell · 任期 5 年', C.text], ['监察员不运营系统 · 检查整改并向监管报告', C.t2]],
+      [['第 1 层：强制 KYC · 第 2 层：实时制裁筛查', C.text], ['第 3–5 层：交易监控与 SAR 流程 · 历史交易回溯审查', C.text], ['第 6 层：独立监察 · 整改项为基于和解文件的业界通用解读', C.t2]],
+      [['据公开报道：2025 年讨论提前结束监察 · 2026-04 参议员致信询问', C.text], ['结果以官方公告为准', C.t2], ['启示：漏报多年后才暴露 → 判定记录与证据必须完整保存', C.gold]],
+    ][st];
+    N.forEach(([t, c], i) => { h += T(30, 414 + i * 64, t, { size: i === 0 ? 30 : 28, bold: i === 0, plain: true, fill: c }); });
+    svgEl(svg, h);
+  }
+
+  function tradeStep(el, st) {
+    const svg = el.querySelector('#trade');
+    let h = '';
+    const M = [['告警积压量', '> 一线 3 天产能', 0], ['告警处理时长 P90', '> 7 天', 0], ['真阳性率', '< 2% → 规则过宽', 1], ['SAR 超时率', '> 0', 1], ['复审逾期率', '> 5%', 1], ['名单更新延迟', '> 24 小时', 1]];
+    h += T(20, 34, '运营指标', { size: 26, fill: C.t2, plain: true }) + T(760, 34, '告警条件 · 示例', { size: 26, fill: C.t2, plain: true, anchor: 'end' });
+    M.forEach(([a, b, k], i) => { const y = 50 + i * 86, act = k === st && st <= 1; h += R(0, y, 780, 74, { fill: act ? SOFT.gold : C.panel, stroke: act ? C.gold : C.line, sw: 2 }); h += T(20, y + 48, a, { size: 28, bold: true, plain: true, fill: st <= 1 && k > st ? C.t2 : C.text }); h += T(760, y + 48, b, { size: 28, anchor: 'end', plain: true, mono: false, fill: st <= 1 && k > st ? C.t2 : (i === 2 ? C.sell : C.gold) }); });
+    const px = 840, pw = 800;
+    if (st <= 2) {
+      const a = st === 2;
+      h += R(px, 0, pw, 590, { fill: a ? 'rgba(255,255,255,.02)' : C.panel, stroke: a ? C.gold : C.line, rx: 18 });
+      h += T(px + 30, 50, '阈值的权衡 · 示意', { size: 30, bold: true, plain: true, fill: a ? C.gold : C.t2 });
+      const ox = px + 80, oy = 470, w = 640, hh = 340;
+      h += `<line x1="${ox}" y1="${oy}" x2="${ox + w}" y2="${oy}" stroke="${C.t2}" stroke-width="3"/><line x1="${ox}" y1="${oy}" x2="${ox}" y2="${oy - hh}" stroke="${C.t2}" stroke-width="3"/>`;
+      h += T(ox, oy + 40, '阈值严', { size: 26, plain: true, fill: C.t2 }) + T(ox + w, oy + 40, '阈值松', { size: 26, anchor: 'end', plain: true, fill: C.t2 });
+      let p1 = '', p2 = '';
+      for (let i = 0; i <= 40; i++) { const t = i / 40, x = ox + t * w; p1 += `${x},${oy - hh * (0.95 * Math.exp(-2.6 * t) + 0.05)} `; p2 += `${x},${oy - hh * (0.05 + 0.9 * t * t)} `; }
+      h += `<polyline points="${p1}" fill="none" stroke="${a ? C.warn : C.done}" stroke-width="5"/><polyline points="${p2}" fill="none" stroke="${a ? C.sell : C.done}" stroke-width="5"/>`;
+      h += T(ox + 30, oy - hh + 10, '告警量 · 调查成本', { size: 26, bold: true, fill: a ? C.warn : C.t2 });
+      h += T(ox + w, oy - hh + 10, '漏报 · 监管处罚', { size: 26, bold: true, anchor: 'end', fill: a ? C.sell : C.t2 });
+      if (a) h += T(px + 30, 570, '真阳性率 < 5% 很常见 · 覆盖面放宽 → 告警成本线性上升', { size: 25, plain: true, fill: C.text });
+    } else {
+      h += R(px, 0, pw, 590, { fill: 'rgba(255,255,255,.02)', stroke: C.gold, rx: 18 });
+      h += T(px + 30, 50, '常见做法 · 业界通用', { size: 30, bold: true, plain: true, fill: C.gold });
+      const L = [['误报 vs 漏报', '分层阈值 · 高风险客户收紧'], ['体验 vs 合规', '分级 KYC · 先开放低额度'], ['追溯深度 vs 噪声', '聚合节点停止 · 结合资金占比'], ['自动化 vs 可解释', '规则兜底 · 模型排序'], ['全球 vs 本地化', '按实体和地区配置规则集'], ['隐私 vs Travel Rule', '加密传输 · 最少字段']];
+      L.forEach(([a, b], i) => { const y = 82 + i * 84; h += R(px + 24, y, pw - 48, 72, { fill: C.panel, stroke: C.line, sw: 2 }); h += T(px + 44, y + 46, a, { size: 27, bold: true, plain: true }); h += T(px + pw - 44, y + 46, b, { size: 25, anchor: 'end', plain: true, fill: C.t2 }); });
+    }
+    svgEl(svg, h);
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

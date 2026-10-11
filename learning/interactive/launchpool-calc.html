@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新币挖矿计算器</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .params { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 12px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px; }
+  .stat .v { font-size: 19px; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  .ax { stroke: var(--border); stroke-width: 1; }
+  .l-total { fill: none; stroke: var(--accent); stroke-width: 2; }
+  .l-mine { fill: none; stroke: var(--buy); stroke-width: 2; }
+  .l-base { fill: none; stroke: var(--text-2); stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .a-loss { fill: var(--sell-soft); opacity: .8; }
+  .cursor { stroke: var(--info); stroke-width: 1.2; }
+  .bar-base { fill: var(--info); opacity: .55; }
+  .bar-top { fill: var(--warn); }
+  .avg-line { stroke: var(--sell); stroke-width: 1.5; stroke-dasharray: 4 3; }
+  svg text.lbl { font-size: 11px; fill: var(--text-2); }
+  svg text.lblr { font-size: 11px; fill: var(--sell); font-weight: 600; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .sw { display: inline-block; width: 14px; height: 3px; margin-right: 4px; vertical-align: middle; }
+  .sw.g { background: var(--buy); } .sw.a { background: var(--accent); } .sw.d { background: var(--text-2); } .sw.r { background: var(--sell-soft); height: 9px; }
+  .sw.i { background: var(--info); opacity: .55; height: 9px; } .sw.w { background: var(--warn); height: 9px; } .sw.av { background: var(--sell); }
+  ol.howto, ul.try { padding-left: 20px; margin: 6px 0; }
+  ol.howto li, ul.try li { margin: 4px 0; }
+  pre.formula { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border-radius: 8px; padding: 10px; white-space: pre-wrap; margin: 8px 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../products/P07-listing-launch.md">配套章节：P07 上币与新币发行 →</a>
+  </header>
+  <h1>新币挖矿计算器</h1>
+  <p class="lead">计算 Launchpool 挖矿的份额、每日奖励和等价年化，演示"后来者涌入"如何稀释收益；再计算 Launchpad 的平均持仓、超额认购分配和退款。所有数值都是示例，不代表任何真实活动。不构成投资建议。</p>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="howto small">
+      <li>第一部分：填写你的质押量、每小时奖励池、活动天数、价格假设。拖动"全池质押量"滑块。</li>
+      <li>设置"全池增长倍数"，点击"播放"。图中绿线是你实际的每小时奖励，虚线是"没有后来者"时的奖励，红色面积是被稀释掉的部分。</li>
+      <li>第二部分：先设置计算期的持仓，看平均持仓（承诺上限）；再设置全网承诺量，看分配量和退款。</li>
+    </ol>
+    <h3>试一试</h3>
+    <ul class="try small">
+      <li><b>后来者稀释</b>：全池增长倍数设为 4，播放。活动结束时你的每小时奖励只剩开头的约 1/4，累计奖励比"无稀释"少一半以上。</li>
+      <li><b>临时拉高持仓</b>：在 Launchpad 部分，平时持仓 1 BNB，最后 6 小时临时充入 100 BNB。平均持仓只有约 5.17 BNB。把"保留小时数"改为 144，对比结果。</li>
+      <li><b>超额认购</b>：把全网承诺量从 1,000,000 拖到 100,000 BNB。超额认购倍数下降，你的扣款增加、退款减少。</li>
+    </ul>
+  </div>
+
+  <!-- ============ Launchpool ============ -->
+  <h2>一、Launchpool：质押挖新币</h2>
+  <div class="card">
+    <div class="params">
+      <div><label for="myStake">我的质押量（BNB）</label><input type="number" id="myStake" value="10" min="0" step="1"></div>
+      <div><label for="hourly">每小时奖励池（NEW）</label><input type="number" id="hourly" value="50000" min="0" step="1000"></div>
+      <div><label for="days">活动天数</label><input type="number" id="days" value="5" min="1" max="60" step="1"></div>
+      <div><label for="newPrice">新币开盘价假设（USDT）</label><input type="number" id="newPrice" value="0.5" min="0" step="0.01"></div>
+      <div><label for="bnbPrice">BNB 价格（USDT）</label><input type="number" id="bnbPrice" value="600" min="1" step="10"></div>
+      <div><label for="cap">单人每小时上限（NEW，0 = 无）</label><input type="number" id="cap" value="0" min="0" step="10"></div>
+    </div>
+    <label for="total">全池质押量（BNB，含你自己）</label>
+    <div class="range-row"><input type="range" id="total" min="100000" max="20000000" step="100000" value="2000000"><output id="totalOut">2,000,000</output></div>
+    <pre class="formula">我的每小时奖励 = min( 我的质押 ÷ 全池质押 × 每小时奖励池 , 单人每小时上限 )
+每日奖励 = 每小时奖励 × 24
+等价年化 = 每日奖励 × 新币价格 × 365 ÷ (我的质押 × BNB 价格)</pre>
+    <div class="stats">
+      <div class="stat"><span class="k">我的份额</span><span class="v" id="oShare">—</span></div>
+      <div class="stat"><span class="k">每小时奖励</span><span class="v" id="oHour">—</span></div>
+      <div class="stat"><span class="k">每日奖励</span><span class="v" id="oDay">—</span></div>
+      <div class="stat"><span class="k">活动总奖励</span><span class="v" id="oAll">—</span></div>
+      <div class="stat"><span class="k">等价年化</span><span class="v" id="oApr">—</span></div>
+    </div>
+    <p class="small muted" id="oNote"></p>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>后来者涌入：全池质押量随时间增长</h3>
+    <label for="growth">活动结束时全池是开始时的几倍</label>
+    <div class="range-row"><input type="range" id="growth" min="1" max="6" step="0.1" value="3"><output id="growthOut">3.0×</output></div>
+    <p class="small muted">增长曲线（示例）：全池(h) = 初始全池 × [1 + (倍数 − 1) × (1 − e^(−h ÷ τ))]，τ = 活动总小时数 ÷ 4。前期涌入快，后期趋缓。你的质押量保持不变。</p>
+    <div class="controls">
+      <button class="primary" id="play" type="button">播放</button>
+      <button id="toEnd" type="button">跳到结尾</button>
+      <span class="small muted" id="hourInfo"></span>
+    </div>
+    <svg class="chart" id="chartTotal" viewBox="0 0 720 150" role="img" aria-label="全池质押量随时间变化"></svg>
+    <svg class="chart" id="chartMine" viewBox="0 0 720 190" role="img" aria-label="我的每小时奖励随时间变化"></svg>
+    <div class="legend">
+      <span><span class="sw a"></span>全池质押量</span>
+      <span><span class="sw g"></span>我的每小时奖励（实际）</span>
+      <span><span class="sw d"></span>无后来者时的奖励</span>
+      <span><span class="sw r"></span>被稀释的奖励</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="k">当前全池</span><span class="v" id="dTotal">—</span></div>
+      <div class="stat"><span class="k">累计奖励（实际）</span><span class="v" id="dCum">—</span></div>
+      <div class="stat"><span class="k">累计奖励（无稀释）</span><span class="v" id="dBase">—</span></div>
+      <div class="stat"><span class="k">稀释损失</span><span class="v" id="dLoss">—</span></div>
+      <div class="stat"><span class="k">全程实际等价年化</span><span class="v" id="dApr">—</span></div>
+    </div>
+  </div>
+
+  <!-- ============ Launchpad ============ -->
+  <h2>二、Launchpad：BNB 认购与超额分配</h2>
+  <div class="card">
+    <h3>第 1 步：计算期平均持仓 = 承诺上限</h3>
+    <div class="params">
+      <div><label for="baseHold">平时持仓（BNB）</label><input type="number" id="baseHold" value="1" min="0" step="1"></div>
+      <div><label for="topUp">临时充入（BNB）</label><input type="number" id="topUp" value="100" min="0" step="10"></div>
+      <div><label for="topHours">临时资金保留小时数（计算期末尾）</label><input type="number" id="topHours" value="6" min="0" step="1"></div>
+      <div><label for="mDays">计算期天数（每小时快照一次）</label><input type="number" id="mDays" value="6" min="1" max="30" step="1"></div>
+    </div>
+    <svg class="chart" id="chartSnap" viewBox="0 0 720 150" role="img" aria-label="每小时快照余额与平均值"></svg>
+    <div class="legend">
+      <span><span class="sw i"></span>平时持仓</span>
+      <span><span class="sw w"></span>临时充入</span>
+      <span><span class="sw av"></span>平均持仓</span>
+    </div>
+    <pre class="formula">平均持仓 = Σ 每小时快照余额 ÷ 快照次数</pre>
+    <div class="stats">
+      <div class="stat"><span class="k">快照次数</span><span class="v" id="sN">—</span></div>
+      <div class="stat"><span class="k">平均持仓（承诺上限）</span><span class="v" id="sAvg">—</span></div>
+      <div class="stat"><span class="k">临时资金的效率</span><span class="v" id="sEff">—</span></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>第 2 步：认购与分配</h3>
+    <div class="params">
+      <div><label for="commit">我的承诺（BNB，≤ 上限）</label><input type="number" id="commit" value="5.17" min="0" step="0.01"></div>
+      <div><label for="supply">发售总量（NEW）</label><input type="number" id="supply" value="10000000" min="1" step="100000"></div>
+      <div><label for="salePrice">发行价（USDT / NEW）</label><input type="number" id="salePrice" value="0.02" min="0.0001" step="0.001"></div>
+      <div><label for="bnbPrice2">BNB 价格（USDT）</label><input type="number" id="bnbPrice2" value="600" min="1" step="10"></div>
+      <div><label for="openPrice2">开盘价假设（USDT / NEW）</label><input type="number" id="openPrice2" value="0.05" min="0" step="0.001"></div>
+      <div><label for="hardCap">单人分配硬顶（NEW，0 = 无）</label><input type="number" id="hardCap" value="0" min="0" step="100"></div>
+    </div>
+    <label for="committed">全网承诺量（BNB，含你自己）</label>
+    <div class="range-row"><input type="range" id="committed" min="100" max="3000000" step="100" value="1000000"><output id="committedOut">1,000,000</output></div>
+    <pre class="formula">募资目标（BNB） = 发售总量 × 发行价 ÷ BNB 价格
+分配比例 = min(1, 募资目标 ÷ 全网承诺)
+我的扣款（BNB） = 我的承诺 × 分配比例
+我的分配量 = 我的扣款 × BNB 价格 ÷ 发行价  （超额时 = 我的承诺 ÷ 全网承诺 × 发售总量）
+我的退款（BNB） = 我的承诺 − 我的扣款</pre>
+    <div class="stats">
+      <div class="stat"><span class="k">募资目标</span><span class="v" id="lRaise">—</span></div>
+      <div class="stat"><span class="k">超额认购倍数</span><span class="v" id="lOver">—</span></div>
+      <div class="stat"><span class="k">分配比例</span><span class="v" id="lFill">—</span></div>
+      <div class="stat"><span class="k">我的分配量</span><span class="v" id="lTok">—</span></div>
+      <div class="stat"><span class="k">我的扣款</span><span class="v" id="lCost">—</span></div>
+      <div class="stat"><span class="k">我的退款</span><span class="v" id="lRefund">—</span></div>
+      <div class="stat"><span class="k">按开盘价的盈亏</span><span class="v" id="lPnl">—</span></div>
+    </div>
+    <p class="small muted" id="lNote"></p>
+  </div>
+
+  <footer class="note">
+    简化说明：真实 Launchpool 在每小时内多次随机快照、取小时平均；本页假设整小时持仓不变。真实 Launchpad 的计算期长度、硬顶和分配细则以每次活动公告为准。全部参数为示例，不代表币安实际活动。不构成投资建议。
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  function num(id, dflt) { var v = parseFloat($(id).value); return isFinite(v) && v >= 0 ? v : dflt; }
+  function fmt(x, d) { return Number(x).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  function smart(x) { var a = Math.abs(x); return a >= 1000 ? fmt(x, 0) : a >= 1 ? fmt(x, 2) : a >= 0.01 ? fmt(x, 4) : fmt(x, 6); }
+  function pct(x) { var a = Math.abs(x * 100); return (a >= 0.01 || a === 0 ? fmt(x * 100, 2) : fmt(x * 100, 6)) + '%'; }
+
+  // ================= Launchpool =================
+  function poolCfg() {
+    return {
+      my: num('myStake', 10), total: parseFloat($('total').value), hourly: num('hourly', 50000), days: Math.max(1, Math.round(num('days', 5))),
+      newPrice: num('newPrice', 0.5), bnb: Math.max(1e-9, num('bnbPrice', 600)), cap: num('cap', 0), growth: parseFloat($('growth').value)
+    };
+  }
+  function hourlyReward(my, total, hourly, cap) {
+    var t = Math.max(total, my);
+    if (t <= 0) return 0;
+    var r = my / t * hourly;
+    return cap > 0 ? Math.min(r, cap) : r;
+  }
+  function totalAt(h, c) {
+    var H = c.days * 24, tau = H / 4;
+    return c.total * (1 + (c.growth - 1) * (1 - Math.exp(-h / tau)));
+  }
+  function aprOf(daily, c) { var v = c.my * c.bnb; return v > 0 ? daily * c.newPrice * 365 / v : 0; }
+
+  function renderPool() {
+    var c = poolCfg();
+    $('totalOut').textContent = fmt(c.total, 0);
+    var share = c.my / Math.max(c.total, c.my || 1), hr = hourlyReward(c.my, c.total, c.hourly, c.cap), day = hr * 24;
+    $('oShare').textContent = pct(share);
+    $('oHour').textContent = smart(hr) + ' NEW';
+    $('oDay').textContent = smart(day) + ' NEW';
+    $('oAll').textContent = smart(day * c.days) + ' NEW ≈ ' + smart(day * c.days * c.newPrice) + ' USDT';
+    $('oApr').textContent = pct(aprOf(day, c));
+    var note = '质押市值 = ' + smart(c.my * c.bnb) + ' USDT。';
+    if (c.my > c.total) note += ' 你的质押量大于全池，已按全池 = 你的质押计算。';
+    if (c.cap > 0 && c.my / Math.max(c.total, c.my) * c.hourly > c.cap) note += ' 已触发单人每小时上限。';
+    $('oNote').textContent = note;
+    renderDilution();
+  }
+
+  var D = { hour: 0, timer: null };
+  var W = 720, ML = 58, MR = 12;
+  function renderDilution() {
+    var c = poolCfg(), H = c.days * 24, i;
+    if (D.hour > H) D.hour = H;
+    $('growthOut').textContent = fmt(c.growth, 1) + '×';
+    var tot = [], mine = [], base0 = hourlyReward(c.my, c.total, c.hourly, c.cap);
+    for (i = 0; i <= H; i++) { tot.push(totalAt(i, c)); mine.push(hourlyReward(c.my, tot[i], c.hourly, c.cap)); }
+    var X = function (h) { return ML + (W - ML - MR) * h / H; };
+    // 全池图
+    var h1 = 150, top1 = 12, bot1 = 22, maxT = tot[H] * 1.08;
+    var Y1 = function (v) { return top1 + (h1 - top1 - bot1) * (1 - v / maxT); };
+    var s = [], pts = [];
+    for (i = 0; i <= H; i++) pts.push(X(i).toFixed(1) + ',' + Y1(tot[i]).toFixed(1));
+    s.push('<line class="ax" x1="' + ML + '" x2="' + ML + '" y1="' + top1 + '" y2="' + (h1 - bot1) + '"/>');
+    s.push('<line class="ax" x1="' + ML + '" x2="' + (W - MR) + '" y1="' + (h1 - bot1) + '" y2="' + (h1 - bot1) + '"/>');
+    s.push('<polyline class="l-total" points="' + pts.join(' ') + '"/>');
+    s.push('<text class="lbl" x="2" y="' + (Y1(tot[0]) + 4) + '">' + short(tot[0]) + '</text>');
+    s.push('<text class="lbl" x="2" y="' + (Y1(tot[H]) + 4) + '">' + short(tot[H]) + '</text>');
+    s.push('<text class="lbl" x="' + ML + '" y="' + (h1 - 6) + '">全池质押量（BNB）</text>');
+    s.push('<line class="cursor" x1="' + X(D.hour) + '" x2="' + X(D.hour) + '" y1="' + top1 + '" y2="' + (h1 - bot1) + '"/>');
+    $('chartTotal').innerHTML = s.join('');
+    // 我的奖励图
+    var h2 = 190, top2 = 12, bot2 = 24, maxM = Math.max(base0, 1e-12) * 1.12;
+    var Y2 = function (v) { return top2 + (h2 - top2 - bot2) * (1 - v / maxM); };
+    s = []; var area = [], line = [];
+    for (i = 0; i <= D.hour; i++) line.push(X(i).toFixed(1) + ',' + Y2(mine[i]).toFixed(1));
+    for (i = 0; i <= D.hour; i++) area.push(X(i).toFixed(1) + ',' + Y2(base0).toFixed(1));
+    for (i = D.hour; i >= 0; i--) area.push(X(i).toFixed(1) + ',' + Y2(mine[i]).toFixed(1));
+    s.push('<line class="ax" x1="' + ML + '" x2="' + ML + '" y1="' + top2 + '" y2="' + (h2 - bot2) + '"/>');
+    s.push('<line class="ax" x1="' + ML + '" x2="' + (W - MR) + '" y1="' + (h2 - bot2) + '" y2="' + (h2 - bot2) + '"/>');
+    if (D.hour > 0) s.push('<polygon class="a-loss" points="' + area.join(' ') + '"/>');
+    s.push('<line class="l-base" x1="' + ML + '" x2="' + (W - MR) + '" y1="' + Y2(base0) + '" y2="' + Y2(base0) + '"/>');
+    if (D.hour > 0) s.push('<polyline class="l-mine" points="' + line.join(' ') + '"/>');
+    s.push('<text class="lbl" x="2" y="' + (Y2(base0) + 4) + '">' + smart(base0) + '</text>');
+    s.push('<text class="lbl" x="2" y="' + (Y2(0) + 4) + '">0</text>');
+    s.push('<text class="lbl" x="' + ML + '" y="' + (h2 - 6) + '">我的每小时奖励（NEW） · 横轴：第 0 ~ ' + H + ' 小时</text>');
+    s.push('<line class="cursor" x1="' + X(D.hour) + '" x2="' + X(D.hour) + '" y1="' + top2 + '" y2="' + (h2 - bot2) + '"/>');
+    $('chartMine').innerHTML = s.join('');
+    // 累计（每小时 h 发放的奖励按该小时初的全池计算，共 H 个小时）
+    var cum = 0, cumBase = 0, cumAll = 0;
+    for (i = 0; i < H; i++) { cumAll += mine[i]; if (i < D.hour) { cum += mine[i]; cumBase += base0; } }
+    $('hourInfo').textContent = '第 ' + D.hour + ' / ' + H + ' 小时（第 ' + (Math.floor(D.hour / 24) + 1 > c.days ? c.days : Math.floor(D.hour / 24) + 1) + ' 天）';
+    $('dTotal').textContent = short(tot[D.hour]) + ' BNB';
+    $('dCum').textContent = smart(cum) + ' NEW';
+    $('dBase').textContent = smart(cumBase) + ' NEW';
+    $('dLoss').textContent = cumBase > 0 ? pct(1 - cum / cumBase) : '0.00%';
+    $('dLoss').className = 'v' + (cumBase > cum + 1e-12 ? ' down' : '');
+    $('dApr').textContent = pct(aprOf(cumAll / c.days, c));
+  }
+  function short(x) { return x >= 1e6 ? fmt(x / 1e6, 2) + 'M' : x >= 1e3 ? fmt(x / 1e3, 1) + 'K' : fmt(x, 0); }
+
+  function stop() { if (D.timer) { clearInterval(D.timer); D.timer = null; } $('play').textContent = '播放'; }
+  $('play').addEventListener('click', function () {
+    if (D.timer) { stop(); return; }
+    var H = poolCfg().days * 24;
+    if (D.hour >= H) D.hour = 0;
+    $('play').textContent = '暂停';
+    var stepH = Math.max(1, Math.round(H / 120));
+    D.timer = setInterval(function () {
+      D.hour = Math.min(H, D.hour + stepH);
+      renderDilution();
+      if (D.hour >= H) stop();
+    }, 40);
+  });
+  $('toEnd').addEventListener('click', function () { stop(); D.hour = poolCfg().days * 24; renderDilution(); });
+  ['myStake', 'hourly', 'days', 'newPrice', 'bnbPrice', 'cap', 'total'].forEach(function (id) { $(id).addEventListener('input', renderPool); });
+  $('growth').addEventListener('input', renderDilution);
+
+  // ================= Launchpad =================
+  function snapshots() {
+    var base = num('baseHold', 1), top = num('topUp', 100), days = Math.max(1, Math.round(num('mDays', 6)));
+    var n = days * 24, th = Math.min(n, Math.round(num('topHours', 6))), arr = [];
+    for (var i = 0; i < n; i++) arr.push({ base: base, top: i >= n - th ? top : 0 });
+    return { arr: arr, n: n, th: th, base: base, top: top };
+  }
+  function renderSnap() {
+    var S = snapshots(), sum = 0, i;
+    for (i = 0; i < S.n; i++) sum += S.arr[i].base + S.arr[i].top;
+    var avg = sum / S.n;
+    $('sN').textContent = S.n + ' 次';
+    $('sAvg').textContent = smart(avg) + ' BNB';
+    $('sEff').textContent = S.top > 0 ? ('充入 ' + smart(S.top) + ' → 上限 +' + smart(avg - S.base)) : '—';
+    var h = 150, top = 10, bot = 22, maxV = Math.max(S.base + S.top, 1e-9) * 1.1;
+    var bw = (W - ML - MR) / S.n, Y = function (v) { return top + (h - top - bot) * (1 - v / maxV); }, s = [];
+    s.push('<line class="ax" x1="' + ML + '" x2="' + (W - MR) + '" y1="' + (h - bot) + '" y2="' + (h - bot) + '"/>');
+    for (i = 0; i < S.n; i++) {
+      var x = ML + i * bw, b = S.arr[i].base, t = S.arr[i].top;
+      if (b > 0) s.push('<rect class="bar-base" x="' + x.toFixed(2) + '" y="' + Y(b).toFixed(1) + '" width="' + Math.max(0.6, bw - 0.4).toFixed(2) + '" height="' + (Y(0) - Y(b)).toFixed(1) + '"/>');
+      if (t > 0) s.push('<rect class="bar-top" x="' + x.toFixed(2) + '" y="' + Y(b + t).toFixed(1) + '" width="' + Math.max(0.6, bw - 0.4).toFixed(2) + '" height="' + (Y(b) - Y(b + t)).toFixed(1) + '"/>');
+    }
+    s.push('<line class="avg-line" x1="' + ML + '" x2="' + (W - MR) + '" y1="' + Y(avg).toFixed(1) + '" y2="' + Y(avg).toFixed(1) + '"/>');
+    s.push('<text class="lblr" x="2" y="' + (Y(avg) + 4).toFixed(1) + '">均 ' + smart(avg) + '</text>');
+    s.push('<text class="lbl" x="2" y="' + (Y(S.base + S.top) + 4).toFixed(1) + '">' + smart(S.base + S.top) + '</text>');
+    s.push('<text class="lbl" x="' + ML + '" y="' + (h - 6) + '">每根柱子 = 1 次小时快照，共 ' + S.n + ' 根</text>');
+    $('chartSnap').innerHTML = s.join('');
+    return avg;
+  }
+  var lastAvg = null;
+  function renderPad(fromSnap) {
+    var avg = renderSnap();
+    if (fromSnap || lastAvg === null) { $('commit').value = (Math.floor(avg * 100) / 100).toString(); }
+    lastAvg = avg;
+    var commit = Math.min(num('commit', 0), avg), supply = num('supply', 1e7), price = Math.max(1e-12, num('salePrice', 0.02));
+    var bnb = Math.max(1e-9, num('bnbPrice2', 600)), open = num('openPrice2', 0), cap = num('hardCap', 0);
+    var committed = Math.max(parseFloat($('committed').value), commit);
+    $('committedOut').textContent = fmt(parseFloat($('committed').value), 0);
+    var raise = supply * price / bnb, fill = committed > 0 ? Math.min(1, raise / committed) : 0;
+    var cost = commit * fill, tok = cost * bnb / price, capped = false;
+    if (cap > 0 && tok > cap) { tok = cap; cost = tok * price / bnb; capped = true; }
+    var refund = commit - cost, pnl = tok * open - cost * bnb;
+    $('lRaise').textContent = smart(raise) + ' BNB';
+    $('lOver').textContent = fmt(committed / raise, committed / raise >= 10 ? 0 : 2) + '×';
+    $('lFill').textContent = pct(fill);
+    $('lTok').textContent = smart(tok) + ' NEW';
+    $('lCost').textContent = smart(cost) + ' BNB';
+    $('lRefund').textContent = fmt(refund, 6) + ' BNB';
+    $('lPnl').textContent = (pnl >= 0 ? '+' : '') + smart(pnl) + ' USDT';
+    $('lPnl').className = 'v ' + (pnl >= 0 ? 'up' : 'down');
+    var note = '募资目标 = ' + fmt(supply, 0) + ' × ' + price + ' ÷ ' + bnb + ' = ' + smart(raise) + ' BNB。';
+    if (num('commit', 0) > avg + 1e-9) note += ' 你的承诺超过上限 ' + smart(avg) + ' BNB，已按上限计算。';
+    if (committed / raise < 1) note += ' 全网承诺不足募资目标：每人按承诺全额成交，没有退款。';
+    if (capped) note += ' 已触发单人硬顶：超出部分会分给其他用户。';
+    $('lNote').textContent = note;
+  }
+  ['baseHold', 'topUp', 'topHours', 'mDays'].forEach(function (id) { $(id).addEventListener('input', function () { renderPad(true); }); });
+  ['commit', 'supply', 'salePrice', 'bnbPrice2', 'openPrice2', 'hardCap', 'committed'].forEach(function (id) { $(id).addEventListener('input', function () { renderPad(false); }); });
+
+  renderPool();
+  renderPad(true);
+  window.__lp = { hourlyReward: hourlyReward, totalAt: totalAt };
+})();
+</script>
+</body>
+</html>

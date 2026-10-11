@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B03 账户安全：盗号攻击链与逐层防御</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .stack { position: relative; flex: 1; min-height: 0; }
+  .stack > .layer { position: absolute; left: 0; right: 0; top: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 16px; }
+  .chips .chip { font-size: 30px; padding: 8px 22px; }
+  table.t td, table.t th { padding: 12px 18px; }
+  /* chain */
+  .ch { display: flex; align-items: center; }
+  .ch .n { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 14px; font-size: 30px; text-align: center; min-width: 0; flex: 1; transition: all .35s; }
+  .ch .n small { display: block; font-size: 24px; color: var(--text-2); margin-top: 4px; }
+  .ch .a { width: 40px; height: 4px; background: var(--text-2); flex: 0 0 auto; margin: 0 6px; position: relative; }
+  .ch .a::after { content: ""; position: absolute; right: -2px; top: -8px; border: 10px solid transparent; border-left: 14px solid var(--text-2); border-right: 0; }
+  .ch .n.hot { border-color: var(--sell); background: var(--sell-soft); }
+  .ch .n.sig { border-color: var(--gold); background: var(--gold-soft); box-shadow: 0 0 0 6px rgba(240,185,11,.2); }
+  .ch .n.dim { opacity: .3; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .two .big2 { font-family: var(--mono); font-size: 54px; font-weight: 700; margin-top: 6px; }
+  .branch { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .branch .card { font-size: 30px; padding: 18px 26px; }
+  .meta { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  .meta .card { padding: 14px 16px; font-size: 28px; text-align: center; }
+  .meta .card b { display: block; font-size: 30px; color: var(--gold); }
+  /* layers */
+  .lyr { display: grid; grid-template-columns: 340px 1fr 420px; align-items: center; gap: 20px; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 14px 24px; font-size: 30px; }
+  .lyr b { font-size: 32px; } .lyr .c { color: var(--text); } .lyr .m { color: var(--sell); font-size: 28px; }
+  .lyr.exit { border-color: var(--gold); background: var(--gold-soft); }
+  /* ato lab */
+  .lab { display: grid; grid-template-columns: 1fr 420px; gap: 28px; }
+  .atk { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .ak { border-radius: 14px; padding: 20px 22px; font-size: 32px; border: 2px solid var(--sell); background: var(--sell-soft); transition: all .35s; }
+  .ak .s { font-size: 28px; font-weight: 700; color: var(--sell); }
+  .ak.blk { border-color: var(--buy); background: var(--buy-soft); } .ak.blk .s { color: var(--buy); }
+  .ak.wrn { border-color: var(--warn); background: var(--warn-soft); } .ak.wrn .s { color: var(--warn); }
+  .defs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
+  .df { font-size: 28px; padding: 8px 14px; border-radius: 10px; background: var(--panel); border: 1px dashed var(--line); color: var(--text-2); }
+  .df.on { border: 1px solid var(--gold); background: var(--gold-soft); color: var(--text); }
+  .df.on::before { content: "● "; color: var(--gold); }
+  .meter { display: flex; flex-direction: column; gap: 14px; font-size: 30px; }
+  .bar { height: 46px; border-radius: 10px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--line); }
+  .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--buy), var(--warn)); transition: width .4s; }
+  .cnt { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 34px; }
+  /* score */
+  .sc { display: grid; grid-template-columns: 640px 1fr; gap: 32px; }
+  .sig { display: flex; flex-direction: column; gap: 8px; }
+  .sig .r { display: flex; justify-content: space-between; padding: 8px 16px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); font-size: 30px; transition: all .3s; }
+  .sig .r .p { font-family: var(--mono); font-weight: 700; }
+  .sig .r.on { border-color: var(--gold); background: var(--gold-soft); }
+  .gauge { position: relative; height: 70px; border-radius: 12px; overflow: hidden; display: grid; grid-template-columns: 30fr 40fr 30fr; font-size: 28px; }
+  .gauge div { display: flex; align-items: center; justify-content: center; font-weight: 700; color: #0d0e10; }
+  .needle { position: absolute; top: -14px; width: 6px; height: 98px; background: #fff; border-radius: 3px; transition: left .4s; box-shadow: 0 0 0 3px rgba(0,0,0,.4); }
+  .calc { font-family: var(--mono); font-size: 34px; line-height: 1.6; }
+  /* recovery */
+  .rec { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
+  .rec .card { padding: 14px 14px; font-size: 28px; text-align: center; }
+  .rec .card b { display: block; font-family: var(--mono); color: var(--gold); font-size: 30px; }
+  /* svg */
+  svg .box { fill: #16181c; stroke: #2c3038; stroke-width: 2; }
+  svg .box.on { fill: rgba(240,185,11,.16); stroke: #f0b90b; stroke-width: 4; }
+  svg .box.red { fill: rgba(246,70,93,.16); stroke: #f6465d; stroke-width: 4; }
+  svg .box.grn { fill: rgba(46,189,133,.14); stroke: #2ebd85; stroke-width: 4; }
+  svg .box.blu { fill: rgba(91,156,255,.14); stroke: #5b9cff; stroke-width: 4; }
+  svg .ln { stroke: #9ea3ad; stroke-width: 3; fill: none; }
+  svg .ln.hot { stroke: #f6465d; stroke-width: 6; }
+  svg .ln.dim { opacity: .2; }
+  svg text.t { font-size: 34px; } svg text.s { font-size: 26px; fill: #9ea3ad; }
+  /* case */
+  .flowc { display: grid; grid-template-columns: 1fr 50px 1fr 50px 1fr 50px 1fr; align-items: center; }
+  .cn { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 14px; font-size: 30px; text-align: center; opacity: .25; transition: all .35s; }
+  .cn.cause { opacity: 1; border-color: var(--warn); background: var(--warn-soft); }
+  .cn.hit { opacity: 1; border-color: var(--sell); background: var(--sell-soft); }
+  .cn.fix { opacity: 1; border-color: var(--buy); background: var(--buy-soft); }
+  .ca { height: 4px; background: var(--text-2); position: relative; margin: 0 6px; }
+  .ca::after { content: ""; position: absolute; right: -2px; top: -8px; border: 10px solid transparent; border-left: 14px solid var(--text-2); border-right: 0; }
+  .out { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 22px; }
+  .out .card { font-size: 30px; padding: 18px 24px; opacity: .25; transition: all .35s; }
+  .out .card.show { opacity: 1; }
+  .fpfn { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .fpfn .card { font-size: 30px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="B03" data-title="账户安全：盗号攻击链与逐层防御">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 幕后核心</div>
+    <h1>账户安全：盗号<span class="hl">攻击链</span>与逐层防御</h1>
+    <div class="ch" data-step="0">
+      <div class="n">信息泄露</div><div class="a"></div><div class="n">获取凭证</div><div class="a"></div><div class="n">登录</div><div class="a"></div>
+      <div class="n">改安全设置</div><div class="a"></div><div class="n">加提币地址</div><div class="a"></div><div class="n">提币</div>
+    </div>
+    <div class="two" data-step="1">
+      <div class="card sell">攻击者<div class="big2 down">6 步都要走完</div></div>
+      <div class="card buy">平台<div class="big2 up">拦住 1 步就够</div></div>
+    </div>
+    <div class="chips" data-step="2">
+      <span class="chip gold">① 攻击链</span><span class="chip gold">② 防线分层</span><span class="chip gold">③ 风险评分</span><span class="chip gold">④ 冷却与恢复</span><span class="chip gold">⑤ 案例与权衡</span>
+    </div>
+    <ol class="say">
+      <li>大家好。这一集讲账户接管，也就是 ATO，攻击者控制了不属于他的账户。上一集讲平台被攻破，这一集讲用户账户被盗。</li>
+      <li>先记住一个不对称。攻击者要走完整条攻击链，才能拿走资产。平台只需要拦住其中一步。</li>
+      <li>这一集分五段。攻击链，防线分层，风险评分，冷却期与账户恢复，最后是真实案例和权衡。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="盗号攻击链" data-onstep="chainStep">
+    <div class="kicker">01 · 威胁模型：盗号攻击链</div>
+    <h2>小偷进小区，偷走保险箱</h2>
+    <div class="meta" id="meta">
+      <div class="card"><b>门禁卡</b>密码</div><div class="card"><b>骗过保安</b>登录风控</div><div class="card"><b>换门锁</b>改 2FA、邮箱</div><div class="card"><b>改快递地址</b>加白名单</div><div class="card"><b>寄走</b>提币</div>
+    </div>
+    <div class="ch" id="mainCh">
+      <div class="n">① 信息泄露<small>泄露、钓鱼、木马</small></div><div class="a"></div>
+      <div class="n">② 获取凭证<small>撞库、钓鱼站、SIM</small></div><div class="a"></div>
+      <div class="n">③ 登录<small>账户</small></div><div class="a"></div>
+      <div class="n">④ 改安全设置<small>2FA、邮箱、反钓鱼码</small></div><div class="a"></div>
+      <div class="n">⑤ 加地址<small>攻击者提币地址</small></div><div class="a"></div>
+      <div class="n">⑥ 提币<small>资产离开</small></div>
+    </div>
+    <div class="branch" id="branch">
+      <div class="card warn">支线 A：从 ③ 登录 → <b>盗用 API Key 刷单</b>，帮攻击者拉盘出货</div>
+      <div class="card warn">支线 B：从 ① 泄露 → <b>冒充客服</b>，诱导用户自己转账</div>
+    </div>
+    <ol class="say">
+      <li>打个比方。盗号像小偷进小区偷保险箱。他先拿到门禁卡，再骗过保安。然后换掉你家门锁，改掉你的快递地址，最后把东西寄走。</li>
+      <li>对应到交易所。第一步信息泄露，比如数据库泄露、钓鱼、木马。第二步获取凭证，比如撞库、钓鱼站、SIM 卡劫持。第三步，登录账户。</li>
+      <li>第四步，修改安全设置。改 2FA、改邮箱、关反钓鱼码。这是最强的信号。正常用户很少在新设备登录后，马上改 2FA。</li>
+      <li>第五步，加入攻击者的提币地址。第六步，发起提币。好的物业把最严的检查放在寄走东西这一步，而不是小区门口。</li>
+      <li>还有两条支线绕开了提币。一条是盗用 API Key 刷单，帮攻击者拉盘出货。一条是冒充客服，诱导用户自己转账。所以只守提币不够。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="攻击剧本">
+    <div class="kicker">01 · 攻击剧本与入口</div>
+    <h2>每个剧本绕过一把锁</h2>
+    <table class="t" style="table-layout:fixed">
+      <tr><th style="width:300px">剧本</th><th style="width:400px">攻击者拿到什么</th><th style="width:320px">绕过了什么</th><th>最有效的防线</th></tr>
+      <tr data-step="0"><td class="hl">钓鱼站</td><td>密码 + 实时转发 2FA 码</td><td>TOTP 2FA</td><td>Passkey、反钓鱼码</td></tr>
+      <tr data-step="0"><td class="hl">撞库</td><td>别处泄露的同一密码</td><td>密码</td><td>新设备二次验证、风险评分</td></tr>
+      <tr data-step="1"><td class="hl">SIM 卡劫持</td><td>手机号 → 短信验证码</td><td>短信 2FA</td><td>短信不作唯一因素、冷却</td></tr>
+      <tr data-step="1"><td class="hl">恶意浏览器插件</td><td>页面会话或 API Key</td><td>登录环节</td><td>IP 白名单、权限分离</td></tr>
+      <tr data-step="2"><td class="hl">客服冒充</td><td>用户的信任</td><td>全部技术防线</td><td>官方验证渠道、反诈弹窗</td></tr>
+      <tr data-step="2"><td class="hl">地址投毒</td><td>用户复制粘贴习惯</td><td>用户自己的核对</td><td>地址相似度提示、白名单</td></tr>
+    </table>
+    <div class="card info" data-step="2" style="font-size:30px;padding:16px 26px">地址投毒：首尾字符相同的地址 + 小额或零额转账 → 用户从历史记录<b>复制错地址</b></div>
+    <ol class="say">
+      <li>第二步的具体手法，我们叫攻击剧本。钓鱼站拿到密码，还能实时转发 2FA 码，绕过 TOTP。最有效的是 Passkey 和反钓鱼码。撞库用的是别处泄露的同一密码，靠新设备二次验证和风险评分。</li>
+      <li>SIM 卡劫持，把你的手机号转到攻击者的卡上，短信验证码就失守了。所以短信不能做唯一因素。恶意浏览器插件偷走会话或 API Key，要靠 IP 白名单和权限分离。</li>
+      <li>客服冒充骗的是信任，绕过全部技术防线。地址投毒，是生成首尾相同的地址，再给你转一笔小额或零额。你从历史记录里复制，就复制到了攻击者的地址。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="四层防线">
+    <div class="kicker">02 · 防线分层</div>
+    <h2>越靠近资金出口，防线越严</h2>
+    <div class="col" style="gap:12px">
+      <div class="lyr" data-step="0"><b>① 识别：是不是本人</b><span class="c">反钓鱼码、Passkey</span><span class="m">漏：撞库、木马</span></div>
+      <div class="lyr" data-step="1"><b>② 登录风控</b><span class="c">设备指纹、IP 信誉、新设备二次验证</span><span class="m">漏：钓鱼站实时转发</span></div>
+      <div class="lyr" data-step="2"><b>③ 敏感操作</b><span class="c">改密或改 2FA 后冷却、行为评分</span><span class="m">漏：不改设置直接提</span></div>
+      <div class="lyr exit" data-step="2"><b>④ 资金出口</b><span class="c">新地址冷却、邮件确认、反诈弹窗</span><span class="m">漏：邮箱也被攻破</span></div>
+    </div>
+    <div class="row" data-step="3">
+      <div class="card info" style="flex:1;font-size:30px;padding:16px 24px">API Key 不走网页登录 → 限制加在 <b>Key 本身</b>：IP 白名单、权限分离</div>
+      <div class="card gold" style="flex:1;font-size:30px;padding:16px 24px">提币频率 ≪ 登录频率 → <b>出口处可以更严</b></div>
+    </div>
+    <ol class="say">
+      <li>第二段，防线分层，一共四层。第一层是识别，你是不是本人。反钓鱼码让用户认出假邮件。Passkey 让钓鱼站拿不到有效签名。它漏过撞库和木马，因为用户根本没访问钓鱼站。</li>
+      <li>第二层是登录风控。设备指纹、IP 信誉，新设备或异地登录要二次验证。它漏过钓鱼站实时转发的验证码。</li>
+      <li>第三层是敏感操作，第四层是资金出口。改密码、改 2FA 后的冷却期，新地址冷却，提币邮件确认，反诈弹窗。冷却期不阻止攻击者登录，它是在给真用户和风控争取时间。</li>
+      <li>API Key 单独画出来。API 请求不走网页登录，限制必须加在 Key 本身。为什么越靠近出口越严？因为正常用户提币的频率，远低于登录。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="攻防实验" data-onstep="atoStep">
+    <div class="kicker">02 · 攻防实验 · 逐个打开防线 · 摩擦为示意</div>
+    <h2 id="atoH">六个剧本 vs 防线开关</h2>
+    <div class="lab">
+      <div>
+        <div class="atk" id="atk"></div>
+        <div class="defs" id="defs"></div>
+      </div>
+      <div class="card meter">
+        <div><b>拦截</b></div>
+        <div class="cnt"><span id="cntB" class="up"></span><span id="cntW" class="hl"></span><span id="cntL" class="down"></span></div>
+        <div style="margin-top:6px"><b>正常用户摩擦</b> <span class="muted" style="font-size:26px">示意</span></div>
+        <div class="bar"><i id="fr"></i></div>
+        <div id="frT" class="muted" style="font-size:28px;min-height:126px"></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>来做个攻防实验。左上是 6 个攻击剧本，下面是防线开关，右边是正常用户的摩擦。现在一道防线都没开，6 个剧本全部得手。</li>
+      <li>打开设备指纹和新设备二次验证。撞库被拦住了。代价是换设备时多一步，大约 30 秒。</li>
+      <li>再打开 Passkey。它绑定网站域名，钓鱼站拿不到可用的签名。有意思的是，摩擦反而下降了。首次设置约 1 分钟，之后比输密码还快。</li>
+      <li>再加上改设置后的提币冷却。SIM 卡劫持改了手机号，也要等 24 到 48 小时才能提币。真用户有时间发现异常。代价是这段时间不能提币。</li>
+      <li>再给 API Key 加 IP 白名单。恶意插件偷到 Key，换一台服务器就用不了。开发者只需配置一次。</li>
+      <li>最后加上地址相似度提示和反诈弹窗。地址投毒会被提示出来。客服冒充却只能提醒，因为操作的是用户本人。技术防线不能代替用户做决定。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="风险评分" data-onstep="scoreStep">
+    <div class="kicker">03 · 风险评分与挑战升级 · 分值和阈值均为示例</div>
+    <h2>放行、挑战升级，还是拦截？</h2>
+    <div class="sc">
+      <div class="sig" id="sig"></div>
+      <div class="col" style="gap:22px">
+        <div style="position:relative"><div class="gauge"><div style="background:#2ebd85">&lt; 30 放行</div><div style="background:#f0a340">30–69 挑战升级</div><div style="background:#f6465d">≥ 70 拦截</div></div><span class="needle" id="needle"></span></div>
+        <div class="card calc" id="calc"></div>
+        <div class="card" id="scNote" style="font-size:30px"></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>第三段，风险评分。风险服务根据设备、IP、时间和操作类型，算出 0 到 100 的风险分。低于 30 放行，30 到 69 挑战升级，70 及以上拦截。这些数字都是示例。</li>
+      <li>示例甲。新设备登录，加 25 分。但他用的是已绑定的 Passkey，减 30 分。合计负 5 分，低于 30，直接放行。</li>
+      <li>示例乙。新设备加 25，IP 国家和历史不同再加 15，合计 40 分。进入中间档，系统要求补一次 Passkey 或邮件验证。通过后，再发一条安全通知。</li>
+      <li>示例丙。在乙的基础上，用了机房 IP，加 20。登录 10 分钟内就改安全设置，再加 30。合计 90 分，拦截并锁定敏感操作。</li>
+      <li>注意分工。风险服务只给分数，身份服务决定怎么挑战，两边能单独调阈值。中间档最关键，它把误杀变成了多一步验证。真实系统通常是规则加机器学习，新规则先跑影子模式。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="敏感操作状态机" data-onstep="smStep">
+    <div class="kicker">04 · 敏感操作状态机</div>
+    <h2>冷却期：能交易，不能提币</h2>
+    <svg viewBox="0 0 1640 420" width="1640" height="420">
+      <defs>
+        <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9ea3ad"/></marker>
+        <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f6465d"/></marker>
+      </defs>
+      <g id="sm"></g>
+    </svg>
+    <div class="card" id="smNote" style="font-size:31px"></div>
+    <ol class="say">
+      <li>第四段，敏感操作状态机。账户平时处在正常状态。风险分进入中间档，就转到挑战状态。挑战通过回到正常，连续失败就锁定。</li>
+      <li>改密码、改 2FA、改邮箱或手机号，会进入冷却状态。冷却期里，用户可以登录、交易、充值，只是不能提币。这是体验和安全的折中。</li>
+      <li>风险分进入高档，或者用户自助冻结，账户直接锁定。锁定后只能走恢复流程，人工审核通过才回到正常。恢复必须比正常登录更严格。</li>
+      <li>攻击者最理想的路径，是改设置进入冷却，等冷却结束，再提币。所以冷却期越长，真用户越有机会发现异常。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="账户恢复">
+    <div class="kicker">04 · 账户恢复 Account Recovery · 业界通用做法</div>
+    <h2>恢复流程，是攻击者最爱的后门</h2>
+    <div class="card sell" data-step="0" style="font-size:31px">设计目的就是：<b>在用户没有正常凭证时放行</b></div>
+    <div class="rec">
+      <div class="card" data-step="1"><b>1</b>提交<br>恢复申请</div>
+      <div class="card" data-step="1"><b>2</b>活体人脸<br>比对 KYC</div>
+      <div class="card" data-step="1"><b>3</b>设备与 IP<br>风险分</div>
+      <div class="card" data-step="1"><b>4</b>高风险<br>人工复核</div>
+      <div class="card gold" data-step="2"><b>5</b>通知原邮箱<br>和原手机</div>
+      <div class="card gold" data-step="2"><b>6</b>等待期<br>48 小时 示例</div>
+      <div class="card gold" data-step="2"><b>7</b>完成后<br>限制提币</div>
+    </div>
+    <div class="card warn" data-step="3" style="font-size:31px">⚠ 恢复不能只靠客服判断：社会工程擅长制造紧急感——“我的仓位马上要被强平”</div>
+    <ol class="say">
+      <li>再看账户恢复。用户丢了 2FA 或邮箱，要重新拿回账户。这个流程是攻击者最喜欢的后门。因为它的设计目的，就是在没有正常凭证时放行。</li>
+      <li>业界通用做法是这样的。提交申请后，先做活体人脸识别，和 KYC 照片比对。再查申请设备和 IP 的风险分。高风险申请由安全团队人工复核。</li>
+      <li>然后通知原邮箱和原手机号，有人在申请恢复你的账户。再等一段时间，示例是 48 小时，让原用户有机会拒绝。恢复完成后，还要限制提币一段时间。</li>
+      <li>注意，恢复绝不能只靠客服判断。社会工程攻击者擅长制造紧急感。比如，他会说自己的仓位马上要被强平了。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="规则表">
+    <div class="kicker">05 · 规则：公开事实与业界做法</div>
+    <h2>哪些是币安公开的，哪些是通用做法？</h2>
+    <table class="t" style="table-layout:fixed">
+      <tr><th style="width:280px">规则</th><th>条件 → 动作</th><th style="width:330px">口径</th></tr>
+      <tr data-step="0"><td class="hl">改密后冷却</td><td>改密码 → <b>24 小时</b>内禁止提币</td><td><span class="chip gold">公开 · 币安美国站</span></td></tr>
+      <tr data-step="0"><td class="hl">重置 2FA 冷却</td><td>重置 2FA → <b>48 小时</b>禁止提币和 P2P 卖出</td><td><span class="chip gold">公开 · 币安美国站</span></td></tr>
+      <tr data-step="1"><td class="hl">新地址冷却</td><td>白名单新地址 → 24 小时内不能提 <span class="muted">示例</span></td><td><span class="chip">业界通用</span></td></tr>
+      <tr data-step="1"><td class="hl">新设备提币</td><td>新设备 &lt; 24 小时 + 提币 → 挑战 + 人工</td><td><span class="chip">业界通用</span></td></tr>
+      <tr data-step="2"><td class="hl">API Key 提币</td><td>开启提币权限 → <b>必须绑 IP 白名单</b></td><td><span class="chip gold">公开 · API 管理页</span></td></tr>
+      <tr data-step="2"><td class="hl">地址相似度</td><td>首尾相同、中间不同 → 投毒警告</td><td><span class="chip">业界通用</span></td></tr>
+    </table>
+    <div class="card info" data-step="3" style="font-size:30px;padding:16px 26px">截至 2026 年公开资料：币安自 <b>2023 年</b>加入 FIDO 联盟，支持 <b>Passkey</b> 登录；时长以官网为准</div>
+    <ol class="say">
+      <li>第五段，规则表。先看公开事实。截至 2026 年公开资料，币安美国站帮助中心写明了两条。改密码后，24 小时不能提币。全球站有类似限制，时长以官网为准。重置 2FA 后，48 小时内禁止提币和 P2P 卖出。</li>
+      <li>下面是业界通用做法。白名单新增地址，示例是 24 小时内不能向它提币。新设备登录不满 24 小时就提币，要挑战升级加人工审核。</li>
+      <li>开启 API Key 的提币权限，必须绑定 IP 白名单。这是币安 API 管理页的公开要求。目标地址和历史地址首尾相同、中间不同，就弹出投毒警告。</li>
+      <li>另外，根据同一时点的公开资料，币安自 2023 年起加入 FIDO 联盟。它支持 Passkey 登录。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="监控指标">
+    <div class="kicker">05 · 监控指标 · 告警条件为示例</div>
+    <h2>撞库开始时，曲线会先告诉你</h2>
+    <table class="t" style="table-layout:fixed">
+      <tr><th style="width:460px">指标</th><th style="width:480px">告警条件 · 示例</th><th>含义</th></tr>
+      <tr data-step="0"><td>登录失败率</td><td>5 分钟内上升 3 倍</td><td>撞库攻击开始</td></tr>
+      <tr data-step="0"><td>同一 IP 尝试的账户数</td><td>1 小时 &gt; 50 个</td><td>撞库来源</td></tr>
+      <tr data-step="0"><td>安全设置修改量</td><td>1 小时内是基线 5 倍</td><td>钓鱼活动或数据泄露</td></tr>
+      <tr data-step="1"><td>挑战通过率</td><td>突然下降</td><td>误杀上升，或攻击者试探</td></tr>
+      <tr data-step="1"><td>账户恢复申请量</td><td>单日是基线 3 倍</td><td>针对恢复流程的攻击</td></tr>
+      <tr data-step="1"><td>用户自助冻结次数</td><td>突然上升</td><td>用户发现异常，可能钓鱼潮</td></tr>
+      <tr data-step="2" style="background:var(--gold-soft)"><td class="hl">正常用户摩擦分</td><td class="hl">季度上升 &gt; 20%</td><td class="hl">防线过严，流失风险</td></tr>
+    </table>
+    <ol class="say">
+      <li>防线还要有监控。登录失败率 5 分钟内上升 3 倍，说明撞库开始了。同一个 IP 1 小时尝试超过 50 个账户，就是撞库来源。安全设置修改量到了基线的 5 倍，可能是钓鱼潮或数据泄露。</li>
+      <li>挑战通过率突然下降，要么误杀上升，要么攻击者在试探。恢复申请量是基线的 3 倍，有人在攻击恢复流程。用户自助冻结突然变多，说明用户发现了异常。</li>
+      <li>最后一个指标方向相反，正常用户的摩擦分。季度上升超过 20%，说明防线过严，用户可能流失。这些阈值都是示例。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="案例：2018 VIA" data-onstep="viaStep">
+    <div class="kicker">真实案例 · 据公开报道 · 2018 年 3 月</div>
+    <h2>一笔提币都没有，价值照样被转走</h2>
+    <div class="flowc">
+      <div class="cn" data-i="1">仿冒域名钓鱼<br><small class="muted">收集大量凭证</small></div><div class="ca"></div>
+      <div class="cn" data-i="2">为被盗账户<br>创建 API Key</div><div class="ca"></div>
+      <div class="cn" data-i="3">被盗账户<br>高价买入 VIA</div><div class="ca"></div>
+      <div class="cn" data-i="4">攻击者预充值<br>账户卖出</div>
+    </div>
+    <div class="out">
+      <div class="card sell" id="o1"><b>影响</b><br>价值经<b>交易</b>转走，只守提币的风控会漏</div>
+      <div class="card buy" id="o2"><b>拦截</b><br>自动风控发现异常交易 → <b>暂停提币</b>，攻击者未提走；悬赏 <b>25 万美元</b></div>
+      <div class="card gold" id="o3"><b>改进</b><br>API Key 权限分离、<b>IP 白名单</b>、交易侧异常监控</div>
+    </div>
+    <div class="card" id="viaNote" style="font-size:30px;padding:16px 26px"></div>
+    <ol class="say">
+      <li>来看真实案例。据公开报道，2018 年 3 月，攻击者用仿冒域名钓鱼。他们收集了大量币安用户的凭证。</li>
+      <li>攻击者为这些账户创建交易 API Key。然后用被盗账户高价买入 VIA，同时用自己预先充值的账户卖出。</li>
+      <li>注意，这条链上没有一笔从被盗账户提币。价值通过交易，从受害者转给了攻击者。只守提币的风控会漏掉它。</li>
+      <li>结果呢？币安的自动风控发现了异常交易，暂停了提币，攻击者没有提走资产。币安随后悬赏 25 万美元征集线索。</li>
+      <li>改进方向有三个。API Key 权限分离，IP 白名单，交易侧的异常监控。有了 IP 白名单，攻击者的服务器根本用不了这些 Key。</li>
+      <li>再看 2019 年 5 月。攻击者拿到大量用户的 API Key、2FA 码等数据。一次提走约 7000 BTC。那次没能在提币前拦住，由 SAFU 覆盖。两个案例的入口都是用户凭证。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="权衡">
+    <div class="kicker">06 · 局限与权衡</div>
+    <h2>防线越多，正常用户越烦</h2>
+    <div class="stack">
+      <div class="layer" data-step="0" data-until="1">
+        <table class="t" style="table-layout:fixed">
+          <tr><th style="width:220px">场景</th><th style="width:400px">偏安全</th><th style="width:380px">偏体验</th><th>平衡建议</th></tr>
+          <tr><td class="hl">登录</td><td>每次都要 2FA</td><td>已知设备免 2FA</td><td>已知设备 + 低风险免验证</td></tr>
+          <tr><td class="hl">提币</td><td>每笔邮件确认</td><td>白名单免确认</td><td>白名单小额免，大额确认</td></tr>
+          <tr><td class="hl">改设置</td><td>冷却 72 小时</td><td>不冷却</td><td>24–48 小时，可交易不可提</td></tr>
+          <tr data-step="1"><td class="hl">API Key</td><td>永不给提币权限</td><td>自由开启</td><td>开启必须绑 IP 白名单</td></tr>
+          <tr data-step="1"><td class="hl">恢复账户</td><td>全人工，耗时一周</td><td>邮件即可恢复</td><td>活体 + 原渠道通知 + 等待期</td></tr>
+        </table>
+      </div>
+      <div class="layer col" data-step="2" style="gap:24px">
+        <div class="fpfn">
+          <div class="card warn"><h3>误杀 False Positive</h3>正常用户被拦 → 投诉、流失<br><b>提币</b>：宁可多误杀</div>
+          <div class="card sell"><h3>漏放 False Negative</h3>攻击者被放行 → 资产损失、赔付<br><b>登录</b>：可多容忍漏放，后面还有防线</div>
+        </div>
+        <div class="card buy" data-step="3" style="font-size:31px">最好的防线同时提升安全和体验：<b>Passkey</b> 防钓鱼，登录也更快</div>
+        <div class="card" data-step="3" style="font-size:31px">防不住的部分：<b>客服冒充</b>让用户自己操作 → 反诈弹窗、官方验证渠道、用户教育</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>第六段，权衡。每道防线都有成本。登录，已知设备加低风险分可以免验证。提币，白名单地址小额免确认，大额要确认。改设置，冷却 24 到 48 小时，期间可以交易，不能提币。</li>
+      <li>API Key 可以开提币权限，但必须绑 IP 白名单。账户恢复，用活体识别加原渠道通知加等待期，而不是一周的全人工。</li>
+      <li>再看误杀和漏放。平台通常对提币容忍更多误杀，对登录容忍更多漏放。因为登录被漏放，后面还有防线。提币被漏放，就没有了。</li>
+      <li>最好的防线，同时提升安全和体验，Passkey 就是例子。防不住的部分是客服冒充，只能靠反诈弹窗、官方验证渠道和用户教育。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">攻击者要走完<span class="hl">整条链</span>，平台拦住一步就够；支线让只守提币不够。</li>
+      <li data-step="1">风险评分三档：放行、<span class="hl">挑战升级</span>、拦截；中间档把误杀变成多一步。</li>
+      <li data-step="2"><span class="hl">冷却期</span>和恢复流程为真用户争取时间；越靠近出口越严。</li>
+    </ul>
+    <div class="card info" data-step="3"><b>下集 B04 · 系统对账</b>：全链路对账与提币熔断</div>
+    <ol class="say">
+      <li>最后小结三点。第一，攻击者要走完整条攻击链，平台只要拦住一步。但 API Key 和客服冒充两条支线，让只守提币不够。</li>
+      <li>第二，风险评分分三档，放行、挑战升级、拦截。中间档把误杀变成多一步验证。</li>
+      <li>第三，冷却期和严格的恢复流程，都在为真用户争取时间。防线越靠近资金出口，就越严格。</li>
+      <li>账户安全防的是做坏事的人。可如果系统自己算错了账呢？下一集，我们讲全链路对账，以及对账不平时的提币熔断。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  function chainStep(el, st) {
+    const ns = el.querySelectorAll('#mainCh .n');
+    const lit = [[], [0, 1, 2], [0, 1, 2, 3], [0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4, 5]][st];
+    ns.forEach((n, i) => {
+      n.className = 'n' + (lit.includes(i) ? (i === 3 && st >= 2 ? ' sig' : ' hot') : (st === 0 ? '' : ' dim'));
+    });
+    el.querySelector('#meta').style.opacity = st === 0 || st === 3 ? 1 : .35;
+    el.querySelector('#branch').style.opacity = st >= 4 ? 1 : 0;
+  }
+  function atoStep(el, st) {
+    const atk = [['钓鱼站', 2], ['撞库', 1], ['SIM 卡劫持', 3], ['恶意插件', 4], ['客服冒充', -5], ['地址投毒', -5]];
+    el.querySelector('#atk').innerHTML = atk.map(([n, k]) => {
+      let c = '', s = '得手 ✗';
+      if (k > 0 && st >= k) { c = 'blk'; s = '拦截 ✓'; }
+      if (k < 0 && st >= -k) { c = 'wrn'; s = n === '客服冒充' ? '仅能提醒 ⚠' : '提示警告 ⚠'; }
+      return `<div class="ak ${c}">${n}<div class="s">${s}</div></div>`;
+    }).join('');
+    const defs = [['设备指纹 + 二次验证', 1], ['Passkey', 2], ['改设置后冷却', 3], ['API Key IP 白名单', 4], ['地址相似度提示', 5], ['反诈弹窗', 5]];
+    el.querySelector('#defs').innerHTML = defs.map(([n, k]) => `<div class="df ${st >= k ? 'on' : ''}">${n}</div>`).join('');
+    const b = atk.filter(([, k]) => k > 0 && st >= k).length, w = atk.filter(([, k]) => k < 0 && st >= -k).length;
+    el.querySelector('#cntB').textContent = '✓ ' + b; el.querySelector('#cntW').textContent = '⚠ ' + w; el.querySelector('#cntL').textContent = '✗ ' + (6 - b - w);
+    el.querySelector('#fr').style.width = [0, 22, 14, 42, 44, 52][st] + '%';
+    el.querySelector('#frT').innerHTML = [
+      '尚未开启任何防线',
+      '+ 换设备时多一步，约 30 秒',
+      '− Passkey：首次约 1 分钟，之后<b class="up">比密码快</b>',
+      '+ 改设置后 24–48 小时<b>不能提币</b>',
+      '+ 开发者配置一次',
+      '+ 新地址提示、首次大额弹窗',
+    ][st];
+    el.querySelector('#atoH').textContent = st === 0 ? '六个剧本 vs 防线开关' : st === 2 ? 'Passkey：拦截更多，摩擦反而下降' : st >= 5 ? '客服冒充：技术防线只能提醒' : '每开一道防线，拦一个剧本';
+  }
+  function scoreStep(el, st) {
+    const sig = [['新设备指纹', '+25'], ['IP 国家与历史不同', '+15'], ['机房 IP 或匿名代理', '+20'], ['登录 10 分钟内改安全设置', '+30'], ['登录后直接全额提币', '+25'], ['输入节奏与历史差异大', '+10'], ['使用已绑定 Passkey', '−30'], ['已知设备 + 常用 IP', '−20']];
+    const on = [[], [0, 6], [0, 1], [0, 1, 2, 3], [0, 1, 2, 3]][st];
+    el.querySelector('#sig').innerHTML = sig.map((s, i) => `<div class="r ${on.includes(i) ? 'on' : ''}"><span>${s[0]}</span><span class="p ${s[1][0] === '+' ? 'down' : 'up'}">${s[1]}</span></div>`).join('');
+    const C = [
+      ['风险服务输出 0–100', 50, '', ''],
+      ['甲：+25 − 30 = <b class="up">−5</b>', 0, '&lt; 30 → <b class="up">放行</b>', 'buy'],
+      ['乙：+25 + 15 = <b class="hl">40</b>', 40, '30–69 → <b class="hl">挑战升级</b>：Passkey 或邮件验证 + 安全通知', 'gold'],
+      ['丙：40 + 20 + 30 = <b class="down">90</b>', 90, '≥ 70 → <b class="down">拦截</b>，锁定敏感操作', 'sell'],
+      ['丙：40 + 20 + 30 = <b class="down">90</b>', 90, '风险服务只给分；身份服务选挑战方式。规则 + 机器学习，新规则先跑<b>影子模式</b>', 'info'],
+    ][st];
+    el.querySelector('#calc').innerHTML = C[0];
+    el.querySelector('#needle').style.left = `calc(${C[1]}% - 3px)`;
+    el.querySelector('#needle').style.display = st === 0 ? 'none' : 'block';
+    const n = el.querySelector('#scNote'); n.className = 'card ' + C[3]; n.innerHTML = C[2] || '信号：设备、IP、时间、操作类型';
+  }
+  function smStep(el, st) {
+    const B = { N: [0, 70, '正常', 'Normal'], C: [446, 70, '挑战', 'Challenged'], L: [892, 70, '锁定', 'Locked'], R: [1340, 70, '恢复', 'Recovery'], D: [0, 300, '冷却', 'Cooldown'] };
+    const cls = { 0: { N: 'grn', C: 'on' }, 1: { N: 'grn', D: 'blu' }, 2: { L: 'red', R: 'on' }, 3: { N: 'grn', D: 'red' } }[st];
+    let g = '';
+    for (const [k, [x, y, t, e]] of Object.entries(B)) {
+      g += `<rect class="box ${cls[k] || ''}" x="${x}" y="${y}" width="300" height="100" rx="16"/><text class="t" x="${x + 150}" y="${y + 50}" text-anchor="middle">${t}</text><text class="s" x="${x + 150}" y="${y + 84}" text-anchor="middle">${e}</text>`;
+    }
+    const act = { 0: ['nc', 'cn', 'cl'], 1: ['nd', 'dn'], 2: ['nl', 'lr', 'rn', 'rl'], 3: ['nd', 'dn', 'out'] }[st];
+    const E = [
+      ['nc', 'M300 105 L442 105', '中间档', 371, 92],
+      ['cn', 'M446 150 L304 150', '通过', 375, 192],
+      ['cl', 'M746 120 L888 120', '连续失败', 817, 106],
+      ['nl', 'M150 70 C150 10, 1042 10, 1042 66', '高分或用户自助冻结', 596, 36],
+      ['lr', 'M1192 120 L1336 120', '申请恢复', 1264, 106],
+      ['rl', 'M1340 155 L1196 155', '不通过', 1268, 194],
+      ['rn', 'M1490 170 L1490 240 L230 240 L230 174', '人工审核通过', 860, 230],
+      ['nd', 'M80 170 L80 296', '', 0, 0],
+      ['dn', 'M220 300 L220 174', '', 0, 0],
+    ];
+    E.forEach(([id, d, lab, lx, ly]) => {
+      const on = act.includes(id);
+      g += `<path class="ln ${on ? (st === 3 ? 'hot' : '') : 'dim'}" d="${d}" marker-end="url(#${on && st === 3 ? 'm2' : 'm1'})" style="${on && st !== 3 ? 'stroke:#f0b90b;stroke-width:5' : ''}"/>`;
+      if (lab) g += `<text class="s" x="${lx}" y="${ly}" text-anchor="middle" style="${on ? 'fill:#f0b90b' : 'opacity:.35'}">${lab}</text>`;
+    });
+    g += `<text class="s" x="330" y="335" style="${act.includes('nd') ? 'fill:#5b9cff' : 'opacity:.35'}">↓ 改密码、2FA、邮箱或手机号</text><text class="s" x="330" y="375" style="${act.includes('dn') ? 'fill:#5b9cff' : 'opacity:.35'}">↑ 冷却期结束</text>`;
+    if (st === 3) g += `<path class="ln hot" d="M300 380 L760 380" marker-end="url(#m2)"/><rect class="box red" x="770" y="335" width="250" height="80" rx="14"/><text class="t" x="895" y="387" text-anchor="middle" style="fill:#f6465d">提币</text>`;
+    el.querySelector('#sm').innerHTML = g;
+    const n = el.querySelector('#smNote');
+    n.className = 'card ' + ['', 'info', 'sell', 'warn'][st];
+    n.innerHTML = [
+      '风险分中间档 → <b>挑战</b>；通过回到正常，连续失败 → <b>锁定</b>',
+      '<b>冷却</b>：可以登录、交易、充值，<b>只是不能提币</b>——体验与安全的折中',
+      '<b>锁定</b>只能经<b>恢复</b>回到正常：恢复流程必须比正常登录更严格',
+      '攻击者的理想路径：正常 → 冷却 → 正常 → 提币。<b>冷却越长，真用户越有机会发现</b>',
+    ][st];
+  }
+  function viaStep(el, st) {
+    el.querySelectorAll('.cn').forEach(n => {
+      const i = +n.dataset.i;
+      n.className = 'cn' + (st >= 0 && i === 1 ? ' cause' : '') + (st >= 1 && i >= 2 ? (i === 2 ? ' cause' : ' hit') : '');
+    });
+    el.querySelector('#o1').classList.toggle('show', st >= 2);
+    el.querySelector('#o2').classList.toggle('show', st >= 3);
+    el.querySelector('#o3').classList.toggle('show', st >= 4);
+    const n = el.querySelector('#viaNote');
+    n.className = 'card' + (st >= 5 ? ' warn' : '');
+    n.innerHTML = st >= 5 ? '2019 年 5 月：用户 API Key、2FA 码等被窃 → 一次提走约 <b>7,000 BTC</b>，未在提币前拦截，SAFU 覆盖。入口同样是<b>用户凭证</b>'
+      : st >= 4 ? '有 IP 白名单：攻击者服务器不在名单内 → 第 2 步之后的利用被切断'
+      : '入口：<b>用户凭证</b>，不是平台私钥；细节以币安公告为准';
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

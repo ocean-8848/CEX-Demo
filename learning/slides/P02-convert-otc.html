@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P02 闪兑与 OTC</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .tight { padding: 18px 26px; font-size: 30px; }
+  .scene > h2 { font-size: 60px; }
+  table.t td, table.t th { padding: 12px 18px; }
+  table.t tr { transition: background .3s, opacity .3s; }
+  table.t tr.cur td { background: var(--gold-soft); }
+  .cv { width: 620px; background: var(--panel); border: 2px solid var(--line); border-radius: 22px; padding: 28px 34px; display: flex; flex-direction: column; gap: 18px; font-size: 30px; }
+  .cv .rowx { display: flex; justify-content: space-between; align-items: baseline; }
+  .cv .amt { font-family: var(--mono); font-size: 52px; font-weight: 700; }
+  .cv .btn { background: var(--gold); color: #111; font-weight: 700; text-align: center; border-radius: 12px; padding: 14px; font-size: 32px; }
+  .code { font-size: 28px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="P02" data-title="闪兑与 OTC：平台报价背后的风险">
+
+  <!-- 1 开场 -->
+  <section class="scene" data-title="开场" data-onstep="hookStep">
+    <div class="kicker">CEX 产品深潜 · P02</div>
+    <h1 style="font-size:88px">闪兑与 OTC：<span class="hl">零手续费</span>谁买单</h1>
+    <div class="row" style="align-items:flex-start">
+      <div class="cv" data-step="0">
+        <div class="rowx"><span class="muted">支付</span><span class="amt">10,000 <small style="font-size:30px">USDT</small></span></div>
+        <div class="rowx"><span class="muted">获得</span><span class="amt hl">3.99202 <small style="font-size:30px">ETH</small></span></div>
+        <div class="rowx"><span class="muted">报价</span><span class="mono">1 ETH = 2,505 USDT</span></div>
+        <div class="rowx"><span class="muted">手续费</span><span class="up" style="font-weight:700">0</span></div>
+        <div class="btn" id="hook-btn">确认 · 10 s</div>
+      </div>
+      <div class="col">
+        <div class="card tight" data-step="1"><span class="muted">订单簿中间价 · 示例</span><div class="mono" style="font-size:52px;font-weight:700">2,500</div></div>
+        <div class="card gold tight" data-step="1">差价 5 USDT / ETH ≈ <b>0.2%</b><br>10,000 × 0.2% ≈ <b class="hl">20 USDT</b> 就是费用</div>
+        <div class="card warn tight" data-step="2">仅讲系统设计，不构成投资建议 · 除标注公开资料外均为示例</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>打开闪兑，输入10000 USDT 换 ETH。页面给出一个报价，旁边一个倒计时，还写着零手续费。</li>
+      <li>那平台靠什么赚钱？示例里，订单簿中间价是2500，闪兑报价是2505。这5块钱的差，乘上数量，就是你付的费用，大约20 USDT。</li>
+      <li>这一集，我们拆开闪兑、大宗 OTC 和银行卡买币。先说明，本集内容不构成投资建议。除了公开资料，数字都是示例。</li>
+    </ol>
+  </section>
+
+  <!-- 2 路线图 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>对手方是平台，不是订单簿</h2>
+    <div class="grid3">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>闪兑 Convert<br><span class="muted">RFQ · 价差 · 逆向选择</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>大宗 OTC<br><span class="muted">交易台报价 · TWAP</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">3</span><div>快捷买币<br><span class="muted">银行卡 · 拒付 · 3DS</span></div></div>
+    </div>
+    <div class="card info tight" data-step="1">比喻：机场货币兑换柜台。牌价承诺 10 秒；大客户由经理单独问价 = OTC</div>
+    <div class="card sell tight" data-step="2">比喻失效处：加密价格每秒都在变 → 这 10 秒是平台<b>免费送出的选择权</b></div>
+    <ol class="say">
+      <li>本集分三段。闪兑，大宗 OTC，快捷买币。它们有一个共同点：用户的对手方是平台，或者平台指定的报价方。不是订单簿上的其他用户。</li>
+      <li>打个比方，闪兑像机场的货币兑换柜台。柜台报一个牌价，承诺10秒内按这个价卖给你。大客户来换100万，经理单独打电话问价，这就是 OTC。</li>
+      <li>比喻在一点上不成立。柜台牌价变得慢，加密价格每秒都在变。这10秒里，平台等于免费送出一个选择权。这是本集的核心问题。</li>
+    </ol>
+  </section>
+
+  <!-- 3 闪兑：用户看到什么 -->
+  <section class="scene" data-title="闪兑：用户看到什么">
+    <div class="kicker">Convert · 截至 2026 年币安公开资料</div>
+    <h2>闪兑的两种模式与报价有效期</h2>
+    <div class="row">
+      <div class="col">
+        <div class="card tight" data-step="0"><b>市价</b>：用 X 换 Y → 预览 → 报价 + 倒计时 → 确认<br><span class="up">币安声明闪兑不收手续费</span></div>
+        <div class="card tight" data-step="2"><b>限价</b>：设目标价和有效期<br><span class="muted">行情短暂触及限价，不一定成交</span></div>
+        <div class="card warn tight" data-step="3">FAQ：报价考虑<b>交易规模</b>且是实时价<br>→ 与现货最新成交价不同 · 零手续费 ≠ 零成本</div>
+      </div>
+      <div class="code" data-step="1" style="flex:0 0 640px">询价接口
+validTime   = 10s | 30s | 1m
+默认        = <span class="hl">10s</span>
+过期 → 重新询价
+
+限价单
+expiredType = 1 | 3 | 7 | 30 天</div>
+    </div>
+    <ol class="say">
+      <li>先看闪兑。根据币安公开资料，它有两种模式。市价模式，输入用什么换什么，点预览，页面给出报价和倒计时，点确认就成交。币安声明闪兑不收手续费。</li>
+      <li>报价有有效期。闪兑接口的询价请求，有效期可以选10秒、30秒或1分钟，默认10秒。过期就要重新询价。</li>
+      <li>限价模式，设一个目标价和有效期，接口里可选1天、3天、7天或30天。行情短暂碰到限价，订单也不一定成交。</li>
+      <li>币安 FAQ 还说明，闪兑价格和现货最新成交价不同。因为报价考虑了交易规模，而且是实时价格。所以零手续费，不等于零成本。</li>
+    </ol>
+  </section>
+
+  <!-- 4 资金流 -->
+  <section class="scene" data-title="闪兑的资金流" data-onstep="flowStep">
+    <div class="kicker">Money Flow · 示例</div>
+    <h2>先给用户币，再去市场补库存</h2>
+    <svg id="cflow" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>来看钱怎么走，数字是示例。用户接受报价，系统先冻结他的10000 USDT。</li>
+      <li>接着是一组原子分录。扣掉用户的 USDT，转进平台闪兑账户。同时从平台的 ETH 库存里，划3.992个 ETH 给用户。用户立刻拿到币，不用等对冲。</li>
+      <li>然后是平台自己的交易。它用收到的 USDT，去订单簿或外部做市商买回 ETH，回补库存。这一步可以晚几百毫秒，也可以和别的单合并。</li>
+      <li>出错点在库存。划币要求平台有足够的 ETH。库存不够，平台只能拒绝报价，或者先买后卖。</li>
+    </ol>
+  </section>
+
+  <!-- 5 RFQ 状态机 -->
+  <section class="scene" data-title="RFQ 状态机与倒计时" data-onstep="rfqStep">
+    <div class="kicker">RFQ State Machine · 业界通用做法</div>
+    <h2 id="rfq-h">一张报价的一生</h2>
+    <svg id="rfq" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>把它画成状态机。用户请求报价，进入已报价。报价里带着过期时间戳和签名，倒计时开始。</li>
+      <li>倒计时结束还没确认，进入已过期。已过期不扣任何资金，用户重新询价，拿一个新报价。</li>
+      <li>在有效期内确认，进入已接受。服务端校验签名和有效期，再检查余额和风控。不通过，就是已拒绝。</li>
+      <li>通过以后，账本原子划转成功，进入已成交。用户能看到的状态，到这里为止。</li>
+      <li>后面两个是平台内部状态。敞口进入对冲队列，叫待对冲。对冲单成交，叫已对冲。</li>
+      <li>注意一个细节。过期由服务端统一判断，用户端的倒计时只是显示。否则两边时钟不同步，判断就会出错。</li>
+    </ol>
+  </section>
+
+  <!-- 6 调用链 -->
+  <section class="scene" data-title="调用链" data-onstep="seqStep">
+    <div class="kicker">Call Chain · 示意服务名</div>
+    <h2 id="seq-h">询价、接受、对冲</h2>
+    <svg id="seq" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>再看服务之间怎么调用。服务名是业界通用的拆法，币安内部命名没有公开。用户请求报价，闪兑服务转给报价引擎。</li>
+      <li>报价引擎读取订单簿深度和中间价，算出报价。比如2505，有效期10秒，带签名。注意，报价引擎只读行情，不写账本。</li>
+      <li>用户接受后，闪兑服务校验签名和有效期，再问过风控。然后调用账本，原子地扣 USDT、加 ETH。</li>
+      <li>最后发布敞口事件：平台空了3.992个 ETH。对冲服务先做内部净额，再把差额送进撮合引擎。</li>
+      <li>内部净额是什么意思？A 用户买 ETH，B 用户卖 ETH，两笔敞口互相抵消，只对冲差额。对冲时价格已经变了，这部分损失由平台承担。</li>
+    </ol>
+  </section>
+
+  <!-- 7 报价公式 -->
+  <section class="scene" data-title="报价怎么算" data-onstep="quoteStep">
+    <div class="kicker">Quote Engine · 业界通用做法</div>
+    <h2>报价 = 中间价 × (1 + 方向 × 总价差)</h2>
+    <svg id="quote" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>报价是怎么算出来的？业界通常这样做。报价等于中间价，乘以1加上方向乘总价差。中间价是买一和卖一的平均值，也可以取多个报价源的加权。</li>
+      <li>总价差由四部分组成。第一，基础价差，这是平台的目标利润。第二，规模加价。金额越大，对冲时吃的深度越多，滑点越大，要提前加进价格。</li>
+      <li>第三，波动加价。有效期越长、行情越剧烈，平台被动承担的风险越大。</li>
+      <li>第四，库存偏移。平台手上 ETH 太多，就让用户买 ETH 的报价便宜一点，请用户帮忙消化库存。</li>
+      <li>示例里，总价差是0.2%。2500乘以1.002，报价2505。用户得到10000除以2505，约3.99202个 ETH。</li>
+    </ol>
+  </section>
+
+  <!-- 8 单笔盈亏 -->
+  <section class="scene" data-title="平台单笔盈亏" data-onstep="pnlStep">
+    <div class="kicker">P&amp;L per Trade · 示例</div>
+    <h2>价差收入，减去三种损失</h2>
+    <div class="formula" data-step="0" style="font-size:30px;padding:16px 26px">单笔盈亏 = 价差收入 − 逆向选择损失 − 对冲延迟损失 − 对冲滑点</div>
+    <svg id="pnl" width="1640" height="460" viewBox="0 0 1640 460"></svg>
+    <ol class="say">
+      <li>平台每一笔的盈亏，可以拆成四项。价差收入，减去逆向选择损失，减去对冲延迟损失，再减去对冲滑点。</li>
+      <li>用示例算一遍。价差收入是10000乘0.2%，约20 USDT。</li>
+      <li>报价期间 ETH 上涨了0.05%，对平台不利，损失5 USDT。</li>
+      <li>对冲滑点2个基点，再损失2 USDT。平台净赚约13 USDT。</li>
+      <li>注意，价差收入是确定的，后面几项是随机的。平台关心的是1000笔的平均值和尾部风险，不是单笔结果。</li>
+    </ol>
+  </section>
+
+  <!-- 9 逆向选择 -->
+  <section class="scene" data-title="逆向选择与毒性流量" data-onstep="advStep">
+    <div class="kicker">Adverse Selection · 示意</div>
+    <h2 id="adv-h">谁会点确认？</h2>
+    <svg id="adv" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>现在是本集最关键的风险：逆向选择。意思是，愿意接受报价的用户，恰好是让平台亏钱的那部分用户。</li>
+      <li>正常用户在倒计时内随便哪一刻点确认。市场价只小幅波动，平台赚到价差，平均是正的。</li>
+      <li>另一类用户同时盯着其他交易所。他等到有效期快结束，外部价格已经朝有利方向走，幅度超过价差，就点确认。平台这一笔亏钱。</li>
+      <li>价格朝不利方向走，他就让报价过期，什么也不付。这类订单流，叫毒性流量。</li>
+      <li>平台等于卖出了一份免费期权。用户有权选择成交或不成交，平台却没收权利金。</li>
+    </ol>
+  </section>
+
+  <!-- 10 防线 -->
+  <section class="scene" data-title="平台的防线" data-onstep="defStep">
+    <div class="kicker">Defenses · 业界通用做法</div>
+    <h2 id="def-h">每条防线都有代价</h2>
+    <table class="t" id="defT">
+      <tr><th>防线</th><th>作用</th><th>代价</th></tr>
+      <tr><td>缩短报价有效期</td><td>减少等待有利变动的时间</td><td class="down">来不及确认</td></tr>
+      <tr><td>按波动率加宽价差</td><td>小幅变动覆盖不了价差</td><td class="down">正常用户也付更多</td></tr>
+      <tr><td>按用户分层报价</td><td>异常账户加宽价差或限额</td><td class="down">可能误伤</td></tr>
+      <tr><td>接受时重新比价</td><td>超出容忍区间就拒绝</td><td class="down">看到报价已失效</td></tr>
+      <tr><td>限制频繁询价</td><td>只询价不成交的账户限流</td><td class="down">要识别正常比价</td></tr>
+    </table>
+    <div class="card warn tight" id="def-note"></div>
+    <ol class="say">
+      <li>平台怎么防？业界通用做法有五条，每条都有代价。第一，缩短报价有效期。代价是用户来不及确认。</li>
+      <li>第二，按波动率加宽价差，代价是正常用户也付更高价格。第三，按用户分层报价。接受率和盈利异常的账户，加宽价差或限额，代价是可能误伤。</li>
+      <li>第四，接受时重新比价。市场价超出容忍区间，就拒绝成交，要求刷新。第五，限制只询价不成交的账户。</li>
+      <li>还有库存风险。业界通常先做内部净额，超过阈值再拆单进订单簿。深度不够，就找外部做市商。敞口超过上限，就加宽这个方向的价差，或者暂停报价。</li>
+      <li>失败场景也要预案。行情源延迟时，报价引擎读到旧价格，套利者会集中接受。所以行情时间戳超过阈值，就暂停报价。极端行情直接熔断，提示服务繁忙。</li>
+    </ol>
+  </section>
+
+  <!-- 11 大宗 OTC -->
+  <section class="scene" data-title="大宗 OTC" data-onstep="otcStep">
+    <div class="kicker">OTC Desk · 公开资料 + 示例</div>
+    <h2 id="otc-h">大宗 OTC：交易台单独报价</h2>
+    <div class="row">
+      <div class="col" style="flex:0 0 560px" id="otc-cards"></div>
+      <svg id="otc" width="1050" height="590" viewBox="0 0 1050 590"></svg>
+    </div>
+    <ol class="say">
+      <li>第二个产品，大宗 OTC。大额交易不进订单簿，由平台交易台单独报价。根据币安公开资料，手动现货询价最低20万美元，现货询价不收手续费。账户必须预先充足资金。</li>
+      <li>还有一种意向撮合，叫 IOI。平台把大额买方和卖方在场外配对，平台自己不持有敞口。</li>
+      <li>来算一笔示例。客户买50个 BTC，参考价60000。基础价差0.05%，冲击成本0.1%，持仓风险溢价0.05%，加起来0.2%。</li>
+      <li>报价是60000乘以1.002，等于60120。名义金额300万 USDT，平台预期毛利6000 USDT。实际利润，取决于对冲成本。</li>
+      <li>成交后，账本当天就完成双方划转，因为双方资产都在平台托管。对冲业界通常用 TWAP 拆单，持续几个小时，期间平台一直扛着敞口。</li>
+      <li>还有一个坑叫赢家诅咒。客户同时向几家平台询价，赢得报价的，往往是报价最差的那家。业界通常跟踪客户的询价成交比，调整报价。</li>
+    </ol>
+  </section>
+
+  <!-- 12 快捷买币 -->
+  <section class="scene" data-title="银行卡买币" data-onstep="cardStep">
+    <div class="kicker">Buy with Card · 公开资料 + 示例</div>
+    <h2 id="card-h">快捷买币 = 法币收款 + 一次闪兑</h2>
+    <svg id="card" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>第三个产品，银行卡买币。根据币安公开资料，支持借记卡和信用卡，卡片需要开通 3DS。3DS 就是发卡行在付款时，再验证一次持卡人。</li>
+      <li>资金流是这样的。持卡人授权1000美元，支付通道回调付款成功。法币网关做一次内部闪兑，BTC 马上记进用户账户。</li>
+      <li>但平台要过几天，才从收单机构真正收到法币。中间这几天，是平台在垫资。所以快捷买币，就是法币收款加一次闪兑。</li>
+      <li>算一笔示例。卡支付手续费2%，是20美元。剩下980美元买 BTC，价差0.3%，约2.9美元。</li>
+      <li>平台这边，支付通道收1.5%，15美元。拒付准备金按0.3%计提，3美元。平台毛利约4.9美元。利润率不高，它的主要价值是拉新。</li>
+    </ol>
+  </section>
+
+  <!-- 13 拒付 -->
+  <section class="scene" data-title="拒付攻击链" data-onstep="cbStep">
+    <div class="kicker">Chargeback · 业界通用做法</div>
+    <h2 id="cb-h">风险在几周之后到来</h2>
+    <svg id="cb" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>快捷买币最大的风险是拒付。持卡人可以通过发卡行，撤销已经完成的卡交易。所以已到账不是终态，拒付窗口通常以月计。</li>
+      <li>看一条典型攻击链。黑产买到被盗卡信息，注册新账户，先小额试卡。</li>
+      <li>试卡成功，就大额买币，然后立刻提到外部地址。</li>
+      <li>几周后，真实持卡人发现盗刷，申请拒付。收单机构把钱扣回，币早就没了，损失落在平台。</li>
+      <li>关键节点是秒提。提币冷却期，直接切断买完就提走。小额试卡也是早期信号。业界通常再加上设备指纹和首单限额。</li>
+      <li>3DS 的意义是责任转移。按卡组织规则，通过 3DS 认证后，非本人交易类的拒付损失，一般转由发卡行承担。但它只覆盖欺诈类拒付。</li>
+    </ol>
+  </section>
+
+  <!-- 14 小结 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">对手方是<span class="hl">平台</span>：零手续费 ≠ 零成本，价差就是费用。</li>
+      <li data-step="1">单笔盈亏 = 价差 − 逆向选择 − 对冲延迟 − 滑点；有效期是<span class="hl">免费期权</span>。</li>
+      <li data-step="2">快捷买币的风险在<span class="hl">几周之后</span>：拒付、冷却期、3DS 责任转移。</li>
+    </ul>
+    <div class="grid3">
+      <div class="card gold col" data-step="0"><div class="stat"><div class="k">闪兑价差 · 示例</div><div class="v" style="font-size:44px">≈ 20 USDT</div></div></div>
+      <div class="card buy col" data-step="1"><div class="stat"><div class="k">单笔净盈亏 · 示例</div><div class="v up" style="font-size:44px">≈ +13 USDT</div></div></div>
+      <div class="card warn col" data-step="2"><div class="stat"><div class="k">买币毛利 · 示例</div><div class="v" style="font-size:44px">≈ 4.9 USD</div></div></div>
+    </div>
+    <div class="card info" data-step="3" style="font-size:32px;padding:16px 28px">下一集 P03 · P2P 与法币通道：平台只托管币，不经手法币</div>
+    <ol class="say">
+      <li>小结三点。第一，闪兑、OTC 和快捷买币的对手方都是平台。零手续费不等于零成本，价差就是费用。</li>
+      <li>第二，平台单笔盈亏，等于价差收入减去逆向选择、对冲延迟和对冲滑点。报价有效期，是平台送出的免费期权。</li>
+      <li>第三，快捷买币的风险在几周之后。拒付、冷却期和 3DS 责任转移，决定这门生意能不能赚钱。</li>
+      <li>下一集，我们看 P2P 和法币通道。平台只托管币，不经手法币。那它怎么判断，钱到底付了没有？</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', dim: '#5a5f6a', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10' };
+  const fmt = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 30}" text-anchor="${o.anchor || 'start'}" style="fill:${o.fill || C.text};${o.mono ? 'font-family:JetBrains Mono,SF Mono,Menlo,monospace;' : ''}${o.halo ? `stroke:${C.bg};stroke-width:8px;paint-order:stroke;` : ''}"${o.bold ? ' font-weight="700"' : ''}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  function arrow(x1, y1, x2, y2, o = {}) {
+    const col = o.col || C.t2, w = o.w || 4, a = Math.atan2(y2 - y1, x2 - x1), hl = 20;
+    const bx = x2 - hl * Math.cos(a), by = y2 - hl * Math.sin(a), px = Math.sin(a) * 11, py = -Math.cos(a) * 11;
+    return `<line x1="${x1}" y1="${y1}" x2="${bx}" y2="${by}" stroke="${col}" stroke-width="${w}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/><polygon points="${x2},${y2} ${bx + px},${by + py} ${bx - px},${by - py}" fill="${col}"/>`;
+  }
+  // box: {x,y,w,h}; lines: array of strings
+  function box(b, lines, o = {}) {
+    const size = o.size || 30, lh = size * 1.3;
+    let s = R(b.x, b.y, b.w, b.h, { fill: o.fill || C.panel, stroke: o.stroke || C.line, sw: o.sw || 3, dash: o.dash });
+    lines.forEach((t, i) => {
+      const y = b.y + b.h / 2 - (lines.length - 1) * lh / 2 + size * 0.36 + i * lh;
+      s += T(b.x + b.w / 2, y, t, { anchor: 'middle', size: i ? (o.sub || size - 4) : size, bold: !i && o.bold !== false, fill: i ? (o.subFill || C.t2) : (o.fill2 || C.text) });
+    });
+    return s;
+  }
+  function clip(b, tx, ty) {
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2, dx = tx - cx, dy = ty - cy;
+    const s = Math.min((b.w / 2 + 6) / Math.abs(dx || 1e-9), (b.h / 2 + 6) / Math.abs(dy || 1e-9));
+    return [cx + dx * s, cy + dy * s];
+  }
+  // edge between boxes with optional perpendicular offset and label
+  function edge(b1, b2, o = {}) {
+    const c1 = [b1.x + b1.w / 2, b1.y + b1.h / 2], c2 = [b2.x + b2.w / 2, b2.y + b2.h / 2];
+    const a = Math.atan2(c2[1] - c1[1], c2[0] - c1[0]), off = o.off || 0, ox = -Math.sin(a) * off, oy = Math.cos(a) * off;
+    const p1 = clip(b1, c2[0], c2[1]), p2 = clip(b2, c1[0], c1[1]);
+    let s = arrow(p1[0] + ox, p1[1] + oy, p2[0] + ox, p2[1] + oy, o);
+    if (o.label) {
+      const mx = (p1[0] + p2[0]) / 2 + ox + (o.lx || 0), my = (p1[1] + p2[1]) / 2 + oy + (o.ly || 0);
+      s += T(mx, my, o.label, { anchor: o.anchor || 'middle', size: o.size || 26, fill: o.lcol || o.col || C.t2, halo: true, bold: o.bold });
+    }
+    return s;
+  }
+  const on = (a, c = C.gold) => a ? { stroke: c, fill: 'rgba(240,185,11,.12)' } : {};
+  const onB = (a, c = C.gold) => a ? { stroke: c, fill: c === C.sell ? 'rgba(246,70,93,.14)' : c === C.buy ? 'rgba(46,189,133,.14)' : c === C.info ? 'rgba(91,156,255,.14)' : 'rgba(240,185,11,.12)' } : {};
+
+  function hookStep(el, st) {
+    el.querySelector('#hook-btn').textContent = ['确认 · 10 s', '确认 · 7 s', '确认 · 4 s'][st];
+  }
+
+  function flowStep(el, st) {
+    const svg = el.querySelector('#cflow');
+    const N = {
+      ua: { x: 20, y: 40, w: 380, h: 130 }, uf: { x: 20, y: 300, w: 380, h: 130 }, pu: { x: 640, y: 300, w: 400, h: 130 },
+      pe: { x: 640, y: 40, w: 400, h: 130 }, ue: { x: 1240, y: 40, w: 380, h: 130 }, ob: { x: 1240, y: 300, w: 380, h: 130 },
+    };
+    const inv = ['ETH 库存 · 充足', 'ETH 库存 −3.992', 'ETH 库存 −3.992', 'ETH 库存 回补中', '库存不足？'];
+    let h = '';
+    const c = k => st === k ? C.gold : st > k ? C.t2 : null;
+    if (c(0)) h += edge(N.ua, N.uf, { label: '① 冻结 10,000', anchor: 'start', lx: 14, col: c(0) });
+    if (c(1)) h += edge(N.uf, N.pu, { label: '② 扣减', ly: -16, col: c(1) }) + edge(N.pe, N.ue, { label: '③ 3.992 ETH', ly: -16, col: c(1) });
+    if (c(2)) h += edge(N.pu, N.ob, { label: '④ 买回', ly: -16, col: c(2) }) + edge(N.ob, N.pe, { label: '⑤ 回补库存', anchor: 'end', lx: -20, ly: 40, col: c(2) });
+    const hl = [['ua', 'uf'], ['uf', 'pu', 'pe', 'ue'], ['pu', 'ob', 'pe'], ['pe']][st];
+    h += box(N.ua, ['用户 USDT 可用', st ? '10,000 → 0' : '10,000'], onB(hl.includes('ua')));
+    h += box(N.uf, ['用户 USDT 冻结', st >= 1 ? '已扣减' : '10,000'], onB(hl.includes('uf')));
+    h += box(N.pu, ['平台闪兑账户', st >= 1 ? '收到 USDT' : 'USDT'], onB(hl.includes('pu')));
+    h += box(N.pe, ['平台 ETH 库存', inv[st]], onB(hl.includes('pe'), st === 3 ? C.sell : C.gold));
+    h += box(N.ue, ['用户 ETH 可用', st >= 1 ? '+3.992' : '0'], onB(hl.includes('ue'), C.buy));
+    h += box(N.ob, ['订单簿 · 外部做市商', '平台自己的交易'], onB(hl.includes('ob'), C.info));
+    const note = ['接受报价 → 先冻结，防止同一笔钱被花两次', '①②③ 是一组原子分录：用户立即拿到 ETH', '④⑤ 异步：可延迟几百毫秒，可与其他闪兑单合并', '库存不足 → 拒绝报价，或先买后卖'][st];
+    h += R(20, 490, 1600, 80, { fill: 'rgba(240,185,11,.08)', stroke: st === 3 ? C.sell : C.gold }) + T(820, 542, note, { anchor: 'middle', size: 32, bold: true, fill: st === 3 ? C.sell : C.gold });
+    svg.innerHTML = h;
+  }
+
+  function rfqStep(el, st) {
+    const svg = el.querySelector('#rfq');
+    let h = '';
+    // countdown ring
+    const sec = [10, 0, 6, 6, 6, 6][st], cx = 190, cy = 250, r = 140, circ = 2 * Math.PI * r;
+    const rc = st === 1 ? C.sell : st >= 2 ? C.buy : C.gold;
+    h += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${C.panel2}" stroke-width="22"/>`;
+    h += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${rc}" stroke-width="22" stroke-dasharray="${(sec / 10 * circ).toFixed(1)} ${circ.toFixed(1)}" transform="rotate(-90 ${cx} ${cy})" stroke-linecap="round"/>`;
+    h += T(cx, cy + 10, sec + ' s', { anchor: 'middle', size: 80, bold: true, mono: true, fill: rc });
+    h += T(cx, cy + 66, ['默认 10 秒', '已过期', '第 4 秒确认', '已成交', '用户无感知', '仅显示用'][st], { anchor: 'middle', size: 26, fill: C.t2 });
+    h += T(cx, 460, 'quoteId · 报价 2,505', { anchor: 'middle', size: 26, fill: C.t2 }) + T(cx, 500, '过期时间戳 · 签名', { anchor: 'middle', size: 26, fill: C.t2 });
+    // states
+    const N = {
+      q: { x: 430, y: 150, w: 230, h: 100 }, a: { x: 760, y: 150, w: 230, h: 100 }, f: { x: 1090, y: 150, w: 230, h: 100 },
+      e: { x: 430, y: 380, w: 230, h: 100 }, rj: { x: 760, y: 380, w: 230, h: 100 }, hg: { x: 1090, y: 380, w: 230, h: 100 }, hd: { x: 1400, y: 380, w: 220, h: 100 },
+    };
+    const act = [['q'], ['q', 'e'], ['q', 'a', 'rj'], ['a', 'f'], ['f', 'hg', 'hd'], ['q', 'a']][st];
+    const ea = [[], ['qe'], ['qa', 'arj'], ['af'], ['fhg', 'hghd'], []][st];
+    const ec = k => ea.includes(k) ? C.gold : C.dim;
+    h += edge(N.q, N.e, { label: '倒计时结束', anchor: 'start', lx: 14, col: ec('qe') });
+    h += edge(N.q, N.a, { label: '确认', ly: -16, col: ec('qa') });
+    h += edge(N.a, N.rj, { label: '余额不足 · 风控', anchor: 'start', lx: 14, col: ec('arj') });
+    h += edge(N.a, N.f, { label: '划转', ly: -16, col: ec('af') });
+    h += edge(N.f, N.hg, { label: '敞口入队', anchor: 'start', lx: 14, col: ec('fhg') });
+    h += edge(N.hg, N.hd, { label: '成交', ly: -16, col: ec('hghd') });
+    const st2 = { q: ['已报价'], a: ['已接受'], f: ['已成交'], e: ['已过期', '不扣资金'], rj: ['已拒绝'], hg: ['待对冲'], hd: ['已对冲'] };
+    for (const k in N) h += box(N[k], st2[k], act.includes(k) ? onB(true, k === 'e' || k === 'rj' ? C.sell : k === 'f' || k === 'hd' ? C.buy : C.gold) : {});
+    // visibility divider
+    h += `<rect x="1070" y="350" width="570" height="150" rx="16" fill="none" stroke="${st === 4 ? C.info : C.line}" stroke-width="3" stroke-dasharray="10 8"/>` + T(1625, 530, '平台内部 · 用户不可见', { anchor: 'end', size: 26, fill: st === 4 ? C.info : C.t2 });
+    if (st === 5) h += R(430, 40, 1190, 76, { fill: 'rgba(91,156,255,.12)', stroke: C.info }) + T(1025, 90, '过期判断在服务端：校验时间戳 + 签名，不信任客户端倒计时', { anchor: 'middle', size: 30, bold: true, fill: C.info });
+    svg.innerHTML = h;
+    el.querySelector('#rfq-h').textContent = st === 5 ? '服务端说了算' : '一张报价的一生';
+  }
+
+  function seqStep(el, st) {
+    const svg = el.querySelector('#seq');
+    const lanes = ['用户', 'convert', 'quote', 'market-data', 'risk', 'ledger', 'hedge', 'matching'];
+    const X = i => 100 + i * 206;
+    let h = '';
+    lanes.forEach((l, i) => {
+      h += R(X(i) - 90, 10, 180, 56, { rx: 10, fill: C.panel2 }) + T(X(i), 48, l, { anchor: 'middle', size: 26, bold: true, fill: i === 0 ? C.gold : C.text });
+      h += `<line x1="${X(i)}" y1="70" x2="${X(i)}" y2="580" stroke="${C.line}" stroke-width="3" stroke-dasharray="6 8"/>`;
+    });
+    const M = [
+      [[0, 1, '请求报价 10,000 USDT → ETH'], [1, 2, '询价：金额 · 方向 · 用户等级']],
+      [[2, 3, '读深度与中间价'], [3, 2, '中间价 2,500', 1], [2, 1, '报价 2,505 · 10s · 签名', 1], [1, 0, '显示报价 + 倒计时', 1]],
+      [[0, 1, '接受 quoteId'], [1, 1, '校验签名与有效期'], [1, 4, '限额与风控'], [1, 5, '原子分录：扣 USDT 加 ETH'], [5, 1, '成功', 1]],
+      [[1, 6, '敞口事件：平台空 3.992 ETH'], [6, 6, '内部净额'], [6, 7, '净额对冲单']],
+      [[6, 6, 'A 买 ETH + B 卖 ETH → 抵消'], [6, 7, '只对冲差额'], [7, 6, '对冲成交 · 价格变动损失归平台', 1]],
+    ][st];
+    M.forEach(([a, b, lab, ret], i) => {
+      const y = 140 + i * 88;
+      if (a === b) {
+        h += `<path d="M ${X(a)} ${y - 18} h 60 v 36 h -54" fill="none" stroke="${C.gold}" stroke-width="4"/><polygon points="${X(a) + 4},${y + 18} ${X(a) + 22},${y + 8} ${X(a) + 22},${y + 28}" fill="${C.gold}"/>`;
+        h += T(X(a) + 76, y + 10, lab, { size: 30, bold: true, fill: C.gold, halo: true, anchor: X(a) > 1100 ? 'end' : 'start' }).replace(`x="${X(a) + 76}"`, `x="${X(a) > 1100 ? X(a) - 20 : X(a) + 76}"`);
+      } else {
+        h += arrow(X(a) + (b > a ? 8 : -8), y, X(b) + (b > a ? -8 : 8), y, { col: ret ? C.info : C.gold, w: 4, dash: ret ? '10 6' : '' });
+        const mx = (X(a) + X(b)) / 2, wide = Math.abs(X(a) - X(b)) > 300;
+        const rightEdge = Math.max(X(a), X(b)) > 1200;
+        h += T(wide ? mx : rightEdge ? Math.max(X(a), X(b)) - 10 : Math.min(X(a), X(b)) + 10, y - 14, lab, { anchor: wide ? 'middle' : rightEdge ? 'end' : 'start', size: 30, bold: true, fill: ret ? C.info : C.text, halo: true });
+      }
+    });
+    const note = ['', '报价引擎只读行情，不写账本', '只有 convert 调用 ledger', '对冲是异步的', '对冲延迟与滑点 → 平台承担'][st];
+    if (note) h += T(1620, 570, note, { anchor: 'end', size: 30, bold: true, fill: C.gold, halo: true });
+    svg.innerHTML = h;
+    el.querySelector('#seq-h').textContent = ['询价', '报价', '接受与记账', '对冲', '内部净额'][st] + '：' + ['用户 → 报价引擎', '读行情、签名', '原子分录', '净额后下单', '只对冲差额'][st];
+  }
+
+  function quoteStep(el, st) {
+    const svg = el.querySelector('#quote');
+    let h = '';
+    const base = 520, x0 = 120, bw = 300;
+    h += T(x0 + bw / 2, base + 50, '中间价 2,500', { anchor: 'middle', size: 32, bold: true });
+    h += R(x0, base - 140, bw, 140, { fill: 'rgba(158,163,173,.18)', stroke: C.t2 }) + T(x0 + bw / 2, base - 60, '(买一 + 卖一) ÷ 2', { anchor: 'middle', size: 26, fill: C.t2 });
+    const segs = [['基础价差', '目标利润', C.gold, 1], ['规模加价', '深度 → 滑点', C.warn, 1], ['波动加价', '有效期 · 波动', C.sell, 2], ['库存偏移', '库存多 → 便宜', C.info, 3]];
+    let y = base - 140;
+    const sx = 520, sw = 340, sh = 70;
+    segs.forEach(([t, d, c, k], i) => {
+      if (st < k) return;
+      const neg = i === 3;
+      const yy = y - sh;
+      h += `<rect x="${sx}" y="${yy}" width="${sw}" height="${sh}" rx="8" fill="${c}" fill-opacity="${neg ? .15 : .35}" stroke="${c}" stroke-width="3"${neg ? ' stroke-dasharray="10 6"' : ''}/>`;
+      h += T(sx + 20, yy + 46, (neg ? '± ' : '+ ') + t, { size: 30, bold: true, fill: c });
+      h += T(sx + sw + 24, yy + 46, d, { size: 28, fill: C.t2 });
+      y -= sh;
+    });
+    h += `<line x1="${x0 + bw}" y1="${base - 140}" x2="${sx}" y2="${base - 140}" stroke="${C.t2}" stroke-width="2" stroke-dasharray="6 6"/>`;
+    h += T(sx, base + 50, '总价差 · 各项大小为示意', { size: 26, fill: C.t2 });
+    if (st >= 4) {
+      h += R(1180, 40, 440, 320, { fill: 'rgba(240,185,11,.12)', stroke: C.gold });
+      h += T(1210, 100, '示例：总价差 0.20%', { size: 30, fill: C.t2 });
+      h += T(1210, 170, '2,500 × 1.002', { size: 36, mono: true });
+      h += T(1210, 230, '= 2,505', { size: 52, bold: true, mono: true, fill: C.gold });
+      h += T(1210, 290, '10,000 ÷ 2,505', { size: 30, mono: true, fill: C.text }) + T(1210, 330, '≈ 3.99202 ETH', { size: 30, mono: true, fill: C.text });
+    } else if (st === 0) {
+      h += T(1180, 140, '方向：用户买 = +1', { size: 32, fill: C.buy }) + T(1180, 200, '　　　用户卖 = −1', { size: 32, fill: C.sell });
+      h += T(1180, 290, '中间价也可取', { size: 30, fill: C.t2 }) + T(1180, 336, '多个报价源加权', { size: 30, fill: C.t2 });
+    }
+    svg.innerHTML = h;
+  }
+
+  function pnlStep(el, st) {
+    const svg = el.querySelector('#pnl');
+    let h = '';
+    const S = v => v * 14, x0 = 380, y0 = 380;
+    const items = [['价差收入', 20, C.buy, '10,000 × 0.20%'], ['逆向选择', -5, C.sell, '报价期 ETH +0.05%'], ['对冲滑点', -2, C.sell, '2 bps'], ['净盈亏', 13, C.gold, '20 − 5 − 2']];
+    const show = [0, 1, 2, 4, 4][st];
+    let lvl = 0;
+    h += `<line x1="${x0 - 40}" y1="${y0}" x2="1600" y2="${y0}" stroke="${C.t2}" stroke-width="3"/>` + T(x0 - 50, y0 + 10, '0', { anchor: 'end', size: 28, fill: C.t2, mono: true });
+    items.forEach(([t, v, c, d], i) => {
+      if (i >= show) return;
+      const x = x0 + i * 300, w = 200;
+      let top, hgt;
+      if (i === 3) { top = y0 - S(v); hgt = S(v); }
+      else if (v > 0) { top = y0 - S(lvl + v); hgt = S(v); lvl += v; }
+      else { top = y0 - S(lvl); hgt = S(-v); lvl += v; }
+      h += `<rect x="${x}" y="${top}" width="${w}" height="${hgt}" rx="6" fill="${c}" fill-opacity="${i === 3 ? .9 : .7}"/>`;
+      h += T(x + w / 2, top - 16, (v > 0 ? '+' : '') + v, { anchor: 'middle', size: 40, bold: true, mono: true, fill: c });
+      h += T(x + w / 2, y0 + 44, t, { anchor: 'middle', size: 30, bold: true });
+      h += T(x + w / 2, y0 + 80, d, { anchor: 'middle', size: 24, fill: C.t2 });
+      if (i < 3 && i + 1 < show) h += `<line x1="${x + w}" y1="${y0 - S(lvl)}" x2="${x + 300}" y2="${y0 - S(lvl)}" stroke="${C.t2}" stroke-width="2" stroke-dasharray="6 6"/>`;
+    });
+    h += T(40, 60, 'USDT · 示例', { size: 26, fill: C.t2 });
+    if (st >= 2 && st < 4) h += T(40, 120, '对冲延迟损失：本例未单列', { size: 26, fill: C.t2 });
+    if (st === 4) {
+      h += R(40, 90, 300, 160, { fill: 'rgba(240,185,11,.1)', stroke: C.gold });
+      h += T(190, 150, '确定 · 1 项', { anchor: 'middle', size: 30, bold: true, fill: C.buy }) + T(190, 210, '随机 · 3 项', { anchor: 'middle', size: 30, bold: true, fill: C.sell });
+      h += T(1600, 60, '看 1,000 笔的平均值与尾部风险', { anchor: 'end', size: 32, bold: true, fill: C.gold });
+    }
+    svg.innerHTML = h;
+  }
+
+  function advStep(el, st) {
+    const svg = el.querySelector('#adv');
+    let h = '';
+    const x0 = 140, x1 = 1100, y0 = 520, X = t => x0 + t / 10 * (x1 - x0), Y = p => 330 - (p - 2500) * 32;
+    // axes
+    h += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" stroke="${C.t2}" stroke-width="3"/>` + T(x1, y0 + 36, '报价有效期 10 秒', { anchor: 'end', size: 26, fill: C.t2 });
+    [0, 5].forEach(t => h += T(X(t), y0 + 36, t + 's', { anchor: 'middle', size: 24, fill: C.t2, mono: true }));
+    h += `<line x1="${x0}" y1="${Y(2505)}" x2="${x1}" y2="${Y(2505)}" stroke="${C.gold}" stroke-width="4"/>` + T(x0 - 12, Y(2505) + 9, '报价', { anchor: 'end', size: 28, bold: true, fill: C.gold });
+    h += `<line x1="${x0}" y1="${Y(2500)}" x2="${x1}" y2="${Y(2500)}" stroke="${C.t2}" stroke-width="2" stroke-dasharray="8 6"/>` + T(x0 - 12, Y(2500) + 9, '中间价', { anchor: 'end', size: 26, fill: C.t2 });
+    const paths = {
+      calm: [0, 0.6, -0.4, 0.8, 0.3, -0.2, 0.5, 0.1, -0.3, 0.4, 0.2],
+      up: [0, 0.5, 1.2, 1.8, 2.6, 3.4, 4.2, 5.0, 6.0, 6.8, 7.4],
+      down: [0, -0.4, -1.0, -1.6, -2.0, -2.6, -3.2, -3.6, -4.0, -4.4, -4.8],
+    };
+    const draw = (arr, c, upto = 10) => { let d = ''; for (let t = 0; t <= upto; t++) d += (t ? 'L' : 'M') + X(t) + ' ' + Y(2500 + arr[t]) + ' '; return `<path d="${d}" fill="none" stroke="${c}" stroke-width="5"/>`; };
+    let verdict = '';
+    if (st === 1) { h += draw(paths.calm, C.info, 4) + `<circle cx="${X(4)}" cy="${Y(2500.3)}" r="14" fill="${C.buy}"/>` + T(X(4), Y(2500.3) - 26, '随手确认', { anchor: 'middle', size: 28, bold: true, fill: C.buy, halo: true }); verdict = ['正常用户', '平台赚价差', C.buy]; }
+    if (st === 2) { h += draw(paths.up, C.info, 9) + `<circle cx="${X(9)}" cy="${Y(2506.8)}" r="14" fill="${C.sell}"/>` + T(X(9) - 20, Y(2506.8) - 24, '外部价已高于报价 → 确认', { anchor: 'end', size: 28, bold: true, fill: C.sell, halo: true }); verdict = ['盯盘用户 · 有利时', '平台亏钱', C.sell]; }
+    if (st === 3) { h += draw(paths.down, C.info, 10) + T(X(10) - 10, Y(2495.2) - 20, '放弃 → 过期', { anchor: 'end', size: 28, bold: true, fill: C.t2, halo: true }); verdict = ['盯盘用户 · 不利时', '让报价过期 · 0 成本', C.t2]; }
+    if (st === 0) { h += T((x0 + x1) / 2, 440, '谁会点确认？', { anchor: 'middle', size: 44, bold: true, fill: C.text }); verdict = ['逆向选择', '接受报价的，恰是让平台亏钱的', C.warn]; }
+    if (st === 4) {
+      // option payoff
+      const ox = 140, oy = 480, OX = p => ox + (p - 2495) * 70;
+      h = `<line x1="${ox}" y1="${oy}" x2="${OX(2509)}" y2="${oy}" stroke="${C.t2}" stroke-width="3"/>` + T(OX(2509), oy + 40, '到期时外部价', { anchor: 'end', size: 26, fill: C.t2 });
+      h += `<path d="M ${OX(2495)} ${oy} L ${OX(2505)} ${oy} L ${OX(2509)} ${oy - 320}" fill="none" stroke="${C.sell}" stroke-width="6"/>`;
+      h += `<line x1="${OX(2505)}" y1="${oy + 10}" x2="${OX(2505)}" y2="${oy - 340}" stroke="${C.gold}" stroke-width="3" stroke-dasharray="8 6"/>` + T(OX(2505) - 16, oy - 320, '报价 = 行权价', { anchor: 'end', size: 30, bold: true, fill: C.gold });
+      h += T(OX(2496), oy - 24, '不利 → 过期 · 用户付 0', { size: 30, fill: C.t2 }) + T(OX(2505) - 16, oy - 200, '有利 → 成交 · 平台付差价', { anchor: 'end', size: 30, bold: true, fill: C.sell });
+      h += T(OX(2495), 60, '用户的收益曲线 = 一份看涨期权', { size: 34, bold: true, fill: C.text });
+      verdict = ['免费期权', '用户有选择权 · 平台没收权利金', C.sell];
+    }
+    h += R(1180, 150, 440, 220, { fill: C.panel, stroke: verdict[2] });
+    h += T(1400, 230, verdict[0], { anchor: 'middle', size: 36, bold: true, fill: verdict[2] });
+    h += T(1400, 300, verdict[1], { anchor: 'middle', size: 26, fill: C.text });
+    h += T(1400, 420, '示意曲线 · 无具体数值', { anchor: 'middle', size: 24, fill: C.t2 });
+    svg.innerHTML = h;
+    el.querySelector('#adv-h').textContent = ['谁会点确认？', '正常用户：随机确认', '毒性流量：等有利再确认', '毒性流量：不利就放弃', '平台卖出了一份免费期权'][st];
+  }
+
+  function defStep(el, st) {
+    const rows = el.querySelectorAll('#defT tr');
+    const cur = [[1], [2, 3], [4, 5], [], []][st];
+    rows.forEach((r, i) => { if (i) { r.classList.toggle('cur', cur.includes(i)); r.style.opacity = st >= 3 ? .4 : (i <= [1, 3, 5][st] ? 1 : .18); } });
+    const n = el.querySelector('#def-note');
+    n.innerHTML = ['五条防线均为业界通用做法', '分层依据：历史接受率、盈利率异常', '用户会看到：报价已失效，请刷新',
+      '库存风险：内部净额 → 拆单进订单簿 → 外部做市商 → 加宽价差或暂停该方向',
+      '行情时间戳超阈值 → 暂停报价 · 极端行情 → 熔断，提示服务繁忙'][st];
+    n.className = 'card tight ' + (st >= 3 ? 'sell' : 'warn');
+    el.querySelector('#def-h').textContent = st >= 4 ? '失败预案：行情延迟与极端行情' : st === 3 ? '库存风险：先净额，再对冲' : '每条防线都有代价';
+  }
+
+  function otcStep(el, st) {
+    const cards = {
+      a: '<div class="card tight"><b>RFQ</b> · 手动现货询价<br>最低 <b class="hl">20 万美元</b> · 不收手续费</div>',
+      b: '<div class="card info tight"><b>预先充足资金</b><br>平台对客户几乎无信用风险</div>',
+      c: '<div class="card buy tight"><b>IOI 意向撮合</b><br>场外配对买卖双方 · 平台无敞口</div>',
+      d: '<div class="card gold tight">示例：买 <b>50 BTC</b><br>参考价 <span class="mono">60,000</span></div>',
+      e: '<div class="card gold tight">名义 <span class="mono">300 万</span> × 0.20%<br>预期毛利 <b class="hl mono">6,000 USDT</b></div>',
+      f: '<div class="card tight"><b>T+0 结算</b>：双方资产都在平台托管</div>',
+      g: '<div class="card warn tight"><b>赢家诅咒</b><br>跟踪询价成交比，调整报价</div>',
+    };
+    el.querySelector('#otc-cards').innerHTML = [['a', 'b'], ['a', 'b', 'c'], ['d'], ['d', 'e'], ['e', 'f'], ['e', 'g']][st].map(k => cards[k]).join('');
+    const svg = el.querySelector('#otc');
+    let h = '';
+    if (st <= 1) {
+      const N = { c: { x: 20, y: 60, w: 330, h: 120 }, d: { x: 360, y: 330, w: 330, h: 120 }, m: { x: 700, y: 60, w: 330, h: 120 } };
+      h += box(N.c, ['机构客户', '询价 · 预存资金'], onB(true));
+      if (st === 0) { h += box(N.d, ['OTC 交易台', '报价 → 成交'], onB(true)); h += edge(N.c, N.d, { label: '询价', anchor: 'end', lx: -14, col: C.gold }) + edge(N.d, N.c, { col: C.gold, off: 30 }); h += box(N.m, ['订单簿', '不进入'], { stroke: C.dim }); }
+      else { h += box(N.m, ['机构卖方', '大额卖出'], onB(true, C.buy)); h += box(N.d, ['平台 IOI', '只配对 · 无敞口'], onB(true, C.info)); h += edge(N.c, N.d, { col: C.info }) + edge(N.m, N.d, { col: C.info }); }
+    } else if (st <= 3) {
+      const base = 560, S = v => v * 2;
+      const parts = [['参考价', 60000, C.t2], ['基础价差 0.05%', 30, C.gold], ['冲击成本 0.10%', 60, C.warn], ['持仓风险 0.05%', 30, C.sell]];
+      h += R(40, base - 160, 280, 160, { fill: 'rgba(158,163,173,.18)', stroke: C.t2 }) + T(180, base - 70, '60,000', { anchor: 'middle', size: 40, bold: true, mono: true });
+      let y = base - 160;
+      parts.slice(1).forEach(([t, v, c]) => { h += `<rect x="380" y="${y - S(v)}" width="260" height="${S(v)}" rx="6" fill="${c}" fill-opacity=".4" stroke="${c}" stroke-width="3"/>` + T(660, y - S(v) / 2 + 10, `+${v} · ${t}`, { size: 28, bold: true, fill: c }); y -= S(v); });
+      h += `<line x1="320" y1="${base - 160}" x2="380" y2="${base - 160}" stroke="${C.t2}" stroke-width="2" stroke-dasharray="6 6"/>`;
+      if (st === 3) h += R(380, 20, 640, 110, { fill: 'rgba(240,185,11,.12)', stroke: C.gold }) + T(700, 92, '60,000 × 1.002 = 60,120', { anchor: 'middle', size: 40, bold: true, mono: true, fill: C.gold });
+      else h += T(380, 80, '合计 0.20% · 全部为示例', { size: 32, bold: true, fill: C.text });
+      h += T(40, 260, '每 BTC 加价', { size: 26, fill: C.t2 }) + T(40, 296, '单位 USDT', { size: 26, fill: C.t2 });
+    } else if (st === 4) {
+      h += T(20, 50, 'TWAP 拆单对冲 · 示意', { size: 32, bold: true, fill: C.text });
+      const n = 12;
+      for (let i = 0; i < n; i++) { const x = 40 + i * 82, hh = 120 + ((i * 37) % 5) * 8; h += `<rect x="${x}" y="${420 - hh}" width="60" height="${hh}" rx="6" fill="${C.info}" fill-opacity=".55"/>`; }
+      h += `<line x1="30" y1="420" x2="1030" y2="420" stroke="${C.t2}" stroke-width="3"/>` + T(1030, 460, '时间 · 持续数小时', { anchor: 'end', size: 26, fill: C.t2 });
+      h += R(40, 480, 990, 80, { fill: 'rgba(246,70,93,.1)', stroke: C.sell }) + T(535, 532, '整段时间平台持有敞口 → 报价含风险溢价', { anchor: 'middle', size: 30, bold: true, fill: C.sell });
+    } else {
+      h += T(20, 50, '客户向 5 家同时询价 · 示意', { size: 32, bold: true, fill: C.text });
+      const q = [0.62, 0.78, 0.55, 0.9, 0.7];
+      q.forEach((v, i) => { const y = 100 + i * 86, w = v * 700, win = i === 2; h += `<rect x="200" y="${y}" width="${w}" height="56" rx="8" fill="${win ? C.sell : C.panel2}" fill-opacity="${win ? .7 : 1}" stroke="${win ? C.sell : C.line}" stroke-width="2"/>` + T(180, y + 40, '平台 ' + 'ABCDE'[i], { anchor: 'end', size: 28, fill: win ? C.sell : C.t2 }); if (win) h += T(200 + w + 16, y + 40, '报价最低 → 中标', { size: 28, bold: true, fill: C.sell }); });
+      h += T(20, 560, '中标者往往低估了风险', { size: 30, bold: true, fill: C.warn });
+    }
+    svg.innerHTML = h;
+    el.querySelector('#otc-h').textContent = ['大宗 OTC：交易台单独报价', 'IOI：只撮合，不持仓', 'OTC 报价怎么加价', 'OTC 报价：60,120', '对冲：TWAP 拆单', '赢家诅咒'][st];
+  }
+
+  function cardStep(el, st) {
+    const svg = el.querySelector('#card');
+    let h = '';
+    if (st <= 2) {
+      const N = { ch: { x: 20, y: 40, w: 300, h: 120 }, psp: { x: 440, y: 40, w: 320, h: 120 }, fg: { x: 880, y: 40, w: 320, h: 120 }, cv: { x: 1300, y: 40, w: 320, h: 120 }, ua: { x: 1300, y: 300, w: 320, h: 120 }, bank: { x: 440, y: 300, w: 320, h: 120 } };
+      const ib = { x: 20, y: 300, w: 300, h: 120 };
+      if (st === 0) {
+        h += box(N.ch, ['持卡人'], onB(true)); h += box(ib, ['发卡行', '3DS 验证'], onB(true, C.info)); h += edge(N.ch, ib, { label: '银行 App 确认', anchor: 'start', lx: 14, col: C.info });
+        h += T(480, 120, '3-D Secure：付款时再验证一次持卡人', { size: 34, bold: true, fill: C.text });
+        h += T(480, 190, '币安：支持借记卡与信用卡 · 卡需开通 3DS', { size: 30, fill: C.t2 });
+        h += T(480, 240, '可用卡种、币种、费率按地区不同 · 以页面为准', { size: 30, fill: C.t2 });
+      } else {
+        h += box(N.ch, ['持卡人银行卡', '1,000 USD'], onB(st === 1)); h += box(N.psp, ['支付通道', '收单机构'], onB(true)); h += box(N.fg, ['fiat-gateway', '法币网关'], onB(st === 1)); h += box(N.cv, ['convert-service', '内部闪兑'], onB(st === 1)); h += box(N.ua, ['用户现货账户', '+ BTC'], onB(st === 1, C.buy));
+        h += edge(N.ch, N.psp, { label: '① 授权', ly: -16, col: st === 1 ? C.gold : C.t2 }) + edge(N.psp, N.fg, { label: '② 回调', ly: -16, col: st === 1 ? C.gold : C.t2 }) + edge(N.fg, N.cv, { label: '③ 兑换', ly: -16, col: st === 1 ? C.gold : C.t2 }) + edge(N.cv, N.ua, { label: '④ 入账', anchor: 'start', lx: 14, col: st === 1 ? C.gold : C.t2 });
+        if (st === 2) { h += box(N.bank, ['平台银行账户', '几天后才到账'], onB(true, C.sell)); h += edge(N.psp, N.bank, { label: '⑤ T+N 清算 · 扣通道费', anchor: 'start', lx: 14, col: C.sell }); h += R(20, 480, 1600, 80, { fill: 'rgba(246,70,93,.1)', stroke: C.sell }) + T(820, 532, '④ 到 ⑤ 之间：平台在垫资 · 拒付还可能在之后几周到来', { anchor: 'middle', size: 32, bold: true, fill: C.sell }); }
+        else h += T(20, 540, '用户在 ④ 就拿到 BTC', { size: 34, bold: true, fill: C.buy });
+      }
+    } else {
+      // cost waterfall
+      const user = [['卡支付手续费 2%', 20, C.warn], ['闪兑价差 0.3%', 2.9, C.gold]];
+      const plat = [['卡手续费收入', 20, C.buy], ['通道成本 1.5%', -15, C.sell], ['闪兑价差', 2.9, C.buy], ['拒付准备金 0.3%', -3, C.sell], ['毛利', 4.9, C.gold]];
+      const S = v => v * 16;
+      h += T(20, 50, '用户付 1,000 USD · 示例', { size: 32, bold: true });
+      user.forEach(([t, v, c], i) => { const y = 90 + i * 90; h += `<rect x="20" y="${y}" width="${S(v)}" height="60" rx="6" fill="${c}" fill-opacity=".6"/>` + T(30 + S(v) + 10, y + 42, `${t} · ${v}`, { size: 30, bold: true, fill: c }); });
+      h += T(20, 330, '用户总成本 ≈ 22.9 USD', { size: 34, bold: true, fill: C.warn });
+      if (st === 4) {
+        const bx = 820, base = 470; let lvl = 0;
+        h += T(bx, 50, '平台单笔 · 示例', { size: 32, bold: true });
+        h += `<line x1="${bx}" y1="${base}" x2="1620" y2="${base}" stroke="${C.t2}" stroke-width="3"/>`;
+        plat.forEach(([t, v, c], i) => {
+          const x = bx + i * 160, w = 120; let top, hh;
+          if (i === 4) { top = base - S(v); hh = S(v); } else if (v > 0) { top = base - S(lvl + v); hh = S(v); lvl += v; } else { top = base - S(lvl); hh = S(-v); lvl += v; }
+          h += `<rect x="${x}" y="${top}" width="${w}" height="${hh}" rx="6" fill="${c}" fill-opacity=".7"/>` + T(x + w / 2, top - 12, (v > 0 ? '+' : '') + v, { anchor: 'middle', size: 30, bold: true, mono: true, fill: c });
+          h += T(x + w / 2, base + 40, t.split(' ')[0], { anchor: 'middle', size: 24, fill: C.t2 });
+        });
+        h += T(20, 450, '利润率不高 → 主要价值是拉新', { size: 34, bold: true, fill: C.gold });
+      }
+    }
+    svg.innerHTML = h;
+    el.querySelector('#card-h').textContent = st >= 3 ? '快捷买币：谁赚多少' : '快捷买币 = 法币收款 + 一次闪兑';
+  }
+
+  function cbStep(el, st) {
+    const svg = el.querySelector('#cb');
+    let h = '';
+    const nodes = [['购买被盗卡信息', 1], ['注册新账户', 1], ['小额试卡', 1], ['大额买币', 2], ['立即提币到外部', 2], ['持卡人申请拒付', 3], ['收单机构扣回', 3], ['平台承担损失', 3]];
+    const pos = i => i < 4 ? { x: 20 + i * 405, y: 150, w: 360, h: 100 } : { x: 20 + (7 - i) * 405, y: 380, w: 360, h: 100 };
+    if (st === 0 || st === 5) {
+      // state chain
+      const S = [['待支付', C.t2], ['3DS 验证', C.info], ['已授权', C.t2], ['已到账', C.buy], ['拒付中', C.warn], ['拒付成立', C.sell]];
+      S.forEach(([t, c], i) => { const b = { x: 20 + i * 272, y: 150, w: 230, h: 100 }; h += box(b, [t], onB(st === 0 ? i >= 3 : i === 1, c)); if (i < 5) h += arrow(b.x + b.w + 6, 200, b.x + 266, 200, { col: C.t2 }); });
+      if (st === 0) { h += T(20, 330, '已到账 ≠ 终态 · 拒付窗口通常以月计', { size: 38, bold: true, fill: C.sell }); h += T(20, 400, '拒付成立 → 平台承担损失，并冻结该账户', { size: 32, fill: C.text }); }
+      else {
+        h += R(20, 300, 1600, 200, { fill: 'rgba(91,156,255,.1)', stroke: C.info });
+        h += T(60, 370, '责任转移 Liability Shift', { size: 40, bold: true, fill: C.info });
+        h += T(60, 430, '通过 3DS → 非本人交易类拒付，损失一般转由发卡行承担', { size: 32, fill: C.text });
+        h += T(60, 480, '只覆盖欺诈类拒付 · 具体以卡组织规则为准', { size: 30, fill: C.warn });
+      }
+    } else {
+      nodes.forEach(([t, k], i) => {
+        const b = pos(i), on = k <= st - 0 && k === Math.min(st, 3), past = k < Math.min(st, 3) || st === 4;
+        h += box(b, [t], on ? onB(true, k === 3 ? C.sell : C.gold) : past ? { stroke: '#5a5f6a' } : { stroke: C.line });
+        if (i < 7) { const b2 = pos(i + 1); h += i === 3 ? arrow(b.x + b.w / 2, b.y + b.h + 6, b2.x + b2.w / 2, b2.y - 6, { col: C.t2 }) : i < 3 ? arrow(b.x + b.w + 6, 200, b2.x - 6, 200, { col: C.t2 }) : arrow(b.x - 6, 430, b2.x + b2.w + 6, 430, { col: C.t2 }); }
+      });
+      if (st === 4) {
+        const b = pos(3), cxm = b.x + b.w / 2;
+        h += `<line x1="${cxm - 70}" y1="315" x2="${cxm + 70}" y2="315" stroke="${C.buy}" stroke-width="10"/>` + T(cxm - 90, 326, '提币冷却期 · 切断', { anchor: 'end', size: 32, bold: true, fill: C.buy, halo: true });
+        const b2 = pos(2);
+        h += `<rect x="${b2.x - 8}" y="${b2.y - 8}" width="${b2.w + 16}" height="${b2.h + 16}" rx="16" fill="none" stroke="${C.buy}" stroke-width="4" stroke-dasharray="10 6"/>` + T(b2.x + b2.w / 2, b2.y - 24, '早期信号：同设备多卡 · 多次小额失败', { anchor: 'middle', size: 26, fill: C.buy, halo: true });
+        h += T(20, 560, '设备指纹 · 首单限额 · 冷却期 —— 误伤正常新用户，需要取舍', { size: 30, bold: true, fill: C.gold });
+      } else h += T(20, 80, ['', '① 黑产准备', '② 买币并秒提', '③ 几周后：拒付'][st], { size: 34, bold: true, fill: st === 3 ? C.sell : C.gold });
+    }
+    svg.innerHTML = h;
+    el.querySelector('#cb-h').textContent = ['风险在几周之后到来', '攻击链：准备', '攻击链：买完就提', '攻击链：拒付成立', '防线：切断秒提', '3DS：责任转移'][st];
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

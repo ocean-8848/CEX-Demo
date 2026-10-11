@@ -1,0 +1,364 @@
+# 领域模型
+
+本文整理系统中的核心实体、状态机和关键不变量。来源是 `packages/domain/src`（跨服务共享的类型）、各服务 `src/domain/types.ts` 和 `services/*/sql/*.sql` 中的表结构。
+
+> 一个需要注意的细节：`packages/domain` 里的 `DepositStatus`、`WithdrawalStatus` 等类型是早期定义的共享类型，**实际行为以服务内部类型为准**。例如提币状态在共享包中是 `reviewing`，而 `wallet-service` 真正使用的是 `under_review` 和 `rejected`。下文的状态机都按服务实现来写。
+
+## 1. 实体总览
+
+```mermaid
+erDiagram
+  IDENTITY_USER ||--o{ API_KEY : owns
+  IDENTITY_USER ||--o{ KYC_REQUEST : submits
+  IDENTITY_USER ||--o{ LEDGER_ACCOUNT : "has (spot)"
+  LEDGER_ACCOUNT ||--o{ BALANCE : "per asset"
+  LEDGER_ACCOUNT ||--o{ BALANCE_LOCK : freezes
+  LEDGER_JOURNAL ||--|{ LEDGER_ENTRY : contains
+  LEDGER_ACCOUNT ||--o{ LEDGER_ENTRY : posts
+  LEDGER_ACCOUNT ||--o{ WALLET_ADDRESS : "deposit address"
+  WALLET_ADDRESS ||--o{ DEPOSIT : receives
+  DEPOSIT_OBSERVATION ||--o| DEPOSIT : "credits"
+  LEDGER_ACCOUNT ||--o{ WITHDRAWAL : requests
+  WITHDRAWAL ||--o| CUSTODY_TRANSFER : broadcasts
+  WITHDRAWAL_OBSERVATION ||--o| WITHDRAWAL : confirms
+  LEDGER_ACCOUNT ||--o{ SPOT_ORDER : places
+  SPOT_ORDER ||--o{ SPOT_TRADE : "maker / taker"
+  SPOT_TRADE ||--o| TRADE_SETTLEMENT : "settled by"
+```
+
+| 实体 | 所属服务 | 表 | 说明 |
+| --- | --- | --- | --- |
+| 用户 `IdentityUser` | identity-service | `identity_users` | `userType` 为 `customer` 或 `ops`；带 `kyc_tier` |
+| 凭据 / 会话 | identity-service | `identity_user_credentials`、`identity_ops_sessions` | 会话按 scope 区分 `customer_web` 与 `ops_console`，只存 token 哈希 |
+| 2FA | identity-service | `user_two_factor_profiles`、`identity_two_factor_recovery_codes` | TOTP；恢复码只存哈希、一次性 |
+| 运营角色 | identity-service | `identity_user_roles` | `ops_admin`、`ops_reviewer`、`ops_finance_operator`、`ops_risk_operator`、`ops_platform_operator`、`ops_observer` |
+| API Key | identity-service | `identity_api_keys` | scope：`read`、`trade`、`withdraw`（默认前两个） |
+| KYC 申请 / 事件 | identity-service | `identity_kyc_requests`、`identity_kyc_events` | 等级 `unverified` → `L1` → `L2`；每次等级变化追加事件 |
+| 账本账户 `LedgerAccount` | ledger-service | `accounts` | 类型见 [2.1](#21-账户类型) |
+| 余额快照 `Balance` | ledger-service | `balances` | 每个 (账户, 资产) 一行：`available`、`locked`、`version` |
+| 日记账 `Journal` / 分录 `Entry` | ledger-service | `ledger_journals`、`ledger_entries` | 双分录，`journal.idempotency_key` 唯一 |
+| 冻结 `BalanceLock` | ledger-service | `balance_locks` | 按 `(reference_type, reference_id, account_id, asset_code)` 唯一 |
+| Outbox 事件 | ledger-service | `outbox_events` | 与资金变动同事务写入 |
+| 充值地址 | wallet-service | `wallet_addresses` | `(network, address)` 唯一 |
+| 充值 `Deposit` | wallet-service | `deposits` | `(network, tx_hash, address)` 唯一 |
+| 提币 `Withdrawal` | wallet-service | `withdrawals` | 业务状态 `status` + 审核状态 `review_status` |
+| 提币地址簿 | wallet-service | `withdrawal_address_book` | `(user_id, network, address)` 唯一，可加入 / 移出白名单 |
+| 提币审计 / 通知 | wallet-service | `withdrawal_audit_logs`、`wallet_notifications` | 每次状态迁移写一条审计（含前后快照） |
+| 链上观测 | blockchain-indexer | `blockchain_deposit_observations`、`blockchain_withdrawal_observations`、`blockchain_scan_cursors` | 充值观测 `(network, tx_hash, address)` 唯一；提币观测 `(network, tx_hash)` 唯一 |
+| 托管转账 | custody-adapter | `custody_transfers`、`custody_transfer_attempts` | `idempotency_key` 唯一 |
+| 现货订单 `SpotOrder` | order-service | `spot_orders` | `idempotency_key` 唯一，记录冻结资产与金额 |
+| 成交 `SpotTrade` | order-service | `spot_trades` | 带撮合序号、`replayCursor`、协议版本、双方费率 |
+| 订单恢复任务 | order-service | `spot_order_recovery_jobs` | 撮合后落库 / 结算失败时的补偿任务 |
+| 结算 `TradeSettlement` | settlement-service | `trade_settlements` | `trade_id` 唯一 |
+| 结算恢复任务 / 消费位点 | settlement-service | `trade_settlement_recovery_jobs`、`trade_event_consumer_checkpoints` | |
+| 市场状态覆盖 | risk-service | `risk_market_status_overrides` | 只允许 `listed` / `halted` |
+| 运营操作审计 | ops-console | `ops_action_audit_logs` | |
+
+市场和币种不是数据库实体，而是 `config/markets.json` 中的配置，见 [architecture.md 第 7 节](./architecture.md#7-市场配置)。
+
+## 2. 账本
+
+### 2.1 账户类型
+
+`packages/domain` 定义的 `AccountType`：
+
+| 类型 | 用途 |
+| --- | --- |
+| `spot` | 用户现货账户；结算服务的平台结算账户也用此类型 |
+| `fee` | 平台手续费账户（每个资产一个） |
+| `opening_balance` | 期初权益账户，种子资金的来源，**唯一允许负余额**的类型 |
+| `main`、`funding`、`hot_wallet`、`cold_wallet`、`withdrawal_pending` | 类型中保留，演示流程未使用 |
+
+几个固定的系统账户：
+
+- 入金国库账户（`LEDGER_DEPOSIT_SOURCE_ACCOUNT_ID`，默认 `00000000-0000-0000-0000-000000000098`）：充值入账时被借记；提币最终消耗也贷记到这里（`LEDGER_WITHDRAWAL_SETTLEMENT_ACCOUNT_ID` 未设置时）。
+- 平台结算账户 `platform:spot:settlement:<asset>` 与手续费账户 `platform:spot:fee:<asset>`：由 `settlement-service` 按需创建。
+
+### 2.2 余额与冻结
+
+余额快照只有两个桶：`available` 和 `locked`。
+
+| 操作 | 效果 | 是否写 journal |
+| --- | --- | --- |
+| `postJournal` | 按分录增减 `available` | 是 |
+| `freeze` | `available → locked`，新建 lock | 否（写 `balance.locked` 事件） |
+| `release` | `locked → available`，可部分释放 | 否（写 `balance.released` 事件） |
+| `consume` | 冻结 → 解锁 → 立即借记给结算账户，可部分消耗 | 是（`spot_order_lock_settled` 或 `withdrawal_settled`），并写 `balance.consumed` |
+
+`consume` 刻意不提供"直接减少 locked"的路径：资金离开用户账户时必须体现为一笔平衡的 journal，否则对账和重放无法解释资金去向。
+
+### 2.3 冻结状态机
+
+```mermaid
+stateDiagram-v2
+  [*] --> locked: freeze
+  locked --> locked: 部分 release / 部分 consume<br/>(remaining_amount 减少)
+  locked --> released: release 到 remaining=0
+  locked --> settled: consume 到 remaining=0
+  released --> [*]
+  settled --> [*]
+```
+
+- 同一引用已存在 `locked` 的冻结时再次 `freeze` 返回 `DUPLICATE_BALANCE_LOCK`；已结束的冻结则直接返回原记录（幂等）。
+- `consume` 按 `<referenceType>:<referenceId>:<asset>:settlement:<businessId>` 生成幂等键，同一笔成交重复消耗不会重复记账。
+- 表约束中还允许 `consumed`，是旧数据的状态，当前代码只写 `settled`。
+
+## 3. 充值
+
+充值涉及两个状态机：indexer 的**链上观测**和 wallet 的**充值单**。
+
+### 3.1 充值观测（blockchain-indexer）
+
+```mermaid
+stateDiagram-v2
+  [*] --> detected: observe (确认数 < 阈值)
+  detected --> detected: observe (确认数增加)
+  detected --> confirming: observe (确认数 ≥ 阈值)
+  confirming --> credited: wallet.confirmDeposit 成功
+  detected --> credited: 运营 replay 成功
+  detected --> closed: 运营手动关闭
+  credited --> [*]
+  closed --> [*]
+```
+
+- `confirming` 是短暂状态：达到阈值后立刻调用 wallet；调用失败时观测停在 `confirming`，下次上报或运营 replay 会重试。
+- 同一交易的区块号或区块哈希变化会写入 `reorg_detected_at` / `reorged_from_block_number`，并给扫描游标打上重组标记，运营确认后清除。
+- 运营动作 `replayed` / `closed` 记录在 `last_manual_action*` 字段。
+
+### 3.2 充值单（wallet-service）
+
+```mermaid
+stateDiagram-v2
+  [*] --> confirming: confirmDeposit (确认数 < wallet 阈值)
+  [*] --> confirmed: confirmDeposit (确认数 ≥ wallet 阈值)
+  confirming --> confirmed: 确认数达到阈值
+  confirmed --> credited: ledger journal 成功
+  credited --> [*]
+```
+
+- indexer 只在达到阈值后才通知 wallet，所以默认配置（两边都是 12）下充值单一出现就是 `confirmed`，随即变为 `credited`。
+- `credited` 与 `deposit.credited` 站内通知在同一事务提交；已 `credited` 的单据再次被确认会直接返回，不会重复入账。
+- 类型中的 `detected`（仅作为新建记录的默认值）和 `failed` 当前不会作为最终状态写入。
+
+## 4. 提币
+
+### 4.1 提币单（wallet-service）
+
+提币单有两个字段：业务状态 `status` 和审核状态 `reviewStatus`。
+
+```mermaid
+stateDiagram-v2
+  [*] --> requested: 申请 + 冻结 amount+fee 成功
+  [*] --> failed: 冻结失败
+  requested --> under_review: 首次批准（需双人复核）
+  requested --> approved: 批准（单人即可）
+  under_review --> approved: 另一位审核人批准
+  requested --> rejected: 拒绝（释放冻结）
+  under_review --> rejected: 拒绝（释放冻结）
+  approved --> broadcasted: custody createTransfer 成功
+  approved --> approved: 广播失败（记录 broadcastError，可 rebroadcast）
+  broadcasted --> confirmed: 确认数 ≥ 阈值，ledger consume 成功
+  confirmed --> [*]
+  rejected --> [*]
+  failed --> [*]
+```
+
+| `status` | `reviewStatus` | 含义 |
+| --- | --- | --- |
+| `requested` | `pending` | 已冻结，等待审核 |
+| `under_review` | `pending_second_approval` | 大额提币已获一次批准，等待另一位运营 |
+| `approved` | `approved` | 审核通过，尚未广播或广播失败 |
+| `broadcasted` | `approved` | 托管已广播，有 `txHash`、`custodyRequestId` |
+| `confirmed` | `approved` | 链上确认，冻结已消耗 |
+| `rejected` | `rejected` | 审核拒绝，冻结已释放 |
+| `failed` | `pending` | 冻结失败，从未进入审核 |
+
+审计动作 `WithdrawalAuditAction`：`requested`、`first_approved`、`approved`、`rejected`、`broadcasted`、`confirmed`。站内通知类型：`withdrawal.requested`、`withdrawal.approved`、`withdrawal.rejected`、`withdrawal.broadcasted`、`withdrawal.confirmed`、`deposit.credited`。
+
+### 4.2 提币申请校验
+
+在冻结之前依次检查：资产与网络受支持、金额与手续费合法、最小金额 / 最小手续费、地址在白名单中（`WITHDRAWAL_ADDRESS_NOT_WHITELISTED`）、安全冷却期（`WITHDRAWAL_SECURITY_COOLDOWN`）、按 KYC 等级的单笔与日限额（`WITHDRAWAL_SINGLE_LIMIT_EXCEEDED` / `WITHDRAWAL_DAILY_LIMIT_EXCEEDED`）、2FA。
+
+默认 KYC 限额（单笔 / 日累计，节选）：
+
+| 资产 | unverified | L1 | L2 |
+| --- | --- | --- | --- |
+| USDT | 1000 / 2000 | 10000 / 20000 | 100000 / 200000 |
+| ETH | 0.5 / 1 | 5 / 10 | 50 / 100 |
+| BTC | 0.02 / 0.05 | 0.2 / 0.5 | 2 / 5 |
+
+### 4.3 提币观测（blockchain-indexer）
+
+`detected`（确认数不足）→ `confirming`（达到阈值、正在调用 wallet）→ `confirmed`（`wallet.confirmWithdrawal` 成功）。
+
+### 4.4 托管转账（custody-adapter）
+
+```mermaid
+stateDiagram-v2
+  [*] --> accepted
+  accepted --> broadcasted: provider 广播成功
+  accepted --> failed: 广播失败
+  failed --> broadcasted: 重试成功（未超过最大次数时设置 nextRetryAt）
+  broadcasted --> confirmed: 状态回查确认
+```
+
+每次广播、重试、回查都在 `custody_transfer_attempts` 记一条（`broadcast` / `retry` / `sync_status`，`succeeded` / `failed`）。provider 有健康状态（`healthy` / `degraded` / `unhealthy`）和熔断器（`closed` / `open` / `half_open`）。
+
+## 5. 现货订单与成交
+
+### 5.1 订单字段
+
+`spot_orders` 的关键字段：`side`（`buy` / `sell`）、`type`（`limit` / `market`）、`time_in_force`（`gtc` / `ioc` / `fok`）、`price`（市价单存 0）、`quantity`、`filled_quantity`、`resting_quantity`（仍在簿内的数量）、`lock_asset_code`、`lock_amount`、`idempotency_key`、`trace_id`、`otel_trace_id`。
+
+### 5.2 订单状态机
+
+```mermaid
+stateDiagram-v2
+  [*] --> pending_risk: 风控通过，落单
+  pending_risk --> accepted: 引擎返回 resting
+  pending_risk --> rejected: 引擎 cancelled / 无成交 / 调用异常（释放冻结）
+  pending_risk --> filled: matched 且全部成交
+  pending_risk --> partially_filled: matched，剩余挂簿 (GTC)
+  pending_risk --> cancelled: matched 部分成交，剩余被取消 (IOC)
+  pending_risk --> recovery_pending: matched 后落库 / 结算失败
+  accepted --> partially_filled: 作为 maker 部分成交
+  accepted --> filled: 作为 maker 全部成交
+  partially_filled --> filled: 作为 maker 剩余成交
+  accepted --> cancelled: 用户撤单
+  partially_filled --> cancelled: 用户撤单
+  recovery_pending --> filled: 恢复任务完成
+  recovery_pending --> partially_filled: 恢复任务完成
+  filled --> [*]
+  cancelled --> [*]
+  rejected --> [*]
+```
+
+- 风控拒绝时订单不会落库，网关直接返回风控错误码（如 `INSUFFICIENT_AVAILABLE_BALANCE`、`PRICE_DEVIATION_TOO_HIGH`、`MARKET_HALTED`）。
+- 落单后冻结失败（例如风控检查和冻结之间余额被占用）时异常直接返回，订单停留在 `pending_risk`，没有对应的冻结。
+- `FOK` 流动性不足、市价单无对手盘时引擎返回 `cancelled`，订单为 `rejected`。
+- 只有 `accepted` / `partially_filled` 且 `resting_quantity > 0` 的订单可撤；终态订单撤单直接返回原订单。
+- 恢复任务失败到上限时订单仍停在 `recovery_pending`，任务进入 dead-letter，等待运营重排。
+
+### 5.3 订单恢复任务
+
+状态 `pending` → `processing`（带 lease 和心跳）→ `completed` / `failed`；`failed` 即 dead-letter，可单条或批量重新排队。当前唯一的阶段是 `persist_matched_outcome`。
+
+### 5.4 成交
+
+`spot_trades` 一行对应引擎的一次撮合：`maker_order_id` / `taker_order_id`、`buyer_*` / `seller_*`（订单、用户、账户）、`price`、`quantity`、`seller_fee_rate`、`buyer_fee_rate`、`execution_id`、`execution_batch_id`、`execution_sequence`（每个市场单调递增）、`execution_batch_sequence`、`replay_cursor`（`<market>:<seq>`）、`protocol_version`（`v2`）、`settlement_id`。
+
+异步结算模式下 `settlement_id` 先写一个由 `tradeId` 派生的占位 UUID，结算完成后由 `settlement-service` 回写真实值。
+
+## 6. 结算
+
+### 6.1 结算记录状态
+
+```mermaid
+stateDiagram-v2
+  [*] --> settled: 结算成功
+  [*] --> pending_recovery: 结算失败（可重试）
+  pending_recovery --> settled: 恢复任务 / 运营重放成功
+  pending_recovery --> failed: 达到最大尝试次数
+  failed --> settled: 运营手动恢复
+```
+
+结算恢复任务 `trade_settlement_recovery_jobs` 的状态与订单恢复任务相同：`pending` / `processing` / `completed` / `failed`。
+
+### 6.2 一笔成交的资金分录
+
+以 ETH-USDT 成交 `quantity=q`、`price=p` 为例，`quoteAmount = p × q`，卖方费 `feeQ = quoteAmount × sellerFeeRate`，买方费 `feeB = q × buyerFeeRate`：
+
+| 步骤 | 借 | 贷 |
+| --- | --- | --- |
+| consume 卖方冻结（`spot_order_lock_settled`） | 卖方 ETH `q` | 平台 ETH 结算账户 `q` |
+| consume 买方冻结（`spot_order_lock_settled`） | 买方 USDT `p×q` | 平台 USDT 结算账户 `p×q` |
+| `spot_trade_settlement_base` | 平台 ETH 结算账户 `q` | 买方 ETH `q − feeB`；平台 ETH 手续费账户 `feeB` |
+| `spot_trade_settlement_quote` | 平台 USDT 结算账户 `p×q` | 卖方 USDT `p×q − feeQ`；平台 USDT 手续费账户 `feeQ` |
+
+结束后平台结算账户净额为 0，手续费沉淀在 `fee` 账户。
+
+### 6.3 消费位点
+
+`trade_event_consumer_checkpoints` 以 `(consumerId, market)` 记录最后处理的 `eventId`、`tradeId`、`executionSequence`、`replayCursor`、`streamEntryId`。新事件序号小于等于位点视为重复；序号跳跃（大于位点 + 1）抛出 `SETTLEMENT_EVENT_SEQUENCE_GAP`。
+
+## 7. 身份与 KYC
+
+### 7.1 用户状态
+
+```mermaid
+stateDiagram-v2
+  [*] --> active
+  active --> suspended: 运营冻结
+  suspended --> active: 运营解冻
+```
+
+类型中还有 `disabled`：处于该状态的用户不能被冻结或解冻，但当前代码没有提供迁移到 `disabled` 的入口。API Key 状态为 `active` / `revoked`。
+
+### 7.2 KYC
+
+```mermaid
+stateDiagram-v2
+  [*] --> pending: 用户提交（requestedTier 高于当前等级）
+  pending --> approved: 运营批准 → kyc_tier 升级
+  pending --> rejected: 运营拒绝
+```
+
+用户等级变化（批准、拒绝、运营直接调整 `tier_adjusted`）都追加到 `identity_kyc_events`。KYC 等级直接决定提币限额（见 [4.2](#42-提币申请校验)）。证件号在存储前脱敏，不做真实核验。
+
+## 8. 市场状态
+
+```mermaid
+stateDiagram-v2
+  listed --> halted: 运营暂停（必须填写原因）
+  halted --> listed: 运营恢复（删除覆盖）
+  note right of listed: delisted 只能在 config/markets.json 中设置
+```
+
+`halted` 和 `delisted` 的市场下单会被风控拒绝（`MARKET_HALTED` / `MARKET_DELISTED`），做市模拟器也会停止在该市场报价。
+
+## 9. 关键不变量
+
+| 不变量 | 由谁保证 |
+| --- | --- |
+| 每笔 journal 内同一资产借贷相等 | `ledger-service` `ensureBalanced`，不平衡直接拒绝 |
+| 除 `opening_balance` 外任何账户余额不为负 | `ledger-service` 过账时检查 |
+| 同一业务只记一次账 | `ledger_journals.idempotency_key` 唯一（如 `deposit:<id>`、`spot_trade:base:<tradeId>`） |
+| 资金离开用户必须有 journal | `consume` 总是生成结算 journal |
+| 下单 / 提币先冻结后执行 | `order-service` 冻结成功才提交撮合；`wallet-service` 冻结成功才进入审核 |
+| 冻结最终一定被释放或消耗 | 撤单、拒单、成交后多余部分 `release`；成交与提币确认 `consume` |
+| 同一链上交易不重复入账 | 观测表与充值表 `(network, tx_hash, address)` 唯一 + journal 幂等键 |
+| 同一订单请求只建一次单 | `spot_orders.idempotency_key` 唯一 |
+| 同一成交只结算一次 | `trade_settlements.trade_id` 唯一，已 `settled` 直接返回 |
+| 成交按序结算 | `executionSequence` 在每个市场单调递增，结算按位点检测重复与跳号 |
+| 资金变动与事件原子一致 | outbox 事件与余额、journal 在同一数据库事务中写入 |
+| 提币状态迁移可追溯 | 每次迁移写 `withdrawal_audit_logs`（含前后快照、操作人） |
+| 大额提币需两名不同审核人 | `applyApproval` 拒绝同一人第二次批准（`WITHDRAWAL_SAME_APPROVER`） |
+
+## 10. 共享事件信封
+
+跨服务的交易事件使用 `packages/domain` 的 `DomainEvent`：
+
+```ts
+interface DomainEvent<TPayload> {
+  eventId: string;
+  eventType: string;
+  aggregateType: string;
+  aggregateId: string;
+  traceId: string;
+  occurredAt: string;
+  schemaId?: string;      // trade.executed 为 "trade.executed"
+  schemaVersion?: number; // trade.executed 为 2
+  payload: TPayload;
+}
+```
+
+各事件的具体内容见 [event-catalog.md](./event-catalog.md)。
+
+## 相关学习章节
+
+- [03 账户、身份与安全](../learning/03-account-identity-security.md)：用户、会话、2FA、KYC
+- [04 钱包与托管](../learning/04-wallet-custody.md)：充值、提币、观测与托管
+- [05 账本](../learning/05-ledger.md)：账户、冻结、双分录
+- [06 订单与撮合](../learning/06-order-matching.md)：订单状态机
+- [07 清算结算与手续费](../learning/07-clearing-settlement-fees.md)：结算分录与手续费
+- [09 风控](../learning/09-risk-control.md)：风控规则、限额、市场状态

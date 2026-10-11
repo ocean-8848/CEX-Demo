@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P11 增长与机构</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; padding: 22px 30px; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .card ul { margin: 6px 0 0; padding-left: 30px; }
+  .card li { margin: 4px 0; }
+  .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .meta .card { padding: 18px 22px; font-size: 30px; }
+  .meta .card b { display: block; color: var(--gold); font-size: 30px; }
+  table.t td, table.t th { padding: 14px 18px; }
+  .lat .card { padding: 18px 24px; }
+  .bseries { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .bseries .card { padding: 16px 22px; font-size: 30px; transition: background .3s, border-color .3s; }
+  .bseries .card b { font-family: var(--mono); color: var(--gold); margin-right: 12px; }
+  .bseries .card.cur { border-color: var(--gold); background: var(--gold-soft); }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="P11" data-title="增长与机构：推荐返佣、VIP、经纪商与做市商">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 产品深潜 · P11</div>
+    <h1>平台为什么要<span class="hl">把手续费让出去</span></h1>
+    <div class="row" style="max-width:1640px">
+      <div class="card col" data-step="0"><div class="stat"><div class="k">被推荐人手续费 · 示例</div><div class="v">10 USDT</div></div><span class="muted">最后落进 3 个账户</span></div>
+      <div class="card buy col" data-step="1"><div class="stat"><div class="k">做市商 Maker 成交 · 示例</div><div class="v up">+0.8 USDT</div></div><span class="muted">不交手续费，平台反而倒贴</span></div>
+      <div class="card gold col" data-step="2"><div class="stat"><div class="k">共同点</div><div class="v" style="font-size:52px">让出 → 换量和深度</div></div><span class="muted">手续费或补贴记成支出</span></div>
+    </div>
+    <ol class="say">
+      <li>你的朋友用你的推荐码注册，然后交了10 USDT 手续费。这10 USDT，最后会落进几个账户？答案是三个。</li>
+      <li>再看另一个问题。在币安挂单的做市商，有时不仅不交手续费，平台还倒贴钱给他。平台为什么愿意这样做？</li>
+      <li>这一集讲增长和机构产品。它们在账本上有个共同点。平台把一部分手续费或补贴记成支出，换来交易量和深度。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>本集路线图</h2>
+    <div class="grid2">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>推荐返佣<br><span class="muted">分账流程 · 幂等键</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>任务中心与体验金<br><span class="muted">受限资产怎样记账</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">3</span><div>VIP · 子账户 · 经纪商<br><span class="muted">账户树与权限边界</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">4</span><div>做市商 · 场外结算<br><span class="muted">负费率 · 对手方风险</span></div></div>
+    </div>
+    <div class="meta" data-step="2">
+      <div class="card"><b>推荐返佣</b>老顾客带新顾客拿提成</div>
+      <div class="card"><b>体验金</b>只能店内用的购物卡</div>
+      <div class="card"><b>经纪商</b>开专柜的品牌商</div>
+      <div class="card"><b>做市商</b>保证货架不空的批发商</div>
+    </div>
+    <ol class="say">
+      <li>本集分四段。第一，推荐返佣的分账流程。第二，任务中心和体验金，也就是受限资产怎样记账。</li>
+      <li>第三，VIP、子账户和经纪商，看机构的账户树和权限边界。第四，做市商的负费率，以及场外结算怎样降低机构的对手方风险。</li>
+      <li>打个比方，交易所像一家超市。推荐返佣是老顾客带新顾客拿提成，体验金是只能在店里用的购物卡。经纪商是开专柜的品牌商，做市商是保证货架不空的批发商。但比喻只到这里，下面看真实的账本。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="返佣比例从哪来">
+    <div class="kicker">Referral · 官方与第三方口径</div>
+    <h2>返佣比例：官方说什么，第三方说什么</h2>
+    <div class="split">
+      <div class="card gold" data-step="0"><h3>官方 · 币安学院 Referral Pro Mode</h3>
+        <ul><li>返现给被推荐人：最多 20%</li><li>佣金比例低于 20%：可全部让出</li><li>每个账户最多 50 个推荐码</li><li>注册时绑定，不能更改或解除</li><li>官方未给出基础佣金比例</li></ul></div>
+      <div class="card" data-step="2"><h3>第三方资料</h3>
+        <ul><li>现货基础佣金：历史上 20%</li><li>持有 ≥ 500 BNB：最高 40%</li><li>2024-03 起部分地区：10%–15%</li><li>合约：10%–20%</li></ul></div>
+    </div>
+    <div class="card warn" data-step="3">部分第三方写"可让出 0%–50%"，与官方"最多 20%"不一致 → 本集以官方为准</div>
+    <ol class="say">
+      <li>返佣比例的来源分两层。先看官方。根据币安学院的推荐专业模式文章，推荐人可以用进度条设置返现比例。他能把佣金的一部分让给被推荐人，最多20%。</li>
+      <li>如果推荐人的佣金比例低于20%，可以全部让出。每个账户最多50个推荐码。推荐关系在注册时绑定，之后不能更改或解除。官方没有给出基础佣金比例。</li>
+      <li>基础佣金来自第三方资料。现货基础佣金历史上是20%，持有500 BNB 及以上最高40%。2024年3月起，部分地区下调到10%到15%。合约是10%到20%。</li>
+      <li>有些第三方资料写可让出0%到50%，和官方最多20%的说法不一致。本集以官方为准。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="返佣分账流程" data-onstep="refStep">
+    <div class="kicker">Referral Split · 示例</div>
+    <h2>10 USDT 手续费，拆进三个账户</h2>
+    <svg id="ref" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>来看分账流程。示例里，被推荐人成交一笔，付了10 USDT 手续费。这笔钱先全部进入平台手续费收入。</li>
+      <li>返佣服务按批次汇总，计算应返金额。返佣比例20%，就是2 USDT。推荐人又让出20%给被推荐人，于是2 USDT 拆成1.6加0.4。平台净收入剩8 USDT。</li>
+      <li>如果这个用户挂在经纪商下面，返佣服务还要算经纪商的份额。一个用户只能挂在一个上级下，关系在注册时绑定。这避免了同一笔手续费被返两次。</li>
+      <li>出错点在批次重跑。如果重跑时没有幂等键，同一批返佣会发两次。幂等键通常是用户加结算周期。第二次写入时，账本发现键已存在，直接跳过。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="体验金：受限资产账本" data-onstep="trialStep">
+    <div class="kicker">Restricted Asset · 科目名称为示例</div>
+    <h2>体验金：独立的余额桶，只能流向少数地方</h2>
+    <svg id="trial" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>在任务中心，用户完成首次充值这类任务，就能领奖励。业界通常分四类：现金券、手续费抵扣券、体验金和理财加息券。只有现金券能提现。</li>
+      <li>重点看体验金。关键设计是，它不进入用户的可用余额，而是进入一个独立的余额桶。示例里，平台从营销预算账户发放100 USDT 体验金，进入用户的体验金桶。</li>
+      <li>体验金只能做一件事，就是作为合约保证金开仓。提币、划转、闪兑都碰不到它。因为提币服务只读可用余额，从结构上就提不走。</li>
+      <li>平仓有两种结果。亏损了，亏掉的部分回到营销预算。盈利30 USDT，盈利先进入待解锁。满足交易量或持仓时间的条件后，才转进可用。这是为了防止开仓即平仓的套利。</li>
+      <li>还有一条规则必须写清楚。亏损先扣体验金，还是先扣自有资金？不写进规则，就会出现自有资金先亏光、体验金还剩的争议。具体以活动页面为准。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="体验金状态机与 ROI" data-onstep="trialSmStep">
+    <div class="kicker">State Machine · Marketing ROI</div>
+    <h2>一次性燃料：只能被消耗或收回</h2>
+    <svg id="tsm" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>把体验金的一生画成状态机。完成任务后发放，用户领取。没领取就过期。领取后作为保证金开仓，进入使用中。</li>
+      <li>平仓后还有剩余，就回到已领取。亏损用尽，就是已耗尽。到期或提取盈利时，剩余的体验金被收回。它不能变成可用余额。</li>
+      <li>有个细节。使用中如果到期，系统不能直接收回，因为仓位还在用。通常做法是等平仓后再收回。</li>
+      <li>平台为什么愿意发？算一笔示例。发100 USDT 体验金，用户平均亏损60 USDT。这60才是平台的实际支出。用户在后续6个月产生300 USDT 手续费。营销 ROI 等于300除以60，等于5。账面发了100，实际成本只是用户亏掉的部分。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="获客漏斗" data-onstep="funnelStep">
+    <div class="kicker">Acquisition Funnel · 宽度为示意</div>
+    <h2>返佣和任务奖励，作用在漏斗的不同层</h2>
+    <svg id="funnel" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>返佣和体验金，都是获客漏斗的一部分。顶部是币安学院和币安广场，用免费内容和社区带来流量。往下是访问官网、注册、完成 KYC 和首次充值。再往下是首笔交易、30天留存，最后是 VIP 和机构。</li>
+      <li>每一层都会流失用户。业界通常观察到，KYC 和首次充值是最大的两个流失点。</li>
+      <li>两种工具针对漏斗的不同层。推荐码在注册时归因，任务奖励在首充和首次交易时触发。各层转化率属于商业数据，币安没有公开。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="VIP 与子账户" data-onstep="subStep">
+    <div class="kicker">Account Tree · 权限最小化</div>
+    <h2>机构的账户树：一个出口，多把受限的钥匙</h2>
+    <div class="lead" data-step="0" style="font-size:30px;line-height:1.4">子账户：2019 年推出 · 企业账户和 VIP 3 及以上 · 最多 200 个 <span class="muted">· 新闻报道，以官网为准</span></div>
+    <svg id="sub" width="1640" height="520" viewBox="0 0 1640 520"></svg>
+    <ol class="say">
+      <li>进入机构产品。VIP 用户通常还有专属客户经理、更高的 API 限频和提币额度。公开报道显示，币安2019年推出子账户。企业账户和 VIP 3 及以上用户可开通，最多200个，以官网为准。</li>
+      <li>看机构的账户树。一个 KYB 主体下，主账户是唯一的提币出口。下面挂着现货策略、合约策略、交易员 A 三个子账户。主子之间的划转是账本内部划转，不上链，也没有 gas。</li>
+      <li>风险是隔离的。子账户2的合约仓位被强平，不影响子账户1的资金。</li>
+      <li>权限要最小化。交易员的 API Key 只开交易，不开提币，还可以绑定 IP。就算 Key 泄露，攻击者也只能乱交易，转不走资金。</li>
+      <li>出错点在主账户的 Key。它若开了划转权限，泄露后资金会被集中到一个子账户。攻击者再用低流动性交易对转移价值。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="经纪商计划" data-onstep="brokerStep">
+    <div class="kicker">Broker Program</div>
+    <h2 id="bk-h">经纪商：自己的前端，币安的流动性</h2>
+    <svg id="broker" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>再看经纪商计划。它面向交易平台、钱包和金融科技公司。经纪商用自己的品牌和前端，接入币安的流动性。收益是返佣分成，没有前期接入费用。</li>
+      <li>接入方式有两种。Link 经纪商，用户在币安有自己的账户，授权经纪商的前端代为下单。Exchange 经纪商，经纪商为每个终端用户创建子账户，用户不直接接触币安。</li>
+      <li>看 Exchange 模式的架构。经纪商后端维护一张映射表，用户 A 对应子账户1，用户 B 对应子账户2。订单经过 Broker API 进入撮合。返佣进经纪商主账户，不进终端用户账户。</li>
+      <li>再看调用链。经纪商用主 Key 签名创建子账户，身份服务校验权限和上限。再为子账户创建只能交易的 Key，从主账户划转示例1000 USDT。之后用子账户 Key 下单，进入风控和撮合。</li>
+      <li>两个要点。第一，终端用户的 KYC 责任在经纪商一侧，以合同为准。第二，映射表一旦错乱，用户 A 的资金会显示给用户 B。另外，API 限频是否共享，是经纪商谈判的重点。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="做市商负费率" data-onstep="mmStep">
+    <div class="kicker">Market Maker · Maker Rebate</div>
+    <h2>负 Maker 费率：钱来自同一笔成交的 Taker</h2>
+    <svg id="mm" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>现在看做市商。根据币安公告，现货流动性提供者计划按周考核 Maker 成交量或占比。一个公开的入门条件是，周 Maker 成交量达到2500万美元。或者占比达到0.05%。</li>
+      <li>公告还显示，第4档 Maker 返佣从负0.01%调整为负0.008%。也就是0.8个基点。连续3周不达标的账户，会被移出计划。参数会调整，以公告为准。</li>
+      <li>负费率怎样记账？示例是一笔10000 USDT 的成交。Taker 付0.10%手续费，也就是10 USDT，进入平台手续费收入。</li>
+      <li>平台从中按0.008%拿出0.8 USDT，返给做市商。平台净收入9.2 USDT。负费率不是凭空发钱，它来自同一笔成交的 Taker 手续费。只要 Taker 费率大于 Maker 返佣，平台每笔都赚钱。</li>
+      <li>出错点是自成交。做市商用自己的单吃自己的单，制造虚假成交量。平台需要自成交防护 STP 来阻止。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="做市义务与低延迟" data-onstep="oblStep">
+    <div class="kicker">Obligations · Low Latency</div>
+    <h2>拿了返佣，就要承担做市义务</h2>
+    <div class="row">
+      <table class="t" id="obl" style="flex:0 0 860px">
+        <tr><th>做市义务指标</th><th>示例门槛</th></tr>
+        <tr data-r="0"><td>挂单时间占比</td><td class="mono">≥ 90%</td></tr>
+        <tr data-r="0"><td>最大价差</td><td class="mono">≤ 0.1%</td></tr>
+        <tr data-r="0"><td>盘口 ±1% 挂单深度</td><td class="mono">≥ 50,000 USDT</td></tr>
+        <tr data-r="1"><td>Maker 成交占比</td><td class="mono">≥ 0.05%</td></tr>
+        <tr data-r="1"><td>极端行情在线率</td><td class="mono">≥ 70%</td></tr>
+      </table>
+      <div class="col lat">
+        <div class="card info" data-step="2">主机托管 Colocation：服务器放进撮合机房，延迟可到微秒级</div>
+        <div class="card" data-step="2">公开讨论：币安主要服务器在 AWS 东京区域 · <span class="muted">币安未正式公开</span></div>
+        <div class="card warn" data-step="3">更高限频 · 专用 WebSocket · 批量下单 · FIX → 公平性争议</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>拿了返佣，做市商要承担义务。下面都是示例门槛。挂单时间占比不低于90%，最大价差不超过0.1%。盘口正负1%内的挂单金额，不低于5万 USDT。</li>
+      <li>Maker 成交占比不低于0.05%。还有一条常被忽略：极端行情在线率不低于70%。行情剧烈时撤单，恰恰是做市商最想做的事。</li>
+      <li>做市商还关心延迟。传统交易所提供主机托管，延迟可以低到微秒级。加密交易所多部署在公有云。公开讨论普遍认为，币安的主要服务器在 AWS 东京区域，币安没有正式公开。</li>
+      <li>交易所还提供更高限频、专用 WebSocket、批量下单和 FIX 接入。这带来公平性争议。做市商比普通用户更早看到行情，也更快撤单。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="场外结算" data-onstep="oesStep">
+    <div class="kicker">Off-Exchange Settlement · 示例</div>
+    <h2>资产留在托管方，交易所只给镜像额度</h2>
+    <svg id="oes" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>最后看场外结算。FTX 倒闭以后，机构最关心一个问题。交易所倒了，我的资产怎么办？场外结算的答案是，资产不进交易所钱包。</li>
+      <li>示例流程。机构把100 BTC 存进第三方托管，指定用于币安交易。托管方签名通知币安，100 BTC 已锁定。币安给机构账户100 BTC 的镜像额度。</li>
+      <li>交易周期内，机构在币安正常下单。盈亏都记在镜像账户上，不发生链上转账。</li>
+      <li>结算周期到了，机构净亏损2 BTC。托管方从机构的托管账户，划2 BTC 到交易所的托管账户。镜像额度更新为98 BTC。结算是批量、净额的，比逐笔上链便宜得多。</li>
+      <li>风险反过来了。机构在两次结算之间，可能亏损超过托管额度。交易所要实时监控保证金，在结算前要求追加。公开方案有 Ceffu MirrorX 和 Banking Triparty。2025年还加入了 USYC 和 cUSDO 作为抵押品。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="风险与失败场景">
+    <div class="kicker">Risks · Failure Cases</div>
+    <h2>故障多数出在边界上</h2>
+    <div class="grid3">
+      <div class="card sell" data-step="0"><h3>自我推荐</h3>小号推荐自己 = 自己给自己打折 · 设备指纹与 KYC 关联识别</div>
+      <div class="card sell" data-step="1"><h3>对敲刷返佣</h3>返佣 &lt; 100%，纯对敲亏钱 · 叠加营销奖励后可能有利可图</div>
+      <div class="card warn" data-step="2"><h3>批次重跑</h3>没有幂等键 → 同一批返佣发两次</div>
+      <div class="card warn" data-step="2"><h3>映射表错乱</h3>经纪商把用户 A 的资金显示给用户 B</div>
+      <div class="card warn" data-step="2"><h3>主 Key 开划转</h3>泄露后资金被集中、经低流动性交易对转移</div>
+      <div class="card info" data-step="3"><h3>考核漏洞</h3>只看周平均挂单时间 → 关键时刻撤单仍达标 · 加极端行情在线率</div>
+    </div>
+    <ol class="say">
+      <li>把这一集的风险收拢一下。增长侧的第一个风险是自我推荐。用户用小号推荐自己，相当于自己给自己打折。平台用设备指纹和 KYC 关联来识别。</li>
+      <li>第二个是对敲刷量。推荐人和被推荐人互相成交，制造手续费换返佣。返佣比例低于100%，纯对敲是亏钱的。但叠加营销奖励之后，就可能有利可图。</li>
+      <li>机构侧的故障，多出在边界上。批次重跑没有幂等键，返佣发两次。经纪商映射表错乱，资金显示给错的人。主账户 Key 开了划转，泄露后资金被转移。</li>
+      <li>还有一个考核漏洞。如果只看周平均挂单时间，做市商可以平时多挂，在关键时刻撤单，仍然达标。所以要加极端行情在线率这类指标。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与预告" data-onstep="teaserStep">
+    <div class="kicker">Summary · Next Season</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets" style="font-size:34px;gap:16px">
+      <li data-step="0">返佣、营销都是让出手续费：<span class="hl">绑定关系 + 幂等键</span>防多发，<span class="hl">独立余额桶</span>防提走。</li>
+      <li data-step="1">机构账户树按<span class="hl">权限最小化</span>：子账户隔离，交易 Key 不开提币。</li>
+      <li data-step="2">负费率来自 Taker 手续费；场外结算让交易所改为承担<span class="hl">结算间的信用风险</span>。</li>
+    </ul>
+    <div class="bseries" data-step="3">
+      <div class="card" id="b01"><b>B01</b>合规防护</div>
+      <div class="card"><b>B02</b>平台安全</div>
+      <div class="card"><b>B03</b>账户安全</div>
+      <div class="card"><b>B04</b>系统对账</div>
+      <div class="card"><b>B05</b>业务风控</div>
+      <div class="card"><b>B06</b>金库与流动性</div>
+      <div class="card"><b>B07</b>应急响应</div>
+      <div class="card" style="border-style:dashed"><span class="muted">幕后核心 · 7 集</span></div>
+    </div>
+    <ol class="say">
+      <li>小结三点。第一，返佣和营销都是把手续费让出去。返佣靠绑定关系和幂等键防止多发，体验金靠独立余额桶防止被提走。</li>
+      <li>第二，机构的账户树按权限最小化设计。子账户隔离风险，交易 Key 不开提币，经纪商负责终端用户的映射。</li>
+      <li>第三，做市商的负费率来自 Taker 手续费。场外结算把资产留在托管方，交易所改为承担结算之间的信用风险。</li>
+      <li>产品深潜到这里就结束了。下一季，我们进入幕后核心，一共7集。合规、平台安全、账户安全、系统对账、业务风控、金库与流动性，最后是应急响应。</li>
+      <li>这些系统不产生收入，但决定交易所能不能活下去。下一集是 B01 合规防护。我们从 KYC、反洗钱和 Travel Rule 讲起。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10', done: '#5a5f6a' };
+  const SOFT = { gold: 'rgba(240,185,11,.16)', buy: 'rgba(46,189,133,.16)', sell: 'rgba(246,70,93,.16)', info: 'rgba(91,156,255,.16)', warn: 'rgba(240,163,64,.16)' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 28}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.mono ? ' font-family="JetBrains Mono, SF Mono, Menlo, monospace"' : ''}${o.plain ? '' : ` stroke="${C.bg}" stroke-width="8" paint-order="stroke"`}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op !== undefined ? ` opacity="${o.op}"` : ''}/>`;
+  function A(x1, y1, x2, y2, o = {}) {
+    const col = o.col || C.t2, w = o.w || 4, a = Math.atan2(y2 - y1, x2 - x1), h = 18;
+    const p = d => `${(x2 - h * Math.cos(a + d)).toFixed(1)},${(y2 - h * Math.sin(a + d)).toFixed(1)}`;
+    return `<line x1="${x1}" y1="${y1}" x2="${x2 - 10 * Math.cos(a)}" y2="${y2 - 10 * Math.sin(a)}" stroke="${col}" stroke-width="${w}"${o.dash ? ' stroke-dasharray="12 9"' : ''}/><polygon points="${x2},${y2} ${p(0.42)} ${p(-0.42)}" fill="${col}"/>`;
+  }
+  const PL = (pts, col, w = 4, dash) => `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="${w}"${dash ? ' stroke-dasharray="12 9"' : ''}/>`;
+  function B(x, y, w, h, title, sub, st = 'done', o = {}) {
+    const m = { on: [SOFT.gold, C.gold, C.text], done: [C.panel, C.done, C.text], off: [C.panel, C.line, C.t2], bad: [SOFT.sell, C.sell, C.text], ok: [SOFT.buy, C.buy, C.text], info: [SOFT.info, C.info, C.text], warn: [SOFT.warn, C.warn, C.text] }[st];
+    const ts = o.size || 30;
+    let s = R(x, y, w, h, { fill: m[0], stroke: m[1], sw: st === 'off' ? 2 : 3, dash: o.dash });
+    if (sub) s += T(x + w / 2, y + h / 2 - 4, title, { anchor: 'middle', size: ts, bold: true, fill: m[2], plain: true }) + T(x + w / 2, y + h / 2 + 32, sub, { anchor: 'middle', size: o.subSize || 24, fill: o.subCol || C.t2, plain: true, bold: !!o.subBold });
+    else s += T(x + w / 2, y + h / 2 + ts * 0.36, title, { anchor: 'middle', size: ts, bold: true, fill: m[2], plain: true });
+    return s;
+  }
+
+  function refStep(el, st) {
+    const svg = el.querySelector('#ref');
+    let h = '';
+    h += B(20, 40, 320, 130, '被推荐人成交', '手续费 10 USDT', 'on');
+    h += B(420, 40, 340, 130, '平台手续费收入', st === 0 ? '10 USDT' : '10 → 8 USDT', st === 0 ? 'on' : 'done');
+    h += A(342, 105, 416, 105, { col: C.gold });
+    h += B(420, 260, 340, 130, '返佣服务', st >= 1 ? '按批次 · 返佣 20% = 2 USDT' : '按批次汇总', st >= 1 ? 'on' : 'off', { subSize: 22 });
+    h += A(590, 172, 590, 256, { col: st >= 1 ? C.gold : C.line });
+    const outs = [['推荐人 · 可用', '+1.6 USDT', 40, 'ok'], ['被推荐人 · 可用', '+0.4 USDT 返现', 170, 'ok'], ['经纪商 · 可用', '若挂在经纪商下', 300, 'warn'], ['平台净收入', '8 USDT', 430, 'done']];
+    outs.forEach(([t, s2, y, k], i) => {
+      const show = st >= 1 && (i !== 2 || st >= 2);
+      h += B(860, y, 380, 110, t, show ? s2 : '', show ? k : 'off', { subBold: true, subCol: show && k === 'ok' ? C.buy : C.t2, subSize: 26 });
+      const fromY = i === 3 ? 105 : 325;
+      const fromX = i === 3 ? 762 : 762;
+      h += A(fromX, i === 3 ? 150 : fromY, 856, y + 55, { col: show ? (k === 'ok' ? C.buy : k === 'warn' ? C.warn : C.done) : C.line, w: show ? 4 : 2, dash: i === 2 });
+    });
+    // stacked bar
+    const bx = 1290, by = 40, bh = 500;
+    h += T(bx + 100, by - 8, '10 USDT', { anchor: 'middle', size: 28, bold: true });
+    if (st === 0) h += R(bx, by, 200, bh, { fill: SOFT.gold, stroke: C.gold, rx: 8 }) + T(bx + 100, by + bh / 2, '平台收入', { anchor: 'middle', size: 30, plain: true });
+    else {
+      const seg = [[8, C.done, '平台 8'], [1.6, C.gold, '推荐人 1.6'], [0.4, C.buy, '']];
+      let y = by;
+      seg.forEach(([v, c, lab]) => { const hh = v / 10 * bh; h += `<rect x="${bx}" y="${y}" width="200" height="${hh}" fill="${c}" opacity=".75"/>`; h += T(bx + 100, y + hh / 2 + 11, lab, { anchor: 'middle', size: v < 1 ? 24 : 30, bold: true, plain: true, fill: '#ffffff' }); y += hh; });
+      h += T(bx + 212, by + bh - 2, '被推荐人', { size: 26, fill: C.buy, bold: true }) + T(bx + 212, by + bh - 34, '0.4', { size: 26, fill: C.buy, bold: true });
+    }
+    if (st === 2) h += R(20, 440, 740, 110, { fill: SOFT.warn, stroke: C.warn }) + T(390, 488, '一个用户只挂一个上级 · 注册时绑定', { anchor: 'middle', size: 30, bold: true, plain: true }) + T(390, 528, '同一笔手续费不会被返两次', { anchor: 'middle', size: 26, plain: true, fill: C.t2 });
+    if (st === 3) {
+      h += R(20, 420, 740, 170, { fill: C.panel, stroke: C.sell });
+      h += T(40, 462, '批次重跑 · 幂等键 = 用户 + 结算周期', { size: 30, bold: true, fill: C.gold, plain: true });
+      h += T(40, 510, '第 1 次：u123 + 2026-W40 → 写入 ✓', { size: 28, mono: true, fill: C.buy, plain: true });
+      h += T(40, 556, '第 2 次：键已存在 → 跳过', { size: 28, mono: true, fill: C.sell, plain: true });
+    }
+    svgEl(svg, h);
+  }
+
+  function trialStep(el, st) {
+    const svg = el.querySelector('#trial');
+    let h = '';
+    const chips = [['现金券', '可提现'], ['手续费抵扣券', '只能抵扣'], ['体验金', '只能作保证金'], ['理财加息券', '只能加息']];
+    chips.forEach(([t, s], i) => { const x = i * 412, act = st === 0 || (st >= 1 && i === 2); h += B(x, 0, 392, 84, t + ' · ' + s, '', act ? (i === 0 ? 'ok' : 'on') : 'off', { size: 28 }); });
+    const S = st;
+    h += B(20, 180, 300, 120, '营销预算账户', S === 1 ? '−100 USDT' : S >= 3 ? '亏损部分回流' : '平台', S >= 1 ? 'done' : 'off', { subSize: 24 });
+    h += B(420, 180, 320, 120, '体验金桶 · 受限', S >= 1 ? (S === 1 ? '100 USDT' : '冻结用于开仓') : '', S === 1 ? 'on' : S >= 1 ? 'done' : 'off');
+    h += B(840, 180, 340, 120, '合约保证金', S >= 2 ? '体验金部分' : '', S === 2 ? 'on' : S >= 2 ? 'done' : 'off');
+    h += B(840, 420, 340, 120, '体验金盈利 · 待解锁', S >= 3 ? '+30 USDT' : '', S === 3 ? 'on' : 'off', { subBold: true, subCol: C.buy, size: 28 });
+    h += B(1280, 420, 340, 120, '用户 · 可用', S >= 3 ? '可提现' : '', S === 3 ? 'ok' : 'off');
+    h += B(420, 420, 320, 120, '提币 · 划转 · 闪兑', S >= 2 ? '✕ 读不到体验金' : '', S >= 2 ? 'bad' : 'off', { size: 28, dash: '10 8' });
+    const g = k => S >= k ? C.gold : C.line;
+    h += A(322, 220, 416, 220, { col: g(1) }) + T(369, 205, '① 发放', { anchor: 'middle', size: 24, fill: S >= 1 ? C.gold : C.t2 });
+    h += A(418, 270, 324, 270, { col: S >= 4 ? C.warn : C.line, dash: true }) + T(369, 330, '⑤ 过期收回', { anchor: 'middle', size: 24, fill: S >= 4 ? C.warn : C.t2 });
+    h += A(742, 240, 836, 240, { col: g(2) }) + T(789, 225, '② 开仓', { anchor: 'middle', size: 24, fill: S >= 2 ? C.gold : C.t2 });
+    h += A(580, 302, 580, 416, { col: S >= 2 ? C.sell : C.line, dash: true });
+    h += A(1010, 302, 1010, 416, { col: S >= 3 ? C.buy : C.line }) + T(1024, 370, '③a 盈利', { size: 24, fill: S >= 3 ? C.buy : C.t2 });
+    h += PL('1010,178 1010,130 170,130', S >= 3 ? C.sell : C.line, 4) + A(170, 130, 170, 176, { col: S >= 3 ? C.sell : C.line }) + T(590, 120, '③b 亏损 → 回到营销预算', { anchor: 'middle', size: 24, fill: S >= 3 ? C.sell : C.t2 });
+    h += A(1182, 480, 1276, 480, { col: S >= 3 ? C.buy : C.line }) + T(1229, 465, '④', { anchor: 'middle', size: 24, fill: S >= 3 ? C.buy : C.t2 });
+    if (S === 2) h += T(1250, 250, '提币服务只读可用余额', { size: 28, bold: true, fill: C.sell }) + T(1250, 290, '→ 结构上提不走', { size: 28, bold: true, fill: C.sell });
+    if (S === 3) h += T(1280, 400, '满足交易量或持仓时间后解锁', { size: 24, fill: C.buy });
+    if (S === 4) h += R(1240, 150, 400, 200, { fill: SOFT.warn, stroke: C.warn }) + T(1440, 200, '规则必须写清：', { anchor: 'middle', size: 28, bold: true, plain: true }) + T(1440, 250, '亏损先扣体验金', { anchor: 'middle', size: 28, plain: true }) + T(1440, 295, '还是先扣自有资金？', { anchor: 'middle', size: 28, plain: true });
+    if (S === 4) h += T(20, 590, '以活动页面为准 · 科目名称为示例', { size: 26, fill: C.t2 });
+    svgEl(svg, h);
+  }
+
+  function trialSmStep(el, st) {
+    const svg = el.querySelector('#tsm');
+    let h = '';
+    const W = 290, H = 96;
+    const N = { is: [20, 60, '已发放', 'ISSUED'], cl: [380, 60, '已领取', 'CLAIMED'], iu: [740, 60, '使用中', 'IN_USE'], ex: [20, 280, '已过期', 'EXPIRED'], rc: [380, 280, '已收回', 'RECLAIMED'], cs: [740, 280, '已耗尽', 'CONSUMED'] };
+    const on = [['is', 'cl', 'ex', 'iu'], ['cl', 'cs', 'rc'], ['iu'], []][st];
+    const E = [['is', 'cl', 0, [312, 108, 376, 108]], ['is', 'ex', 0, [165, 158, 165, 276]], ['cl', 'iu', 0, [672, 90, 736, 90]], ['iu', 'cl', 1, [740, 130, 674, 130]], ['iu', 'cs', 1, [885, 158, 885, 276]], ['cl', 'rc', 1, [525, 158, 525, 276]]];
+    E.forEach(([a, b, k, [x1, y1, x2, y2]]) => { h += A(x1, y1, x2, y2, { col: k === st ? C.gold : C.done, w: k === st ? 5 : 3 }); });
+    Object.entries(N).forEach(([k, [x, y, t, s]]) => { const end = ['ex', 'rc', 'cs'].includes(k); h += B(x, y, W, H, t, s, on.includes(k) ? (end ? 'warn' : 'on') : 'done', { subSize: 20 }); });
+    const notes = [['完成任务 → 发放 → 领取 → 开仓使用', '未领取 → 过期'], ['平仓有剩余 → 回到已领取 · 亏损用尽 → 已耗尽', '到期或提取盈利 → 剩余体验金被收回'], ['使用中到期：仓位还在用，不能直接收回', '通常做法：等平仓后再收回'], ['只能被消耗或收回', '不能转成可用余额']][st];
+    h += R(20, 430, 1010, 150, { fill: C.panel, stroke: st === 2 ? C.warn : C.line });
+    h += T(50, 490, notes[0], { size: 30, bold: true, plain: true, fill: st === 2 ? C.warn : C.text });
+    h += T(50, 545, notes[1], { size: 28, plain: true, fill: C.t2 });
+    // ROI panel
+    const act = st === 3;
+    h += R(1080, 20, 560, 560, { fill: act ? SOFT.gold : C.panel, stroke: act ? C.gold : C.line, rx: 18 });
+    h += T(1110, 80, '营销 ROI · 示例', { size: 34, bold: true, plain: true, fill: act ? C.gold : C.t2 });
+    h += T(1110, 128, '= 生命周期手续费 ÷ 营销支出', { size: 26, plain: true, fill: C.t2 });
+    if (act) {
+      const L = [['发放体验金', '100 USDT', C.t2], ['用户平均亏损', '60 USDT', C.sell], ['= 平台实际支出', '60 USDT', C.sell], ['后续 6 个月手续费', '300 USDT', C.buy]];
+      L.forEach(([k, v, c], i) => { h += T(1110, 200 + i * 66, k, { size: 28, plain: true, fill: C.text }) + T(1610, 200 + i * 66, v, { anchor: 'end', size: 30, mono: true, bold: true, plain: true, fill: c }); });
+      h += `<line x1="1110" y1="460" x2="1610" y2="460" stroke="${C.gold}" stroke-width="2"/>`;
+      h += T(1360, 530, '300 ÷ 60 = 5', { anchor: 'middle', size: 52, mono: true, bold: true, plain: true, fill: C.gold });
+    } else h += T(1360, 330, '一次性燃料', { anchor: 'middle', size: 44, bold: true, plain: true, fill: C.t2 });
+    svgEl(svg, h);
+  }
+
+  function funnelStep(el, st) {
+    const svg = el.querySelector('#funnel');
+    let h = '';
+    const L = ['内容曝光 · 学院 · 广场', '访问官网', '注册', '完成 KYC', '首次充值', '首笔交易', '30 天留存', 'VIP / 机构'];
+    const W = [1000, 900, 800, 650, 520, 450, 390, 330];
+    L.forEach((t, i) => {
+      const w = W[i], x = 560 - w / 2, y = 10 + i * 72;
+      const big = (i === 3 || i === 4) && st >= 1;
+      const tag = st === 2 && (i === 2 || i === 4 || i === 5);
+      h += R(x, y, w, 60, { fill: big ? SOFT.sell : tag ? SOFT.gold : C.panel, stroke: big ? C.sell : tag ? C.gold : C.done, rx: 10 });
+      h += T(560, y + 41, t, { anchor: 'middle', size: 30, bold: true, plain: true, fill: big ? C.text : C.text });
+      if (big) h += T(560 + w / 2 + 20, y + 41, '最大流失点', { size: 28, bold: true, fill: C.sell });
+    });
+    if (st === 2) {
+      h += R(1160, 120, 470, 120, { fill: SOFT.gold, stroke: C.gold }) + T(1395, 172, '推荐码 · 注册时归因', { anchor: 'middle', size: 30, bold: true, plain: true }) + T(1395, 214, '→ 推荐人', { anchor: 'middle', size: 26, plain: true, fill: C.t2 });
+      h += A(1158, 180, 960, 180, { col: C.gold });
+      h += R(1160, 330, 470, 120, { fill: SOFT.gold, stroke: C.gold }) + T(1395, 382, '任务奖励 · 首充和首交', { anchor: 'middle', size: 30, bold: true, plain: true }) + T(1395, 424, '→ 营销预算', { anchor: 'middle', size: 26, plain: true, fill: C.t2 });
+      h += A(1158, 380, 840, 340, { col: C.gold }) + A(1158, 400, 806, 412, { col: C.gold });
+      h += T(1160, 560, '各层转化率：商业数据，未公开', { size: 26, fill: C.t2 });
+    } else if (st === 0) {
+      h += T(1160, 160, '漏斗顶部', { size: 30, bold: true, fill: C.gold }) + T(1160, 205, '免费教育内容和社区', { size: 28, fill: C.t2 }) + T(1160, 245, '带来流量', { size: 28, fill: C.t2 });
+    } else {
+      h += T(1160, 300, '业界通用观察', { size: 30, bold: true, fill: C.sell }) + T(1160, 345, 'KYC 和首次充值', { size: 28, fill: C.t2 }) + T(1160, 385, '流失最多', { size: 28, fill: C.t2 });
+    }
+    svgEl(svg, h);
+  }
+
+  function subStep(el, st) {
+    const svg = el.querySelector('#sub');
+    let h = '';
+    h += R(0, 0, 1640, 520, { fill: 'rgba(255,255,255,.015)', stroke: C.line, rx: 18, dash: '10 8' });
+    h += T(24, 44, '一个 KYB 主体', { size: 26, fill: C.t2 });
+    h += B(620, 30, 400, 120, '主账户', '唯一可提币出口', st >= 1 ? 'on' : 'done');
+    h += B(1220, 30, 390, 120, '外部地址', '白名单', st >= 1 ? 'done' : 'off');
+    h += B(40, 60, 440, 100, '主账户 API Key', '可划转 · 不可提币', st === 4 ? 'bad' : 'off', { size: 28 });
+    const subs = [[100, '子账户 1', '现货策略'], [620, '子账户 2', '合约策略'], [1140, '子账户 3', '交易员 A']];
+    subs.forEach(([x, t, s], i) => {
+      let k = st >= 1 ? 'done' : 'off';
+      if (st === 2) k = i === 1 ? 'bad' : i === 0 ? 'ok' : 'done';
+      if (st === 4) k = i === 2 ? 'bad' : 'done';
+      const sub2 = st === 2 ? (i === 1 ? '仓位被强平' : i === 0 ? '资金不受影响' : s) : st === 4 && i === 2 ? '资金被集中到这里' : s;
+      h += B(x, 250, 400, 110, t, sub2, k);
+    });
+    const keys = [[100, 'API Key 1', '仅交易 · 绑定 IP'], [620, 'API Key 2', '仅交易']];
+    keys.forEach(([x, t, s]) => { h += B(x, 420, 400, 90, t + ' · ' + s, '', st === 3 ? 'ok' : 'off', { size: 28 }); h += A(x + 200, 418, x + 200, 364, { col: st === 3 ? C.buy : C.line }); });
+    const ic = st >= 1 && st !== 4 ? C.gold : C.line;
+    subs.forEach(([x]) => { h += A(820, 152, x + 200, 246, { col: ic, w: st === 1 ? 4 : 3 }); });
+    h += A(1022, 90, 1216, 90, { col: st >= 1 ? C.info : C.line });
+    h += A(482, 110, 616, 100, { col: st === 4 ? C.sell : C.line });
+    if (st === 1) h += T(1240, 215, '内部划转 · 不上链 · 无 gas', { size: 26, bold: true, fill: C.gold }) + T(1119, 75, '链上提币', { anchor: 'middle', size: 24, fill: C.info });
+    if (st === 3) h += T(1140, 470, 'Key 泄露 → 只能乱交易，转不走资金', { size: 28, bold: true, fill: C.buy });
+    if (st === 4) { h += A(500, 305, 1136, 305, { col: C.sell, w: 5 }); h += T(820, 425, '低流动性交易对 → 转移价值', { anchor: 'middle', size: 30, bold: true, fill: C.sell }); }
+    svgEl(svg, h);
+  }
+
+  function brokerStep(el, st) {
+    const svg = el.querySelector('#broker');
+    let h = '';
+    if (st <= 1) {
+      h += R(0, 0, 1640, 110, { fill: C.panel, stroke: st === 0 ? C.gold : C.line });
+      h += T(30, 48, '面向：交易平台 · 钱包 · 金融科技公司', { size: 30, bold: true, plain: true });
+      h += T(30, 92, '自有品牌与前端 · 接入币安流动性 · 收益 = 返佣分成 · 无前期接入费用', { size: 28, plain: true, fill: C.t2 });
+      const md = (x, title, lines, k) => { let s = R(x, 150, 790, 430, { fill: st === 1 ? SOFT[k] : C.panel, stroke: st === 1 ? C[k] : C.line, rx: 18 }) + T(x + 30, 210, title, { size: 36, bold: true, plain: true, fill: st === 1 ? C[k] : C.t2 }); lines.forEach((l, i) => { s += T(x + 30, 290 + i * 66, l, { size: 30, plain: true, fill: st === 1 ? C.text : C.t2 }); }); return s; };
+      h += md(0, 'Link 经纪商', ['用户在币安有自己的账户', '通过 OAuth 或 API 授权', '经纪商前端代为下单'], 'info');
+      h += md(850, 'Exchange 经纪商', ['经纪商用 API 创建子账户', '一个终端用户 = 一个子账户', '用户不直接接触币安'], 'gold');
+    } else if (st === 2 || st === 4) {
+      const bad = st === 4;
+      h += B(0, 60, 210, 100, '终端用户 A', '', 'done', { size: 28 });
+      h += B(0, 240, 210, 100, '终端用户 B', bad ? '看到 A 的资金' : '', bad ? 'bad' : 'done', { size: 28 });
+      h += R(260, 20, 640, 360, { fill: 'rgba(240,163,64,.05)', stroke: C.warn, rx: 18, dash: '10 8' }) + T(280, 58, '经纪商', { size: 26, fill: C.warn, bold: true });
+      h += B(290, 140, 220, 120, '前端 / App', '', 'done', { size: 28 });
+      h += R(560, 80, 310, 260, { fill: bad ? SOFT.sell : SOFT.gold, stroke: bad ? C.sell : C.gold });
+      h += T(715, 124, '后端 · 映射表', { anchor: 'middle', size: 28, bold: true, plain: true });
+      h += T(590, 190, 'A ↔ 子账户 ' + (bad ? '2' : '1'), { size: 30, mono: true, plain: true, fill: bad ? C.sell : C.text });
+      h += T(590, 250, 'B ↔ 子账户 ' + (bad ? '1' : '2'), { size: 30, mono: true, plain: true, fill: bad ? C.sell : C.text });
+      h += T(590, 310, bad ? '映射错乱 ✕' : '', { size: 28, bold: true, plain: true, fill: C.sell });
+      h += A(212, 110, 286, 180, { col: C.done }) + A(212, 290, 286, 220, { col: C.done }) + A(512, 200, 556, 200, { col: C.done });
+      h += R(940, 20, 700, 560, { fill: 'rgba(240,185,11,.03)', stroke: C.line, rx: 18 }) + T(960, 58, '币安', { size: 26, fill: C.gold, bold: true });
+      h += B(960, 140, 230, 120, 'Broker API', '签名校验', 'done', { size: 28 });
+      h += A(872, 200, 956, 200, { col: C.gold });
+      h += B(1240, 80, 380, 100, '子账户 1 = 用户 A', '', 'done', { size: 28 });
+      h += B(1240, 220, 380, 100, '子账户 2 = 用户 B', '', 'done', { size: 28 });
+      h += A(1192, 190, 1236, 130, { col: C.done }) + A(1192, 210, 1236, 270, { col: C.done });
+      h += B(1240, 360, 180, 90, '撮合', '', 'done', { size: 28 });
+      h += B(1440, 360, 180, 90, '返佣服务', '', 'done', { size: 26 });
+      h += A(1330, 322, 1330, 356, { col: C.done }) + A(1422, 405, 1436, 405, { col: C.done });
+      h += B(960, 470, 400, 90, '经纪商主账户 ← 返佣', '', 'on', { size: 28 });
+      h += PL('1530,452 1530,515', C.gold) + A(1530, 515, 1364, 515, { col: C.gold });
+      if (bad) {
+        h += R(0, 420, 900, 160, { fill: C.panel, stroke: C.warn });
+        h += T(24, 468, '终端用户 KYC 责任在经纪商一侧 · 以合同为准', { size: 28, plain: true });
+        h += T(24, 516, 'API 限频：共享还是单独计算 → 谈判重点', { size: 28, plain: true, fill: C.warn });
+        h += T(24, 562, '币安只看到经纪商的子账户', { size: 26, plain: true, fill: C.t2 });
+      } else h += T(20, 470, '返佣进经纪商主账户', { size: 30, bold: true, fill: C.gold }) + T(20, 515, '不进终端用户账户', { size: 30, bold: true, fill: C.gold }) + T(20, 560, '是否让利给用户由经纪商决定', { size: 26, fill: C.t2 });
+    } else {
+      const X = [130, 405, 680, 955, 1230, 1505];
+      const hd = ['终端用户', '经纪商后端', 'api-gateway', 'identity', 'ledger', 'order'];
+      hd.forEach((t, i) => { h += B(X[i] - 125, 0, 250, 70, t, '', 'done', { size: 28 }); h += `<line x1="${X[i]}" y1="72" x2="${X[i]}" y2="590" stroke="${C.line}" stroke-width="3" stroke-dasharray="6 8"/>`; });
+      const M = [[0, 1, '注册 · 经纪商侧 KYC'], [1, 2, '创建子账户 · 主 Key 签名'], [2, 3, '校验权限与子账户上限'], [3, 1, '返回 subAccountId'], [1, 2, '创建子账户 Key · 仅交易'], [1, 2, '主 → 子 划转 1,000 USDT'], [2, 4, '内部划转分录'], [0, 1, '下单买 BTC'], [1, 2, '子账户 Key 下单'], [2, 5, '风控与撮合'], [5, 1, '成交回报']];
+      M.forEach(([a, b, lab], i) => { const y = 120 + i * 43; const c = [0, 1, 1, 1, 1, 2, 2, 3, 3, 3, 3][i]; const col = [C.t2, C.gold, C.info, C.buy][c]; h += A(X[a], y, X[b], y, { col, w: 3 }); h += T((X[a] + X[b]) / 2, y - 8, lab, { anchor: 'middle', size: 25, fill: C.text }); });
+    }
+    el.querySelector('#bk-h').textContent = ['经纪商：自己的前端，币安的流动性', '两种接入：Link 与 Exchange', 'Exchange 经纪商的架构', '调用链：开户、划转、下单', '两个要点：KYC 责任与映射表'][st];
+    svgEl(svg, h);
+  }
+
+  function mmStep(el, st) {
+    const svg = el.querySelector('#mm');
+    let h = '';
+    const L = st <= 1, F = st >= 2;
+    h += R(0, 10, 760, 170, { fill: st === 0 ? SOFT.gold : C.panel, stroke: st === 0 ? C.gold : C.line });
+    h += T(24, 56, '现货流动性提供者计划 · 按周考核', { size: 28, bold: true, plain: true, fill: L ? C.gold : C.t2 });
+    h += T(24, 108, '周 Maker 成交量 ≥ 2,500 万美元', { size: 30, plain: true, fill: L ? C.text : C.t2 });
+    h += T(24, 156, '或 Maker 成交占比 ≥ 0.05%', { size: 30, plain: true, fill: L ? C.text : C.t2 });
+    h += R(0, 200, 760, 150, { fill: st === 1 ? SOFT.gold : C.panel, stroke: st === 1 ? C.gold : C.line });
+    h += T(24, 246, '第 4 档 Maker 返佣', { size: 28, bold: true, plain: true, fill: L ? C.gold : C.t2 });
+    h += T(24, 306, '−0.01% → −0.008% = 0.8 个基点', { size: 34, mono: true, bold: true, plain: true, fill: L ? C.text : C.t2 });
+    h += R(0, 370, 760, 120, { fill: st === 1 ? SOFT.warn : C.panel, stroke: st === 1 ? C.warn : C.line });
+    h += T(24, 418, '连续 3 周不达标 → 移出计划', { size: 30, bold: true, plain: true, fill: L ? C.text : C.t2 });
+    h += T(24, 464, '币安公告 · 参数会调整', { size: 26, plain: true, fill: C.t2 });
+    // flow
+    h += B(840, 10, 380, 110, 'Taker 用户', '付 0.10% = 10 USDT', F ? 'on' : 'off', { subBold: true, subCol: F ? C.gold : C.t2 });
+    h += B(1260, 10, 380, 110, '一笔成交', '10,000 USDT · 示例', F ? 'done' : 'off');
+    h += B(840, 190, 380, 110, '平台手续费收入', '10 USDT', F ? 'on' : 'off', { subBold: true });
+    h += A(1030, 122, 1030, 186, { col: F ? C.gold : C.line });
+    const G = st >= 3;
+    h += B(840, 380, 380, 110, '平台净收入', G ? '9.2 USDT' : '', G ? 'done' : 'off', { subBold: true, subCol: C.text, subSize: 30 });
+    h += B(1260, 380, 380, 110, '做市商 · 可用', G ? '+0.8 USDT 返佣' : '', G ? 'ok' : 'off', { subBold: true, subCol: C.buy, subSize: 28 });
+    h += A(1030, 302, 1030, 376, { col: G ? C.done : C.line }) + A(1222, 270, 1380, 376, { col: G ? C.buy : C.line });
+    if (G) h += T(1330, 300, '× 0.008%', { size: 28, mono: true, bold: true, fill: C.buy });
+    if (st === 4) {
+      h += R(0, 510, 1640, 84, { fill: SOFT.sell, stroke: C.sell });
+      h += T(820, 564, '自成交：同一主体既拿 Maker 返佣又付 Taker 费 → 刷量 → STP 阻止', { anchor: 'middle', size: 30, bold: true, plain: true });
+    } else if (G) h += T(1240, 560, 'Taker 费率 > Maker 返佣 → 每笔都赚钱', { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+    svgEl(svg, h);
+  }
+
+  function oblStep(el, st) {
+    el.querySelectorAll('#obl tr[data-r]').forEach(r => { const k = +r.dataset.r; r.style.opacity = (st <= 1 ? (k <= st ? 1 : .3) : .45); r.style.background = (st <= 1 && k === st) ? 'var(--gold-soft)' : ''; });
+  }
+
+  function oesStep(el, st) {
+    const svg = el.querySelector('#oes');
+    let h = '';
+    h += B(0, 40, 340, 130, '机构', ['资产放哪里？', '存入 100 BTC', '下单 · 交易', '结算 −2 BTC', '镜像额度 98 BTC'][st], st === 0 ? 'on' : 'done');
+    h += R(420, 10, 560, 320, { fill: 'rgba(91,156,255,.05)', stroke: st >= 1 ? C.info : C.line, rx: 18 }) + T(445, 52, '第三方托管 · 例如 Ceffu', { size: 28, bold: true, fill: C.info, plain: true });
+    const inst = st === 0 ? '—' : st >= 3 ? '98 BTC' : '100 BTC';
+    h += B(450, 80, 500, 110, '机构托管账户', inst, st >= 1 ? 'info' : 'off', { subBold: true, subCol: C.text, subSize: 30 });
+    h += B(450, 210, 500, 100, '交易所托管账户', st >= 3 ? '+2 BTC' : '', st >= 3 ? 'warn' : 'off', { subBold: true, subCol: C.warn, subSize: 28 });
+    h += R(1060, 10, 580, 320, { fill: 'rgba(240,185,11,.04)', stroke: st >= 1 ? C.gold : C.line, rx: 18 }) + T(1085, 52, '币安', { size: 28, bold: true, fill: C.gold, plain: true });
+    const mir = st === 0 ? '—' : st >= 3 ? '98 BTC' : '100 BTC';
+    h += B(1090, 80, 520, 110, '镜像额度', mir, st >= 1 ? 'on' : 'off', { subBold: true, subCol: C.text, subSize: 30 });
+    h += B(1090, 210, 520, 100, '镜像账户盈亏', st === 2 ? '下单 · 成交 · 不上链' : st >= 3 ? '本期净亏损 −2 BTC' : '', st === 2 ? 'on' : st >= 3 ? 'bad' : 'off', { subSize: 26 });
+    if (st >= 1) { h += A(342, 105, 446, 135, { col: C.info }); h += A(952, 120, 1086, 120, { col: C.gold, dash: true }); h += T(1018, 104, '锁定通知', { anchor: 'middle', size: 22, fill: C.gold }); }
+    if (st === 2) h += PL('170,172 170,348 1350,348', C.gold) + A(1350, 348, 1350, 314, { col: C.gold });
+    if (st >= 3) { h += A(1086, 275, 952, 275, { col: C.sell }); h += A(700, 192, 700, 206, { col: C.warn }); }
+    const notes = [
+      ['FTX 倒闭后，机构最关心的问题', '资产放在交易所 → 交易所倒了怎么办？', '答案：资产不进交易所钱包', C.sell],
+      ['托管方签名：100 BTC 已锁定', '币安给机构 100 BTC 镜像额度', '资产始终在托管方', C.gold],
+      ['交易周期内正常下单', '盈亏记在镜像账户', '没有逐笔链上转账', C.gold],
+      ['结算周期到：净额划转 2 BTC', '镜像额度 100 → 98 BTC', '批量、净额，比逐笔上链便宜', C.gold],
+    ];
+    if (st <= 3) {
+      const [a, b, c, col] = notes[st];
+      h += R(0, 370, 1640, 220, { fill: C.panel, stroke: C.line });
+      h += T(30, 425, a, { size: 32, bold: true, plain: true, fill: col });
+      h += T(30, 485, b, { size: 30, plain: true });
+      h += T(30, 545, c, { size: 30, plain: true, fill: C.t2 });
+    } else {
+      h += R(0, 370, 800, 220, { fill: SOFT.sell, stroke: C.sell });
+      h += T(24, 420, '风险反过来了', { size: 32, bold: true, plain: true, fill: C.sell });
+      h += T(24, 475, '结算之间亏损可能超过托管额度', { size: 28, plain: true });
+      h += T(24, 530, '→ 按保证金规则实时监控 · 结算前追加', { size: 28, plain: true });
+      const P = ['Ceffu MirrorX', 'Banking Triparty · 法币、美国国债', '2025：USYC、cUSDO 作抵押品', '也与 Anchorage Digital 等合作'];
+      P.forEach((t, i) => { h += R(840, 370 + i * 56, 800, 52, { fill: C.panel, stroke: C.line, rx: 8 }) + T(860, 406 + i * 56, t, { size: 28, plain: true }); });
+    }
+    svgEl(svg, h);
+  }
+
+  function teaserStep(el, st) { el.querySelector('#b01').classList.toggle('cur', st >= 4); }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

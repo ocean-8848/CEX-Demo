@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>交易所交互实验</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .lab { display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--text); transition: border-color .15s, transform .15s; }
+  .lab:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .lab .num { font-family: var(--mono); font-size: 12px; color: var(--accent); font-weight: 700; }
+  .lab .t { font-size: 17px; font-weight: 650; }
+  .lab .d { color: var(--text-2); font-size: 13px; }
+  .lab .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .layer { margin-top: 28px; }
+  .layer h2 { display: flex; align-items: baseline; gap: 10px; }
+  .layer h2 small { font-size: 13px; color: var(--text-2); font-weight: 400; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <h1>交易所交互实验</h1>
+    <a class="back" href="../README.md">← 返回学习目录</a>
+  </header>
+  <p class="lead">每个实验对应一个章节。读结论不如亲手验证：拖动滑块、点击按钮，观察系统在不同参数和状态下怎样运行。所有参数均为<strong>示例值</strong>，不代表币安实时参数。</p>
+
+  <section class="layer">
+    <h2>全局 <small>先建立地图</small></h2>
+    <div class="grid cols-3">
+      <a class="card lab" href="architecture-explorer.html">
+        <span class="num">第 02 章</span><span class="t">架构探索器</span>
+        <span class="d">选择场景，看请求怎样穿过各个服务。注入故障，看哪一步失败、系统怎样补偿。</span>
+        <span class="tags"><span class="pill info">调用链</span><span class="pill warn">故障注入</span></span>
+      </a>
+    </div>
+  </section>
+
+  <section class="layer">
+    <h2>资金 <small>钱从哪来，记在哪里</small></h2>
+    <div class="grid cols-3">
+      <a class="card lab" href="deposit-withdraw-sim.html">
+        <span class="num">第 04 章</span><span class="t">充提模拟器</span>
+        <span class="d">看区块确认数推进。触发链重组。调节冷热钱包水位，观察被盗风险暴露量。</span>
+        <span class="tags"><span class="pill info">确认数</span><span class="pill warn">链重组</span><span class="pill accent">冷热钱包</span></span>
+      </a>
+      <a class="card lab" href="proof-of-reserves.html">
+        <span class="num">第 04 章</span><span class="t">储备金证明</span>
+        <span class="d">构建 Merkle 树，自己验证你的余额被包含。篡改一个余额，看根哈希怎样变化。</span>
+        <span class="tags"><span class="pill info">Merkle 树</span><span class="pill accent">自行验证</span></span>
+      </a>
+      <a class="card lab" href="ledger-double-entry.html">
+        <span class="num">第 05 / 07 章</span><span class="t">双分录账本</span>
+        <span class="d">充值、挂单、成交、提币，每一步生成借贷分录。打开"制造 bug"，看对账怎样报警。附手续费计算器。</span>
+        <span class="tags"><span class="pill info">双分录</span><span class="pill warn">对账</span><span class="pill accent">手续费</span></span>
+      </a>
+    </div>
+  </section>
+
+  <section class="layer">
+    <h2>交易 <small>订单如何变成成交</small></h2>
+    <div class="grid cols-3">
+      <a class="card lab" href="order-book-matching.html">
+        <span class="num">第 06 章</span><span class="t">撮合引擎</span>
+        <span class="d">亲手下限价单、市价单，选 GTC/IOC/FOK。逐档动画展示价格-时间优先。重放事件日志重建订单簿。</span>
+        <span class="tags"><span class="pill buy">订单簿</span><span class="pill info">TIF</span><span class="pill accent">确定性重放</span></span>
+      </a>
+      <a class="card lab" href="depth-slippage.html">
+        <span class="num">第 08 章</span><span class="t">深度与滑点</span>
+        <span class="d">调节流动性和订单大小，看成交均价和价格冲击。模拟做市商撤单后的流动性骤降。</span>
+        <span class="tags"><span class="pill info">深度图</span><span class="pill sell">滑点</span></span>
+      </a>
+    </div>
+  </section>
+
+  <section class="layer">
+    <h2>风险 <small>风控与杠杆</small></h2>
+    <div class="grid cols-3">
+      <a class="card lab" href="risk-rules-lab.html">
+        <span class="num">第 09 章</span><span class="t">风控规则实验室</span>
+        <span class="d">调阈值，喂入正常用户、盗号者、洗钱者、刷单机器人。观察误杀率与漏放率的此消彼长。</span>
+        <span class="tags"><span class="pill warn">规则引擎</span><span class="pill info">令牌桶限流</span></span>
+      </a>
+      <a class="card lab" href="perpetual-liquidation.html">
+        <span class="num">第 10 章</span><span class="t">永续合约实验室</span>
+        <span class="d">调杠杆和价格，看强平价格。播放行情触发强平，走完保险基金和 ADL 流程。附资金费率计算器。</span>
+        <span class="tags"><span class="pill sell">强平</span><span class="pill accent">资金费率</span><span class="pill info">标记价格</span></span>
+      </a>
+    </div>
+  </section>
+
+  <section class="layer">
+    <h2>商业 <small>交易所怎么赚钱</small></h2>
+    <div class="grid cols-3">
+      <a class="card lab" href="revenue-model.html">
+        <span class="num">第 12 章</span><span class="t">商业模型沙盘</span>
+        <span class="d">调交易量、费率、BNB 抵扣、返佣，看收入结构。逐期运行飞轮模型，体验降费与补贴的长期效果。</span>
+        <span class="tags"><span class="pill accent">收入结构</span><span class="pill info">飞轮</span></span>
+      </a>
+    </div>
+  </section>
+
+  <section class="layer">
+    <h2>产品深潜 <small>主站每个功能怎么实现</small></h2>
+    <div class="grid cols-3">
+      <a class="card lab" href="margin-loan-lab.html">
+        <span class="num">P01</span><span class="t">借贷与杠杆实验室</span>
+        <span class="d">调资金池利用率，看利率曲线怎样拐弯。模拟挤兑。开杠杆仓位，看保证金水平跌到追保线和强平线。</span>
+        <span class="tags"><span class="pill info">利率模型</span><span class="pill sell">强平</span></span>
+      </a>
+      <a class="card lab" href="convert-rfq.html">
+        <span class="num">P02</span><span class="t">闪兑报价沙盘</span>
+        <span class="d">调价差、报价有效期和对冲延迟，模拟 1000 笔闪兑。打开"毒性流量"，看平台怎样被逆向选择。</span>
+        <span class="tags"><span class="pill accent">RFQ</span><span class="pill warn">逆向选择</span></span>
+      </a>
+      <a class="card lab" href="p2p-escrow.html">
+        <span class="num">P03</span><span class="t">P2P 担保交易</span>
+        <span class="d">一步步走完 P2P 订单状态机。触发申诉、三方支付、假付款截图，看币在每一步停在哪里。</span>
+        <span class="tags"><span class="pill info">状态机</span><span class="pill warn">反诈</span></span>
+      </a>
+      <a class="card lab" href="dual-investment.html">
+        <span class="num">P06</span><span class="t">双币投资拆解</span>
+        <span class="d">拖动到期价，看双币投资和"存款 + 卖期权"两条曲线完全重合。对比期权公允价和给你的年化。</span>
+        <span class="tags"><span class="pill accent">期权</span><span class="pill info">收益拆解</span></span>
+      </a>
+      <a class="card lab" href="launchpool-calc.html">
+        <span class="num">P07</span><span class="t">Launchpool 计算器</span>
+        <span class="d">输入质押量，看份额和每日奖励。播放"后来者涌入"，看收益怎样被稀释。附 Launchpad 超额认购。</span>
+        <span class="tags"><span class="pill accent">份额</span><span class="pill warn">稀释</span></span>
+      </a>
+      <a class="card lab" href="grid-bot.html">
+        <span class="num">P08</span><span class="t">网格策略回测</span>
+        <span class="d">设定区间和网格数，在震荡、单边上涨、单边下跌三种行情里回测。看价格突破区间后网格怎样失效。</span>
+        <span class="tags"><span class="pill buy">网格</span><span class="pill info">回测</span></span>
+      </a>
+    </div>
+  </section>
+
+  <section class="layer">
+    <h2>幕后核心 <small>用户看不见的防线</small></h2>
+    <div class="grid cols-3">
+      <a class="card lab" href="aml-graph.html">
+        <span class="num">B01</span><span class="t">AML 资金流图谱</span>
+        <span class="d">在资金流网络里找出拆分、分层和混币器间接暴露。调跳数和金额阈值，观察误报与漏报。</span>
+        <span class="tags"><span class="pill warn">反洗钱</span><span class="pill info">图谱</span></span>
+      </a>
+      <a class="card lab" href="ato-defense.html">
+        <span class="num">B03</span><span class="t">盗号攻防实验</span>
+        <span class="d">选择攻击剧本，开关每道防线，看攻击在哪一步被拦住。权衡拦截率和正常用户的体验成本。</span>
+        <span class="tags"><span class="pill sell">攻击链</span><span class="pill accent">体验权衡</span></span>
+      </a>
+      <a class="card lab" href="reconciliation-lab.html">
+        <span class="num">B04</span><span class="t">对账实验室</span>
+        <span class="d">在订单、成交、结算、账本、链上、托管六个数据源间注入差异，看哪一层对账能发现，何时触发提币熔断。</span>
+        <span class="tags"><span class="pill info">对账矩阵</span><span class="pill warn">熔断</span></span>
+      </a>
+      <a class="card lab" href="market-surveillance.html">
+        <span class="num">B05</span><span class="t">市场监控实验</span>
+        <span class="d">在合成成交流中混入幌骗、对敲、拉盘砸盘。调检测阈值，看精确率和召回率怎样变化。</span>
+        <span class="tags"><span class="pill sell">市场操纵</span><span class="pill info">检测器</span></span>
+      </a>
+      <a class="card lab" href="risk-pipeline-lab.html">
+        <span class="num">B08</span><span class="t">风控决策流水线</span>
+        <span class="d">事件流穿过特征、规则、模型和决策。开影子模式试新规则，切灰度比例，模拟特征库故障下的放行与拦截。</span>
+        <span class="tags"><span class="pill info">影子模式</span><span class="pill warn">故障降级</span></span>
+      </a>
+      <a class="card lab" href="license-matrix.html">
+        <span class="num">B09</span><span class="t">牌照与监管矩阵</span>
+        <span class="d">选地区和产品，看要什么牌照、有什么限制。再试着设计一家全球交易所，看要几个主体、会撞上哪些冲突。</span>
+        <span class="tags"><span class="pill accent">牌照</span><span class="pill info">分区经营</span></span>
+      </a>
+      <a class="card lab" href="incident-explorer.html">
+        <span class="num">B12</span><span class="t">事故案例浏览器</span>
+        <span class="d">历年交易所安全事故按年份、损失和攻击路径排开。选一起事故，看哪几道防线失守；再用测验模式猜根因。</span>
+        <span class="tags"><span class="pill sell">事故库</span><span class="pill accent">防线映射</span></span>
+      </a>
+    </div>
+  </section>
+
+  <footer class="note">本页面仅用于学习交易所系统设计，不构成投资建议。参数为示例值，真实参数以币安官网为准。</footer>
+</div>
+</body>
+</html>

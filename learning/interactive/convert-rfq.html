@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>闪兑报价沙盘</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .params { display: grid; gap: 4px 20px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .params .hint { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+  .toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); margin: 14px 0 4px; cursor: pointer; }
+  .toggle input { accent-color: var(--sell); width: 16px; height: 16px; }
+  .stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+  .stats .stat .v { font-size: 20px; }
+  .stat .v.pos { color: var(--buy); } .stat .v.neg { color: var(--sell); }
+  .chart { width: 100%; height: auto; display: block; }
+  .chart .axis { stroke: var(--border); stroke-width: 1; }
+  .chart .zero { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 4 3; }
+  .chart .bar-n { fill: var(--info); }
+  .chart .bar-t { fill: var(--sell); }
+  .chart .line { fill: none; stroke: var(--accent); stroke-width: 2; }
+  .chart .area-neg { fill: var(--sell-soft); }
+  .chart text { font-size: 11px; fill: var(--text-2); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .sw-n { background: var(--info); } .sw-t { background: var(--sell); } .sw-l { background: var(--accent); }
+  td.pos { color: var(--buy); } td.neg { color: var(--sell); }
+  .formula { font-family: var(--mono); font-size: 13px; background: var(--surface-2); border-radius: 8px; padding: 10px; overflow-x: auto; white-space: pre; }
+  .seed-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+  .seed-row > div { flex: 1 1 120px; min-width: 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <h1>闪兑报价沙盘</h1>
+  </header>
+  <p class="lead">平台给用户一个限时报价。用户在有效期内决定是否接受。平台成交后再到订单簿对冲。本页用蒙特卡洛模拟 1000 次报价请求，看平台每笔赚多少、亏多少，以及"毒性流量"如何吃掉利润。配套章节：<a href="../products/P02-convert-otc.md">P02 闪兑、大宗 OTC 与快捷买币</a>、<a href="../11-products-ecosystem.md">11 产品生态</a>。</p>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="small">
+      <li>先用默认参数，点"模拟 1000 笔闪兑"。观察平均每笔盈亏和直方图。</li>
+      <li>打开"毒性流量"开关，再点一次。比较红色柱子和累计 PnL 曲线。</li>
+      <li>调整价差、有效期、对冲延迟，找到让平台重新盈利的组合。</li>
+    </ol>
+    <p class="small muted">随机数使用固定种子。同一组参数和种子，每次结果相同。改种子可以看另一组随机行情。所有数值都是示例，不代表币安的真实参数。</p>
+  </div>
+
+  <h2>1. 参数</h2>
+  <div class="card">
+    <div class="params">
+      <div>
+        <label for="vol">中间价年化波动率</label>
+        <div class="range-row"><input id="vol" type="range" min="10" max="200" step="5" value="100"><output id="volOut"></output></div>
+        <div class="hint" id="volHint"></div>
+      </div>
+      <div>
+        <label for="spread">报价价差（相对中间价）</label>
+        <div class="range-row"><input id="spread" type="range" min="0" max="30" step="0.5" value="4"><output id="spreadOut"></output></div>
+        <div class="hint">价差收入 = 名义金额 × 价差</div>
+      </div>
+      <div>
+        <label for="ttl">报价有效期</label>
+        <div class="range-row"><input id="ttl" type="range" min="1" max="60" step="1" value="10"><output id="ttlOut"></output></div>
+        <div class="hint">币安闪兑 API 可选 10s / 30s / 1m（截至 2026 年公开资料）</div>
+      </div>
+      <div>
+        <label for="delay">对冲延迟</label>
+        <div class="range-row"><input id="delay" type="range" min="0" max="5000" step="100" value="500"><output id="delayOut"></output></div>
+        <div class="hint">从用户接受到对冲单成交的时间</div>
+      </div>
+      <div>
+        <label for="depth">订单簿深度（每 1 bp 价格区间内可成交金额）</label>
+        <div class="range-row"><input id="depth" type="range" min="5000" max="500000" step="5000" value="20000"><output id="depthOut"></output></div>
+        <div class="hint">对冲滑点 ≈ 金额 ÷ 深度 ÷ 2（bps）</div>
+      </div>
+      <div>
+        <label for="toxicShare">毒性用户占询价比例</label>
+        <div class="range-row"><input id="toxicShare" type="range" min="0" max="50" step="1" value="20"><output id="toxicOut"></output></div>
+        <label class="toggle"><input id="toxicOn" type="checkbox"> 开启"毒性流量"</label>
+        <div class="hint">毒性用户盯着外部价格，单笔金额是正常用户的 10 倍。他们等到报价最后一秒：只有价格变动对平台不利、并且超过价差 + 1 bp 外部成本时才接受，否则让报价过期。</div>
+      </div>
+    </div>
+    <div class="seed-row" style="margin-top:12px">
+      <div><label for="seed">随机种子</label><input id="seed" type="number" value="42" min="1" step="1"></div>
+      <div class="btn-row" style="flex:2 1 260px">
+        <button class="primary" id="run">模拟 1000 笔闪兑</button>
+        <button id="reseed">换一个种子</button>
+      </div>
+    </div>
+  </div>
+
+  <h2>2. 结果</h2>
+  <div class="card">
+    <div class="stats">
+      <div class="stat"><span class="k">成交笔数 / 询价</span><span class="v" id="sFilled">—</span></div>
+      <div class="stat"><span class="k">过期未成交</span><span class="v" id="sExpired">—</span></div>
+      <div class="stat"><span class="k">总盈亏 USDT</span><span class="v" id="sPnl">—</span></div>
+      <div class="stat"><span class="k">平均每笔（bps）</span><span class="v" id="sAvg">—</span></div>
+      <div class="stat"><span class="k">亏损笔数占比</span><span class="v" id="sLoss">—</span></div>
+      <div class="stat"><span class="k">最差一笔 USDT</span><span class="v" id="sWorst">—</span></div>
+    </div>
+    <p class="small muted" id="prevLine" style="margin:10px 0 0"></p>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+      <h3>单笔盈亏分布（bps）</h3>
+      <svg class="chart" id="hist" viewBox="0 0 600 240" role="img" aria-label="单笔盈亏直方图"></svg>
+      <div class="legend"><span><i class="sw-n"></i>正常用户</span><span><i class="sw-t"></i>毒性用户</span><span>虚线 = 0</span></div>
+    </div>
+    <div class="card">
+      <h3>累计盈亏（USDT）</h3>
+      <svg class="chart" id="cum" viewBox="0 0 600 240" role="img" aria-label="累计盈亏曲线"></svg>
+      <div class="legend"><span><i class="sw-l"></i>按询价顺序累计</span><span>虚线 = 0</span></div>
+    </div>
+  </div>
+
+  <h2>3. 盈亏分解</h2>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>分项（USDT）</th><th class="num">正常用户</th><th class="num">毒性用户</th><th class="num">合计</th></tr></thead>
+        <tbody id="breakdown"><tr><td colspan="4" class="muted">点"模拟 1000 笔闪兑"后显示。</td></tr></tbody>
+      </table>
+    </div>
+    <div class="formula" style="margin-top:12px">单笔盈亏 = 价差收入 − 逆向选择损失 − 对冲延迟损失 − 对冲滑点
+价差收入     = 金额 × 价差
+逆向选择损失 = 金额 × 报价到接受期间对平台不利的价格变动
+对冲延迟损失 = 金额 × 接受到对冲期间对平台不利的价格变动
+对冲滑点     = 金额 × 金额 ÷ 深度 ÷ 2</div>
+  </div>
+
+  <h2>4. 试一试</h2>
+  <div class="card">
+    <ol>
+      <li><b>免费期权：</b>用默认参数，先关闭再打开"毒性流量"。毒性用户只占 20% 的询价，为什么平均每笔从正数变成负数？在分解表里找出亏损来自哪一行。</li>
+      <li><b>两种解药：</b>毒性流量开启时，分别试"有效期 10 秒 → 3 秒"和"价差 4 → 8 bps"。哪一种让过期笔数增加更多？哪一种让正常用户付出更多？</li>
+      <li><b>极端行情：</b>关闭毒性流量，把波动率拉到 150%，对冲延迟拉到 3000 ms。亏损笔数占比如何变化？这就是平台在行情剧烈时加宽价差或暂停闪兑的原因。</li>
+    </ol>
+  </div>
+
+  <div class="callout warn small">模型简化：价格按随机游走每秒更新；正常用户在指数分布的思考时间后接受（85% 概率），超过有效期则过期；毒性用户在有效期最后一秒决定。不模拟内部净额、库存偏移、按用户分层报价。</div>
+
+  <footer class="note">本页为教学模型，参数均为示例，不代表币安内部实现。闪兑在本仓库（CEX Demo）未实现；对冲单可复用 services/order-service 提交，换币分录可复用 services/ledger-service 的 postJournal。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var N_QUOTES = 1000;
+  var EXT_COST_BPS = 1;          // 毒性用户在外部市场的成本（示例）
+  var NORMAL_ACCEPT = 0.85;      // 正常用户接受概率（示例）
+  var NORMAL_THINK_MEAN = 4;     // 正常用户平均思考秒数（示例）
+  var NORMAL_MEDIAN = 2000;      // 正常用户单笔金额中位数 USDT（示例）
+  var TOXIC_MEDIAN = 20000;      // 毒性用户单笔金额中位数 USDT（示例）
+  var SEC_PER_YEAR = 365 * 24 * 3600;
+
+  function $(id) { return document.getElementById(id); }
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function makeNormal(rand) {
+    var spare = null;
+    return function () {
+      if (spare !== null) { var s = spare; spare = null; return s; }
+      var u = 0, v = 0;
+      while (u === 0) u = rand();
+      while (v === 0) v = rand();
+      var r = Math.sqrt(-2 * Math.log(u));
+      spare = r * Math.sin(2 * Math.PI * v);
+      return r * Math.cos(2 * Math.PI * v);
+    };
+  }
+
+  function readParams() {
+    return {
+      vol: Number($('vol').value) / 100,
+      spreadBps: Number($('spread').value),
+      ttl: Number($('ttl').value),
+      delayMs: Number($('delay').value),
+      depth: Number($('depth').value),
+      toxicShare: $('toxicOn').checked ? Number($('toxicShare').value) / 100 : 0,
+      seed: Math.max(1, Math.floor(Number($('seed').value) || 1))
+    };
+  }
+
+  function fmtNum(x, d) {
+    return x.toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function fmtUsd(x) { return (x > 0 ? '+' : '') + fmtNum(x, 0); }
+
+  function updateLabels() {
+    var p = readParams();
+    $('volOut').textContent = Math.round(p.vol * 100) + '%';
+    $('spreadOut').textContent = p.spreadBps + ' bps';
+    $('ttlOut').textContent = p.ttl + ' 秒';
+    $('delayOut').textContent = p.delayMs + ' ms';
+    $('depthOut').textContent = fmtNum(p.depth / 1000, 0) + 'k';
+    $('toxicOut').textContent = $('toxicShare').value + '%';
+    var sig = p.vol / Math.sqrt(SEC_PER_YEAR) * Math.sqrt(p.ttl) * 10000;
+    $('volHint').textContent = '有效期内价格变动的标准差 ≈ ' + sig.toFixed(1) + ' bps（σ × √有效期）';
+  }
+
+  function simulate(p) {
+    var rand = mulberry32(p.seed);
+    var norm = makeNormal(rand);
+    var s1 = p.vol / Math.sqrt(SEC_PER_YEAR);        // 每秒收益率标准差
+    var sd = s1 * Math.sqrt(p.delayMs / 1000);       // 对冲延迟期间标准差
+    var spread = p.spreadBps / 10000;
+    var trades = [];
+    var expired = 0;
+    for (var i = 0; i < N_QUOTES; i++) {
+      var side = rand() < 0.5 ? 1 : -1;               // +1 用户买币，平台卖币
+      var toxic = rand() < p.toxicShare;
+      var median = toxic ? TOXIC_MEDIAN : NORMAL_MEDIAN;
+      var size = Math.min(500000, Math.exp(Math.log(median) + 1.0 * norm()));
+      // 预生成报价期内每秒价格路径（累计收益率）
+      var path = [0];
+      for (var t = 1; t <= p.ttl; t++) path.push(path[t - 1] + s1 * norm());
+      var tau = -1;
+      if (toxic) {
+        // 报价是免费期权：最优做法是等到最后一秒，再决定是否接受
+        var need = spread + EXT_COST_BPS / 10000;
+        if (side * path[p.ttl] >= need) tau = p.ttl;
+      } else {
+        var accepts = rand() < NORMAL_ACCEPT;
+        var think = Math.floor(-Math.log(1 - rand()) * NORMAL_THINK_MEAN);
+        if (accepts && think <= p.ttl) tau = think;
+      }
+      var zDelay = norm();
+      if (tau < 0) { expired++; continue; }
+      var fav = side * path[tau];                     // 对用户有利 = 对平台不利
+      var delayMove = side * sd * zDelay;
+      var slip = size / p.depth / 2 / 10000;
+      var c = {
+        spread: size * spread,
+        adverse: -size * fav,
+        delay: -size * delayMove,
+        slip: -size * slip
+      };
+      var pnl = c.spread + c.adverse + c.delay + c.slip;
+      trades.push({ i: i, toxic: toxic, size: size, pnl: pnl, bps: pnl / size * 10000, c: c });
+    }
+    return { trades: trades, expired: expired };
+  }
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function el(tag, attrs, text) {
+    var e = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function clear(svg) { while (svg.firstChild) svg.removeChild(svg.firstChild); }
+
+  function drawHist(trades) {
+    var svg = $('hist'); clear(svg);
+    var W = 600, H = 240, L = 36, R = 10, T = 10, B = 28;
+    var lo = -40, hi = 40, step = 4, nb = (hi - lo) / step;
+    var bn = [], bt = [];
+    for (var b = 0; b < nb; b++) { bn.push(0); bt.push(0); }
+    trades.forEach(function (tr) {
+      var idx = Math.floor((Math.max(lo, Math.min(hi - 0.001, tr.bps)) - lo) / step);
+      if (tr.toxic) bt[idx]++; else bn[idx]++;
+    });
+    var maxC = 1;
+    for (b = 0; b < nb; b++) maxC = Math.max(maxC, bn[b] + bt[b]);
+    var pw = W - L - R, ph = H - T - B, bw = pw / nb;
+    svg.appendChild(el('line', { x1: L, y1: T + ph, x2: W - R, y2: T + ph, 'class': 'axis' }));
+    svg.appendChild(el('text', { x: 2, y: T + 10 }, String(maxC)));
+    svg.appendChild(el('text', { x: 2, y: T + ph }, '0'));
+    for (b = 0; b < nb; b++) {
+      var x = L + b * bw + 1;
+      var hn = bn[b] / maxC * ph, ht = bt[b] / maxC * ph;
+      if (bn[b]) svg.appendChild(el('rect', { x: x, y: T + ph - hn, width: bw - 2, height: hn, 'class': 'bar-n' }));
+      if (bt[b]) svg.appendChild(el('rect', { x: x, y: T + ph - hn - ht, width: bw - 2, height: ht, 'class': 'bar-t' }));
+    }
+    var zx = L + (0 - lo) / (hi - lo) * pw;
+    svg.appendChild(el('line', { x1: zx, y1: T, x2: zx, y2: T + ph, 'class': 'zero' }));
+    [-40, -20, 0, 20, 40].forEach(function (v) {
+      var tx = L + (v - lo) / (hi - lo) * pw;
+      var label = v === -40 ? '≤-40' : (v === 40 ? '≥40' : String(v));
+      svg.appendChild(el('text', { x: tx, y: H - 8, 'text-anchor': v === 40 ? 'end' : (v === -40 ? 'start' : 'middle') }, label));
+    });
+  }
+
+  function drawCum(trades) {
+    var svg = $('cum'); clear(svg);
+    var W = 600, H = 240, L = 56, R = 10, T = 10, B = 28;
+    var pts = [0], s = 0;
+    trades.forEach(function (tr) { s += tr.pnl; pts.push(s); });
+    var mn = Math.min.apply(null, pts.concat([0])), mx = Math.max.apply(null, pts.concat([0]));
+    if (mx - mn < 1) { mx += 1; mn -= 1; }
+    var pw = W - L - R, ph = H - T - B;
+    function X(i) { return L + i / Math.max(1, pts.length - 1) * pw; }
+    function Y(v) { return T + (mx - v) / (mx - mn) * ph; }
+    svg.appendChild(el('line', { x1: L, y1: T + ph, x2: W - R, y2: T + ph, 'class': 'axis' }));
+    if (mn < 0) svg.appendChild(el('rect', { x: L, y: Y(0), width: pw, height: T + ph - Y(0), 'class': 'area-neg' }));
+    svg.appendChild(el('line', { x1: L, y1: Y(0), x2: W - R, y2: Y(0), 'class': 'zero' }));
+    var d = pts.map(function (v, i) { return X(i).toFixed(1) + ',' + Y(v).toFixed(1); }).join(' ');
+    svg.appendChild(el('polyline', { points: d, 'class': 'line' }));
+    svg.appendChild(el('text', { x: 2, y: T + 10 }, fmtUsd(mx)));
+    svg.appendChild(el('text', { x: 2, y: T + ph }, fmtUsd(mn)));
+    svg.appendChild(el('text', { x: L, y: H - 8 }, '第 1 笔'));
+    svg.appendChild(el('text', { x: W - R, y: H - 8, 'text-anchor': 'end' }, '第 ' + (pts.length - 1) + ' 笔成交'));
+  }
+
+  function setStat(id, text, sign) {
+    var e = $(id); e.textContent = text;
+    e.classList.remove('pos', 'neg');
+    if (sign > 0) e.classList.add('pos'); else if (sign < 0) e.classList.add('neg');
+  }
+
+  var prev = null;
+  function render(p, res) {
+    var tr = res.trades;
+    var total = 0, notional = 0, losers = 0, worst = 0;
+    var sums = { n: { spread: 0, adverse: 0, delay: 0, slip: 0, pnl: 0, cnt: 0 }, t: { spread: 0, adverse: 0, delay: 0, slip: 0, pnl: 0, cnt: 0 } };
+    tr.forEach(function (x) {
+      total += x.pnl; notional += x.size;
+      if (x.pnl < 0) losers++;
+      worst = Math.min(worst, x.pnl);
+      var g = x.toxic ? sums.t : sums.n;
+      g.spread += x.c.spread; g.adverse += x.c.adverse; g.delay += x.c.delay; g.slip += x.c.slip; g.pnl += x.pnl; g.cnt++;
+    });
+    var avgBps = notional > 0 ? total / notional * 10000 : 0;
+    setStat('sFilled', tr.length + ' / ' + N_QUOTES, 0);
+    setStat('sExpired', String(res.expired), 0);
+    setStat('sPnl', fmtUsd(total), total);
+    setStat('sAvg', (avgBps > 0 ? '+' : '') + avgBps.toFixed(2), avgBps);
+    setStat('sLoss', tr.length ? (losers / tr.length * 100).toFixed(1) + '%' : '—', 0);
+    setStat('sWorst', fmtUsd(worst), worst);
+
+    var rows = [
+      ['价差收入', 'spread'], ['逆向选择（报价期内价格变动）', 'adverse'],
+      ['对冲延迟期间价格变动', 'delay'], ['对冲滑点', 'slip'], ['净盈亏', 'pnl']
+    ];
+    var html = rows.map(function (r) {
+      var a = sums.n[r[1]], b = sums.t[r[1]], c = a + b;
+      function td(v) { return '<td class="num ' + (v > 0.5 ? 'pos' : (v < -0.5 ? 'neg' : '')) + '">' + fmtUsd(v) + '</td>'; }
+      var name = r[1] === 'pnl' ? '<b>' + r[0] + '</b>' : r[0];
+      return '<tr><td>' + name + '</td>' + td(a) + td(b) + td(c) + '</tr>';
+    }).join('');
+    html += '<tr><td class="muted">成交笔数</td><td class="num">' + sums.n.cnt + '</td><td class="num">' + sums.t.cnt + '</td><td class="num">' + tr.length + '</td></tr>';
+    $('breakdown').innerHTML = html;
+
+    var summary = '价差 ' + p.spreadBps + ' bps · 有效期 ' + p.ttl + ' 秒 · 毒性 ' + Math.round(p.toxicShare * 100) + '% → 平均 ' + avgBps.toFixed(2) + ' bps，总 ' + fmtUsd(total) + ' USDT';
+    $('prevLine').textContent = prev ? '本次：' + summary + '　｜　上次：' + prev : '本次：' + summary;
+    prev = summary;
+
+    drawHist(tr);
+    drawCum(tr);
+  }
+
+  function run() {
+    var p = readParams();
+    render(p, simulate(p));
+  }
+
+  ['vol', 'spread', 'ttl', 'delay', 'depth', 'toxicShare'].forEach(function (id) {
+    $(id).addEventListener('input', updateLabels);
+  });
+  $('toxicOn').addEventListener('change', run);
+  $('run').addEventListener('click', run);
+  $('reseed').addEventListener('click', function () {
+    var s = Number($('seed').value) || 1;
+    $('seed').value = (s * 48271) % 2147483647 % 100000 || 7;
+    run();
+  });
+  updateLabels();
+  run();
+})();
+</script>
+</body>
+</html>

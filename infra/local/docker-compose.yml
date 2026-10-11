@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: web3-cex-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: web3_cex
+      POSTGRES_USER: web3
+      POSTGRES_PASSWORD: web3
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: web3-cex-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  kafka:
+    image: apache/kafka:4.0.1
+    container_name: web3-cex-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: web3-cex-clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+
+  # Optional tracing backend (M3-1). Started only with
+  # `docker compose --profile observability up -d` or `pnpm stack:start:observability`.
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: web3-cex-jaeger
+    restart: unless-stopped
+    profiles: ["observability"]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # Jaeger UI + query API
+      - "4318:4318" # OTLP over HTTP (services export here)
+
+volumes:
+  postgres-data:
+  clickhouse-data:

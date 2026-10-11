@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP01 交易所到底是什么</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .qa { display: flex; gap: 28px; margin-top: 12px; }
+  .qa .card { flex: 1; font-size: 34px; }
+  .src { display: inline-block; font-size: 22px; padding: 2px 12px; border-radius: 999px; margin-left: 10px; vertical-align: middle; font-weight: 600; }
+  .src.bn { background: var(--gold-soft); color: var(--gold); }
+  .src.ind { background: var(--info-soft); color: var(--info); }
+  .src.ex { background: var(--panel-2); color: var(--text-2); border: 1px solid var(--line); }
+  .road .card { min-height: 250px; transition: opacity .4s, border-color .4s; }
+  .road .num { font-family: var(--mono); font-size: 56px; color: var(--gold); font-weight: 700; }
+  .pain { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; font-size: 34px; }
+  .pain li { display: flex; gap: 18px; align-items: center; }
+  .pain .n { font-family: var(--mono); width: 52px; height: 52px; border-radius: 50%; background: var(--sell-soft); color: var(--sell); display: grid; place-items: center; font-size: 28px; flex: none; }
+  .fix { display: grid; grid-template-columns: 1fr 60px 1fr; align-items: center; gap: 10px 14px; font-size: 32px; }
+  .fix .to { color: var(--gold); font-size: 36px; text-align: center; }
+  .fix .chip { font-size: 26px; margin-left: 8px; }
+  /* casino */
+  .casino { display: grid; grid-template-columns: repeat(4, 1fr); gap: 26px; }
+  .cbox { background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 22px 24px; min-height: 250px; transition: border-color .3s, background .3s; }
+  .cbox.on { border-color: var(--gold); background: var(--gold-soft); }
+  .cbox h3 { font-size: 38px; margin-bottom: 14px; }
+  .cbox .ln { display: flex; justify-content: space-between; font-size: 30px; line-height: 1.7; }
+  .cbox .ln b { font-family: var(--mono); font-size: 34px; }
+  .cmap { font-size: 28px; color: var(--info); text-align: center; margin-top: 12px; }
+  .note { font-size: 34px; text-align: center; padding: 16px; border-radius: 12px; background: var(--panel-2); }
+  table.t.cmp td, table.t.cmp th { padding: 9px 16px; }
+  table.t.cmp td.cex, table.t.cmp th.cex { transition: background .3s; }
+  table.t.cmp.focus td.cex, table.t.cmp.focus th.cex { background: var(--gold-soft); color: var(--gold); }
+  /* products */
+  .prod { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .prod .card.onchain.shown { border-color: var(--info); }
+  .prod .card { padding: 18px 24px; font-size: 30px; transition: opacity .4s, border-color .4s; }
+  .prod .card h3 { font-size: 34px; margin-bottom: 4px; }
+  .prod .card .muted { font-size: 28px; }
+  .prod.chain .card:not(.onchain) { opacity: .35; }
+  .prod.chain .card.onchain { border-color: var(--info); }
+  .base { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 2px solid var(--gold); border-radius: 16px; overflow: hidden; }
+  .base div { text-align: center; font-size: 36px; font-weight: 700; padding: 18px; background: var(--gold-soft); color: var(--gold); border-right: 1px solid rgba(240,185,11,.4); }
+  .base div:last-child { border-right: 0; }
+  /* three books */
+  .books .card { padding: 22px 28px; transition: border-color .3s, opacity .3s; }
+  .books .card.on { border-color: var(--gold); }
+  .books .ln { display: flex; justify-content: space-between; font-size: 34px; line-height: 1.9; }
+  .books .ln b { font-family: var(--mono); }
+  .books .ln.chg b { color: var(--gold); }
+  .books .ln.gone { opacity: .25; text-decoration: line-through; }
+  .books .upd { font-size: 26px; color: var(--text-2); margin-top: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .evt { font-size: 38px; text-align: center; padding: 16px; border-radius: 12px; background: var(--panel-2); min-height: 82px; }
+  table.t.mx td, table.t.mx th { padding: 16px 22px; font-size: 32px; }
+  table.t.mx td.y { color: var(--buy); } table.t.mx td.n { color: var(--text-2); }
+  .rl { padding: 20px 26px; } .rl h3 { font-size: 34px; margin-bottom: 4px; }
+  .pill { display: flex; flex-direction: column; gap: 22px; width: 560px; flex: none; }
+  .pill .card { padding: 20px 26px; }
+  .pill .card h3 { font-size: 36px; margin-bottom: 4px; }
+  .facts .card { padding: 18px 26px; font-size: 30px; }
+  .facts .card b { font-family: var(--mono); color: var(--gold); font-size: 36px; }
+  table.t.risk td, table.t.risk th { padding: 12px 18px; }
+  .teaser { display: flex; gap: 24px; align-items: center; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP01" data-title="交易所到底是什么：托管、记账、撮合">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解 · 第 1 集</div>
+    <h1>交易所到底是什么：<br><span class="hl">托管、记账、撮合</span></h1>
+    <div class="qa">
+      <div class="card info" data-step="1">你在币安把 <b class="mono">1 BTC</b> 卖给另一个用户。<br>比特币链上，会出现一笔转账吗？</div>
+      <div class="card gold" data-step="2">不会。链上 <b class="mono">0</b> 笔转账。<br>变的只是交易所的<span class="hl">内部账本</span>。</div>
+    </div>
+    <ol class="say">
+      <li>大家好，欢迎来到交易所系统技术讲解。这个系列，我们用币安做贯穿全程的例子。</li>
+      <li>先问一个问题。你在币安把 1 个 BTC 卖给另一个用户。比特币链上，会出现一笔转账吗？</li>
+      <li>答案是不会。链上什么都没发生，变的只是交易所自己的账本。这一集，我们就从这个答案出发。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">本集路线图</div>
+    <h2>四个问题，看清一家交易所</h2>
+    <div class="grid4 road">
+      <div class="card" data-step="0"><div class="num">01</div>它解决什么问题<br><span class="muted">没有交易所会怎样</span></div>
+      <div class="card" data-step="1"><div class="num">02</div>它和谁像<br><span class="muted">银行、券商、DEX</span></div>
+      <div class="card gold" data-step="2"><div class="num">03</div>三本账<br><span class="muted">链上、账本、订单簿</span></div>
+      <div class="card" data-step="3"><div class="num">04</div>风险在哪里<br><span class="muted">信任是核心局限</span></div>
+    </div>
+    <p class="lead" data-step="3">一句话：CEX 替你保管资产，在自己的账本上记账，在内存里撮合订单。</p>
+    <ol class="say">
+      <li>这一集分四段。第一段，看交易所解决了什么问题。</li>
+      <li>第二段，把它和银行、券商、去中心化交易所放在一起比。</li>
+      <li>第三段是本集重点，交易所同时维护的三本账。</li>
+      <li>最后一段，看它在哪里会出错。先记住一句话：CEX 替你保管资产，在自己的账本上记账，在内存里撮合订单。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="没有交易所会怎样">
+    <div class="kicker">业务视角 · 它解决什么问题</div>
+    <h2>想把 1 BTC 换成 USDT，自己动手要几步？</h2>
+    <div class="row">
+      <div class="card col" style="flex:0 0 640px">
+        <ul class="pain">
+          <li data-step="0"><span class="n">1</span>找到愿意交换的对手</li>
+          <li data-step="0"><span class="n">2</span>和对方谈价格</li>
+          <li data-step="0"><span class="n">3</span>决定谁先转账</li>
+          <li data-step="0"><span class="n">4</span>等待链上确认</li>
+          <li data-step="0"><span class="n">5</span>承担对方赖账的风险</li>
+        </ul>
+      </div>
+      <div class="card gold col">
+        <div class="fix">
+          <div data-step="1">找不到对手方</div><div class="to" data-step="1">→</div><div data-step="1">集中订单簿<span class="chip gold">撮合</span></div>
+          <div data-step="3">谁先转、会赖账</div><div class="to" data-step="3">→</div><div data-step="3">先收下双方资产<span class="chip gold">托管</span></div>
+          <div data-step="4">链上慢、手续费高</div><div class="to" data-step="4">→</div><div data-step="4">内部账本互换<span class="chip gold">记账</span></div>
+          <div data-step="5">价格不透明</div><div class="to" data-step="5">→</div><div data-step="5">公开盘口和成交<span class="chip info">行情</span></div>
+        </div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>假设你有 1 个 BTC，想换成 USDT。没有交易所，你得先找到一个愿意交换的人，再和他谈价格。</li>
+      <li>谈好以后，还要决定谁先转账。转完要等链上确认。最后，你还得担心对方收了钱不给货。</li>
+      <li>交易所怎么解决？第一，把所有人的订单集中到一个订单簿里。对手方自然就有了。这就是撮合。</li>
+      <li>第二，交易所先收下双方的资产。谁先转账的问题消失了，赖账也不可能。这就是托管。</li>
+      <li>第三，成交只在交易所的内部账本上互换，不上链。所以又快又不花链上手续费。这就是记账。</li>
+      <li>另外，交易所公开盘口深度和成交记录，价格变得透明。这一块叫行情，后面有专门一集。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="赌场比喻" data-onstep="casinoStep">
+    <div class="kicker">打个比方</div>
+    <h2>CEX 像一家赌场：现金进金库，场内只换筹码</h2>
+    <div class="casino">
+      <div class="cbox" id="cA"><h3>玩家 A</h3>
+        <div class="ln"><span>现金</span><b id="aCash">0</b></div>
+        <div class="ln"><span>筹码</span><b id="aChip">0</b></div>
+        <div class="cmap" data-step="3">筹码余额 = 内部账本</div></div>
+      <div class="cbox" id="cDesk"><h3>柜台</h3>
+        <div class="ln"><span>现金换筹码</span></div>
+        <div class="ln"><span>筹码换现金</span></div>
+        <div class="cmap" data-step="3">= 充值和提币</div></div>
+      <div class="cbox" id="cTable"><h3>牌桌</h3>
+        <div class="ln"><span>A 的筹码</span><b id="tA">0</b></div>
+        <div class="ln"><span>B 的筹码</span><b id="tB">0</b></div>
+        <div class="cmap" data-step="3">= 撮合引擎</div></div>
+      <div class="cbox" id="cVault"><h3>金库</h3>
+        <div class="ln"><span>现金</span><b id="vCash">0</b></div>
+        <div class="ln"><span class="muted">示例数字</span></div>
+        <div class="cmap" data-step="3">= 热钱包和冷钱包</div></div>
+    </div>
+    <div class="note" id="cNote"></div>
+    <ol class="say">
+      <li>先用一个比喻。CEX 像一家赌场。你进门时把 1,000 块现金交给柜台，柜台给你 1,000 个筹码。</li>
+      <li>在赌场里，你和别人交换筹码。比如 A 付给 B 300 个筹码。金库里的现金，一分都没动。</li>
+      <li>离开时，A 把剩下的 700 个筹码交回柜台。柜台从金库取出 700 块现金给他。</li>
+      <li>对应到交易所。柜台是充值和提币，筹码余额是内部账本，牌桌是撮合引擎，金库是热钱包和冷钱包。</li>
+      <li>但比喻有局限。赌场的输赢由庄家决定。交易所撮合的是用户和用户之间的买卖，它只收手续费。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="和银行券商DEX对比">
+    <div class="kicker">横向对比</div>
+    <h2>同样是管钱，三件事分别交给了谁</h2>
+    <table class="t cmp" id="cmp">
+      <tr><th>维度</th><th>银行</th><th>券商</th><th class="cex">CEX 币安</th><th>DEX</th></tr>
+      <tr data-step="0"><td>谁保管资产</td><td>银行</td><td>第三方存管</td><td class="cex">交易所自己</td><td>用户自己的钱包</td></tr>
+      <tr data-step="1"><td>账本在哪里</td><td>银行核心系统</td><td>券商柜台和登记结算</td><td class="cex">交易所内部账本</td><td>区块链合约</td></tr>
+      <tr data-step="1"><td>撮合在哪里</td><td>不撮合</td><td>证券交易所</td><td class="cex">交易所自己</td><td>链上合约</td></tr>
+      <tr data-step="2"><td>结算速度</td><td>T+0 到 T+1</td><td>T+1</td><td class="cex">成交即结算</td><td>一个区块</td></tr>
+      <tr data-step="2"><td>主要风险</td><td>银行倒闭</td><td>券商挪用</td><td class="cex">挪用、被盗</td><td>合约漏洞</td></tr>
+    </table>
+    <div class="row">
+      <div class="card gold" style="flex:1" data-step="3">券商：三件事拆给三方<br>CEX：放在<span class="hl">同一家公司</span></div>
+      <div class="card sell" style="flex:1" data-step="4">你的余额 = 交易所对你的<span class="down">负债</span><br>FTX 2022：交易所挪用资产</div>
+    </div>
+    <ol class="say">
+      <li>来做个横向对比。先看谁保管资产。银行自己保管，券商交给第三方存管。CEX 是交易所自己保管，DEX 是用户自己的钱包。</li>
+      <li>再看账本和撮合。券商只转发订单，撮合在证券交易所。CEX 的账本和撮合，都在交易所自己手里。</li>
+      <li>结算速度上，A 股和美股是 T+1。CEX 成交即结算，毫秒级。DEX 要等一个区块。</li>
+      <li>注意这里。券商把托管、记账、撮合拆给三方。CEX 把三件事放在同一家公司。这是它高效的原因，也是最大的风险来源。</li>
+      <li>所以要记住，CEX 上的余额是交易所对你的负债，不是你链上的资产。2022 年 FTX 倒闭，就是交易所挪用了资产。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="币安业务版图">
+    <div class="kicker">系统视角 · 币安业务版图 <span class="src bn">币安公开资料</span></div>
+    <h2>产品很多，底座只有一个</h2>
+    <div class="prod" id="prod">
+      <div class="card" data-step="0" data-dim="2"><h3>交易</h3><span class="muted">现货、杠杆、合约、期权</span></div>
+      <div class="card" data-step="0" data-dim="2"><h3>理财 Earn</h3><span class="muted">活期定期、质押、双币</span></div>
+      <div class="card" data-step="0" data-dim="2"><h3>发币与分发</h3><span class="muted">Launchpool、Launchpad</span></div>
+      <div class="card" data-step="0" data-dim="2"><h3>法币与支付</h3><span class="muted">买币、P2P、Binance Pay</span></div>
+      <div class="card onchain" data-step="0"><h3>钱包与链</h3><span class="muted">Binance Wallet、BNB Chain</span></div>
+      <div class="card" data-step="0" data-dim="2"><h3>机构与生态</h3><span class="muted">VIP、Research、Academy</span></div>
+    </div>
+    <div class="base" data-step="1"><div>账户</div><div>钱包</div><div>账本</div><div>撮合</div></div>
+    <div class="row">
+      <div class="card info" style="flex:1" data-step="2">只有<span class="blue">钱包与链</span>连接链上世界，其余几乎都在链下完成</div>
+      <div class="card" style="flex:0 0 520px" data-step="3"><span class="muted">产品名以币安官网为准<br>截至 2026 年公开资料</span></div>
+    </div>
+    <ol class="say">
+      <li>现在换到系统视角。先看币安的业务版图。交易、理财、发币、法币支付、钱包与链、机构服务，产品非常多。</li>
+      <li>但它们都建在同一个底座上：账户、钱包、账本、撮合。理财、合约、杠杆，在账本里只是不同的账户类型。</li>
+      <li>再注意一点。只有钱包与链这一支连接链上世界，其他分支几乎都在链下完成。</li>
+      <li>产品名称以币安官网为准，会上线也会下线。这里依据的是截至 2026 年的公开资料。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="新用户的旅程" data-onstep="journeyStep">
+    <div class="kicker">用户旅程 · 注册到提币</div>
+    <h2>一个新用户的五个阶段</h2>
+    <svg id="journey" viewBox="0 0 1640 560" width="1640" height="560"></svg>
+    <ol class="say">
+      <li>来看一个新用户的完整旅程。一共 5 个阶段：注册、KYC、充值、交易、提币。</li>
+      <li>注册时填邮箱或手机号，设置密码和 2FA。然后是 KYC，上传证件，做人脸识别，等合规审核。</li>
+      <li>接着充值。复制充值地址，从外部钱包转币，然后等区块确认。确认够了，余额才入账。</li>
+      <li>然后交易。下一个限价单，撮合成交。注意，这一步完全在交易所内部完成。</li>
+      <li>最后提币。输入地址和 2FA，经过风控审核，再广播上链，等待确认。</li>
+      <li>如果给每一步的体验打分，最难受的是两步。一是 KYC，二是等待区块确认。</li>
+      <li>再看哪几步碰到了区块链。只有充值和提币。交易这一步，链上没有任何动静。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="资金的路线" data-onstep="routeStep">
+    <div class="kicker">系统视角 · 资金的路线</div>
+    <h2>从链上进来，在账本里流转，回到链上</h2>
+    <svg id="route" viewBox="0 0 1640 560" width="1640" height="560"></svg>
+    <ol class="say">
+      <li>换成系统的视角，同一段旅程是这样的。资金从左边的链上进入。</li>
+      <li>钱包服务确认这笔充值，然后在内部账本上入账。</li>
+      <li>下单时冻结余额，订单进入撮合。成交以后，结算服务在账本上互换双方的资产。</li>
+      <li>提币时反过来。账本出账，钱包签名广播，资金回到右边的链上。</li>
+      <li>图里有两个常见的卡住点。一个是充值确认数不足，一个是提币被风控拒绝。</li>
+      <li>每一站后面都有专门的一集。钱包、账本、撮合、结算，我们会一个一个拆开讲。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="三本账" data-onstep="booksStep">
+    <div class="kicker">本集重点 · 三本账 <span class="src ex">示例数字</span></div>
+    <h2>交易所同时维护三本账</h2>
+    <div class="grid3 books">
+      <div class="card" id="bk1"><h3>① 链上资产</h3>
+        <div class="ln"><span>热钱包 ETH</span><b id="b1v">5,000</b></div>
+        <div class="ln"><span class="muted">维护者</span><span>区块链</span></div>
+        <div class="upd">更新：充值、提币、归集</div></div>
+      <div class="card" id="bk2"><h3>② 内部账本</h3>
+        <div class="ln" id="l2a"><span>A 可用 ETH</span><b id="b2a">3</b></div>
+        <div class="ln" id="l2b"><span>A 冻结 ETH</span><b id="b2b">0</b></div>
+        <div class="ln" id="l2c"><span>A 可用 USDT</span><b id="b2c">0</b></div>
+        <div class="upd">更新：入账、成交、提币</div></div>
+      <div class="card" id="bk3"><h3>③ 撮合订单簿</h3>
+        <div class="ln down" id="l3a"><span>卖 3,050</span><b>1.0 · A</b></div>
+        <div class="ln up"><span>买 3,000</span><b>1.5</b></div>
+        <div class="ln"><span class="muted">交易对</span><span>ETH/USDT</span></div>
+        <div class="upd">更新：下单、撤单、成交</div></div>
+    </div>
+    <div class="evt" id="bkEvt"></div>
+    <ol class="say">
+      <li>下面是这一集最关键的概念。交易所同时维护三本账，它们记录的东西不同，更新速度也不同。</li>
+      <li>第一本是链上资产，由区块链维护。比如热钱包地址上有 5,000 个 ETH，这是示例数字。</li>
+      <li>第二本是内部账本，记录每个用户的余额。比如用户 A 有 3 个 ETH 可用。</li>
+      <li>第三本是撮合订单簿，记录还没成交的挂单。比如买一价 3,000 USDT，数量 1.5 个 ETH。</li>
+      <li>现在 A 挂单卖出 1 个 ETH，价格 3,050。账本里，1 个 ETH 从可用转到冻结。订单簿里多了一笔卖单。</li>
+      <li>接着有买家吃掉这笔卖单。A 冻结的 1 个 ETH 被扣掉，换成 3,050 USDT。手续费先不算。</li>
+      <li>注意看左边。热钱包上的 5,000 个 ETH，从头到尾一个都没动。</li>
+      <li>所以，你在 App 上看到的余额来自第二本账。在链上浏览器里，查不到你在交易所的个人余额。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="三本账要对得上" data-onstep="reserveStep">
+    <div class="kicker">三本账的约束 <span class="src ex">示例数字</span></div>
+    <h2>三本账之间必须对得上</h2>
+    <div class="row">
+      <div class="col" style="flex:0 0 640px">
+        <div class="card rl" id="rule1"><h3>关系一：挂单 ⇔ 冻结</h3><span class="muted">对不上就会超卖</span></div>
+        <div class="card rl" id="rule2"><h3>关系二：余额之和 ≤ 链上</h3><span class="muted">储备证明要证明的事</span></div>
+        <div class="card rl" id="rule3"><h3>同步：靠事件</h3><span class="muted">慢了，但最终一致</span></div>
+      </div>
+      <svg id="bars" viewBox="0 0 960 600" width="960" height="600"></svg>
+    </div>
+    <ol class="say">
+      <li>三本账之间有两条必须守住的关系。第一条，订单簿里的每一笔挂单，在账本里都有对应的冻结余额。</li>
+      <li>两者对不上，交易所就会超卖。也就是卖出了账本里并不存在的币。</li>
+      <li>第二条，账本里所有用户的余额之和，应该小于或等于链上资产。</li>
+      <li>举个示例。账本里用户的 USDT 加起来是 100 万，链上地址却只有 80 万。</li>
+      <li>缺口是 20 万。如果所有人同时提币，最后 20 万就兑付不了。储备证明要证明的，就是这个缺口不存在。</li>
+      <li>另外，三本账之间靠事件同步。同步慢了，你会看到已成交但余额没变。这是延迟，最终会一致。</li>
+      <li>业界通常每天做一次或多次对账。核对链上资产和账本总额，也核对账本冻结和订单簿挂单。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="托管记账撮合">
+    <div class="kicker">回到标题</div>
+    <h2>所有产品，都是三件事的组合</h2>
+    <div class="row">
+      <div class="pill">
+        <div class="card gold" data-step="0"><h3>托管 Custody</h3>保管用户的私钥和资产</div>
+        <div class="card gold" data-step="1"><h3>记账 Ledger</h3>双分录：有借必有贷</div>
+        <div class="card gold" data-step="2"><h3>撮合 Matching</h3>价格优先、时间优先</div>
+      </div>
+      <div class="col" data-step="3"><table class="t mx">
+        <tr><th>产品</th><th>托管</th><th>记账</th><th>撮合</th></tr>
+        <tr><td>现货</td><td class="y">是</td><td>余额互换</td><td class="y">是</td></tr>
+        <tr><td>合约</td><td class="y">保证金</td><td>保证金和盈亏</td><td class="y">是</td></tr>
+        <tr data-step="4"><td>理财 Earn</td><td class="y">是</td><td>锁定和利息</td><td class="n">否</td></tr>
+        <tr data-step="4"><td>Launchpool</td><td class="y">是</td><td>锁定和新币</td><td class="n">否</td></tr>
+        <tr data-step="4"><td>P2P</td><td class="y">担保冻结</td><td>冻结和划转</td><td class="n">否</td></tr>
+      </table></div>
+    </div>
+    <ol class="say">
+      <li>现在回到标题。把所有产品拆开，CEX 只做三件事。第一，托管。交易所保管用户的私钥和资产。</li>
+      <li>第二，记账。交易所用双分录账本记录余额变化。每一笔借方，都有一笔对应的贷方。</li>
+      <li>第三，撮合。按价格优先、时间优先，把买单和卖单配对。</li>
+      <li>其他产品都是这三件事的组合。现货三样都用。合约也一样，只是记账里多了保证金和未实现盈亏。</li>
+      <li>理财和 Launchpool 不需要撮合，只是锁定资产，再发利息或新币。P2P 靠担保冻结，用户自己挑广告。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="币安怎么做">
+    <div class="kicker">币安怎么做</div>
+    <h2>公开事实和业界通用做法，分开看</h2>
+    <div class="row facts">
+      <div class="col">
+        <div class="card gold" data-step="0"><b>3 亿+</b> 注册用户 <span class="src bn">币安公开资料</span><br><span class="muted">2025 年 12 月宣布</span></div>
+        <div class="card gold" data-step="1"><b>SAFU</b> 用户安全资产基金<br><span class="muted">2018 年设立；2019 年 5 月被盗约 7,000 BTC，由它覆盖</span></div>
+        <div class="card gold" data-step="2"><b>PoR</b> 储备证明<br><span class="muted">2022 年 11 月发布默克尔树方案，后加入零知识证明</span></div>
+      </div>
+      <div class="col">
+        <div class="card info" data-step="3"><span class="src ind">业界通用做法</span><br>大部分资产放冷钱包，热钱包只留日常提币所需</div>
+        <div class="card info" data-step="3">每个用户独立充值地址，定期归集到热钱包</div>
+        <div class="card info" data-step="4">账本和撮合分开部署：撮合求快，账本求对</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>来看币安怎么做。先说公开事实。币安在 2025 年 12 月宣布，注册用户超过 3 亿。</li>
+      <li>2018 年，币安设立了用户安全资产基金，叫 SAFU。2019 年 5 月，黑客从热钱包盗走约 7,000 个 BTC。币安用 SAFU 覆盖了这笔损失。</li>
+      <li>2022 年 11 月 FTX 事件之后，币安发布了基于默克尔树的储备证明。后来，又加入了零知识证明。</li>
+      <li>下面是业界通用做法，币安没有完整公开。大部分资产放冷钱包，热钱包只留日常提币需要的量。每个用户有独立充值地址，定期归集。</li>
+      <li>还有一条很重要。账本和撮合分开部署。撮合追求速度，账本追求正确。下一集我们就从这里展开。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="哪里会出错">
+    <div class="kicker">故障与边界</div>
+    <h2>每一种风险，都落在某一本账上</h2>
+    <table class="t risk">
+      <tr><th>风险</th><th>哪本账</th><th>用户看到什么</th></tr>
+      <tr data-step="0"><td>热钱包私钥泄露</td><td>链上资产</td><td>提币暂停，需要保险基金赔付</td></tr>
+      <tr data-step="1"><td>账本 bug 多记余额</td><td>内部账本</td><td>余额异常增加，账实不符</td></tr>
+      <tr data-step="1"><td>撮合引擎宕机</td><td>订单簿</td><td>下单失败，挂单撤不掉</td></tr>
+      <tr data-step="2"><td>三本账同步延迟</td><td>账本和订单簿</td><td>成交后余额几秒不变</td></tr>
+      <tr data-step="3"><td>交易所挪用资产</td><td>链上少于账本</td><td class="down">无法提币，FTX 2022</td></tr>
+    </table>
+    <div class="card warn" data-step="4">核心局限是<span class="hl">信任</span>：储备证明只证明某一时刻的资产，不能证明负债完整。</div>
+    <ol class="say">
+      <li>最后看风险。热钱包私钥泄露，出问题的是链上资产。用户看到提币暂停，交易所要用保险基金赔付。</li>
+      <li>账本有 bug 多记了余额，就会账实不符。撮合引擎宕机，用户下单失败，挂单也撤不掉。</li>
+      <li>三本账同步延迟，用户成交后余额几秒不变。体验差，但最终会一致。</li>
+      <li>最严重的是交易所挪用资产。链上资产少于账本，用户无法提币。FTX 就是这样倒下的。</li>
+      <li>所以 CEX 的核心局限是信任。储备证明只能证明某一时刻的资产，不能证明负债是完整的。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">CEX 的本质：<span class="hl">托管 + 记账 + 撮合</span>，三件事在同一家公司。</li>
+      <li data-step="0">站内买卖只改<span class="hl">内部账本</span>，链上没有转账。</li>
+      <li data-step="2">三本账要对得上：挂单对冻结，余额之和 ≤ 链上资产。</li>
+    </ul>
+    <div class="card info teaser" data-step="3"><span class="chip info">下集 EP02</span>一张图看懂交易所架构：三件事怎样拆成十几个服务</div>
+    <ol class="say">
+      <li>小结一下。第一，CEX 的本质是托管、记账、撮合，而且三件事在同一家公司里。</li>
+      <li>第二，你在站内买卖，只改了交易所的内部账本，链上没有转账。</li>
+      <li>第三，三本账必须对得上。挂单要对应冻结，用户余额之和不能超过链上资产。</li>
+      <li>下一集，我们画一张完整的架构图，看这三件事怎样拆成十几个服务。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const fmt = n => n.toLocaleString('en-US');
+  const $ = (el, id) => el.querySelector('#' + id);
+
+  function casinoStep(el, st) {
+    const S = [
+      { aCash: 0, aChip: 1000, tA: 1000, tB: 1000, v: 2000, on: 'cDesk', note: 'A 交出现金 1,000，换回筹码 1,000' },
+      { aCash: 0, aChip: 700, tA: 700, tB: 1300, v: 2000, on: 'cTable', note: 'A 付给 B 300 筹码，金库现金 2,000 不动' },
+      { aCash: 700, aChip: 0, tA: 0, tB: 1300, v: 1300, on: 'cDesk', note: 'A 交回 700 筹码，柜台从金库取出现金 700' },
+      { aCash: 700, aChip: 0, tA: 0, tB: 1300, v: 1300, on: '', note: '柜台 = 钱包系统，筹码 = 账本，牌桌 = 撮合，金库 = 冷热钱包' },
+      { aCash: 700, aChip: 0, tA: 0, tB: 1300, v: 1300, on: '', note: '局限：交易所撮合用户之间的买卖，不当庄家，只收手续费' },
+    ][Math.min(st, 4)];
+    $(el, 'aCash').textContent = fmt(S.aCash); $(el, 'aChip').textContent = fmt(S.aChip);
+    $(el, 'tA').textContent = fmt(S.tA); $(el, 'tB').textContent = fmt(S.tB); $(el, 'vCash').textContent = fmt(S.v);
+    ['cA', 'cDesk', 'cTable', 'cVault'].forEach(id => $(el, id).classList.toggle('on', id === S.on || (st === 1 && id === 'cVault')));
+    $(el, 'cNote').textContent = S.note;
+  }
+
+  function journeyStep(el, st) {
+    const stages = [
+      ['注册', '邮箱 · 2FA'], ['KYC', '证件 · 人脸'], ['充值', '地址 · 确认'], ['交易', '限价 · 撮合'], ['提币', '风控 · 广播']];
+    const W = 290, G = (1640 - 5 * W) / 4, Y = 70, H = 170;
+    const pos = st <= 4 ? st : -1;
+    let s = '';
+    stages.forEach(([t, sub], i) => {
+      const x = i * (W + G), lit = st >= 5 ? true : i <= st, cur = i === pos;
+      const stroke = cur ? 'var(--gold)' : (lit ? '#4a505c' : 'var(--line)');
+      s += `<rect x="${x}" y="${Y}" width="${W}" height="${H}" rx="16" fill="${cur ? 'rgba(240,185,11,.14)' : 'var(--panel)'}" stroke="${stroke}" stroke-width="3" opacity="${lit ? 1 : .35}"/>`;
+      s += `<text x="${x + W / 2}" y="${Y + 70}" text-anchor="middle" font-size="44" font-weight="700" opacity="${lit ? 1 : .35}">${t}</text>`;
+      s += `<text x="${x + W / 2}" y="${Y + 128}" text-anchor="middle" font-size="30" style="fill:var(--text-2)" opacity="${lit ? 1 : .35}">${sub}</text>`;
+      if (i < 4) s += `<path d="M${x + W + 6} ${Y + H / 2} h${G - 18}" stroke="var(--text-2)" stroke-width="4" opacity="${i < st || st >= 5 ? 1 : .25}"/><path d="M${x + W + G - 14} ${Y + H / 2 - 9} l12 9 l-12 9z" fill="var(--text-2)" opacity="${i < st || st >= 5 ? 1 : .25}"/>`;
+    });
+    if (pos >= 0) { const cx = pos * (W + G) + W / 2; s += `<circle cx="${cx}" cy="${Y - 30}" r="18" fill="var(--gold)"/><text x="${cx + 34}" y="${Y - 20}" font-size="30" style="fill:var(--gold)">新用户</text>`; }
+    if (st >= 5) {
+      [[1, '证件审核'], [2, '等待确认']].forEach(([i, t]) => {
+        const x = i * (W + G);
+        s += `<rect x="${x + 20}" y="${Y + H + 24}" width="${W - 40}" height="64" rx="12" fill="rgba(246,70,93,.16)" stroke="var(--sell)" stroke-width="2"/>`;
+        s += `<text x="${x + W / 2}" y="${Y + H + 67}" text-anchor="middle" font-size="30" style="fill:var(--sell)">最差：${t}</text>`;
+      });
+    }
+    const cy = 470;
+    s += `<rect x="0" y="${cy}" width="1640" height="80" rx="14" fill="${st >= 6 ? 'rgba(91,156,255,.14)' : 'var(--panel)'}" stroke="${st >= 6 ? 'var(--info)' : 'var(--line)'}" stroke-width="2"/>`;
+    s += `<text x="820" y="${cy + 52}" text-anchor="middle" font-size="34" style="fill:${st >= 6 ? 'var(--info)' : 'var(--text-2)'}">区块链</text>`;
+    if (st >= 6) {
+      [2, 4].forEach(i => { const x = i * (W + G) + W / 2; s += `<path d="M${x} ${Y + H + 96} V${cy - 4}" stroke="var(--info)" stroke-width="5" stroke-dasharray="12 8"/>`; });
+      const x = 3 * (W + G);
+      s += `<rect x="${x + 20}" y="${Y + H + 24}" width="${W - 40}" height="64" rx="12" fill="rgba(46,189,133,.16)" stroke="var(--buy)" stroke-width="2"/>`;
+      s += `<text x="${x + W / 2}" y="${Y + H + 67}" text-anchor="middle" font-size="30" style="fill:var(--buy)">链上无动静</text>`;
+      [2, 4].forEach(i => { const x2 = i * (W + G) + W / 2; s += `<text x="${x2 + 14}" y="${cy - 60}" font-size="28" style="fill:var(--info)">上链</text>`; });
+    }
+    $(el, 'journey').innerHTML = s;
+  }
+
+  function routeStep(el, st) {
+    const names = ['链上', '钱包确认', '账本入账', '冻结', '撮合', '结算互换', '账本出账', '钱包广播', '链上'];
+    const eps = [null, 'EP05', 'EP07', 'EP07', 'EP09', 'EP11', 'EP07', 'EP06', null];
+    const reach = [0, 2, 5, 8, 8, 8][st];
+    const X = i => 90 + i * 182, Y = 270;
+    let s = '';
+    const bandY = 420;
+    s += `<rect x="0" y="${bandY}" width="${X(1) - 50}" height="64" rx="12" fill="rgba(91,156,255,.14)"/><text x="${(X(1) - 50) / 2}" y="${bandY + 42}" text-anchor="middle" font-size="30" style="fill:var(--info)">区块链</text>`;
+    s += `<rect x="${X(1) - 40}" y="${bandY}" width="${X(7) - X(1) + 80}" height="64" rx="12" fill="rgba(240,185,11,.10)"/><text x="${(X(1) + X(7)) / 2}" y="${bandY + 42}" text-anchor="middle" font-size="30" style="fill:var(--gold)">交易所内部：链下完成</text>`;
+    s += `<rect x="${X(7) + 50}" y="${bandY}" width="${1640 - X(7) - 50}" height="64" rx="12" fill="rgba(91,156,255,.14)"/><text x="${(X(7) + 50 + 1640) / 2}" y="${bandY + 42}" text-anchor="middle" font-size="30" style="fill:var(--info)">区块链</text>`;
+    for (let i = 0; i < 8; i++) s += `<line x1="${X(i)}" y1="${Y}" x2="${X(i + 1)}" y2="${Y}" stroke="${i < reach ? 'var(--gold)' : 'var(--line)'}" stroke-width="10" stroke-linecap="round"/>`;
+    names.forEach((n, i) => {
+      const lit = i <= reach, cur = i === reach && st <= 3;
+      s += `<circle cx="${X(i)}" cy="${Y}" r="${cur ? 26 : 18}" fill="${lit ? (i === 0 || i === 8 ? 'var(--info)' : 'var(--gold)') : 'var(--panel-2)'}" stroke="${cur ? '#fff' : 'var(--line)'}" stroke-width="${cur ? 5 : 3}"/>`;
+      const up = i % 2 === 0;
+      s += `<text x="${X(i)}" y="${up ? Y - 50 : Y + 72}" text-anchor="middle" font-size="32" font-weight="${lit ? 700 : 400}" opacity="${lit ? 1 : .4}">${n}</text>`;
+      if (st >= 5 && eps[i]) {
+        const ty = up ? Y - 128 : Y + 92;
+        s += `<rect x="${X(i) - 52}" y="${ty}" width="104" height="44" rx="22" fill="rgba(91,156,255,.18)"/><text x="${X(i)}" y="${ty + 31}" text-anchor="middle" font-size="26" style="fill:var(--info);font-family:var(--mono)">${eps[i]}</text>`;
+      }
+    });
+    if (st >= 4) {
+      s += `<path d="M${X(1) - 22} ${Y - 26} C ${X(1) - 70} ${Y - 170}, ${X(1) + 70} ${Y - 170}, ${X(1) + 22} ${Y - 26}" fill="none" stroke="var(--sell)" stroke-width="4" stroke-dasharray="10 8"/>`;
+      s += `<text x="${X(1)}" y="${Y - 175}" text-anchor="middle" font-size="30" style="fill:var(--sell)">确认数不足</text>`;
+      s += `<path d="M${X(7)} ${Y - 26} C ${X(7) - 10} ${Y - 190}, ${X(6) + 90} ${Y - 190}, ${X(6) + 76} ${Y - 40}" fill="none" stroke="var(--sell)" stroke-width="4" stroke-dasharray="10 8"/>`;
+      s += `<path d="M${X(6) + 66} ${Y - 54} l10 16 l10 -16z" fill="var(--sell)"/>`;
+      s += `<text x="${(X(6) + X(7)) / 2 + 40}" y="${Y - 175}" text-anchor="middle" font-size="30" style="fill:var(--sell)">风控拒绝</text>`;
+    }
+    $(el, 'route').innerHTML = s;
+  }
+
+  function booksStep(el, st) {
+    const on = [null, 'bk1', 'bk2', 'bk3', 'bk2', 'bk2', 'bk1', 'bk2'][st];
+    ['bk1', 'bk2', 'bk3'].forEach(id => $(el, id).classList.toggle('on', id === on || (st === 4 && id === 'bk3') || (st === 5 && id === 'bk3')));
+    const a = st < 4 ? [3, 0, 0] : st === 4 ? [2, 1, 0] : [2, 0, 3050];
+    $(el, 'b2a').textContent = a[0]; $(el, 'b2b').textContent = a[1]; $(el, 'b2c').textContent = fmt(a[2]);
+    $(el, 'l2a').classList.toggle('chg', st === 4); $(el, 'l2b').classList.toggle('chg', st === 4 || st === 5); $(el, 'l2c').classList.toggle('chg', st === 5);
+    const ask = $(el, 'l3a');
+    ask.style.visibility = st >= 4 ? 'visible' : 'hidden';
+    ask.classList.toggle('gone', st >= 5);
+    const ev = ['三本账：记录不同，更新速度也不同',
+      '链上资产：交易所地址上真实持有的币',
+      '内部账本：每个用户在交易所的余额',
+      '订单簿：当前还没成交的挂单',
+      '事件：A 限价卖出 1 ETH @ 3,050 → 冻结 1 ETH，新增卖单',
+      '事件：卖单成交 → 冻结 −1 ETH，可用 +3,050 USDT',
+      '链上资产：5,000 ETH，始终不变',
+      'App 上的余额 = 第二本账'][st];
+    $(el, 'bkEvt').textContent = ev;
+  }
+
+  function reserveStep(el, st) {
+    $(el, 'rule1').className = 'card rl' + (st <= 1 ? ' gold' : '');
+    $(el, 'rule2').className = 'card rl' + (st >= 2 && st <= 4 ? ' gold' : '');
+    $(el, 'rule2').style.opacity = st >= 2 ? 1 : .35;
+    $(el, 'rule3').className = 'card rl' + (st >= 5 ? ' info' : '');
+    $(el, 'rule3').style.opacity = st >= 5 ? 1 : .35;
+    let s = '';
+    if (st <= 1) {
+      // order <-> lock pairing
+      const ok = st === 0;
+      s += `<text x="480" y="60" text-anchor="middle" font-size="34" font-weight="700">订单簿 vs 账本冻结</text>`;
+      const rows = ok ? [['卖单 1.0 ETH', '冻结 1.0 ETH', true], ['卖单 0.5 ETH', '冻结 0.5 ETH', true], ['卖单 2.0 ETH', '冻结 2.0 ETH', true]]
+                      : [['卖单 1.0 ETH', '冻结 1.0 ETH', true], ['卖单 0.5 ETH', '冻结 0.5 ETH', true], ['卖单 2.0 ETH', '冻结 0 ETH', false]];
+      rows.forEach(([l, r, good], i) => {
+        const y = 110 + i * 130;
+        s += `<rect x="20" y="${y}" width="360" height="90" rx="12" fill="var(--panel)" stroke="var(--line)" stroke-width="2"/><text x="200" y="${y + 57}" text-anchor="middle" font-size="32">${l}</text>`;
+        s += `<rect x="580" y="${y}" width="360" height="90" rx="12" fill="${good ? 'var(--panel)' : 'rgba(246,70,93,.16)'}" stroke="${good ? 'var(--line)' : 'var(--sell)'}" stroke-width="2"/><text x="760" y="${y + 57}" text-anchor="middle" font-size="32">${r}</text>`;
+        s += `<line x1="390" y1="${y + 45}" x2="570" y2="${y + 45}" stroke="${good ? 'var(--buy)' : 'var(--sell)'}" stroke-width="4" ${good ? '' : 'stroke-dasharray="10 8"'}/>`;
+        s += `<text x="480" y="${y + 32}" text-anchor="middle" font-size="30" style="fill:${good ? 'var(--buy)' : 'var(--sell)'}">${good ? '✓' : '✗ 超卖'}</text>`;
+      });
+    } else if (st <= 4) {
+      const chain = st === 2 ? 105 : 80, led = 100, max = 110, H = 400, base = 520;
+      const bar = (x, v, c, lbl) => { const h = v / max * H; return `<rect x="${x}" y="${base - h}" width="220" height="${h}" rx="10" fill="${c}"/><text x="${x + 110}" y="${base - h - 18}" text-anchor="middle" font-size="40" font-weight="700" style="font-family:var(--mono)">${v} 万</text><text x="${x + 110}" y="${base + 50}" text-anchor="middle" font-size="32">${lbl}</text>`; };
+      s += bar(160, led, 'var(--gold)', '账本用户余额');
+      s += bar(560, chain, chain >= led ? 'var(--buy)' : 'var(--info)', '链上资产');
+      if (st >= 3) {
+        const yTop = base - led / max * H, yChain = base - chain / max * H;
+        s += `<line x1="140" y1="${yTop}" x2="820" y2="${yTop}" stroke="var(--gold)" stroke-width="2" stroke-dasharray="8 8"/>`;
+        s += `<rect x="560" y="${yTop}" width="220" height="${yChain - yTop}" fill="rgba(246,70,93,.22)" stroke="var(--sell)" stroke-width="3" stroke-dasharray="10 6"/>`;
+        if (st >= 4) s += `<text x="800" y="${(yTop + yChain) / 2 + 12}" font-size="36" font-weight="700" style="fill:var(--sell)">缺口 20 万</text>`;
+      }
+      s += `<text x="480" y="40" text-anchor="middle" font-size="32" style="fill:var(--text-2)">USDT · 示例</text>`;
+      if (st === 2) s += `<text x="800" y="200" font-size="34" style="fill:var(--buy)">✓ 足额</text>`;
+    } else {
+      // sync & reconciliation
+      const pairs = [['链上资产', '账本总额'], ['账本冻结', '订单簿挂单']];
+      s += `<text x="480" y="60" text-anchor="middle" font-size="34" font-weight="700">${st === 5 ? '事件同步：先成交，后到账' : '定期对账'}</text>`;
+      if (st === 5) {
+        const box = (x, y, t, c) => `<rect x="${x}" y="${y}" width="260" height="100" rx="14" fill="var(--panel)" stroke="${c}" stroke-width="3"/><text x="${x + 130}" y="${y + 62}" text-anchor="middle" font-size="34">${t}</text>`;
+        s += box(20, 200, '撮合成交', 'var(--gold)') + box(350, 200, '事件队列', 'var(--info)') + box(680, 200, '账本余额', 'var(--buy)');
+        s += `<path d="M285 250 h55 M615 250 h55" stroke="var(--text-2)" stroke-width="4" stroke-dasharray="10 8"/>`;
+        s += `<text x="480" y="400" text-anchor="middle" font-size="32" style="fill:var(--warn)">延迟几秒：已成交，余额还没变</text>`;
+        s += `<text x="480" y="460" text-anchor="middle" font-size="32" style="fill:var(--buy)">最终一致</text>`;
+      } else {
+        pairs.forEach(([l, r], i) => {
+          const y = 140 + i * 180;
+          s += `<rect x="20" y="${y}" width="360" height="100" rx="14" fill="var(--panel)" stroke="var(--info)" stroke-width="3"/><text x="200" y="${y + 62}" text-anchor="middle" font-size="34">${l}</text>`;
+          s += `<rect x="580" y="${y}" width="360" height="100" rx="14" fill="var(--panel)" stroke="var(--info)" stroke-width="3"/><text x="760" y="${y + 62}" text-anchor="middle" font-size="34">${r}</text>`;
+          s += `<text x="480" y="${y + 64}" text-anchor="middle" font-size="40" style="fill:var(--gold)">⇔</text>`;
+        });
+        s += `<text x="480" y="540" text-anchor="middle" font-size="30" style="fill:var(--text-2)">业界通用做法：每天一次或多次</text>`;
+      }
+    }
+    $(el, 'bars').innerHTML = s;
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

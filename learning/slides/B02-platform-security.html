@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B02 平台安全：密钥、内控与供应链</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .stack { position: relative; flex: 1; min-height: 0; }
+  .stack > .layer { position: absolute; left: 0; right: 0; top: 0; }
+  .vs { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; width: 100%; }
+  .vs .card .big2 { font-family: var(--mono); font-size: 56px; font-weight: 700; margin-top: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 16px; }
+  .chips .chip { font-size: 30px; padding: 8px 22px; }
+  table.t td, table.t th { padding: 12px 18px; }
+  /* asset ladder */
+  .lad { display: flex; flex-direction: column; gap: 12px; }
+  .lad .r { display: grid; grid-template-columns: 380px 140px 1fr; align-items: center; gap: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 22px; font-size: 30px; transition: all .35s; }
+  .lad .lv { font-weight: 700; text-align: center; border-radius: 8px; padding: 2px 0; }
+  .lad .lv.max { background: var(--sell); color: #111; } .lad .lv.hi { background: var(--sell-soft); color: var(--sell); } .lad .lv.mid { background: var(--warn-soft); color: var(--warn); }
+  .lad .r .c { color: var(--text-2); }
+  .lad .r.focus { border-color: var(--gold); background: var(--gold-soft); box-shadow: 0 0 0 6px rgba(240,185,11,.2); }
+  /* defense layers */
+  .lyrs { display: flex; gap: 24px; }
+  .lyrs .stackL { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+  .lyr { display: grid; grid-template-columns: 300px 1fr 230px; align-items: center; gap: 20px; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 24px; font-size: 30px; transition: all .35s; }
+  .lyr b { font-size: 32px; }
+  .lyr .c { color: var(--text-2); }
+  .lyr .st { text-align: center; border-radius: 10px; padding: 6px 0; font-size: 28px; }
+  .lyr.on { border-color: var(--gold); background: var(--gold-soft); }
+  .lyr.on .c { color: var(--text); }
+  .lyr.pass { opacity: .5; }
+  .lyr .st.ok { background: var(--buy-soft); color: var(--buy); } .lyr .st.miss { background: var(--sell-soft); color: var(--sell); }
+  .soc { width: 220px; border: 2px dashed var(--info); border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-size: 30px; color: var(--info); padding: 16px; transition: all .35s; }
+  .soc.on { background: var(--info-soft); border-style: solid; }
+  .info { font-size: 31px; min-height: 108px; }
+  /* svg */
+  svg .box { fill: #16181c; stroke: #2c3038; stroke-width: 2; transition: all .3s; }
+  svg .box.on { fill: rgba(240,185,11,.16); stroke: #f0b90b; stroke-width: 4; }
+  svg .box.done { stroke: #2ebd85; }
+  svg .box.red { fill: rgba(246,70,93,.16); stroke: #f6465d; stroke-width: 4; }
+  svg .ln { stroke: #9ea3ad; stroke-width: 3; fill: none; }
+  svg .ln.g { stroke: #f0b90b; } svg .ln.r { stroke: #f6465d; } svg .ln.b { stroke: #2ebd85; } svg .ln.d { stroke-dasharray: 10 8; }
+  svg .life { stroke: #2c3038; stroke-width: 3; stroke-dasharray: 8 8; }
+  svg text.t { font-size: 32px; } svg text.s { font-size: 26px; fill: #9ea3ad; }
+  /* mpc */
+  .shard { display: flex; flex-direction: column; gap: 10px; font-size: 30px; }
+  .shard h3 { font-size: 40px; margin: 0; }
+  .shard .k { color: var(--text-2); font-size: 26px; }
+  .shard.bad { border-color: var(--sell); background: var(--sell-soft); }
+  /* policy */
+  .pol { display: grid; grid-template-columns: 560px 1fr; gap: 30px; }
+  .req { display: flex; flex-direction: column; gap: 10px; font-size: 30px; }
+  .req .kv { display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding: 4px 0; }
+  .req .kv span:last-child { font-family: var(--mono); }
+  .verdict { font-size: 32px; font-weight: 700; padding: 16px 20px; border-radius: 12px; text-align: center; background: var(--panel-2); color: var(--text-2); }
+  .verdict.ok { background: var(--buy-soft); color: var(--buy); } .verdict.warn { background: var(--warn-soft); color: var(--warn); } .verdict.bad { background: var(--sell-soft); color: var(--sell); }
+  .rules { display: flex; flex-direction: column; gap: 8px; }
+  .rules .ru { display: grid; grid-template-columns: 210px 1fr 90px; gap: 16px; align-items: center; padding: 9px 18px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); font-size: 30px; }
+  .rules .ru .n { font-weight: 700; } .rules .ru .x { text-align: center; font-size: 32px; }
+  .rules .ru.ok { border-color: var(--buy); } .rules .ru.ok .x { color: var(--buy); }
+  .rules .ru.warn { border-color: var(--warn); background: var(--warn-soft); } .rules .ru.warn .x { color: var(--warn); }
+  .rules .ru.bad { border-color: var(--sell); background: var(--sell-soft); } .rules .ru.bad .x { color: var(--sell); }
+  /* wysiwys */
+  .wys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
+  .wp { background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 22px 26px; display: flex; flex-direction: column; gap: 14px; min-height: 330px; }
+  .wp h3 { font-size: 34px; margin: 0; }
+  .wp .scr { flex: 1; background: #0a0b0d; border-radius: 12px; padding: 18px 20px; font-size: 30px; line-height: 1.5; }
+  .wp .scr .mono { font-size: 28px; word-break: break-all; }
+  .wp.bad { border-color: var(--sell); } .wp.ok { border-color: var(--buy); } .wp.warn { border-color: var(--warn); }
+  /* case chain */
+  .stats { display: grid; grid-template-columns: 300px 1fr 1fr 1fr; gap: 20px; }
+  .stats .card { padding: 16px 22px; }
+  .stats .k { font-size: 26px; color: var(--text-2); } .stats .v { font-family: var(--mono); font-size: 44px; font-weight: 700; }
+  .chain { display: grid; grid-template-columns: 1fr 60px 1fr 60px 1fr; row-gap: 26px; align-items: center; }
+  .cn { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 20px; font-size: 30px; text-align: center; transition: all .35s; opacity: .25; position: relative; }
+  .cn.cause { opacity: 1; border-color: var(--warn); background: var(--warn-soft); }
+  .cn.hit { opacity: 1; border-color: var(--sell); background: var(--sell-soft); }
+  .cn .fix { display: none; position: absolute; left: 50%; transform: translateX(-50%); bottom: -24px; white-space: nowrap; font-size: 26px; padding: 2px 14px; border-radius: 999px; background: var(--buy); color: #0d0e10; font-weight: 700; }
+  .cn.fixed .fix { display: block; }
+  .ca { height: 4px; background: var(--text-2); position: relative; margin: 0 8px; }
+  .ca::after { content: ""; position: absolute; right: -2px; top: -8px; border: 10px solid transparent; border-left: 14px solid var(--text-2); border-right: 0; }
+  /* internal control */
+  .ic { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .ic .card { padding: 18px 24px; font-size: 30px; }
+  .ic .card h3 { font-size: 34px; margin-bottom: 6px; }
+  .ic .card .k { color: var(--text-2); }
+  .jit { display: flex; align-items: center; }
+  .jit .node { background: var(--panel); border: 2px solid var(--info); border-radius: 12px; padding: 12px 16px; font-size: 28px; text-align: center; }
+  .jit .arrow { width: 36px; height: 4px; background: var(--text-2); margin: 0 4px; flex: 0 0 auto; position: relative; }
+  .jit .arrow::after { content: ""; position: absolute; right: -2px; top: -7px; border: 9px solid transparent; border-left: 12px solid var(--text-2); border-right: 0; }
+  /* zones + sri */
+  .zones { display: flex; flex-direction: column; gap: 12px; width: 720px; flex: 0 0 auto; }
+  .zn { display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: center; background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 12px 20px; font-size: 30px; }
+  .zn b { font-size: 30px; } .zn .c { color: var(--text-2); font-size: 28px; }
+  .zn.sig { border-color: var(--gold); } .zn.off { border-color: var(--info); border-style: dashed; }
+  .sri { display: flex; flex-direction: column; gap: 12px; font-size: 30px; }
+  .sri .h { font-family: var(--mono); font-size: 30px; padding: 10px 16px; background: #0a0b0d; border-radius: 10px; }
+  .sri .h.ok { color: var(--buy); } .sri .h.bad { color: var(--sell); }
+  .tradeoff td:first-child { color: var(--gold); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="B02" data-title="平台安全：密钥、内控与供应链">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 幕后核心</div>
+    <h1>平台安全：<span class="hl">密钥</span>、内控与供应链</h1>
+    <div class="vs" data-step="0">
+      <div class="card info">用户账户被盗 · B03<div class="big2">损失 ≈ 1 个账户</div></div>
+      <div class="card sell">平台私钥被盗 · 本集<div class="big2 down">损失 ≈ 整个钱包</div></div>
+    </div>
+    <div class="quote" data-step="1" style="font-size:46px">攻击者已在内网，甚至他就是员工——<br>他能不能把钱<span class="hl">签出去</span>？</div>
+    <div class="chips" data-step="2">
+      <span class="chip gold">① 威胁模型</span><span class="chip gold">② 四层防线</span><span class="chip gold">③ 密钥与签名</span><span class="chip gold">④ 所见即所签</span><span class="chip gold">⑤ 内控与供应链</span>
+    </div>
+    <ol class="say">
+      <li>大家好。这一集，我们讲交易所平台本身的安全。先对比两种被盗。用户账户被盗，损失通常是一个账户。平台私钥被盗，损失可能是整个钱包。</li>
+      <li>所以平台安全要回答一个问题。即使攻击者已经在内网，甚至他就是员工，他能不能把钱签出去？</li>
+      <li>这一集分五段。威胁模型，四层防线，密钥与签名，所见即所签，最后是内控和供应链。币安公开的事实我会标明。币安没公开的部分，我讲业界通用做法。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="威胁模型" data-onstep="threatStep">
+    <div class="kicker">01 · 威胁模型 Threat Model</div>
+    <h2>谁会攻击，攻击什么？</h2>
+    <div class="stack">
+      <div class="layer" data-step="0" data-until="4">
+        <table class="t" style="table-layout:fixed">
+          <tr><th style="width:290px">攻击者</th><th style="width:400px">主要目标</th><th style="width:440px">典型入口</th><th>主要防线</th></tr>
+          <tr><td class="hl">外部黑客</td><td>热钱包、用户数据库</td><td>公网 Web、API、员工邮箱</td><td>WAF、补丁管理、零信任</td></tr>
+          <tr data-step="1"><td class="hl">APT 如 Lazarus</td><td>签名系统、多签界面</td><td>员工电脑、第三方供应商</td><td>签名机隔离、所见即所签</td></tr>
+          <tr data-step="2"><td class="hl">内部人员</td><td>审批权、密钥分片</td><td>运营后台、运维跳板机</td><td>职责分离、四眼、PAM、审计</td></tr>
+          <tr data-step="3"><td class="hl">供应链</td><td>前端代码、构建产物</td><td>npm、构建服务器、SaaS</td><td>依赖锁定、制品签名、SRI</td></tr>
+          <tr data-step="4"><td class="hl">物理与灾难</td><td>HSM、冷钱包、备份介质</td><td>机房、保险柜、员工本人</td><td>门禁、地理分散、胁迫码</td></tr>
+        </table>
+        <div class="card info" data-step="1" style="margin-top:22px;font-size:30px">据公开报道：FBI 把 <b>2025 年 2 月 Bybit 被盗</b>归因于朝鲜 <b>Lazarus</b> 组织</div>
+      </div>
+      <div class="layer" data-step="5">
+        <div class="lad" id="lad">
+          <div class="r"><span>冷钱包私钥分片</span><span class="lv max">最高</span><span class="c">大部分客户资产不可逆转出</span></div>
+          <div class="r"><span>热钱包签名权限</span><span class="lv hi">高</span><span class="c">热钱包余额被转出</span></div>
+          <div class="r" id="ladPolicy"><span>签名策略配置</span><span class="lv hi">高</span><span class="c">白名单、限额被改 → 绕过全部签名检查</span></div>
+          <div class="r"><span>运营后台审批权</span><span class="lv hi">高</span><span class="c">批准恶意提币、修改用户状态</span></div>
+          <div class="r"><span>用户数据库</span><span class="lv mid">中高</span><span class="c">隐私泄露，成为钓鱼和撞库原料</span></div>
+          <div class="r"><span>前端代码与 CDN</span><span class="lv mid">中高</span><span class="c">向全体用户投放恶意脚本</span></div>
+        </div>
+        <div class="card sell" data-step="6" style="margin-top:18px;font-size:31px">攻击者把<b>自己的地址加进白名单</b> → 不需要偷私钥。策略配置 = 私钥同级</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>威胁模型，就是列出谁会攻击、攻击什么、怎么防。第一类是外部黑客。他们扫描漏洞、发钓鱼邮件，盯着热钱包和用户数据库。</li>
+      <li>第二类是 APT 组织，也就是高级持续性威胁。他们长期潜伏，盯着签名系统和多签界面。据公开报道，FBI 把 Bybit 被盗归因于朝鲜 Lazarus 组织。</li>
+      <li>第三类是内部人员。他们有合法账号，也懂业务。防他们，靠职责分离、四眼原则和审计。</li>
+      <li>第四类是供应链。攻击者污染依赖包、构建服务器或者钱包 SaaS，目标是前端代码和构建产物。</li>
+      <li>第五类是物理与灾难。闯入机房、胁迫员工、设备丢失。防线是门禁、地理分散、胁迫码和多地备份。</li>
+      <li>再看他们想要什么。按失窃后果给资产分级，等级是示例。冷钱包私钥分片最高。热钱包签名权限、策略配置、后台审批权都是高。</li>
+      <li>注意第三行。签名策略配置的等级，和私钥本身一样。攻击者只要把自己的地址加进白名单，就不需要偷私钥了。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="四层防线" data-onstep="layerStep">
+    <div class="kicker">02 · 纵深防御 Defense in Depth</div>
+    <h2>攻击者要穿过四层，SOC 全程盯着</h2>
+    <div class="lyrs">
+      <div class="stackL">
+        <div class="lyr" data-l="1"><b>① 网络边界</b><span class="c">DDoS 清洗、WAF、零信任接入</span><span class="st"></span></div>
+        <div class="lyr" data-l="2"><b>② 身份与权限</b><span class="c">员工硬件密钥、PAM、JIT 临时授权</span><span class="st"></span></div>
+        <div class="lyr" data-l="3"><b>③ 内控流程</b><span class="c">四眼审批、变更单、灰度发布</span><span class="st"></span></div>
+        <div class="lyr" data-l="4"><b>④ 密钥与签名</b><span class="c">策略引擎、意图独立校验、MPC 或 HSM</span><span class="st"></span></div>
+      </div>
+      <div class="soc" id="soc"><b>SOC</b>安全运营中心<br>7×24<br>监控与告警</div>
+    </div>
+    <div class="card info" id="lyInfo"></div>
+    <ol class="say">
+      <li>来看防线怎么分层。平台安全一共四层。攻击者从上往下穿过。右边的安全运营中心，也就是 SOC，全程监控。</li>
+      <li>第一层是网络边界。DDoS 清洗、WAF，还有零信任接入。零信任的意思是，不因为在内网就信任，每次请求都验证身份。它拦的是不认识的人。</li>
+      <li>可是攻击者拿到了合法员工的凭证呢？第一层就漏了。这时轮到第二、三层。硬件密钥、临时授权、四眼审批，拦的是单个合法账号做坏事。它们漏过的，是多人同时被骗。</li>
+      <li>第四层是最后防线，密钥与签名。即使前三层全部失效，策略引擎仍然拒绝向非白名单地址签大额交易。</li>
+      <li>SOC 本身不拦截，它负责发现。发现越早，应急响应的止血越有效。下面我们把第四层拆开看。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="密钥生命周期" data-onstep="keyStep">
+    <div class="kicker">03 · 密钥全生命周期 · 业界通用做法</div>
+    <h2>一把私钥，从仪式到销毁</h2>
+    <svg viewBox="0 0 1640 300" width="1640" height="300">
+      <defs><marker id="ka" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9ea3ad"/></marker></defs>
+      <g id="kStates"></g>
+    </svg>
+    <div class="card" id="kNote" style="font-size:31px;min-height:200px"></div>
+    <ol class="say">
+      <li>第二段，看私钥的一生。起点是密钥仪式。参与人进入没有网络的隔离房间。审计员检查设备封条。每个持有人在自己的设备上生成分片。</li>
+      <li>系统输出地址，全体一起核对。分片备份封进防篡改袋，送往不同城市的保险库。审计员签署报告。全程录像，每一步签字。</li>
+      <li>分片分发以后，还要把签名策略配置好，密钥才能启用。启用之后，每一次签名都要过策略。</li>
+      <li>定期轮换或者怀疑泄露，就进入轮换。轮换要同时做两件事，启用新密钥，迁走旧地址的资产。只换密钥不迁资产，等于没换。</li>
+      <li>还有一个局限。链上地址由公钥决定，换密钥就是换地址。对外公布的地址，比如储备金证明地址，都要同步更新。</li>
+      <li>出事时，应急响应可以冻结密钥。冻结后，签名服务拒绝所有请求，只接受调查人员的只读查询。调查结束，再进入轮换。</li>
+      <li>旧密钥的余额归零以后，才能退役。最后销毁分片，销毁也要留下记录。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="MPC 分片" data-onstep="mpcStep">
+    <div class="kicker">03 · MPC 分片分布 · 2-of-3 示例</div>
+    <h2>三段密码，三个保管员</h2>
+    <div class="card gold" data-step="0" style="font-size:31px">比喻：金库开门密码分三段，三个保管员各记一段；开门要按时间、在监控下、先核对单据</div>
+    <div class="grid3" data-step="1">
+      <div class="card shard" id="shA"><h3>分片 A</h3><div><span class="k">存放</span>　机房 1 的 HSM</div><div><span class="k">控制</span>　<span class="own">签名服务</span></div><div data-step="2" class="up">防：单机被入侵</div></div>
+      <div class="card shard" id="shB"><h3>分片 B</h3><div><span class="k">存放</span>　机房 2 的 HSM</div><div><span class="k">控制</span>　<span class="own">策略服务 · 独立团队</span></div><div data-step="2" class="up">防：签名服务被完全控制</div></div>
+      <div class="card shard" id="shC"><h3>分片 C</h3><div><span class="k">存放</span>　离线保险库</div><div><span class="k">控制</span>　<span class="own">安全团队 · 双人开箱</span></div><div data-step="2" class="up">防：两个机房同时故障</div></div>
+    </div>
+    <div class="card" id="mpcNote" style="font-size:31px"></div>
+    <ol class="say">
+      <li>打个比方。私钥像银行金库的开门密码。好银行不会把整串密码交给一个人。密码分三段，三个保管员各记一段。</li>
+      <li>来看一个三选二的示例。分片 A 在机房 1 的 HSM，归签名服务。分片 B 在机房 2 的 HSM，归独立团队的策略服务。分片 C 在离线保险库，开箱要两个人。</li>
+      <li>每一片防一种风险。A 防单机被入侵，B 防签名服务被完全控制，C 防两个机房同时故障。HSM 让私钥只在硬件里使用，不能导出。</li>
+      <li>注意，MPC 的价值来自分片归不同团队控制。如果三片都由同一个运维账号管理，MPC 就退化成了单签。比喻里三段密码要拼起来用。真实的 MPC 是各持分片，协同签名。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="签名策略引擎" data-onstep="policyStep">
+    <div class="kicker">04 · 签名策略引擎 · 规则与数值均为示例</div>
+    <h2>每个签名请求，先过一遍规则</h2>
+    <div class="pol">
+      <div class="card req" id="reqCard"></div>
+      <div class="rules" id="rules"></div>
+    </div>
+    <ol class="say">
+      <li>签名之前，请求先过签名策略引擎。右边是 7 条规则，数值都是示例。我们拿 5 个示例请求，一个个过。</li>
+      <li>请求 A。热钱包提 20 BTC，目标在白名单里，加进去已经 30 天。今天累计已签 120 BTC。7 条全部通过，自动签名。</li>
+      <li>请求 B。金额 80 BTC，超过单笔 50 BTC 的限额。不拒绝，转两人审批。两个审批人要在硬件设备上确认。</li>
+      <li>请求 C。金额 40 BTC，可今天已经签了 470 BTC。470 加 40 等于 510，超过日累计 500。拒绝，转冷钱包流程。</li>
+      <li>请求 D。冷钱包大额转出，目标地址 10 小时前才加进白名单。不满 72 小时，不能作为大额目标，拒绝。</li>
+      <li>请求 E。交易里包含 delegatecall，要修改多签配置。直接拒绝，必须走仪式流程。解码结果和意图也对不上，触发 SEV1 告警。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="签名调用链">
+    <div class="kicker">04 · 签名请求的完整调用链 · 业界通用做法</div>
+    <h2>意图对不对，交易字节对不对？</h2>
+    <svg viewBox="0 0 1640 470" width="1640" height="470">
+      <defs>
+        <marker id="sa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9ea3ad"/></marker>
+        <marker id="sg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f0b90b"/></marker>
+        <marker id="sr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f6465d"/></marker>
+        <marker id="sb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2ebd85"/></marker>
+      </defs>
+      <g>
+        <rect class="box" x="0" y="0" width="240" height="70" rx="12"/><text class="t" x="120" y="46" text-anchor="middle" style="font-size:28px">wallet-service</text>
+        <rect class="box on" x="280" y="0" width="240" height="70" rx="12"/><text class="t" x="400" y="46" text-anchor="middle">策略引擎</text>
+        <rect class="box" x="560" y="0" width="240" height="70" rx="12"/><text class="t" x="680" y="46" text-anchor="middle">审批人 ×2</text>
+        <rect class="box" x="840" y="0" width="240" height="70" rx="12" style="stroke:#5b9cff"/><text class="t" x="960" y="46" text-anchor="middle">意图校验器</text>
+        <rect class="box" x="1120" y="0" width="240" height="70" rx="12"/><text class="t" x="1240" y="46" text-anchor="middle">MPC 节点</text>
+        <rect class="box" x="1400" y="0" width="240" height="70" rx="12"/><text class="t" x="1520" y="46" text-anchor="middle">区块链</text>
+        <line class="life" x1="120" y1="70" x2="120" y2="470"/><line class="life" x1="400" y1="70" x2="400" y2="470"/><line class="life" x1="680" y1="70" x2="680" y2="470"/>
+        <line class="life" x1="960" y1="70" x2="960" y2="470"/><line class="life" x1="1240" y1="70" x2="1240" y2="470"/><line class="life" x1="1520" y1="70" x2="1520" y2="470"/>
+      </g>
+      <g data-step="0">
+        <path class="ln" d="M120 120 L396 120" marker-end="url(#sa)"/><text class="s" x="258" y="108" text-anchor="middle">① 提币意图</text>
+        <text class="s" x="416" y="165" style="fill:#f0b90b">② 白名单 · 限额 · 时间窗</text>
+      </g>
+      <g data-step="1">
+        <path class="ln g" d="M400 210 L676 210" marker-end="url(#sg)"/><text class="s" x="540" y="198" text-anchor="middle">③ 超阈值</text>
+        <path class="ln b d" d="M680 232 L404 232" marker-end="url(#sb)"/><text class="s" x="540" y="266" text-anchor="middle" style="fill:#2ebd85">两人硬件确认</text>
+      </g>
+      <g data-step="2">
+        <path class="ln" d="M400 320 L956 320" marker-end="url(#sa)"/><text class="s" x="680" y="308" text-anchor="middle">④ 待签原始交易字节</text>
+        <text class="s" x="976" y="365" style="fill:#5b9cff">⑤ 独立解码，比对意图</text>
+        <path class="ln r d" d="M960 395 L404 395" marker-end="url(#sr)"/><text class="s" x="680" y="385" text-anchor="middle" style="fill:#f6465d">不一致 → 拒绝 + 告警 SOC</text>
+      </g>
+      <g data-step="3">
+        <path class="ln b" d="M400 440 L1236 440" marker-end="url(#sb)"/><text class="s" x="820" y="428" text-anchor="middle" style="fill:#2ebd85">⑥ 一致 → 请求签名</text>
+        <path class="ln b" d="M1240 455 L1516 455" marker-end="url(#sb)"/><text class="s" x="1380" y="445" text-anchor="middle" style="fill:#2ebd85">⑦ 广播</text>
+      </g>
+    </svg>
+    <div class="row" data-step="4">
+      <div class="card info" style="flex:1;font-size:30px;padding:16px 24px">校验器：<b>另一个团队、另一套代码</b></div>
+      <div class="card sell" style="flex:1;font-size:30px;padding:16px 24px">解码不了复杂调用 → <b>拒绝，不盲签</b></div>
+    </div>
+    <ol class="say">
+      <li>再看一个签名请求的完整调用链。钱包服务提交提币意图，写明币种、金额和目标地址。策略引擎检查白名单、限额和时间窗。</li>
+      <li>如果金额超过自动签名阈值，策略引擎请两个审批人确认。审批人看到的内容，来自硬件设备自己解码的交易，不能来自网页界面。</li>
+      <li>然后，待签的原始交易字节交给意图校验器。它独立解码这笔交易，再和意图比对。不一致，就拒绝并告警 SOC。</li>
+      <li>一致了，才请求 MPC 节点签名，然后广播上链。策略引擎查的是意图，校验器查的是字节，两者必须一致。</li>
+      <li>注意两点。校验器要由另一个团队用另一套代码实现，同一份代码的两份副本会有同一个漏洞。解码不了的复杂合约调用，必须拒绝，不能盲签。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="所见即所签" data-onstep="wysStep">
+    <div class="kicker">05 · 所见即所签 WYSIWYS · 示意</div>
+    <h2 id="wysH">签名人看到的，就是真正被签的吗？</h2>
+    <div class="wys">
+      <div class="wp" id="w1"><h3>① 网页界面显示</h3><div class="scr"></div></div>
+      <div class="wp" id="w2"><h3>② 实际待签交易</h3><div class="scr"></div></div>
+      <div class="wp" id="w3"><h3>③ 签名设备显示</h3><div class="scr"></div></div>
+    </div>
+    <div class="card" id="wysV" style="font-size:32px;text-align:center"></div>
+    <ol class="say">
+      <li>第三段，所见即所签。签名时有三样东西。网页界面显示的内容，实际待签的交易，还有签名设备上的显示。正常情况下，三者一致。</li>
+      <li>现在假设网页的前端脚本被篡改了。界面上仍然显示一笔正常转账。可实际待签的交易，变成了修改多签合约的逻辑。</li>
+      <li>如果签名设备只显示一串哈希，人根本没法核对。这就是盲签。签名人照着网页确认，签下了恶意交易。</li>
+      <li>所见即所签的要求是，签名设备自己解码交易，用人能读懂的方式显示。设备上写着修改多签配置，签名人就会拒绝。独立意图校验也会在这里拦下它。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="案例：Bybit 2025" data-onstep="bybitStep">
+    <div class="kicker">真实案例 · 据公开报道 · 2025 年 2 月 21 日</div>
+    <h2>Bybit：多签都在，单据是假的</h2>
+    <div class="stats" data-step="0">
+      <div class="card"><div class="k">对象</div><div class="v" style="font-size:36px">ETH 冷钱包<br><span style="font-size:28px" class="muted">Safe 多签</span></div></div>
+      <div class="card sell"><div class="k">ETH</div><div class="v down">约 40.1 万</div></div>
+      <div class="card sell"><div class="k">stETH、cmETH、mETH 等</div><div class="v down">约 11.3 万</div></div>
+      <div class="card gold"><div class="k">合计</div><div class="v hl">约 14.6 亿美元</div></div>
+    </div>
+    <div class="chain">
+      <div class="cn" data-i="1">供应商 Safe{Wallet}<br>开发者电脑被入侵</div><div class="ca"></div>
+      <div class="cn" data-i="2">云上前端 JS 被改<span class="fix">缺：前端完整性校验</span></div><div class="ca"></div>
+      <div class="cn" data-i="3">恶意脚本<br>只对 Bybit 生效</div>
+      <div class="cn" data-i="4">界面显示<br>正常转账</div><div class="ca"></div>
+      <div class="cn" data-i="5">硬件钱包盲签<span class="fix">缺：独立意图校验</span></div><div class="ca"></div>
+      <div class="cn" data-i="6">多签合约逻辑被替换<br>控制权交给攻击者</div>
+    </div>
+    <div class="card" id="byL" style="font-size:30px;padding:16px 26px"></div>
+    <ol class="say">
+      <li>来看真实案例。据公开报道，2025 年 2 月 21 日，Bybit 一个以太坊冷钱包被盗。转走约 40.1 万枚 ETH。还有约 11.3 万枚 stETH、cmETH、mETH 等衍生代币。合计约 14.6 亿美元。</li>
+      <li>先看原因。攻击者入侵了多签服务商 Safe{Wallet} 一名开发者的电脑。借此修改了 Safe 托管在云上的前端脚本。恶意脚本只对 Bybit 生效。</li>
+      <li>再看影响。签名人在网页上看到的是正常转账。硬件钱包上只显示一串难以核对的数据。他们签下的交易，修改了多签合约逻辑，把控制权交给了攻击者。</li>
+      <li>那缺了什么？两道防线。前端完整性校验，能发现脚本被改。独立意图校验，能发现字节和意图不符。</li>
+      <li>教训是什么？签名人数没有失效，失效的是签名人看到的信息。入口在供应商，所以供应商也属于威胁模型。</li>
+      <li>对比 2019 年币安热钱包被盗约 7000 BTC。那次没碰平台私钥，损失被热钱包限额封顶，约占 BTC 持仓 2%。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="内控">
+    <div class="kicker">06 · 内控：让单人做不成恶</div>
+    <h2>一个人，做不成一件坏事</h2>
+    <div class="ic">
+      <div class="card" data-step="0"><h3>四眼原则</h3><span class="k">一人发起，另一人审批</span><br>大额提币、改风控参数</div>
+      <div class="card" data-step="1"><h3>职责分离 SoD</h3><span class="k">冲突权限不给同一人</span><br>能加白名单 ≠ 能审批提币</div>
+      <div class="card" data-step="1"><h3>最小权限</h3><span class="k">只给工作所需</span><br>客服看订单，看不到完整手机号</div>
+      <div class="card" data-step="2"><h3>PAM</h3><span class="k">特权账号托管 + 录像</span><br>DBA 必须经 PAM 跳板机</div>
+      <div class="card" data-step="2"><h3>WORM 审计</h3><span class="k">写入后不能改、不能删</span><br>运维没有删除权</div>
+      <div class="card gold" data-step="3"><h3>JIT 即时授权</h3><span class="k">平时无权限</span><br>到期自动收回</div>
+    </div>
+    <div class="jit" data-step="3">
+      <div class="node">申请 2 小时只读<br><small class="muted">写明原因</small></div><div class="arrow"></div>
+      <div class="node">值班负责人<br>批准</div><div class="arrow"></div>
+      <div class="node">PAM 签发<br>临时凭证</div><div class="arrow"></div>
+      <div class="node">会话<br>全程录像</div><div class="arrow"></div>
+      <div class="node">到期<br>自动收回</div><div class="arrow"></div>
+      <div class="node">每周<br>抽查录像</div>
+    </div>
+    <ol class="say">
+      <li>第四段，内控。目标是让单人做不成恶。最基本的是四眼原则，一人发起，另一人审批。比如大额提币，修改风控参数。</li>
+      <li>职责分离，冲突的权限不给同一个人。能加白名单的人，不能审批提币。最小权限，只给工作所需的权限。客服能看订单，看不到完整手机号。</li>
+      <li>特权访问管理，也就是 PAM。DBA 登录生产库，必须经过 PAM 跳板机，会话全程录像。审计日志写进 WORM 存储，写入后不能改也不能删。</li>
+      <li>最后是即时授权，也就是 JIT。平时没有权限。工程师申请 2 小时生产只读权限，写明原因。负责人批准后，PAM 签发临时凭证。到期自动收回，安全团队每周抽查录像。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="基础设施与供应链" data-onstep="sriStep">
+    <div class="kicker">07 · 网络分区与软件供应链 · 业界通用做法</div>
+    <h2>内网不等于可信，脚本也要验身份</h2>
+    <div class="row">
+      <div class="zones">
+        <div class="zn"><b>公网区</b><span class="c">CDN、WAF、API 网关 ← 互联网</span></div>
+        <div class="zn"><b>业务区</b><span class="c">订单、账本、钱包服务</span></div>
+        <div class="zn"><b>数据区</b><span class="c">数据库、消息队列，不主动外连</span></div>
+        <div class="zn sig"><b class="hl">签名区</b><span class="c">只收签名请求；只出不进到链节点</span></div>
+        <div class="zn off"><b class="blue">离线区</b><span class="c">冷签名机无网络，双人带介质</span></div>
+      </div>
+      <div class="col" id="sriBox"></div>
+    </div>
+    <ol class="say">
+      <li>第五段，基础设施和供应链。先看网络分区。公网区、业务区、数据区层层往里。签名区只接受签名请求，对链节点只出不进。离线区没有网络，要双人携带介质。</li>
+      <li>再看供应链。依赖投毒，靠锁定版本和私有镜像。构建系统被入侵，靠构建隔离和制品签名。SaaS 供应商被入侵，靠关键界面自托管和独立校验。</li>
+      <li>前端脚本被替换，靠 SRI，子资源完整性。页面给外部脚本写上期望的哈希。浏览器下载脚本后自己算一遍，一致才执行。</li>
+      <li>如果 CDN 上的脚本被人改了，算出来的哈希就对不上，浏览器拒绝执行。再配合 CSP，只允许从指定来源加载脚本。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="指标与告警">
+    <div class="kicker">08 · 监控指标与告警 · 阈值为示例</div>
+    <h2>攻击者常常先关日志，再动手</h2>
+    <div class="stack">
+      <div class="layer" data-step="0" data-until="2">
+        <table class="t">
+          <tr><th style="width:420px">指标</th><th style="width:440px">告警条件 · 示例</th><th>可能含义</th></tr>
+          <tr><td>签名请求拒绝率</td><td>1 小时内 > 5%</td><td>策略被试探，或上游异常</td></tr>
+          <tr><td>非工作时间特权登录</td><td>出现 1 次</td><td>账号被盗或未批准操作</td></tr>
+          <tr><td>JIT 申请次数</td><td>单人单日 > 5 次</td><td>权限设计不合理或滥用</td></tr>
+          <tr data-step="1"><td>前端产物哈希</td><td>与发布记录不一致</td><td>CDN 或构建链被篡改</td></tr>
+          <tr data-step="1"><td>白名单变更</td><td>任何一次</td><td>必须由第二人确认</td></tr>
+          <tr data-step="2" style="background:var(--sell-soft)"><td class="down">审计日志写入中断</td><td class="down">持续 > 1 分钟</td><td class="down">有人在掩盖操作 → 按资金事故处理</td></tr>
+        </table>
+      </div>
+      <div class="layer grid3" data-step="3">
+        <div class="card gold"><h3>漏洞赏金</h3>币安在 Bugcrowd 运营，单个漏洞 <b>200–10,000 美元</b>，最高 <b>100,000 美元</b><br><span class="muted" style="font-size:26px">截至 2026 年公开资料，以官网为准</span></div>
+        <div class="card info"><h3>红队</h3>模拟真实攻击者<br>目标：<b>拿到签名权限</b>，或<b>改动一笔余额</b></div>
+        <div class="card"><h3>SOC</h3>7×24 值班<br>收日志、跑检测规则、处理告警，必要时启动应急响应</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>第六段，监控，阈值都是示例。签名拒绝率 1 小时内超过 5%，说明策略被试探。非工作时间的特权登录，一次就告警。</li>
+      <li>前端产物的哈希，和发布记录对不上，说明 CDN 或构建链被篡改。白名单的任何一次变更，都必须由第二个人确认。</li>
+      <li>最要紧的是这一行。审计日志写入中断超过 1 分钟，要按资金事故处理。因为攻击者常常先关日志，再动手。</li>
+      <li>还有三支队伍。截至 2026 年公开资料，币安在 Bugcrowd 运营漏洞赏金。单个漏洞 200 到 1 万美元，最高 10 万美元。红队的目标是拿到签名权限。SOC 全天候值班。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="权衡与误区">
+    <div class="kicker">09 · 局限与权衡</div>
+    <h2>安全越严，越慢越贵</h2>
+    <div class="stack">
+      <div class="layer" data-step="0" data-until="2">
+        <table class="t tradeoff" style="margin-bottom:24px">
+          <tr><th style="width:280px">权衡</th><th>业界常见选择</th></tr>
+          <tr><td>安全 vs 速度</td><td>小额热钱包自动签，大额人工</td></tr>
+          <tr><td>隔离 vs 运维</td><td>冷钱包离线，热钱包隔离网段</td></tr>
+          <tr data-step="1"><td>自研 vs 采购</td><td>核心签名路径自研或自托管</td></tr>
+          <tr data-step="1"><td>审计 vs 隐私</td><td>特权会话全录，普通操作记摘要</td></tr>
+          <tr data-step="2" style="background:var(--gold-soft)"><td>四眼 vs 应急</td><td><b>应急开关单人可关，开启需两人</b></td></tr>
+        </table>
+        <div class="grid2" data-step="2">
+          <div class="card buy" style="padding:18px 26px">⏸ 关闭提币：<b>1 人</b>即可<br><span class="muted">伤体验，但不会丢钱</span></div>
+          <div class="card sell" style="padding:18px 26px">▶ 开启提币：<b>2 人</b>确认<br><span class="muted">可能丢钱，所以更严</span></div>
+        </div>
+      </div>
+      <div class="layer grid3" data-step="3">
+        <div class="card sell"><h3>误区：多签 = 安全</h3>多签防单人作恶，不防<b>所有人都被骗</b></div>
+        <div class="card sell"><h3>误区：内网 = 可信</h3>APT 的典型路径：先进内网，再<b>横向移动</b></div>
+        <div class="card sell"><h3>误区：有 HSM 不丢钱</h3>HSM 防私钥被导出，不防私钥被<b>授权调用</b></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>第七段，权衡。安全和提币速度，常见选择是小额走热钱包自动签，大额人工。隔离和运维效率，常见选择是冷钱包离线，热钱包放隔离网段。</li>
+      <li>自研还是采购，核心签名路径通常自研或自托管。审计粒度和隐私，特权会话全部录像，普通操作只记摘要。</li>
+      <li>有一条规则值得记住。应急开关一个人就能关，开启要两个人。关闭提币伤害体验，但不会丢钱。开启提币可能丢钱，所以开启要更严。</li>
+      <li>最后是三个误区。多签不等于安全，它不防所有人都被骗。内网不等于可信，APT 就是先进内网再横向移动。上了 HSM 也会丢钱，它不防私钥被授权调用。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0"><span class="hl">策略配置 = 私钥同级</span>；签名前过白名单、限额、时间窗、冷却期。</li>
+      <li data-step="1"><span class="hl">所见即所签</span>：设备自己解码，独立团队校验意图，解不了就拒绝。</li>
+      <li data-step="2">MPC、四眼、JIT、WORM：让<span class="hl">单人做不成恶</span>，供应商也在威胁模型里。</li>
+    </ul>
+    <div class="card info" data-step="3"><b>下集 B03 · 账户安全</b>：盗号攻击链与逐层防御</div>
+    <ol class="say">
+      <li>最后小结三点。第一，签名策略配置和私钥同级。每笔签名都要过白名单、限额、时间窗和冷却期。</li>
+      <li>第二，所见即所签。签名设备自己解码交易，另一个团队独立校验意图。解码不了，就拒绝，不盲签。</li>
+      <li>第三，用 MPC 分片、四眼原则、即时授权和不可篡改审计，让单人做不成恶。供应商也要写进威胁模型。</li>
+      <li>这一集讲的是平台本身被攻破。下一集，我们看用户账户被盗。攻击者按什么顺序撬锁，平台又在哪一步拦住他。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  function threatStep(el, st) {
+    el.querySelector('#ladPolicy').classList.toggle('focus', st >= 6);
+  }
+  function layerStep(el, st) {
+    const S = {
+      0: {}, 1: { 1: ['on', 'ok', '拦：不认识的人'] },
+      2: { 1: ['pass', 'miss', '漏：持合法凭证'], 2: ['on', 'ok', '拦：单账号作恶'], 3: ['on', 'ok', '拦：单账号作恶'] },
+      3: { 1: ['pass', 'miss', '漏：持合法凭证'], 2: ['pass', 'miss', '漏：多人被骗'], 3: ['pass', 'miss', '漏：多人被骗'], 4: ['on', 'ok', '拒签非白名单'] },
+    };
+    const m = S[Math.min(st, 3)];
+    el.querySelectorAll('.lyr').forEach(l => {
+      const v = m[l.dataset.l]; const s = l.querySelector('.st');
+      l.className = 'lyr' + (v ? ' ' + v[0] : '');
+      s.className = 'st' + (v ? ' ' + v[1] : ''); s.textContent = v ? v[2] : '';
+    });
+    el.querySelector('#soc').classList.toggle('on', st === 0 || st >= 4);
+    el.querySelector('#lyInfo').innerHTML = [
+      '每一层只拦自己负责的风险；<b>单独一层都会漏，叠在一起才可靠</b>',
+      '零信任：不因为“在内网”就信任，<b>每次请求都验证</b>身份、设备和权限',
+      '攻击者拿到合法员工凭证 → 第 1 层漏过；第 2、3 层拦<b>单个合法账号做坏事</b>',
+      '即使前三层全部失效：策略引擎仍<b>拒绝向非白名单地址签大额交易</b>',
+      'SOC 不拦截，负责<b>发现</b>：发现越早，B07 应急响应止血越有效',
+    ][st];
+  }
+  function keyStep(el, st) {
+    const names = [['仪式', 'Ceremony'], ['分片分发', 'Distributed'], ['启用', 'Active'], ['轮换', 'Rotating'], ['退役', 'Retired'], ['销毁', 'Destroyed']];
+    const cur = [0, 0, 2, 3, 3, 6, 5][st];
+    let g = '';
+    names.forEach((n, i) => {
+      const x = i * 286, cls = i === cur ? 'on' : (i < cur && cur !== 6 ? 'done' : '');
+      g += `<rect class="box ${cls}" x="${x}" y="40" width="210" height="100" rx="14"/><text class="t" x="${x + 105}" y="86" text-anchor="middle">${n[0]}</text><text class="s" x="${x + 105}" y="122" text-anchor="middle">${n[1]}</text>`;
+      if (i < 5) g += `<path class="ln" d="M${x + 212} 90 L${x + 282} 90" marker-end="url(#ka)"/>`;
+    });
+    // Active self loop
+    g += `<path class="ln" d="M640 40 C640 6, 714 6, 714 40" marker-end="url(#ka)"/><text class="s" x="740" y="24">按策略签名</text>`;
+    // Frozen
+    const fz = cur === 6;
+    g += `<rect class="box ${fz ? 'red' : ''}" x="572" y="200" width="210" height="90" rx="14"/><text class="t" x="677" y="243" text-anchor="middle" style="fill:${fz ? '#f6465d' : '#eceae4'}">冻结</text><text class="s" x="677" y="276" text-anchor="middle">Frozen</text>`;
+    g += `<path class="ln ${fz ? 'r' : ''}" d="M677 142 L677 196" marker-end="url(#ka)"/><path class="ln d" d="M784 245 L960 245 L960 144" marker-end="url(#ka)"/><text class="s" x="800" y="232">调查结束</text>`;
+    el.querySelector('#kStates').innerHTML = g;
+    el.querySelector('#kNote').innerHTML = [
+      '<b class="hl">密钥仪式 · 1–4</b>　发布计划（人、地点、设备序列号）→ 进入<b>无网络</b>隔离房间 → 审计员检查并记录<b>设备封条</b> → 各持有人<b>在自己设备上</b>生成分片',
+      '<b class="hl">密钥仪式 · 5–8</b>　输出地址，<b>全体核对</b> → 分片备份封入防篡改袋 → 送往<b>不同城市</b>保险库 → 审计员签署报告<br><span class="muted">全程录像、全程记录、每一步签字</span>',
+      '<b class="hl">启用</b>　分片分发后，<b>签名策略配置完成</b>才启用；之后每次签名都按策略执行',
+      '<b class="hl">轮换</b>　必须同时完成：<b>新密钥启用</b> + <b>旧地址资产迁移</b><br><span class="down">只换密钥不迁资产 = 没换</span>',
+      '<b class="hl">局限</b>　链上地址由公钥决定 → <b>轮换密钥 = 换地址</b><br>对外公布的地址（例如 PoR 地址）都要同步更新',
+      '<b class="down">冻结</b>　由应急响应 B07 触发：签名服务<b>拒绝所有请求</b>，只接受调查人员的只读查询 → 调查结束进入轮换',
+      '<b class="hl">退役与销毁</b>　旧密钥<b>余额归零</b>才能退役 → 分片销毁并<b>记录</b>',
+    ][st];
+  }
+  function mpcStep(el, st) {
+    const bad = st >= 3;
+    const owners = bad ? ['同一运维账号', '同一运维账号', '同一运维账号'] : ['签名服务', '策略服务 · 独立团队', '安全团队 · 双人开箱'];
+    ['#shA', '#shB', '#shC'].forEach((id, i) => {
+      const c = el.querySelector(id); c.classList.toggle('bad', bad);
+      const o = c.querySelector('.own'); o.textContent = owners[i]; o.className = 'own' + (bad ? ' down' : '');
+    });
+    const n = el.querySelector('#mpcNote');
+    n.className = 'card ' + (bad ? 'sell' : 'info');
+    n.innerHTML = st < 2 ? '任意 <b>2 片</b>协同即可签名；单独 1 片什么也做不了' :
+      st === 2 ? 'HSM：私钥只在防篡改硬件内使用，<b>不能导出</b>' :
+      '三片归同一账号 → <b>MPC 退化成单签</b>。真实 MPC 是各持分片、<b>协同签名</b>';
+  }
+  function policyStep(el, st) {
+    const rules = [
+      ['白名单', '目标地址必须在签名白名单'],
+      ['单笔限额', '热钱包单笔 > 50 BTC → 两人审批'],
+      ['日累计', '热钱包 24 小时 > 500 BTC → 拒绝'],
+      ['时间窗', '冷钱包仅工作日 10:00–16:00'],
+      ['白名单冷却', '新增地址 < 72 小时 → 不作大额目标'],
+      ['合约调用', '含 delegatecall 或改多签配置 → 拒绝'],
+      ['意图一致', '解码结果 ≠ 意图 → 拒绝 + SEV1'],
+    ];
+    // per request: result per rule ('ok','warn','bad','-')
+    const R = [
+      null,
+      { t: '请求 A', kv: [['钱包', '热钱包'], ['金额', '20 BTC'], ['目标', '白名单 · 30 天'], ['今日已签', '120 BTC']], r: ['ok', 'ok', 'ok', '-', 'ok', 'ok', 'ok'], v: ['ok', '✓ 自动签名'] },
+      { t: '请求 B', kv: [['钱包', '热钱包'], ['金额', '80 BTC'], ['目标', '白名单 · 30 天'], ['今日已签', '140 BTC']], r: ['ok', 'warn', 'ok', '-', 'ok', 'ok', 'ok'], v: ['warn', '⚠ 80 > 50 → 两人审批'] },
+      { t: '请求 C', kv: [['钱包', '热钱包'], ['金额', '40 BTC'], ['目标', '白名单 · 30 天'], ['今日已签', '470 BTC']], r: ['ok', 'ok', 'bad', '-', 'ok', 'ok', 'ok'], v: ['bad', '✗ 470 + 40 = 510 > 500'] },
+      { t: '请求 D', kv: [['钱包', '冷钱包'], ['时间', '周二 14:00'], ['目标', '白名单 · 10 小时'], ['金额', '大额']], r: ['ok', '-', '-', 'ok', 'bad', 'ok', 'ok'], v: ['bad', '✗ 10 < 72 小时 → 拒绝'] },
+      { t: '请求 E', kv: [['钱包', '冷钱包'], ['时间', '周二 11:00'], ['调用', 'delegatecall'], ['意图', '普通转账']], r: ['ok', '-', '-', 'ok', 'ok', 'bad', 'bad'], v: ['bad', '✗ 拒绝 → 走仪式流程 + SEV1'] },
+    ][st];
+    el.querySelector('#rules').innerHTML = rules.map((r, i) => {
+      const s = R ? R.r[i] : '';
+      const x = { ok: '✓', warn: '⚠', bad: '✗', '-': '—' }[s] || '';
+      return `<div class="ru ${s === '-' ? '' : s}"><span class="n">${r[0]}</span><span>${r[1]}</span><span class="x">${x}</span></div>`;
+    }).join('');
+    el.querySelector('#reqCard').innerHTML = R
+      ? `<h3 style="margin:0">${R.t} <span class="chip">示例</span></h3>` + R.kv.map(k => `<div class="kv"><span>${k[0]}</span><span>${k[1]}</span></div>`).join('') + `<div class="verdict ${R.v[0]}">${R.v[1]}</div>`
+      : '<h3 style="margin:0">签名请求</h3><div class="muted">钱包服务提交：<br>币种、金额、目标地址</div><div class="verdict">5 个示例请求，逐个检查</div>';
+  }
+  function wysStep(el, st) {
+    const okTx = '转账 1,000 ETH<br>→ 0x7a3…热钱包<br><span class="muted">示例</span>';
+    const badTx = '<span class="down">修改多签合约逻辑<br>控制权 → 攻击者</span>';
+    const cfg = [
+      [okTx, 'ok', okTx, 'ok', okTx, 'ok', '三者一致 ✓', 'buy'],
+      [okTx + '<br><span class="warn" style="color:var(--warn)">前端 JS 已被篡改</span>', 'warn', badTx, 'bad', '<span class="muted">待签名…</span>', '', '界面 ≠ 实际交易', 'warn'],
+      [okTx, 'warn', badTx, 'bad', '<span class="mono">0x8f3a9c…e21b<br>数据：0xa9059c…</span><br><span class="down">盲签：人无法核对</span>', 'bad', '签名人按网页确认 → 签下恶意交易 ✗', 'sell'],
+      [okTx, 'warn', badTx, 'bad', '<b class="down">修改多签配置<br>delegatecall</b><br><span class="up">设备自己解码 → 人能读懂</span>', 'ok', '所见即所签：签名人拒绝；意图校验同时拦截 ✓', 'buy'],
+    ][st];
+    const ps = ['#w1', '#w2', '#w3'];
+    ps.forEach((id, i) => { const p = el.querySelector(id); p.className = 'wp ' + cfg[i * 2 + 1]; p.querySelector('.scr').innerHTML = cfg[i * 2]; });
+    const v = el.querySelector('#wysV'); v.className = 'card ' + cfg[7]; v.innerHTML = cfg[6];
+  }
+  function bybitStep(el, st) {
+    el.querySelectorAll('.cn').forEach(n => {
+      const i = +n.dataset.i;
+      n.className = 'cn' + (st >= 1 && i <= 3 ? ' cause' : '') + (st >= 2 && i >= 4 ? ' hit' : '') + (st >= 3 && (i === 2 || i === 5) ? ' fixed' : '');
+    });
+    const L = el.querySelector('#byL');
+    L.className = 'card ' + (st >= 4 ? 'gold' : st === 3 ? 'buy' : '');
+    L.innerHTML = [
+      '据公开报道，FBI 将此事件归因于朝鲜 Lazarus 组织',
+      '<span class="warn" style="color:var(--warn)">原因</span>：入口在<b>供应商</b>，不在 Bybit 自己的系统',
+      '<span class="down">影响</span>：签名人数没失效，失效的是<b>签名人看到的信息</b>',
+      '<span class="up">修复</span>：前端完整性校验 + 独立意图校验 → 所见即所签',
+      '教训：多签人数没失效，失效的是签名人<b>看到的信息</b>；供应商也在威胁模型里',
+      '对比 2019 币安：约 7,000 BTC，未碰平台私钥，热钱包限额封顶 ≈ BTC 持仓 2%',
+    ][st];
+  }
+  function sriStep(el, st) {
+    const b = el.querySelector('#sriBox');
+    if (st <= 1) {
+      b.innerHTML = '<table class="t" style="font-size:30px"><tr><th>风险</th><th>防线</th></tr>' +
+        [['依赖投毒', '锁定版本、私有镜像、依赖扫描'], ['构建系统被入侵', '构建隔离、制品签名'], ['前端脚本被替换', 'SRI、CSP、发布前哈希比对'], ['SaaS 供应商被入侵', '关键界面自托管、独立校验']]
+          .map((r, i) => `<tr style="opacity:${st >= 1 ? 1 : .3}"><td class="hl">${r[0]}</td><td>${r[1]}</td></tr>`).join('') + '</table>' +
+        (st === 0 ? '<div class="card info" style="font-size:30px">零信任：不因为在内网就信任，每次请求都验证</div>' : '<div class="card warn" style="font-size:30px">2025 年 Safe 前端被篡改 = SaaS 供应商风险</div>');
+      return;
+    }
+    const bad = st >= 3;
+    b.innerHTML = `<div class="card sri"><h3 style="margin:0">SRI 子资源完整性</h3>
+      <div>页面写下的期望哈希</div><div class="h">sha384-<b>Q9fK…2a</b></div>
+      <div>浏览器对下载的脚本计算</div><div class="h ${bad ? 'bad' : 'ok'}">sha384-<b>${bad ? 'Zx7m…9c' : 'Q9fK…2a'}</b></div>
+      <div class="verdict ${bad ? 'bad' : 'ok'}">${bad ? '✗ 不一致 → 拒绝执行' : '✓ 一致 → 执行'}</div></div>` +
+      (bad ? '<div class="card info" style="font-size:30px">CSP：只允许从指定来源加载脚本</div>' : '<div class="card" style="font-size:30px">CDN 上的脚本 <span class="muted">示例哈希</span></div>');
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

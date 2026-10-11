@@ -1,0 +1,45 @@
+name: E2E (full stack)
+
+# Starts infrastructure (Docker) and every service, seeds the demo data and runs
+# the end-to-end suites against the real stack.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TRADER_WEB_SMOKE_CHROME_PATH: /usr/bin/google-chrome
+      OPS_CONSOLE_E2E_CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engines/matching-engine
+      - run: pnpm install --frozen-lockfile
+      # Compile the engine up front so `cargo run` in stack:start is fast.
+      - run: cargo build --manifest-path engines/matching-engine/Cargo.toml
+      - run: pnpm demo:up
+      - run: pnpm test:e2e
+      - name: Collect service logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-stack-logs
+          path: .runtime/full-stack/logs
+      - name: Stop stack
+        if: always()
+        run: pnpm stack:stop:infra

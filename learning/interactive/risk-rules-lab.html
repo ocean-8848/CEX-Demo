@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>风控规则实验室</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); }
+  @media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .rule { border-bottom: 1px dashed var(--border); padding: 8px 0 10px; }
+  .rule:last-child { border-bottom: 0; }
+  .rule-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .rule-head span { font-size: 14px; font-weight: 600; }
+  .rule-head .act { font-size: 11px; }
+  .rule label { margin: 4px 0 2px; }
+  .rule.off { opacity: .45; }
+  .rule .range-row output { white-space: nowrap; min-width: 84px; font-size: 13px; }
+  .switch { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); margin: 0; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+  .stats .stat .v { font-size: 20px; }
+  .bar { height: 10px; border-radius: 6px; background: var(--surface-2); overflow: hidden; margin-top: 4px; }
+  .bar > div { height: 100%; transition: width .25s; }
+  .bar .fp { background: var(--warn); }
+  .bar .fn { background: var(--sell); }
+  .events td { vertical-align: top; }
+  .events .why { color: var(--text-2); font-size: 12px; }
+  .bucket-wrap { display: grid; grid-template-columns: minmax(0, 140px) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 480px) { .bucket-wrap { grid-template-columns: minmax(0, 1fr); } }
+  .bucket svg { width: 100%; max-width: 140px; height: auto; display: block; margin: 0 auto; }
+  .bucket .wall { fill: none; stroke: var(--text-2); stroke-width: 3; }
+  .bucket .water { fill: var(--accent); opacity: .85; }
+  .bucket .drop { fill: var(--info); }
+  .reqs { display: flex; flex-wrap: wrap; gap: 3px; min-height: 26px; margin: 6px 0; }
+  .reqs span { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .reqs .ok { background: var(--buy); }
+  .reqs .r429 { background: var(--warn); }
+  .reqs .r418 { background: var(--sell); }
+  .persona-btns button { flex: 1 1 140px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../09-risk-control.md">配套章节：09 风控</a>
+  </header>
+  <h1>风控规则实验室</h1>
+  <p class="lead">左边调规则，右边放事件。引擎给每条事件打标：通过、拒绝、人工审核。观察阈值越严误杀越多、越松漏放越多。全部规则和数值都是示例。</p>
+
+  <div class="card small">
+    <strong>怎么玩</strong>
+    <ol style="margin:6px 0 0; padding-left:20px;">
+      <li>点"生成混合事件流"。系统生成正常用户、盗号者、洗钱者、刷单机器人的事件。</li>
+      <li>在左侧开关规则、拖动阈值。全部历史事件按新规则立即重新打标。</li>
+      <li>看右上角的误杀率、漏放率和人工审核队列。找一组让三者都可接受的阈值。</li>
+      <li>在最下方的令牌桶里切换客户端类型，看请求如何被 429 和 418 拒绝。</li>
+    </ol>
+  </div>
+
+  <div class="layout" style="margin-top:16px">
+    <!-- ============ Rules ============ -->
+    <aside class="card">
+      <h3>规则配置</h3>
+
+      <div class="rule" data-rule="single">
+        <div class="rule-head"><label class="switch"><input type="checkbox" checked> <span>单笔提币限额</span></label><span class="pill warn act">超出→人工</span></div>
+        <div class="range-row"><input type="range" min="1000" max="100000" step="1000" value="20000"><output></output></div>
+      </div>
+      <div class="rule" data-rule="daily">
+        <div class="rule-head"><label class="switch"><input type="checkbox" checked> <span>24h 累计提币限额</span></label><span class="pill sell act">超出→拒绝</span></div>
+        <div class="range-row"><input type="range" min="5000" max="500000" step="5000" value="100000"><output></output></div>
+      </div>
+      <div class="rule" data-rule="device">
+        <div class="rule-head"><label class="switch"><input type="checkbox" checked> <span>新设备冷却（小时）</span></label><span class="pill sell act">冷却中→拒绝</span></div>
+        <div class="range-row"><input type="range" min="0" max="72" step="1" value="24"><output></output></div>
+      </div>
+      <div class="rule" data-rule="pwd">
+        <div class="rule-head"><label class="switch"><input type="checkbox" checked> <span>改密后冷却（小时）</span></label><span class="pill sell act">冷却中→拒绝</span></div>
+        <div class="range-row"><input type="range" min="0" max="72" step="1" value="24"><output></output></div>
+      </div>
+      <div class="rule" data-rule="blacklist">
+        <div class="rule-head"><label class="switch"><input type="checkbox" checked> <span>地址黑名单 / 制裁名单</span></label><span class="pill sell act">命中→拒绝</span></div>
+        <p class="small muted" style="margin:4px 0 0">硬规则，没有阈值。</p>
+      </div>
+      <div class="rule" data-rule="kyt">
+        <div class="rule-head"><label class="switch"><input type="checkbox" checked> <span>KYT 风险分阈值</span></label><span class="pill sell act">≥阈值→拒绝</span></div>
+        <div class="range-row"><input type="range" min="10" max="100" step="1" value="75"><output></output></div>
+        <p class="small muted" style="margin:2px 0 0">阈值减 20 到阈值之间→人工审核。</p>
+      </div>
+      <div class="rule" data-rule="band">
+        <div class="rule-head"><label class="switch"><input type="checkbox" checked> <span>价格保护带 ±%</span></label><span class="pill sell act">超出→拒绝</span></div>
+        <div class="range-row"><input type="range" min="1" max="30" step="0.5" value="5"><output></output></div>
+      </div>
+      <div class="rule" data-rule="rate">
+        <div class="rule-head"><label class="switch"><input type="checkbox" checked> <span>API 令牌桶速率（次/秒）</span></label><span class="pill sell act">超出→429</span></div>
+        <div class="range-row"><input type="range" min="1" max="50" step="1" value="10"><output></output></div>
+        <p class="small muted" style="margin:2px 0 0">桶容量固定为速率 × 2（示例）。</p>
+      </div>
+      <div class="btn-row"><button id="preset" type="button">恢复默认阈值</button></div>
+    </aside>
+
+    <!-- ============ Engine ============ -->
+    <main style="min-width:0">
+      <div class="card">
+        <h3>事件流</h3>
+        <div class="btn-row persona-btns">
+          <button class="primary" id="genMix" type="button">生成混合事件流 ×80</button>
+          <button id="stream" type="button">▶ 持续播放</button>
+          <button id="clear" type="button">清空</button>
+        </div>
+        <div class="btn-row persona-btns">
+          <button data-p="normal" type="button">+ 正常用户 ×20</button>
+          <button data-p="thief" type="button">+ 盗号者 ×10</button>
+          <button data-p="launder" type="button">+ 洗钱者 ×10</button>
+          <button data-p="bot" type="button">+ 刷单机器人 ×10</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="stats">
+          <div class="stat"><span class="k">事件总数</span><span class="v" id="sTotal">0</span></div>
+          <div class="stat"><span class="k">误杀率</span><span class="v" id="sFP">-</span><div class="bar"><div class="fp" id="bFP" style="width:0"></div></div></div>
+          <div class="stat"><span class="k">漏放率</span><span class="v" id="sFN">-</span><div class="bar"><div class="fn" id="bFN" style="width:0"></div></div></div>
+          <div class="stat"><span class="k">人工审核队列</span><span class="v" id="sQ">0</span></div>
+          <div class="stat"><span class="k">精确率 Precision</span><span class="v" id="sPrec">-</span></div>
+          <div class="stat"><span class="k">召回率 Recall</span><span class="v" id="sRec">-</span></div>
+        </div>
+        <p class="small muted" id="sHint" style="margin:10px 0 0">
+          误杀率 = 被拒绝的正常事件 / 全部正常事件。漏放率 = 被直接通过的恶意事件 / 全部恶意事件。人工审核视为"拦下待查"，但占用审核员；按每条 5 分钟、2 名审核员估算等待时间。
+        </p>
+        <p class="small" id="sWait"></p>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>最近事件（最新在上，最多显示 40 条）</h3>
+        <div class="table-wrap">
+          <table class="events">
+            <thead><tr><th>#</th><th>真实身份</th><th>事件</th><th>引擎决策</th><th>结果</th></tr></thead>
+            <tbody id="evBody"><tr><td colspan="5" class="muted">点"生成混合事件流"开始。</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ============ Token bucket ============ -->
+  <div class="card" style="margin-top:16px">
+    <h3>令牌桶限流可视化</h3>
+    <p class="small muted">速率 R 取左侧"API 令牌桶速率"，容量 B = 2R。每个请求权重 1（示例）。令牌不足返回 429。3 秒内累计收到 30 次 429 仍继续请求，IP 被临时封禁，返回 418（模仿币安公开规则，封禁时长在此缩短为 5 秒）。</p>
+    <div class="bucket-wrap">
+      <div class="bucket">
+        <svg viewBox="0 0 140 170" role="img" aria-label="令牌桶">
+          <circle class="drop" id="drop" cx="70" cy="10" r="5"></circle>
+          <rect class="water" id="water" x="22" y="160" width="96" height="0"></rect>
+          <path class="wall" d="M20 30 L20 162 L120 162 L120 30"></path>
+          <text x="70" y="100" text-anchor="middle" id="tokTxt" style="font-size:18px;font-weight:700">0</text>
+        </svg>
+      </div>
+      <div style="min-width:0">
+        <label for="client">客户端请求速率</label>
+        <select id="client">
+          <option value="3">正常交易者：3 次/秒</option>
+          <option value="12">行情程序：12 次/秒</option>
+          <option value="40">刷单机器人：40 次/秒</option>
+          <option value="burst">突发：每 3 秒一次 30 连发</option>
+        </select>
+        <label class="switch" style="margin-top:10px"><input type="checkbox" id="respect"> 客户端遵守 Retry-After（收到 429 后暂停 1 秒）</label>
+        <div class="btn-row"><button id="tbRun" class="primary" type="button">▶ 开始发送</button></div>
+        <div class="reqs" id="reqs"></div>
+        <div class="stats">
+          <div class="stat"><span class="k">成功</span><span class="v up" id="tOk">0</span></div>
+          <div class="stat"><span class="k">429</span><span class="v" id="t429" style="color:var(--warn)">0</span></div>
+          <div class="stat"><span class="k">418 封禁</span><span class="v down" id="t418">0</span></div>
+          <div class="stat"><span class="k">状态</span><span class="v" id="tState" style="font-size:15px">空闲</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px">
+    <h3>试一试</h3>
+    <ol class="small" style="padding-left:20px;margin:0">
+      <li>生成混合事件流后，把"单笔提币限额"从 100,000 拖到 1,000。误杀率没变，但人工审核队列暴涨。为什么"转人工"不是免费的？</li>
+      <li>只关掉"改密后冷却"和"新设备冷却"，再点"+ 盗号者 ×10"几次。漏放率升到多少？哪条规则单独就能挡住大部分盗号者？</li>
+      <li>在令牌桶里选"刷单机器人"，先不勾"遵守 Retry-After"，看多久出现 418；再勾上对比。这就是币安文档要求客户端遵守 Retry-After 的原因。</li>
+    </ol>
+  </div>
+
+  <footer class="note">本页的事件、规则、阈值、人物画像全部为模拟示例，不代表币安或任何交易所的真实参数。币安 API 的 429 / 418 行为参考其公开的 API 限频文档（截至 2026 年公开资料）。本页仅用于学习，不构成投资建议。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function chance(p) { return Math.random() < p; }
+  function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
+
+  /* ---------- rules ---------- */
+  var DEFAULTS = { single: 20000, daily: 100000, device: 24, pwd: 24, kyt: 75, band: 5, rate: 10 };
+  var UNITS = { single: ' U', daily: ' U', device: ' h', pwd: ' h', kyt: '', band: '%', rate: '/s' };
+  var rules = {};
+  document.querySelectorAll('.rule').forEach(function (r) {
+    var key = r.dataset.rule;
+    var cb = r.querySelector('input[type=checkbox]');
+    var rg = r.querySelector('input[type=range]');
+    var out = r.querySelector('output');
+    rules[key] = { on: true, v: rg ? parseFloat(rg.value) : null };
+    function sync() {
+      rules[key].on = cb.checked;
+      if (rg) { rules[key].v = parseFloat(rg.value); out.textContent = (key === 'single' || key === 'daily' ? fmt(rules[key].v) : rules[key].v) + UNITS[key]; rg.disabled = !cb.checked; }
+      r.classList.toggle('off', !cb.checked);
+      render();
+      if (key === 'rate') tbConfig();
+    }
+    cb.addEventListener('change', sync);
+    if (rg) rg.addEventListener('input', sync);
+    r._sync = sync; r._cb = cb; r._rg = rg;
+  });
+  $('preset').addEventListener('click', function () {
+    document.querySelectorAll('.rule').forEach(function (r) {
+      r._cb.checked = true;
+      if (r._rg) r._rg.value = DEFAULTS[r.dataset.rule];
+      r._sync();
+    });
+  });
+
+  /* ---------- personas ---------- */
+  var PERSONA = {
+    normal: { name: '正常用户', bad: false, pill: 'buy' },
+    thief: { name: '盗号者', bad: true, pill: 'sell' },
+    launder: { name: '洗钱者', bad: true, pill: 'sell' },
+    bot: { name: '刷单机器人', bad: true, pill: 'sell' }
+  };
+  var seq = 0;
+  var events = [];
+
+  function makeEvent(p) {
+    var e = { id: ++seq, p: p, bad: PERSONA[p].bad };
+    if (p === 'normal') {
+      if (chance(0.55)) {
+        e.type = 'withdraw';
+        e.amount = Math.min(150000, Math.exp(rnd(Math.log(100), Math.log(60000))));
+        e.daily = e.amount + (chance(0.3) ? rnd(0, 60000) : 0);
+        e.devH = chance(0.12) ? rnd(0, 100) : 9999;      // 12% recently changed phone
+        e.pwdH = chance(0.06) ? rnd(0, 100) : 9999;      // 6% recently reset password
+        e.kyt = chance(0.85) ? rnd(0, 40) : rnd(40, 85); // some legit addresses look risky
+        e.black = false;
+      } else {
+        e.type = 'order';
+        e.dev = chance(0.9) ? rnd(0, 2.5) : rnd(2.5, 9);  // aggressive limit orders sometimes
+        e.rps = chance(0.85) ? rnd(0.5, 6) : rnd(6, 20); // quant users
+      }
+    } else if (p === 'thief') {
+      e.type = 'withdraw';
+      e.amount = rnd(3000, 90000);
+      e.daily = e.amount * rnd(1, 1.5);
+      e.devH = chance(0.75) ? rnd(0, 6) : rnd(20, 60);   // some wait to evade cooldown
+      e.pwdH = chance(0.7) ? rnd(0, 8) : (chance(0.5) ? rnd(20, 50) : 9999);
+      e.kyt = rnd(10, 80);
+      e.black = chance(0.1);
+    } else if (p === 'launder') {
+      e.type = 'withdraw';
+      e.amount = rnd(6000, 19500);                       // structuring below the default limit
+      e.daily = rnd(40000, 400000);
+      e.devH = 9999; e.pwdH = 9999;
+      e.kyt = chance(0.7) ? rnd(55, 100) : rnd(20, 60);
+      e.black = chance(0.25);
+    } else {
+      e.type = 'order';
+      e.dev = chance(0.6) ? rnd(3, 20) : rnd(0, 3);
+      e.rps = chance(0.75) ? rnd(15, 60) : rnd(2, 10);
+    }
+    return e;
+  }
+
+  function describe(e) {
+    if (e.type === 'withdraw') {
+      var s = '提币 ' + fmt(e.amount) + ' U · 24h ' + fmt(e.daily) + ' U · KYT ' + Math.round(e.kyt);
+      if (e.devH < 9999) s += ' · 新设备 ' + e.devH.toFixed(0) + 'h';
+      if (e.pwdH < 9999) s += ' · 改密 ' + e.pwdH.toFixed(0) + 'h';
+      if (e.black) s += ' · 黑名单地址';
+      return s;
+    }
+    return '下单 偏离参考价 ' + e.dev.toFixed(1) + '% · API ' + e.rps.toFixed(0) + ' 次/秒';
+  }
+
+  /* ---------- engine ---------- */
+  // Fraction of requests a bucket (rate R, capacity 2R) admits over a 10 s burst at rps.
+  function admitted(rps, R) { var T = 10; return Math.min(1, (R * T + 2 * R) / (rps * T)); }
+
+  function evaluate(e) {
+    var reject = [], review = [];
+    if (e.type === 'withdraw') {
+      if (rules.blacklist.on && e.black) reject.push('黑名单');
+      if (rules.pwd.on && e.pwdH < rules.pwd.v) reject.push('改密冷却');
+      if (rules.device.on && e.devH < rules.device.v) reject.push('新设备冷却');
+      if (rules.daily.on && e.daily > rules.daily.v) reject.push('24h 累计超限');
+      if (rules.kyt.on) {
+        if (e.kyt >= rules.kyt.v) reject.push('KYT ≥ ' + rules.kyt.v);
+        else if (e.kyt >= rules.kyt.v - 20) review.push('KYT 灰区');
+      }
+      if (rules.single.on && e.amount > rules.single.v) review.push('单笔超限');
+    } else {
+      if (rules.band.on && e.dev > rules.band.v) reject.push('价格保护带');
+      if (rules.rate.on && admitted(e.rps, rules.rate.v) < 0.8) reject.push('429 限频');
+    }
+    var d = reject.length ? 'reject' : (review.length ? 'review' : 'pass');
+    return { d: d, why: reject.concat(review) };
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    var good = 0, bad = 0, fp = 0, fn = 0, tp = 0, q = 0, caught = 0;
+    events.forEach(function (e) {
+      e.r = evaluate(e);
+      if (e.bad) { bad++; if (e.r.d === 'pass') fn++; else { caught++; if (e.r.d === 'reject') tp++; } }
+      else { good++; if (e.r.d === 'reject') fp++; }
+      if (e.r.d === 'review') q++;
+    });
+    var flaggedAll = events.filter(function (e) { return e.r.d !== 'pass'; }).length;
+    $('sTotal').textContent = events.length;
+    var fpr = good ? fp / good : NaN, fnr = bad ? fn / bad : NaN;
+    $('sFP').textContent = isNaN(fpr) ? '-' : (fpr * 100).toFixed(1) + '%';
+    $('sFN').textContent = isNaN(fnr) ? '-' : (fnr * 100).toFixed(1) + '%';
+    $('bFP').style.width = (isNaN(fpr) ? 0 : fpr * 100) + '%';
+    $('bFN').style.width = (isNaN(fnr) ? 0 : fnr * 100) + '%';
+    $('sQ').textContent = q;
+    $('sPrec').textContent = flaggedAll ? (caught / flaggedAll * 100).toFixed(1) + '%' : '-';
+    $('sRec').textContent = bad ? (caught / bad * 100).toFixed(1) + '%' : '-';
+    var waitMin = q * 5 / 2;
+    $('sWait').innerHTML = q ? '审核队列预计清空耗时：<strong>' + (waitMin >= 60 ? (waitMin / 60).toFixed(1) + ' 小时' : waitMin.toFixed(0) + ' 分钟') + '</strong>（示例：每条 5 分钟、2 名审核员）。排在队尾的正常用户要等这么久。' : '';
+
+    var rows = events.slice(-40).reverse().map(function (e) {
+      var P = PERSONA[e.p];
+      var dl = e.r.d === 'pass' ? '<span class="pill buy">通过</span>' : (e.r.d === 'reject' ? '<span class="pill sell">拒绝</span>' : '<span class="pill warn">人工审核</span>');
+      var res;
+      if (e.bad) res = e.r.d === 'pass' ? '<span class="pill sell">漏放</span>' : '<span class="pill info">拦截</span>';
+      else res = e.r.d === 'reject' ? '<span class="pill warn">误杀</span>' : (e.r.d === 'review' ? '<span class="pill accent">打扰</span>' : '<span class="muted small">正常</span>');
+      return '<tr><td class="num">' + e.id + '</td><td><span class="pill ' + P.pill + '">' + P.name + '</span></td><td>' + describe(e) +
+        '</td><td>' + dl + (e.r.why.length ? '<div class="why">' + e.r.why.join('、') + '</div>' : '') + '</td><td>' + res + '</td></tr>';
+    }).join('');
+    $('evBody').innerHTML = rows || '<tr><td colspan="5" class="muted">点"生成混合事件流"开始。</td></tr>';
+  }
+
+  function add(p, n) { for (var i = 0; i < n; i++) events.push(makeEvent(p)); if (events.length > 2000) events = events.slice(-2000); render(); }
+  function mix(n) {
+    for (var i = 0; i < n; i++) {
+      var r = Math.random();
+      events.push(makeEvent(r < 0.7 ? 'normal' : r < 0.8 ? 'thief' : r < 0.9 ? 'launder' : 'bot'));
+    }
+    render();
+  }
+  $('genMix').addEventListener('click', function () { mix(80); });
+  document.querySelectorAll('[data-p]').forEach(function (b) {
+    b.addEventListener('click', function () { add(b.dataset.p, b.dataset.p === 'normal' ? 20 : 10); });
+  });
+  $('clear').addEventListener('click', function () { events = []; seq = 0; render(); });
+  var streamTimer = null;
+  $('stream').addEventListener('click', function () {
+    if (streamTimer) { clearInterval(streamTimer); streamTimer = null; $('stream').textContent = '▶ 持续播放'; return; }
+    $('stream').textContent = '⏸ 暂停';
+    streamTimer = setInterval(function () { mix(2); }, 600);
+  });
+
+  /* ---------- token bucket ---------- */
+  var tb = { R: 10, B: 20, tokens: 20, last: performance.now(), ok: 0, c429: 0, c418: 0, hits: [], banUntil: 0, pauseUntil: 0, running: false, acc: 0, burstT: 0 };
+  function tbConfig() {
+    tb.R = rules.rate.on ? rules.rate.v : 1000;
+    tb.B = tb.R * 2;
+    tb.tokens = Math.min(tb.tokens, tb.B);
+    drawBucket();
+  }
+  function drawBucket() {
+    var h = 128 * Math.max(0, Math.min(1, tb.tokens / tb.B));
+    var w = $('water');
+    w.setAttribute('y', (160 - h).toFixed(1));
+    w.setAttribute('height', h.toFixed(1));
+    $('tokTxt').textContent = Math.floor(tb.tokens) + '/' + tb.B;
+  }
+  function pushReq(cls) {
+    var box = $('reqs');
+    var s = document.createElement('span'); s.className = cls; box.appendChild(s);
+    while (box.children.length > 120) box.removeChild(box.firstChild);
+  }
+  function sendOne(now) {
+    if (now < tb.banUntil) { tb.c418++; pushReq('r418'); return; }
+    if (tb.tokens >= 1) { tb.tokens -= 1; tb.ok++; pushReq('ok'); return; }
+    tb.c429++; tb.hits.push(now); while (tb.hits.length && tb.hits[0] < now - 3000) tb.hits.shift(); pushReq('r429');
+    if ($('respect').checked) tb.pauseUntil = now + 1000;
+    if (tb.hits.length >= 30) { tb.banUntil = now + 5000; tb.hits = []; }
+  }
+  var tbTimer = null;
+  function tick() {
+    var now = performance.now();
+    if (!tb.running) return;
+    var dt = (now - tb.last) / 1000; tb.last = now;
+    tb.tokens = Math.min(tb.B, tb.tokens + tb.R * dt);
+    var mode = $('client').value;
+    if (now >= tb.pauseUntil) {
+      if (mode === 'burst') {
+        tb.burstT += dt;
+        if (tb.burstT >= 3) { tb.burstT = 0; for (var i = 0; i < 30 && now >= tb.pauseUntil; i++) sendOne(now); }
+      } else {
+        tb.acc += parseFloat(mode) * dt;
+        while (tb.acc >= 1) { tb.acc -= 1; if (now >= tb.pauseUntil) sendOne(now); }
+      }
+    } else { tb.acc = 0; }
+    $('tOk').textContent = tb.ok; $('t429').textContent = tb.c429; $('t418').textContent = tb.c418;
+    var st;
+    if (now < tb.banUntil) st = '<span class="pill sell">418 封禁 ' + ((tb.banUntil - now) / 1000).toFixed(1) + 's</span>';
+    else if (now < tb.pauseUntil) st = '<span class="pill warn">退避等待</span>';
+    else st = '<span class="pill buy">发送中</span>';
+    $('tState').innerHTML = st;
+    var d = $('drop'); d.setAttribute('cy', (10 + ((now / 1000 * tb.R) % 1) * 20).toFixed(1));
+    drawBucket();
+  }
+  $('tbRun').addEventListener('click', function () {
+    tb.running = !tb.running;
+    $('tbRun').textContent = tb.running ? '⏸ 停止' : '▶ 开始发送';
+    if (tb.running) { tb.last = performance.now(); tbTimer = setInterval(tick, 50); }
+    else { clearInterval(tbTimer); tbTimer = null; $('tState').textContent = '空闲'; }
+  });
+  $('client').addEventListener('change', function () { tb.ok = tb.c429 = tb.c418 = 0; tb.hits = []; tb.banUntil = 0; $('reqs').innerHTML = ''; });
+
+  /* ---------- init ---------- */
+  document.querySelectorAll('.rule').forEach(function (r) { r._sync(); });
+  tbConfig();
+  render();
+})();
+</script>
+</body>
+</html>

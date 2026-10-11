@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP08 账本可靠性：幂等、对账与热点账户</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: center; font-size: 36px; padding: 34px 34px; }
+  .num-card .n { font-family: var(--mono); font-size: 52px; font-weight: 700; color: var(--gold); }
+  svg .ln { stroke: var(--text-2); stroke-width: 4; fill: none; }
+  svg .ln.g { stroke: var(--gold); } svg .ln.r { stroke: var(--sell); } svg .ln.d { stroke-dasharray: 12 10; }
+  svg .life { stroke: var(--line); stroke-width: 4; stroke-dasharray: 10 10; }
+  svg .box { fill: var(--panel); stroke: var(--line); stroke-width: 2; }
+  svg .box.g { stroke: var(--gold); } svg .box.b { stroke: var(--buy); fill: rgba(46,189,133,.14); } svg .box.r { stroke: var(--sell); fill: rgba(246,70,93,.14); }
+  svg text.t { font-size: 34px; } svg text.s { font-size: 28px; fill: var(--text-2); }
+  svg text.red { fill: var(--sell); } svg text.grn { fill: var(--buy); } svg text.gld { fill: var(--gold); }
+  /* idempotency panels */
+  .pane { flex: 1; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 24px 30px; display: flex; flex-direction: column; gap: 16px; }
+  .pane.off { border-color: var(--sell); } .pane.on { border-color: var(--buy); }
+  .pane h3 { font-size: 38px; margin: 0; }
+  .ev { font-family: var(--mono); font-size: 30px; min-height: 100px; line-height: 1.6; }
+  .ev .dup { color: var(--warn); } .ev .rej { color: var(--buy); } .ev .acc { color: var(--sell); }
+  .bals { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .bal { background: var(--panel-2); border-radius: 12px; padding: 14px 20px; }
+  .bal .k { font-size: 26px; color: var(--text-2); } .bal .v { font-family: var(--mono); font-size: 64px; font-weight: 700; }
+  .bal.bad .v { color: var(--sell); } .bal.ok .v { color: var(--buy); }
+  .status { font-size: 30px; padding: 12px 18px; border-radius: 10px; background: var(--panel-2); min-height: 66px; }
+  .status.bad { background: var(--sell-soft); color: var(--sell); } .status.ok { background: var(--buy-soft); color: var(--buy); }
+  /* journal table */
+  table.j { border-collapse: collapse; width: 100%; font-size: 32px; }
+  table.j td, table.j th { padding: 14px 18px; border-bottom: 1px solid var(--line); text-align: left; }
+  table.j th { color: var(--text-2); font-weight: 500; font-size: 26px; }
+  table.j td.num { font-family: var(--mono); text-align: right; }
+  table.j tr.err td { color: var(--sell); } table.j tr.rev td { color: var(--warn); } table.j tr.fix td { color: var(--buy); }
+  table.j tr.new { background: var(--gold-soft); }
+  .strike { text-decoration: line-through; opacity: .55; }
+  .check { font-family: var(--mono); font-size: 34px; padding: 12px 28px; border-radius: 14px; border: 2px solid var(--buy); background: var(--buy-soft); color: var(--buy); display: flex; justify-content: space-between; }
+  .check small { font-family: var(--sans); font-size: 28px; color: var(--text-2); }
+  /* recon */
+  .rc { background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 22px 26px; display: flex; flex-direction: column; gap: 12px; font-size: 30px; }
+  .rc h3 { font-size: 36px; margin: 0; }
+  .rc .src { font-size: 24px; color: var(--text-2); }
+  .rc .ln2 { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 30px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .rc .ln2 span:first-child { font-family: var(--sans); }
+  .rc .st { margin-top: 6px; font-size: 30px; padding: 10px 14px; border-radius: 10px; text-align: center; }
+  .rc.ok { border-color: var(--buy); } .rc.ok .st { background: var(--buy-soft); color: var(--buy); }
+  .rc.bad { border-color: var(--sell); } .rc.bad .st { background: var(--sell-soft); color: var(--sell); }
+  .rc.idle .st { background: var(--panel-2); color: var(--text-2); }
+  /* hot account */
+  .trades { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; width: 420px; flex: 0 0 auto; }
+  .tc { font-family: var(--mono); font-size: 30px; text-align: center; padding: 14px 0; border-radius: 8px; background: var(--info-soft); color: var(--info); border: 1px solid var(--info); }
+  .hotarea { flex: 1; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .acct { background: var(--panel); border: 2px solid var(--gold); border-radius: 14px; padding: 22px 26px; font-size: 34px; }
+  .acct .q { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .acct .q .tc { font-size: 26px; padding: 6px 12px; }
+  .acct.hot { border-color: var(--sell); background: var(--sell-soft); }
+  .buckets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .buckets .acct { font-size: 32px; padding: 18px 18px; } .buckets .acct .q .tc { font-size: 26px; padding: 6px 8px; }
+  .tl { display: flex; align-items: center; gap: 0; }
+  .tl .node { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 24px 24px; font-size: 34px; text-align: center; }
+  .tl .node small { display: block; font-size: 24px; color: var(--text-2); margin-top: 4px; }
+  .tl .node.b { border-color: var(--buy); } .tl .node.r { border-color: var(--sell); background: var(--sell-soft); } .tl .node.g { border-color: var(--gold); background: var(--gold-soft); } .tl .node.i { border-color: var(--info); }
+  .tl .arrow { width: 56px; height: 4px; background: var(--text-2); position: relative; margin: 0 6px; flex: 0 0 auto; }
+  .tl .arrow::after { content: ""; position: absolute; right: -2px; top: -8px; border: 10px solid transparent; border-left: 14px solid var(--text-2); border-right: 0; }
+  .lane { display: flex; align-items: center; gap: 24px; }
+  .lane .tag { width: 170px; flex: 0 0 auto; font-size: 34px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP08" data-title="账本可靠性：幂等、对账与热点账户">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解</div>
+    <h1>账本可靠性：<span class="hl">幂等</span>、对账<br>与热点账户</h1>
+    <div class="flow" data-step="0">
+      <div class="node">结算服务</div><div class="arrow"></div>
+      <div class="node buy">账本<small>已记账 ✓</small></div><div class="arrow dashed"></div>
+      <div class="node sell">响应超时<small>结果未知</small></div><div class="arrow gold" data-step="1"></div>
+      <div class="node gold" data-step="1">重试 T1<small>再次到达</small></div>
+    </div>
+    <div class="card warn" data-step="2">两次记账<b>各自借贷平衡</b> → 上一集的平衡校验发现不了</div>
+    <p class="lead" data-step="3">重启、重投、超时之后，账还能不能对？</p>
+    <ol class="say">
+      <li>先看一个场景。结算服务让账本给用户 A 记一笔成交，账本写成功了。可是返回结果的时候，网络超时了。</li>
+      <li>结算服务不知道成功没有，于是重试。同一笔成交，第二次到达了账本。如果账本照单全收，用户 A 就多拿了一份 BTC。</li>
+      <li>上一集我们讲了双分录。可这两次记账，每一次自己都是借贷平衡的。平衡校验发现不了这个错误。</li>
+      <li>所以这一集讲账本的可靠性。系统重启、消息重投、网络超时之后，账还能不能对？</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线">
+    <div class="kicker">本集路线图</div>
+    <h2>五道防线</h2>
+    <div class="grid2">
+      <div class="card num-card"><span class="n">01</span>幂等键：同一件事只做一次</div>
+      <div class="card num-card" data-step="0"><span class="n">02</span>只追加流水与冲正</div>
+      <div class="card num-card" data-step="0"><span class="n">03</span>快照与三方对账</div>
+      <div class="card num-card" data-step="1"><span class="n">04</span>热点账户与分桶</div>
+      <div class="card num-card" data-step="1"><span class="n">05</span>Outbox：事件不丢</div>
+      <div class="card num-card gold" data-step="1"><span class="n">∑</span>至少一次 + 幂等</div>
+    </div>
+    <ol class="say">
+      <li>这一集分五段。第一，幂等键，让同一件事只做一次。</li>
+      <li>第二，流水只追加，记错了用冲正。第三，余额快照和三方对账，用独立的数据源互相检查。</li>
+      <li>第四，热点账户，所有成交挤向同一行时怎么办。第五，outbox 模式，保证记了账的事件不会丢。这五段背后是同一个思路。不相信网络，不相信进程，只相信落了库的流水。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="重复一定会发生">
+    <div class="kicker">01 · 至少一次投递 At-least-once</div>
+    <h2>为什么账本一定会收到重复请求？</h2>
+    <svg viewBox="0 0 1640 470" width="1640" height="470">
+      <defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9ea3ad"/></marker>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f0b90b"/></marker>
+        <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f6465d"/></marker></defs>
+      <rect class="box" x="120" y="0" width="320" height="80" rx="14"/><text class="t" x="280" y="52" text-anchor="middle">结算服务</text>
+      <rect class="box g" x="1200" y="0" width="320" height="80" rx="14"/><text class="t" x="1360" y="52" text-anchor="middle">账本服务</text>
+      <line class="life" x1="280" y1="80" x2="280" y2="470"/><line class="life" x1="1360" y1="80" x2="1360" y2="470"/>
+      <g data-step="1">
+        <path class="ln" d="M280 140 L1356 140" marker-end="url(#a1)"/><text class="t" x="820" y="125" text-anchor="middle">① postJournal(T1)</text>
+        <rect class="box b" x="1380" y="150" width="240" height="64" rx="10"/><text class="t grn" x="1500" y="194" text-anchor="middle">记账 ✓</text>
+      </g>
+      <g data-step="2">
+        <path class="ln r d" d="M1360 260 L760 260"/><text class="t red" x="700" y="272" text-anchor="middle">✗</text>
+        <text class="s" x="1060" y="245" text-anchor="middle">② 响应在网络中丢失</text>
+        <text class="s red" x="300" y="330" style="fill:#f6465d">超时：成功了吗？</text>
+      </g>
+      <g data-step="3">
+        <path class="ln g" d="M280 400 L1356 400" marker-end="url(#a2)"/><text class="t gld" x="820" y="385" text-anchor="middle">③ 重试 postJournal(T1)</text>
+        <rect class="box r" x="1380" y="370" width="240" height="64" rx="10"/><text class="t red" x="1500" y="414" text-anchor="middle">又一次？</text>
+      </g>
+    </svg>
+    <ol class="say">
+      <li>先说清楚，为什么重复请求一定会出现。交易所的消息系统，通常是至少投递一次。消息可能到达一次，也可能到达多次，但不会一次都不到。</li>
+      <li>来看时序。结算服务调用账本，要求记一笔成交 T1。账本记账成功。</li>
+      <li>可是响应在网络里丢了。上游等到超时，它没法区分，是请求丢了，还是响应丢了。</li>
+      <li>最安全的做法就是重试。于是 T1 第二次到达账本。所以，重复是常态，不是意外。账本必须自己扛住重复。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="幂等动画" data-onstep="idemStep">
+    <div class="kicker">01 · 幂等 Idempotency · 示例，暂不计手续费</div>
+    <h2>B 卖给 A 0.04 BTC，成交号 T1</h2>
+    <div class="row">
+      <div class="pane off" id="pOff">
+        <h3 class="down">关闭幂等</h3>
+        <div class="ev"></div>
+        <div class="bals"><div class="bal" data-who="A"><div class="k">A 的 BTC</div><div class="v"></div></div><div class="bal" data-who="B"><div class="k">B 的 BTC</div><div class="v"></div></div></div>
+        <div class="status"></div>
+      </div>
+      <div class="pane on" id="pOn">
+        <h3 class="up">开启幂等</h3>
+        <div class="ev"></div>
+        <div class="bals"><div class="bal" data-who="A"><div class="k">A 的 BTC</div><div class="v"></div></div><div class="bal" data-who="B"><div class="k">B 的 BTC</div><div class="v"></div></div></div>
+        <div class="status"></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>来看动画。示例：用户 B 卖给用户 A 0.04 BTC，成交号 T1，暂不计手续费。左边的账本关闭幂等，右边开启幂等。</li>
+      <li>第一次投递，两边一样。A 的 BTC 从 0 变成 0.04，B 从 1 变成 0.96。</li>
+      <li>现在 T1 被重投了。左边照单全收，又记了一遍。A 变成 0.08，B 变成 0.92。买方多收币，卖方多扣币。</li>
+      <li>右边开启了幂等。账本发现 T1 的幂等键已经存在，直接返回第一次的结果，不再记账。余额保持不变。</li>
+      <li>注意左边的错误。每一笔分录自己都平衡，资产等于负债加权益也还成立。能发现它的，只有幂等键，以及撮合和结算之间的对账。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="幂等键怎么做">
+    <div class="kicker">01 · 业务唯一键 Idempotency Key</div>
+    <h2>执行 1 次和执行 N 次，结果相同</h2>
+    <div class="flow">
+      <div class="node info" data-step="0">① 上游生成键<small>来自业务</small></div><div class="arrow" data-step="1"></div>
+      <div class="node gold" data-step="1">② 同一事务<small>写流水 + 写键</small></div><div class="arrow" data-step="1"></div>
+      <div class="node gold" data-step="1">③ 唯一索引<small>数据库兜底</small></div><div class="arrow" data-step="3"></div>
+      <div class="node buy" data-step="3">④ 键已存在<small>返回第一次结果</small></div>
+    </div>
+    <div class="row">
+      <div class="code" data-step="0" style="flex:1;font-size:30px">idempotency_key =
+  "spot_trade:quote:T1001"
+<span class="muted">-- UNIQUE INDEX</span></div>
+      <div class="col" data-step="4">
+        <div class="card buy" style="font-size:30px">✓ 成交号；充值交易哈希 + 输出序号</div>
+        <div class="card sell" style="font-size:30px">✗ 随机数、时间戳：每次重试都会变</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>幂等，就是同一个请求执行一次和执行 N 次，结果相同。做法是给每个资金动作，带一个业务唯一键。</li>
+      <li>第一步，上游生成唯一键。比如现货成交的计价资产分录。键由 spot_trade、quote 和成交号拼起来。</li>
+      <li>第二步，账本在同一个数据库事务里，写入流水和这个键。第三步，数据库对这个键建唯一索引。</li>
+      <li>第四步，如果键已经存在，账本返回第一次的结果，不再记账。</li>
+      <li>注意，唯一键必须来自业务。比如成交号，或者充值交易哈希加输出序号。不能用随机数或者时间戳。它们每次重试都会变，等于没有幂等。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="只追加与冲正" data-onstep="revStep">
+    <div class="kicker">02 · append-only · 示例</div>
+    <h2>充值 100 USDT，被误记成 1000，怎么改？</h2>
+    <div class="row">
+      <div class="col" style="flex:1.7">
+        <table class="j" id="jt"></table>
+        <div class="card sell" id="noUpd" style="font-size:30px"><span class="strike mono">UPDATE … / DELETE …</span>　已写入的分录不能改、不能删</div>
+      </div>
+      <div class="col">
+        <div class="card"><div class="stat"><div class="k">用户 A 余额 · USDT</div><div class="v" id="rbal"></div></div></div>
+        <div class="card gold" id="revWhy" style="font-size:32px">
+          <div>✓ 任意时刻余额可回放</div><div>✓ 审计看到错误与纠正</div><div>✓ 快照坏了可重建</div>
+        </div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>第二段，流水只追加。示例：用户 A 充值 100 USDT，程序却记成了 1000。现在发现了，怎么改？</li>
+      <li>第一反应是改那一行，或者删掉重记。但账本流水是只追加的。已经写入的分录，不能更新，也不能删除。</li>
+      <li>正确的做法，是写一笔冲正分录。方向相反，金额相同，并且引用原来那一笔。1000 被抵消，余额回到 0。</li>
+      <li>然后再写一笔正确的分录，充值 100。余额变成 100，和事实一致。</li>
+      <li>这样做有三个好处。任何时刻的余额，都能从第一条流水回放出来。审计员能看到，错误发生过，也被纠正过。快照坏了，也能从流水重建。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="快照与内部对账">
+    <div class="kicker">03 · 余额快照 Snapshot</div>
+    <h2>快照是缓存，流水才是事实</h2>
+    <div class="flow">
+      <div class="node gold">记账事务<small>同一事务</small></div><div class="arrow"></div>
+      <div class="node">写流水 entries</div><div class="arrow"></div>
+      <div class="node">更新快照 balances</div>
+    </div>
+    <div class="col" style="gap:16px;flex:0 0 auto">
+      <div class="check" data-step="2"><span>Σ 流水 = 余额快照</span><small>内部对账 ①</small></div>
+      <div class="check" data-step="2"><span>每个资产 Σ借 = Σ贷</span><small>内部对账 ②</small></div>
+      <div class="check" data-step="2"><span>中间户余额 = 0</span><small>内部对账 ③</small></div>
+    </div>
+    <div class="grid2" data-step="3">
+      <div class="card warn" style="font-size:30px">快照 ≠ 流水 → <b>以流水为准重建快照</b></div>
+      <div class="card warn" style="font-size:30px">中间户不归零 → <b>找卡住的结算，补偿或人工</b></div>
+    </div>
+    <ol class="say">
+      <li>每次都从全部流水求和，太慢了。所以系统维护余额快照。每次记账时，在同一个事务里顺手更新它。</li>
+      <li>快照对不对，要靠对账来检查。对账，就是用独立的数据源，检查余额是否一致。</li>
+      <li>第一类是内部对账，检查三个等式。流水求和等于快照。每个资产借方合计等于贷方合计。中间户余额等于 0。</li>
+      <li>快照和流水不一致，就以流水为准，重建快照。中间户不归零，就去找卡住的结算，补偿或者人工处理。注意，方向永远是从流水推出快照，而不是反过来。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="三方对账" data-onstep="reconStep">
+    <div class="kicker">03 · 三方对账 Reconciliation · 示例数字</div>
+    <h2>账本 vs 链上 vs 托管方</h2>
+    <div class="grid3">
+      <div class="rc idle" id="rc1"><h3>内部对账</h3><div class="src">数据源：内部账本</div>
+        <div class="ln2"><span>Σ借 = Σ贷</span><span>✓</span></div><div class="ln2"><span>流水和 = 快照</span><span>✓</span></div><div class="ln2"><span>中间户 = 0</span><span>✓</span></div><div class="st"></div></div>
+      <div class="rc idle" id="rc2"><h3>账链对账</h3><div class="src">数据源：账本 + 链上节点</div>
+        <div class="ln2"><span>账本热钱包</span><span id="r2a"></span></div><div class="ln2"><span>链上余额</span><span id="r2b"></span></div><div class="ln2"><span>充值在途</span><span id="r2c"></span></div><div class="st"></div></div>
+      <div class="rc idle" id="rc3"><h3>账托对账</h3><div class="src">数据源：账本 + 托管报告</div>
+        <div class="ln2"><span>账本冷钱包</span><span>3000 BTC</span></div><div class="ln2"><span>托管方报告</span><span>3000 BTC</span></div><div class="ln2"><span>差额</span><span>0</span></div><div class="st"></div></div>
+    </div>
+    <div class="card sell" id="alarm" style="font-size:32px">红色告警 → <b>暂停该币种提币</b> → 人工排查：冲正 / 补单</div>
+    <ol class="say">
+      <li>内部对账只看了账本自己。可是账本说热钱包有多少币，链上真的有吗？这就要三方对账。</li>
+      <li>三个独立的数据源，内部账本、链上数据、托管方报告。一个源出错，另外两个源能发现它。内部对账先通过。</li>
+      <li>账链对账，比较账本里的热钱包资产，和链上地址余额。示例：账本 500 BTC，链上 502 BTC。多出的 2 BTC，是链上已出块、账本还没入账的充值，记在在途账户里。</li>
+      <li>账托对账，比较账本里的冷钱包和托管资产，和托管方的报告。示例：两边都是 3000 BTC，相等。</li>
+      <li>如果哪一天，链上只剩 480 BTC，账本还是 500，差了 20。业界通常的做法是，先暂停这个币种的提币，再人工排查，冲正或者补单。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="对账的局限">
+    <div class="kicker">03 · 局限</div>
+    <h2>对账能发现问题，但不能替你定位</h2>
+    <div class="grid3">
+      <div class="card" data-step="0"><h3>只知道不等</h3>不告诉你哪一笔错了，定位靠<span class="hl">流水回放</span></div>
+      <div class="card" data-step="2"><h3>有延迟</h3>对账周期内的错误，先影响用户，再被发现</div>
+      <div class="card" data-step="3"><h3>PoR 是时点</h3>只证明某一刻资产 ≥ 负债，不证明没有隐藏负债</div>
+    </div>
+    <div class="card info" data-step="4">币安未公开账本数据库选型与分片方式 → 本集所讲为<b>业界通用做法</b>，不代表币安具体实现</div>
+    <ol class="say">
+      <li>对账很重要，但它有三个局限，我们要讲清楚。</li>
+      <li>第一，对账只能发现不等。它不会告诉你是哪一笔错了。定位要靠流水回放，一笔一笔往回找。这也是为什么，流水必须完整，必须只追加。</li>
+      <li>第二，对账有延迟。对账周期之内发生的错误，会先影响用户，然后才被发现。</li>
+      <li>第三，储备金证明只证明某一时刻，资产大于等于负债。它不证明平台没有其他隐藏的负债。</li>
+      <li>补充一点。币安没有公开账本的数据库选型和分片方式。这一集讲的是业界常见设计，不代表币安的具体实现。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="热点账户" data-onstep="hotStep">
+    <div class="kicker">04 · 热点账户 Hot Account</div>
+    <h2 id="hotH">所有成交都要写同一行</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="trades" id="trades"></div>
+      <div class="hotarea" id="hot"></div>
+    </div>
+    <ol class="say">
+      <li>第四段，热点账户。每一笔成交，都要给平台手续费收入账户，记一笔贷方。</li>
+      <li>币安这样的大所，每秒有大量成交，具体数字没有公开。这些事务都要更新同一行余额快照。数据库行锁开始排队，吞吐量被这一行卡死。</li>
+      <li>打个比方。商场有 100 个收银台，所有收银员都要跑到同一个保险柜存钱。保险柜门口一定排长队。</li>
+      <li>解决办法是分桶。把手续费账户拆成 N 个子账户，按成交号哈希选一个桶。示例里是 4 个桶，并发写冲突大约降到原来的四分之一。</li>
+      <li>后台的定时任务，再把各个桶汇总进总账。就像每个收银台先放个小钱箱，下班再统一存进保险柜。比喻不准的地方是，汇总也要记分录，也要带幂等键。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="分桶与异步汇总">
+    <div class="kicker">04 · 两种业界通用解法</div>
+    <h2>只给平台账户用，不给用户账户用</h2>
+    <table class="t">
+      <tr><th style="width:220px">方法</th><th>做法</th><th>代价</th></tr>
+      <tr><td class="hl">分桶</td><td>拆成 N 个子账户，按成交号哈希选桶</td><td>查总额要把 N 个桶相加</td></tr>
+      <tr data-step="1"><td class="hl">异步汇总</td><td>成交只写流水，后台每 T 秒汇总进快照</td><td>快照有 T 秒延迟</td></tr>
+    </table>
+    <div class="card sell" data-step="2">用户账户<b>不分桶、不异步</b>：余额必须实时准确，否则会<b>超额下单</b></div>
+    <div class="card info" data-step="3">思考：64 个桶求和 vs 读汇总表，数值什么时候会不同？</div>
+    <ol class="say">
+      <li>业界常用两个办法。第一个是刚才的分桶。代价是查询总额时，要把 N 个桶加起来。</li>
+      <li>第二个是异步汇总。成交时只写流水，不更新快照。后台每隔 T 秒，把新流水汇总进快照。代价是快照有 T 秒的延迟。</li>
+      <li>注意，这两个办法只用于平台账户。用户账户一般不分桶，也不异步。用户余额必须实时准确，否则会出现超额下单。</li>
+      <li>留个思考题。手续费分成 64 个桶以后，运营要查今天的手续费收入。直接加 64 个桶，和读汇总表，数值什么时候会不一样？</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="Outbox 模式">
+    <div class="kicker">05 · Transactional Outbox</div>
+    <h2>账记了，消息却丢了？</h2>
+    <div class="row" style="gap:16px" data-step="0">
+      <span class="chip info" style="font-size:30px">下游：推送余额</span><span class="chip info" style="font-size:30px">风控额度</span><span class="chip info" style="font-size:30px">数据仓库</span>
+    </div>
+    <div class="lane" data-step="1" data-dim="3">
+      <div class="tag down">错误做法</div>
+      <div class="tl">
+        <div class="node b">COMMIT 记账<small>✓ 已落库</small></div><div class="arrow"></div>
+        <div class="node r" data-step="2">进程崩溃<small>两步之间</small></div><div class="arrow" data-step="2"></div>
+        <div class="node" data-step="2" style="color:var(--text-2);border-style:dashed">发消息 MQ<small>✗ 永远没发出</small></div>
+      </div>
+    </div>
+    <div class="lane" data-step="3">
+      <div class="tag up">Outbox</div>
+      <div class="tl">
+        <div class="node g">同一事务<small>流水 + 快照 + outbox 事件</small></div><div class="arrow" data-step="4"></div>
+        <div class="node i" data-step="4">发布器轮询<small>未发布事件</small></div><div class="arrow" data-step="4"></div>
+        <div class="node i" data-step="4">消息队列</div><div class="arrow" data-step="4"></div>
+        <div class="node b" data-step="4">标记<small>published_at</small></div>
+      </div>
+    </div>
+    <div class="card gold" data-step="3">流水、快照、事件<b>同一事务提交</b>：要么全部成功，要么全部失败 → 事件不会比账本少</div>
+    <ol class="say">
+      <li>最后一段，outbox 模式。账本记完账，要通知下游。比如推送余额给用户，更新风控额度，写入数据仓库。</li>
+      <li>错误的做法是，先提交数据库事务，再发消息到消息队列。</li>
+      <li>如果进程正好在这两步之间崩溃，账已经记了，消息却丢了。用户的余额变了，界面和风控却不知道。</li>
+      <li>outbox 的做法是，在同一个数据库事务里写入三样东西。流水、快照，和一条 outbox 事件记录。三者要么全部成功，要么全部失败。</li>
+      <li>然后由独立的发布器轮询 outbox 表，把还没发布的事件发给消息队列。发布成功后，标记发布时间。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="去重与死信">
+    <div class="kicker">05 · Outbox 的另一面</div>
+    <h2>不丢，但可能重 → 下游去重</h2>
+    <div class="grid3">
+      <div class="card gold" data-step="0"><h3>可能重复</h3>发完消息、标记之前崩溃 → 重启后再发一次</div>
+      <div class="card buy" data-step="1"><h3>按事件 ID 去重</h3>下游消费端幂等</div>
+      <div class="card sell" data-step="2"><h3>死信</h3>重试超过上限 → Dead Letter → 人工处理</div>
+    </div>
+    <div class="formula" data-step="1" style="text-align:center">至少一次投递 <span class="hl">+</span> 消费端幂等 <span class="hl">=</span> 效果上恰好一次</div>
+    <div class="card warn" data-step="3">必须告警：<b>outbox 表堆积</b> → 消息队列或发布器故障</div>
+    <ol class="say">
+      <li>outbox 解决了丢，但带来了重。发布器可能发完消息，还没来得及标记，就崩溃了。重启以后，同一个事件会再发一次。</li>
+      <li>所以下游必须按事件 ID 去重。你会发现，这又回到了幂等。至少投递一次，加上消费端幂等，是整套系统的基本组合。</li>
+      <li>发布失败时，发布器记录重试次数。超过上限，事件进入死信，交给人工处理。</li>
+      <li>还有一个必须告警的指标，就是 outbox 表堆积。它说明消息队列或者发布器出了故障。堆积越久，用户看到的余额就越旧。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">重复是常态：每个资金动作带<span class="hl">业务唯一键</span>，唯一索引兜底。</li>
+      <li data-step="0">流水只追加，错了<span class="hl">冲正</span>；三方对账不平，先停提币再排查。</li>
+      <li data-step="1">热点平台账户<span class="hl">分桶</span>或异步汇总；事件走 <span class="hl">outbox</span>，下游去重。</li>
+    </ul>
+    <div class="card info" data-step="3"><b>下集 EP09 · 订单簿与撮合规则</b>：成交是怎样产生的</div>
+    <ol class="say">
+      <li>最后小结三点。第一，重复是常态。每个资金动作带业务唯一键，由唯一索引兜底。</li>
+      <li>第二，流水只追加，错了就冲正。快照可以重建。三方对账用独立数据源互相检查，不平就先停提币。</li>
+      <li>第三，热点平台账户用分桶或者异步汇总。事件和账在同一个事务里落库，用 outbox 发出去，下游去重。</li>
+      <li>账本讲完了。下一集，我们去看成交是怎样产生的，也就是订单簿与撮合规则。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  function idemStep(el, st) {
+    const off = el.querySelector('#pOff'), on = el.querySelector('#pOn');
+    const ev = (n, dupLine) => (n >= 1 ? '<div>#1 投递 T1 → 记账</div>' : '<div class="muted">等待成交事件…</div>') + (n >= 2 ? dupLine : '');
+    const paint = (p, a, b, evHtml, status, cls, badBal) => {
+      p.querySelector('.ev').innerHTML = evHtml;
+      const [A, B] = p.querySelectorAll('.bal');
+      A.querySelector('.v').textContent = a; B.querySelector('.v').textContent = b;
+      A.className = 'bal' + (badBal ? ' bad' : ''); B.className = 'bal' + (badBal ? ' bad' : '');
+      const s = p.querySelector('.status'); s.className = 'status ' + cls; s.textContent = status;
+    };
+    // left: idempotency off
+    if (st === 0) paint(off, '0', '1.00', ev(0), '尚未投递', '', false);
+    else if (st === 1) paint(off, '0.04', '0.96', ev(1), '第一次：正常记账', 'ok', false);
+    else paint(off, '0.08', '0.92', ev(2, '<div class="acc">#2 重投 T1 → 又记一遍 ✗</div>'), st >= 4 ? '每笔分录各自平衡 → 平衡校验看不出' : '买方多收币，卖方多扣币', 'bad', true);
+    // right: idempotency on
+    if (st === 0) paint(on, '0', '1.00', ev(0), '尚未投递', '', false);
+    else if (st <= 2) paint(on, '0.04', '0.96', ev(1), '第一次：正常记账', 'ok', false);
+    else paint(on, '0.04', '0.96', ev(2, '<div class="rej">#2 重投 T1 → 键已存在，返回首次结果 ✓</div>'), 'DUPLICATE：不再记账', 'ok', false);
+  }
+  function revStep(el, st) {
+    const rows = [
+      ['#101', '充值 · 贷 用户A-可用', '+1000', '', 'err'],
+      ['#102', '冲正 · 借 用户A-可用', '−1000', '引用 #101', 'rev'],
+      ['#103', '充值 · 贷 用户A-可用', '+100', '', 'fix'],
+    ];
+    const n = st <= 1 ? 1 : st === 2 ? 2 : 3;
+    el.querySelector('#jt').innerHTML = '<tr><th>流水号</th><th>分录</th><th style="text-align:right">金额</th><th>引用</th></tr>' +
+      rows.slice(0, n).map((r, i) => `<tr class="${r[4]}${i === n - 1 && st >= 2 && st <= 3 ? ' new' : ''}"><td class="mono">${r[0]}</td><td>${r[1]}</td><td class="num">${r[2]}</td><td>${r[3]}</td></tr>`).join('');
+    el.querySelector('#rbal').textContent = ['1,000', '1,000', '0', '100', '100'][st];
+    el.querySelector('#rbal').style.color = st <= 1 ? 'var(--sell)' : st === 2 ? 'var(--warn)' : 'var(--buy)';
+    el.querySelector('#noUpd').style.visibility = st >= 1 ? 'visible' : 'hidden';
+    el.querySelector('#revWhy').style.visibility = st >= 4 ? 'visible' : 'hidden';
+  }
+  function reconStep(el, st) {
+    const set = (id, cls, txt) => { const n = el.querySelector(id); n.className = 'rc ' + cls; n.querySelector('.st').textContent = txt; n.style.opacity = st >= 1 ? 1 : .35; };
+    set('#rc1', st >= 1 ? 'ok' : 'idle', st >= 1 ? '通过 ✓' : '待检查');
+    const bad = st >= 4;
+    el.querySelector('#r2a').textContent = '500 BTC';
+    el.querySelector('#r2b').textContent = bad ? '480 BTC' : '502 BTC';
+    el.querySelector('#r2c').textContent = bad ? '0' : '2 BTC';
+    set('#rc2', st >= 2 ? (bad ? 'bad' : 'ok') : 'idle', st >= 2 ? (bad ? '差 20 BTC ✗' : '500 + 在途 2 = 502 ✓') : '待检查');
+    set('#rc3', st >= 3 ? 'ok' : 'idle', st >= 3 ? '相等 ✓' : '待检查');
+    el.querySelector('#alarm').style.visibility = bad ? 'visible' : 'hidden';
+  }
+  function hotStep(el, st) {
+    const tr = Array.from({ length: 12 }, (_, i) => 'T' + (i + 1));
+    el.querySelector('#trades').innerHTML = tr.map(t => `<div class="tc">${t}</div>`).join('');
+    el.querySelector('#hotH').textContent = st >= 3 ? '分桶：hash(trade_id) mod 4' : '所有成交都要写同一行';
+    const q = a => `<div class="q">${a.map(t => `<span class="tc">${t}</span>`).join('')}</div>`;
+    let h = '';
+    if (st < 3) {
+      h = `<div class="acct ${st >= 1 ? 'hot' : ''}"><b>平台手续费收入-USDT</b> <span class="muted">· 1 行快照</span>` +
+        (st >= 1 ? `<div style="margin-top:10px">行锁：写入中 <span class="mono">T1</span>，排队 <b class="down">11</b></div>${q(tr.slice(1))}` : '<div class="muted" style="margin-top:10px">每笔成交：贷 手续费收入</div>') + '</div>';
+      if (st >= 2) h += '<div class="card gold" style="font-size:32px">比喻：100 个收银台，只有<b>1 个保险柜</b> → 门口排长队</div>';
+    } else {
+      const b = [[], [], [], []]; tr.forEach((t, i) => b[i % 4].push(t));
+      h = '<div class="buckets">' + b.map((x, i) => `<div class="acct"><b>桶 ${i}</b><div class="muted" style="font-size:24px">排队 ${x.length - 1}</div>${q(x)}</div>`).join('') + '</div>';
+      h += '<div class="card info" style="font-size:30px">每个事务只锁 1 个桶 → 写冲突约降为 <b>1/4</b></div>';
+      if (st >= 4) h += '<div class="flow"><div class="node info">定时汇总任务<small>记分录 + 幂等键</small></div><div class="arrow gold"></div><div class="node gold">手续费收入总账</div></div>';
+    }
+    el.querySelector('#hot').innerHTML = h;
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

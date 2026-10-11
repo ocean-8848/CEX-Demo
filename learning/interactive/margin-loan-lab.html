@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>杠杆借贷实验室</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 8px 0; }
+  .stats .stat .v { font-size: 18px; word-break: break-all; }
+  .chart { width: 100%; height: auto; display: block; background: var(--surface-2); border-radius: 8px; }
+  .chart .grid-line { stroke: var(--border); stroke-width: 1; }
+  .chart .c-borrow { stroke: var(--accent); stroke-width: 2.4; fill: none; }
+  .chart .c-supply { stroke: var(--info); stroke-width: 2; fill: none; }
+  .chart .c-kink { stroke: var(--warn); stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .chart .c-trail { fill: var(--sell); opacity: .35; }
+  .chart .dot-b { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+  .chart .dot-s { fill: var(--info); stroke: var(--surface); stroke-width: 2; }
+  .chart .t-axis { fill: var(--text-2); font-size: 11px; }
+  .chart .t-kink { fill: var(--warn); font-size: 12px; }
+  .chart .t-b { fill: var(--accent); font-size: 12px; font-weight: 600; }
+  .chart .t-s { fill: var(--info); font-size: 12px; font-weight: 600; }
+  .chart .l-price { stroke: var(--text); stroke-width: 2; fill: none; }
+  .chart .l-entry { stroke: var(--info); stroke-width: 1.2; stroke-dasharray: 6 4; }
+  .chart .l-call { stroke: var(--warn); stroke-width: 1.6; stroke-dasharray: 4 3; }
+  .chart .l-liq { stroke: var(--sell); stroke-width: 1.8; }
+  .chart .l-bk { stroke: var(--text-2); stroke-width: 1.2; stroke-dasharray: 2 3; }
+  .chart .t-call { fill: var(--warn); font-size: 12px; }
+  .chart .t-liq { fill: var(--sell); font-size: 12px; }
+  .chart .t-bk { fill: var(--text-2); font-size: 12px; }
+  .chart .t-entry { fill: var(--info); font-size: 12px; }
+  .chart .dot-liq { fill: var(--sell); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 4px; border-radius: 2px; }
+  .formula { font-family: var(--mono); font-size: 13px; background: var(--surface-2); border-radius: 8px; padding: 10px; overflow-x: auto; white-space: pre; }
+  .gauge { position: relative; height: 18px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; margin: 6px 0 2px; }
+  .gauge .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--buy); transition: width .2s, background .2s; }
+  .gauge .mark { position: absolute; top: -2px; bottom: -2px; width: 2px; }
+  .gauge-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-2); font-family: var(--mono); }
+  .flow { list-style: none; padding: 0; margin: 8px 0; }
+  .flow li { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 6px 0; color: var(--text-2); background: var(--surface); }
+  .flow li.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+  .flow li.bad { border-color: var(--sell); background: var(--sell-soft); color: var(--text); }
+  .flow li.good { border-color: var(--buy); background: var(--buy-soft); color: var(--text); }
+  .flow li.skip { opacity: .4; }
+  .state-pill { font-size: 14px; padding: 3px 12px; }
+  .inline-check { display: flex; align-items: center; gap: 6px; margin: 10px 0 4px; font-size: 13px; color: var(--text-2); }
+  .inline-check input { margin: 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../products/P01-margin-and-loans.md">配套章节：P01 杠杆与借贷</a>
+  </header>
+  <h1>杠杆借贷实验室</h1>
+  <p class="lead">左边是"钱从哪来"：理财存款组成的借贷资金池，利率随利用率按拐点曲线变化。右边是"钱借去干什么"：一个杠杆账户，价格下跌时保证金水平逼近追保线和强平线。全部数值都是示例。</p>
+
+  <div class="callout warn small">⚠️ 本页仅用于学习交易所系统设计，不构成投资建议。拐点利率模型是业界通用做法（参考链上借贷协议公开模型），币安内部利率模型未公开。追保线 1.3 / 强平线 1.1 取自币安全仓 Classic 3x 公开规则（截至 2026 年公开资料，以官网为准）。</div>
+
+  <div class="card small">
+    <strong>怎么玩</strong>
+    <ol style="margin:6px 0 0; padding-left:20px;">
+      <li>在"① 借贷资金池"里拖动利用率、拐点、斜率。曲线上的两个圆点是当前借款利率和存款利率。</li>
+      <li>点"模拟挤兑"：存款人连续取钱，利用率飙升，利率沿曲线冲高；随后借款人还款、新存款进入，利率回落。</li>
+      <li>在"② 杠杆账户"里设本金和借入倍数，拖动价格或点"播放行情"。保证金水平跌破强平线时，下方展示强平结果：剩余资产退回，或产生坏账。</li>
+    </ol>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button class="primary" data-tab="p1" role="tab" type="button">① 借贷资金池</button>
+    <button data-tab="p2" role="tab" type="button">② 杠杆账户</button>
+  </nav>
+
+  <!-- ============ Tab 1: pool ============ -->
+  <section id="p1" class="panel active">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>利率模型参数</h3>
+        <label for="util">利用率 U = 已借出 / 总存款</label>
+        <div class="range-row"><input id="util" type="range" min="0" max="100" step="0.5" value="70"><output id="utilOut">70%</output></div>
+        <label for="base">基础利率（年化）</label>
+        <div class="range-row"><input id="base" type="range" min="0" max="5" step="0.25" value="1"><output id="baseOut">1%</output></div>
+        <label for="kink">拐点利用率 U*</label>
+        <div class="range-row"><input id="kink" type="range" min="50" max="95" step="1" value="80"><output id="kinkOut">80%</output></div>
+        <label for="s1">斜率1（拐点前，年化）</label>
+        <div class="range-row"><input id="s1" type="range" min="0" max="20" step="0.5" value="6"><output id="s1Out">6%</output></div>
+        <label for="s2">斜率2（拐点后，年化）</label>
+        <div class="range-row"><input id="s2" type="range" min="10" max="300" step="5" value="60"><output id="s2Out">60%</output></div>
+        <label for="rf">平台抽成（Reserve Factor）</label>
+        <div class="range-row"><input id="rf" type="range" min="0" max="30" step="1" value="10"><output id="rfOut">10%</output></div>
+        <div class="formula" style="margin-top:12px" id="poolFormula"></div>
+      </div>
+
+      <div class="card">
+        <h3>资金池状态（总存款初始 100M USDT）</h3>
+        <div class="stats">
+          <div class="stat"><span class="k">总存款 D</span><span class="v" id="pD">-</span></div>
+          <div class="stat"><span class="k">已借出 B</span><span class="v" id="pB">-</span></div>
+          <div class="stat"><span class="k">可赎回余额 D − B</span><span class="v" id="pIdle">-</span></div>
+          <div class="stat"><span class="k">赎回排队</span><span class="v" id="pQueue">-</span></div>
+          <div class="stat"><span class="k">借款利率 R</span><span class="v" id="pR" style="color:var(--accent)">-</span></div>
+          <div class="stat"><span class="k">存款利率 S</span><span class="v" id="pS" style="color:var(--info)">-</span></div>
+          <div class="stat"><span class="k">平台利差收入 / 年</span><span class="v" id="pFee">-</span></div>
+          <div class="stat"><span class="k">本轮利率峰值</span><span class="v" id="pPeak">-</span></div>
+        </div>
+        <div class="btn-row">
+          <button id="runBtn" class="sell" type="button">模拟挤兑</button>
+          <button id="poolReset" type="button">重置资金池</button>
+        </div>
+        <div class="log" id="poolLog" aria-live="polite">点击"模拟挤兑"开始。</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>拐点利率曲线</h3>
+      <svg id="kinkChart" class="chart" viewBox="0 0 640 280" role="img" aria-label="利用率与利率曲线"></svg>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>借款利率 R(U)</span>
+        <span><i style="background:var(--info)"></i>存款利率 S(U) = R × U × (1 − 抽成)</span>
+        <span><i style="background:var(--warn)"></i>拐点 U*</span>
+        <span><i style="background:var(--sell)"></i>挤兑轨迹</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Tab 2: margin account ============ -->
+  <section id="p2" class="panel">
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>开仓参数（全仓，单币种做多 BTC）</h3>
+        <label for="principal">本金（USDT）</label>
+        <input id="principal" type="number" value="1000" min="10" step="100">
+        <label for="mult">借入倍数（借款 = 本金 × 倍数）</label>
+        <div class="range-row"><input id="mult" type="range" min="0.5" max="9" step="0.5" value="2"><output id="multOut">2x</output></div>
+        <label for="entry">开仓价（USDT）</label>
+        <input id="entry" type="number" value="50000" min="100" step="100">
+        <label for="apr">借款年化利率（示例，按小时计息）</label>
+        <div class="range-row"><input id="apr" type="range" min="0" max="60" step="1" value="8"><output id="aprOut">8%</output></div>
+        <label for="tier">追保线 / 强平线</label>
+        <select id="tier">
+          <option value="1.3,1.1">全仓 Classic 3x：1.3 / 1.1（公开资料）</option>
+          <option value="1.16,1.1">全仓 Classic 5x：1.16 / 1.1（公开资料）</option>
+          <option value="1.25,1.05">自定义示例：1.25 / 1.05</option>
+        </select>
+        <label for="slip">强平成交相对标记价的折价（滑点或跳空，示例）</label>
+        <div class="range-row"><input id="slip" type="range" min="0" max="20" step="0.5" value="1"><output id="slipOut">1%</output></div>
+        <div class="formula" style="margin-top:12px" id="mFormula"></div>
+      </div>
+
+      <div class="card">
+        <h3>实时指标 <span id="mState" class="pill buy state-pill">正常</span></h3>
+        <div class="stats">
+          <div class="stat"><span class="k">持有 BTC</span><span class="v" id="mQ">-</span></div>
+          <div class="stat"><span class="k">总资产</span><span class="v" id="mAsset">-</span></div>
+          <div class="stat"><span class="k">负债（本金 + 利息）</span><span class="v" id="mDebt">-</span></div>
+          <div class="stat"><span class="k">已计利息 / 小时数</span><span class="v" id="mInt">-</span></div>
+          <div class="stat"><span class="k">保证金水平 ML</span><span class="v" id="mML">-</span></div>
+          <div class="stat"><span class="k">追保价</span><span class="v" id="mCallP" style="color:var(--warn)">-</span></div>
+          <div class="stat"><span class="k">强平价</span><span class="v down" id="mLiqP">-</span></div>
+          <div class="stat"><span class="k">破产价（资产 = 负债）</span><span class="v" id="mBkP">-</span></div>
+        </div>
+        <div class="gauge" aria-hidden="true"><div class="fill" id="gFill"></div><div class="mark" id="gCall" style="background:var(--warn)"></div><div class="mark" id="gLiq" style="background:var(--sell)"></div></div>
+        <div class="gauge-scale"><span>1.0</span><span>ML 刻度（满格 = 2.0）</span><span>2.0</span></div>
+        <label for="price">BTC 标记价格（拖动）</label>
+        <div class="range-row"><input id="price" type="range" min="20000" max="80000" step="10" value="50000"><output id="priceOut">50000</output></div>
+        <div class="btn-row">
+          <button id="play" class="primary" type="button">▶ 播放行情</button>
+          <button id="mReset" type="button">重置账户</button>
+        </div>
+        <label for="trend">行情倾向（每步 = 6 小时）</label>
+        <select id="trend">
+          <option value="-1">偏向下跌</option>
+          <option value="0">随机游走</option>
+          <option value="1">偏向上涨</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>价格走势与风险线</h3>
+      <svg id="pChart" class="chart" viewBox="0 0 640 260" role="img" aria-label="价格与追保线强平线"></svg>
+      <div class="legend">
+        <span><i style="background:var(--text)"></i>标记价格</span>
+        <span><i style="background:var(--info)"></i>开仓价</span>
+        <span><i style="background:var(--warn)"></i>追保价</span>
+        <span><i style="background:var(--sell)"></i>强平价</span>
+        <span><i style="background:var(--text-2)"></i>破产价</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>强平流程</h3>
+      <ul class="flow" id="liqFlow">
+        <li data-k="1">① 保证金水平 ≤ 强平线：停止交易，撤销挂单</li>
+        <li data-k="2">② 强平引擎按市场价卖出全部 BTC</li>
+        <li data-k="3">③ 卖出所得先偿还借款本金和利息</li>
+        <li data-k="4">④ 有剩余：扣清算费（示例 1%）后退回用户</li>
+        <li data-k="5">⑤ 不够还：差额记为坏账，由杠杆保险基金或平台承担</li>
+      </ul>
+      <p class="small" id="liqText">账户尚未触发强平。</p>
+    </div>
+  </section>
+
+  <div class="card" style="margin-top:16px">
+    <h3>试一试</h3>
+    <ol class="small" style="padding-left:20px;margin:0">
+      <li>资金池默认参数下，把利用率从 70% 拖到 80% 再拖到 95%。借款利率分别是多少？（应为 6.25%、7%、52%）为什么拐点之后曲线突然变陡？</li>
+      <li>把拐点改成 60%、斜率2 改成 150%，再点"模拟挤兑"。对比默认参数下的利率峰值和赎回排队金额。拐点低、斜率大对存款人有什么好处和坏处？</li>
+      <li>杠杆账户：本金 1,000、借入 2 倍、开仓价 50,000。强平价应为 36,666.67。把"强平折价"拉到 12%，再把价格拖到强平价以下。坏账是多少？把借入倍数改为 4 倍并选 3x 档，开仓时为什么已经处于追保状态？</li>
+    </ol>
+  </div>
+
+  <footer class="note">数据为模拟示例。保证金水平公式与 3x / 5x 阈值来自币安杠杆公开说明，按小时计息来自币安杠杆公开说明（截至 2026 年公开资料，以官网为准）。拐点利率模型、清算费、强平折价为业界通用做法或示例。金额按 0.01 USDT 四舍五入显示。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var SVGNS = 'http://www.w3.org/2000/svg';
+
+  /* ---------- helpers ---------- */
+  function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+  function fmt(n, d) {
+    if (!isFinite(n)) return '—';
+    if (d === undefined) d = 2;
+    var f = Math.pow(10, d);
+    var r = Math.round((n + (n >= 0 ? Number.EPSILON : -Number.EPSILON)) * f) / f;
+    if (Object.is(r, -0)) r = 0;
+    return r.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function pct(n, d) { return isFinite(n) ? fmt(n * 100, d === undefined ? 2 : d) + '%' : '—'; }
+  function el(name, attrs, text) {
+    var e = document.createElementNS(SVGNS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function clear(svg) { while (svg.firstChild) svg.removeChild(svg.firstChild); }
+  function gauss() { var u = 1 - Math.random(), v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+
+  /* ---------- tabs ---------- */
+  document.querySelectorAll('.tabs button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.tabs button').forEach(function (x) { x.classList.toggle('primary', x === b); });
+      document.querySelectorAll('.panel').forEach(function (p) { p.classList.toggle('active', p.id === b.dataset.tab); });
+      if (b.dataset.tab === 'p2') renderMargin(); else renderPool();
+    });
+  });
+
+  /* =====================================================
+     Tab 1: lending pool with kink model
+     Amounts stored as integers in units of 0.01M USDT (= 10,000 USDT)
+     ===================================================== */
+  var D0 = 10000;              // 100M USDT
+  var pool = { D: D0, B: 7000, queue: 0, trail: [], peak: 0, running: false, timer: null, tick: 0, phase: '' };
+
+  function params() {
+    return {
+      base: +$('base').value / 100,
+      kink: +$('kink').value / 100,
+      s1: +$('s1').value / 100,
+      s2: +$('s2').value / 100,
+      rf: +$('rf').value / 100
+    };
+  }
+  function borrowRate(u, p) {
+    if (u <= p.kink) return p.base + p.s1 * (u / p.kink);
+    return p.base + p.s1 + p.s2 * ((u - p.kink) / (1 - p.kink));
+  }
+  function supplyRate(u, p) { return borrowRate(u, p) * u * (1 - p.rf); }
+  function util() { return pool.D > 0 ? Math.min(1, pool.B / pool.D) : 1; }
+  function m(units) { return fmt(units / 100, 2) + 'M'; }   // units -> "xx.xxM"
+
+  function syncUtilSlider() {
+    $('util').value = String(Math.round(util() * 200) / 2);
+  }
+
+  function renderPool() {
+    var p = params();
+    $('utilOut').textContent = fmt(util() * 100, 1) + '%';
+    $('baseOut').textContent = fmt(p.base * 100, 2) + '%';
+    $('kinkOut').textContent = fmt(p.kink * 100, 0) + '%';
+    $('s1Out').textContent = fmt(p.s1 * 100, 1) + '%';
+    $('s2Out').textContent = fmt(p.s2 * 100, 0) + '%';
+    $('rfOut').textContent = fmt(p.rf * 100, 0) + '%';
+
+    var u = util(), R = borrowRate(u, p), S = supplyRate(u, p);
+    $('pD').textContent = m(pool.D);
+    $('pB').textContent = m(pool.B);
+    $('pIdle').textContent = m(pool.D - pool.B);
+    $('pQueue').textContent = m(pool.queue);
+    $('pQueue').style.color = pool.queue > 0 ? 'var(--sell)' : '';
+    $('pR').textContent = pct(R);
+    $('pS').textContent = pct(S);
+    // platform income per year in M USDT = R * B * rf
+    $('pFee').textContent = fmt(R * (pool.B / 100) * p.rf, 3) + 'M';
+    $('pPeak').textContent = pool.peak > 0 ? pct(pool.peak) : '—';
+
+    $('poolFormula').textContent =
+      'U = ' + m(pool.B) + ' / ' + m(pool.D) + ' = ' + pct(u) + '\n' +
+      (u <= p.kink
+        ? 'U ≤ U*：R = ' + pct(p.base) + ' + ' + pct(p.s1) + ' × ' + fmt(u, 4) + ' / ' + fmt(p.kink, 2) + ' = ' + pct(R)
+        : 'U > U*：R = ' + pct(p.base) + ' + ' + pct(p.s1) + ' + ' + pct(p.s2) + ' × (' + fmt(u, 4) + ' − ' + fmt(p.kink, 2) + ') / ' + fmt(1 - p.kink, 2) + ' = ' + pct(R)) + '\n' +
+      'S = R × U × (1 − 抽成) = ' + pct(R) + ' × ' + fmt(u, 4) + ' × ' + fmt(1 - p.rf, 2) + ' = ' + pct(S);
+    drawKink(p, u);
+  }
+
+  function drawKink(p, u) {
+    var svg = $('kinkChart'); clear(svg);
+    var W = 640, H = 280, L = 48, Rm = 16, T = 16, Bm = 34;
+    var maxR = borrowRate(1, p);
+    var yMax = Math.max(0.1, Math.ceil(maxR * 10) / 10);
+    var x = function (v) { return L + v * (W - L - Rm); };
+    var y = function (v) { return T + (1 - Math.min(v, yMax) / yMax) * (H - T - Bm); };
+    var i, v;
+    for (i = 0; i <= 5; i++) {
+      v = yMax * i / 5;
+      svg.appendChild(el('line', { x1: L, x2: W - Rm, y1: y(v), y2: y(v), 'class': 'grid-line' }));
+      svg.appendChild(el('text', { x: L - 6, y: y(v) + 4, 'text-anchor': 'end', 'class': 't-axis' }, fmt(v * 100, 0) + '%'));
+    }
+    for (i = 0; i <= 10; i += 2) {
+      svg.appendChild(el('text', { x: x(i / 10), y: H - 14, 'text-anchor': 'middle', 'class': 't-axis' }, (i * 10) + '%'));
+    }
+    svg.appendChild(el('text', { x: W - Rm, y: H - 2, 'text-anchor': 'end', 'class': 't-axis' }, '利用率 U →'));
+    // kink line
+    svg.appendChild(el('line', { x1: x(p.kink), x2: x(p.kink), y1: T, y2: H - Bm, 'class': 'c-kink' }));
+    svg.appendChild(el('text', { x: x(p.kink) - 4, y: T + 12, 'text-anchor': 'end', 'class': 't-kink' }, '拐点 ' + fmt(p.kink * 100, 0) + '%'));
+    // curves
+    var db = '', ds = '';
+    for (i = 0; i <= 200; i++) {
+      v = i / 200;
+      db += (i ? 'L' : 'M') + x(v).toFixed(1) + ' ' + y(borrowRate(v, p)).toFixed(1);
+      ds += (i ? 'L' : 'M') + x(v).toFixed(1) + ' ' + y(supplyRate(v, p)).toFixed(1);
+    }
+    svg.appendChild(el('path', { d: db, 'class': 'c-borrow' }));
+    svg.appendChild(el('path', { d: ds, 'class': 'c-supply' }));
+    // trail
+    pool.trail.forEach(function (t) {
+      svg.appendChild(el('circle', { cx: x(t), cy: y(borrowRate(t, p)), r: 3.5, 'class': 'c-trail' }));
+    });
+    // current points
+    var R = borrowRate(u, p), S = supplyRate(u, p);
+    svg.appendChild(el('circle', { cx: x(u), cy: y(R), r: 6, 'class': 'dot-b' }));
+    svg.appendChild(el('circle', { cx: x(u), cy: y(S), r: 5, 'class': 'dot-s' }));
+    var anchor = u > 0.75 ? 'end' : 'start', dx = u > 0.75 ? -10 : 10;
+    svg.appendChild(el('text', { x: x(u) + dx, y: y(R) - 8, 'text-anchor': anchor, 'class': 't-b' }, '借 ' + pct(R)));
+    svg.appendChild(el('text', { x: x(u) + dx, y: y(S) + 16, 'text-anchor': anchor, 'class': 't-s' }, '存 ' + pct(S)));
+  }
+
+  function poolLog(html) {
+    var box = $('poolLog');
+    if (pool.tick === 1) box.innerHTML = '';
+    box.innerHTML += html + '\n';
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function stopRun(msg) {
+    clearInterval(pool.timer); pool.timer = null; pool.running = false;
+    $('runBtn').textContent = '模拟挤兑';
+    if (msg) poolLog('<span class="note">' + msg + '</span>');
+  }
+
+  function stepRun() {
+    var p = params();
+    pool.tick += 1;
+    var line = 't=' + pool.tick + ' ';
+    if (pool.tick <= 8) {
+      // Phase 1: depositors withdraw 5M each tick (500 units), limited by idle balance
+      var want = 500 + pool.queue;
+      var idle = pool.D - pool.B;
+      var paid = Math.min(want, idle);
+      pool.D -= paid;
+      pool.queue = want - paid;
+      line += '存款人申请取出 ' + m(want) + '，实付 ' + m(paid);
+      if (pool.queue > 0) line += '，<span class="err">排队 ' + m(pool.queue) + '</span>';
+    } else {
+      // Phase 2: high rates make borrowers repay and attract new deposits
+      var u0 = util();
+      var R0 = borrowRate(u0, p);
+      var repay = 0, newDep = 0;
+      if (u0 > p.kink) {
+        repay = Math.round(pool.B * Math.min(0.12, R0 / 4));
+        newDep = Math.round(pool.D * Math.min(0.06, R0 / 8));
+      } else {
+        repay = Math.round(pool.B * 0.01);
+        newDep = Math.round(pool.D * 0.01);
+      }
+      pool.B -= repay;
+      pool.D += newDep;
+      var idle2 = pool.D - pool.B;
+      var pay = Math.min(pool.queue, idle2);
+      pool.D -= pay;
+      pool.queue -= pay;
+      line += '<span class="ok">借款人还款 ' + m(repay) + '，新存款 ' + m(newDep) + '</span>';
+      if (pay > 0) line += '，兑付排队 ' + m(pay);
+    }
+    var u = util(), R = borrowRate(u, p), S = supplyRate(u, p);
+    pool.trail.push(u);
+    if (R > pool.peak) pool.peak = R;
+    line += ' → U ' + pct(u, 1) + '，借 ' + pct(R) + '，存 ' + pct(S);
+    poolLog(line);
+    syncUtilSlider();
+    renderPool();
+    if (pool.tick > 8 && u <= p.kink && pool.queue === 0) stopRun('利用率回到拐点以下，赎回排队清零。挤兑结束。');
+    else if (pool.tick >= 40) stopRun('达到 40 步上限。');
+  }
+
+  $('runBtn').addEventListener('click', function () {
+    if (pool.running) { stopRun('已暂停。'); return; }
+    if (pool.tick === 0 || pool.tick >= 40 || (pool.tick > 8 && pool.queue === 0)) {
+      pool.tick = 0; pool.trail = [util()]; pool.peak = borrowRate(util(), params());
+    }
+    pool.running = true;
+    $('runBtn').textContent = '⏸ 暂停';
+    pool.timer = setInterval(stepRun, 650);
+  });
+  $('poolReset').addEventListener('click', function () {
+    stopRun();
+    pool.D = D0; pool.B = 7000; pool.queue = 0; pool.trail = []; pool.peak = 0; pool.tick = 0;
+    $('util').value = '70';
+    $('poolLog').textContent = '点击"模拟挤兑"开始。';
+    renderPool();
+  });
+  $('util').addEventListener('input', function () {
+    if (pool.running) stopRun('拖动滑块，已暂停。');
+    pool.B = Math.round(pool.D * (+$('util').value) / 100);
+    pool.trail = []; pool.peak = 0; pool.tick = 0; pool.queue = 0;
+    renderPool();
+  });
+  ['base', 'kink', 's1', 's2', 'rf'].forEach(function (id) { $(id).addEventListener('input', renderPool); });
+
+  /* =====================================================
+     Tab 2: cross-margin account, single long BTC position
+     Money held in integer cents of USDT; BTC quantity as float
+     ===================================================== */
+  var acc = null, playTimer = null;
+  var HOURS_PER_STEP = 6;
+
+  function tierLines() { var t = $('tier').value.split(','); return { call: +t[0], liq: +t[1] }; }
+
+  function openAccount() {
+    var principal = Math.max(10, +$('principal').value || 1000);
+    var mult = +$('mult').value;
+    var entry = Math.max(100, +$('entry').value || 50000);
+    var principalC = Math.round(principal * 100);
+    var borrowC = Math.round(principalC * mult);
+    acc = {
+      principalC: principalC,
+      borrowC: borrowC,
+      interestC: 0,            // accrued interest, may hold fractions of a cent internally
+      hours: 0,
+      entry: entry,
+      qty: (principalC + borrowC) / 100 / entry,
+      price: entry,
+      history: [entry],
+      liquidated: false,
+      result: null
+    };
+    var pr = $('price');
+    pr.min = String(Math.round(entry * 0.4));
+    pr.max = String(Math.round(entry * 1.6));
+    pr.step = String(Math.max(1, Math.round(entry / 5000)));
+    pr.value = String(entry);
+    resetFlow();
+    $('liqText').textContent = '账户尚未触发强平。';
+  }
+
+  function debtC() { return acc.borrowC + acc.interestC; }
+  function assetC(price) { return acc.qty * price * 100; }
+
+  function accrue(hours) {
+    var apr = +$('apr').value / 100;
+    for (var h = 0; h < hours; h++) {
+      // hourly interest on principal borrowed (simple interest, as in the doc example)
+      acc.interestC += acc.borrowC * apr / 8760;
+      acc.hours += 1;
+    }
+  }
+
+  function resetFlow() {
+    document.querySelectorAll('#liqFlow li').forEach(function (li) { li.className = ''; });
+  }
+
+  function liquidate() {
+    acc.liquidated = true;
+    stopPlay();
+    var slip = +$('slip').value / 100;
+    var execPrice = acc.price * (1 - slip);
+    var proceedsC = Math.round(assetC(execPrice));
+    var dC = Math.round(debtC());
+    var surplusC = proceedsC - dC;
+    var feeC = 0, refundC = 0, badC = 0;
+    if (surplusC >= 0) {
+      feeC = Math.min(surplusC, Math.round(proceedsC * 0.01));
+      refundC = surplusC - feeC;
+    } else {
+      badC = -surplusC;
+    }
+    acc.result = { execPrice: execPrice, proceedsC: proceedsC, dC: dC, feeC: feeC, refundC: refundC, badC: badC };
+    var lis = document.querySelectorAll('#liqFlow li');
+    lis[0].className = 'on'; lis[1].className = 'on'; lis[2].className = 'on';
+    if (badC > 0) { lis[3].className = 'skip'; lis[4].className = 'bad'; }
+    else { lis[3].className = 'good'; lis[4].className = 'skip'; }
+    var txt = '强平触发时标记价 ' + fmt(acc.price) + '，按折价 ' + fmt(slip * 100, 1) + '% 成交于 ' + fmt(execPrice) +
+      '。卖出 ' + fmt(acc.qty, 6) + ' BTC 得 ' + fmt(proceedsC / 100) + ' USDT，偿还负债 ' + fmt(dC / 100) + ' USDT。';
+    if (badC > 0) {
+      txt += ' 卖出所得不够还债，坏账 ' + fmt(badC / 100) + ' USDT，由杠杆保险基金或平台承担。用户本金 ' + fmt(acc.principalC / 100) + ' USDT 全部损失。';
+    } else {
+      txt += ' 扣清算费 ' + fmt(feeC / 100) + ' USDT（示例 1%），退回用户 ' + fmt(refundC / 100) + ' USDT。用户亏损 ' + fmt((acc.principalC - refundC) / 100) + ' USDT。';
+    }
+    $('liqText').textContent = txt;
+  }
+
+  function renderMargin() {
+    if (!acc) openAccount();
+    var t = tierLines();
+    $('multOut').textContent = fmt(+$('mult').value, 1) + 'x';
+    $('aprOut').textContent = $('apr').value + '%';
+    $('slipOut').textContent = fmt(+$('slip').value, 1) + '%';
+    $('priceOut').textContent = fmt(acc.price, 0);
+
+    var dC = debtC();
+    var aC = acc.liquidated ? 0 : assetC(acc.price);
+    var ml = acc.liquidated ? NaN : aC / dC;
+    var callP = t.call * dC / 100 / acc.qty;
+    var liqP = t.liq * dC / 100 / acc.qty;
+    var bkP = dC / 100 / acc.qty;
+
+    $('mQ').textContent = fmt(acc.qty, 6);
+    $('mAsset').textContent = acc.liquidated ? '已强平' : fmt(aC / 100);
+    $('mDebt').textContent = fmt(dC / 100);
+    $('mInt').textContent = fmt(acc.interestC / 100, 4) + ' / ' + acc.hours + 'h';
+    $('mML').textContent = isFinite(ml) ? fmt(ml, 4) : '—';
+    $('mCallP').textContent = fmt(callP);
+    $('mLiqP').textContent = fmt(liqP);
+    $('mBkP').textContent = fmt(bkP);
+
+    // state pill
+    var st = $('mState');
+    if (acc.liquidated) { st.textContent = acc.result && acc.result.badC > 0 ? '已强平 · 坏账' : '已强平'; st.className = 'pill sell state-pill'; }
+    else if (ml <= t.liq) { st.textContent = '强平'; st.className = 'pill sell state-pill'; }
+    else if (ml <= t.call) { st.textContent = '追保（禁止新借款）'; st.className = 'pill warn state-pill'; }
+    else { st.textContent = '正常'; st.className = 'pill buy state-pill'; }
+
+    // gauge: 1.0 .. 2.0
+    var g = function (v) { return Math.max(0, Math.min(100, (v - 1) * 100)); };
+    $('gFill').style.width = (isFinite(ml) ? g(ml) : 0) + '%';
+    $('gFill').style.background = !isFinite(ml) || ml <= t.liq ? 'var(--sell)' : ml <= t.call ? 'var(--warn)' : 'var(--buy)';
+    $('gCall').style.left = g(t.call) + '%';
+    $('gLiq').style.left = g(t.liq) + '%';
+
+    $('mFormula').textContent =
+      '持币 Q = (本金 + 借款) / 开仓价 = ' + fmt((acc.principalC + acc.borrowC) / 100) + ' / ' + fmt(acc.entry, 0) + ' = ' + fmt(acc.qty, 6) + '\n' +
+      'ML = Q × 价格 / (借款 + 利息)' + (isFinite(ml) ? ' = ' + fmt(aC / 100) + ' / ' + fmt(dC / 100) + ' = ' + fmt(ml, 4) : '') + '\n' +
+      '追保价 = ' + t.call + ' × 负债 / Q = ' + fmt(callP) + '\n' +
+      '强平价 = ' + t.liq + ' × 负债 / Q = ' + fmt(liqP) + '\n' +
+      '开仓 ML = (1 + 倍数) / 倍数 = ' + fmt((1 + +$('mult').value) / +$('mult').value, 4) +
+      ((1 + +$('mult').value) / +$('mult').value <= t.call ? '  ← 开仓即低于追保线' : '');
+
+    drawPrice(callP, liqP, bkP);
+  }
+
+  function drawPrice(callP, liqP, bkP) {
+    var svg = $('pChart'); clear(svg);
+    var W = 640, H = 260, L = 60, Rm = 12, T = 12, Bm = 22;
+    var hist = acc.history;
+    var lo = Math.min.apply(null, hist.concat([bkP])) * 0.97;
+    var hi = Math.max.apply(null, hist.concat([acc.entry])) * 1.03;
+    var n = Math.max(40, hist.length);
+    var x = function (i) { return L + (i / (n - 1)) * (W - L - Rm); };
+    var y = function (v) { return T + (1 - (v - lo) / (hi - lo)) * (H - T - Bm); };
+    for (var k = 0; k <= 4; k++) {
+      var v = lo + (hi - lo) * k / 4;
+      svg.appendChild(el('line', { x1: L, x2: W - Rm, y1: y(v), y2: y(v), 'class': 'grid-line' }));
+      svg.appendChild(el('text', { x: L - 6, y: y(v) + 4, 'text-anchor': 'end', 'class': 't-axis' }, fmt(v, 0)));
+    }
+    svg.appendChild(el('text', { x: W - Rm, y: H - 6, 'text-anchor': 'end', 'class': 't-axis' }, '时间（每步 6 小时）→'));
+    var lines = [
+      [acc.entry, 'l-entry', 't-entry', '开仓'],
+      [callP, 'l-call', 't-call', '追保'],
+      [liqP, 'l-liq', 't-liq', '强平'],
+      [bkP, 'l-bk', 't-bk', '破产']
+    ];
+    lines.forEach(function (ln) {
+      svg.appendChild(el('line', { x1: L, x2: W - Rm, y1: y(ln[0]), y2: y(ln[0]), 'class': ln[1] }));
+      svg.appendChild(el('text', { x: L + 4, y: y(ln[0]) - 4, 'class': ln[2] }, ln[3] + ' ' + fmt(ln[0], 0)));
+    });
+    var d = '';
+    hist.forEach(function (p, i) { d += (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p).toFixed(1); });
+    svg.appendChild(el('path', { d: d, 'class': 'l-price' }));
+    if (acc.result) {
+      svg.appendChild(el('circle', { cx: x(hist.length - 1), cy: y(hist[hist.length - 1]), r: 5, 'class': 'dot-liq' }));
+    }
+  }
+
+  function setPrice(p) {
+    if (!acc || acc.liquidated) return;
+    acc.price = p;
+    var t = tierLines();
+    if (assetC(acc.price) / debtC() <= t.liq) liquidate();
+  }
+
+  function stopPlay() {
+    if (playTimer) { clearInterval(playTimer); playTimer = null; }
+    $('play').textContent = '▶ 播放行情';
+  }
+
+  $('play').addEventListener('click', function () {
+    if (playTimer) { stopPlay(); return; }
+    if (!acc || acc.liquidated) { openAccount(); }
+    $('play').textContent = '⏸ 暂停';
+    playTimer = setInterval(function () {
+      var trend = +$('trend').value;
+      var ret = gauss() * 0.015 + trend * 0.006;
+      var p = Math.max(1, acc.price * (1 + ret));
+      accrue(HOURS_PER_STEP);
+      acc.history.push(p);
+      if (acc.history.length > 240) acc.history.shift();
+      $('price').value = String(Math.round(p));
+      setPrice(p);
+      renderMargin();
+      if (acc.history.length >= 240) stopPlay();
+    }, 350);
+  });
+
+  $('price').addEventListener('input', function () {
+    if (!acc || acc.liquidated) return;
+    stopPlay();
+    var p = +$('price').value;
+    acc.history.push(p);
+    if (acc.history.length > 240) acc.history.shift();
+    setPrice(p);
+    renderMargin();
+  });
+
+  $('mReset').addEventListener('click', function () { stopPlay(); openAccount(); renderMargin(); });
+  ['principal', 'mult', 'entry'].forEach(function (id) {
+    $(id).addEventListener('input', function () { stopPlay(); openAccount(); renderMargin(); });
+  });
+  $('tier').addEventListener('change', function () {
+    if (acc && !acc.liquidated) setPrice(acc.price);
+    renderMargin();
+  });
+  ['apr', 'slip'].forEach(function (id) { $(id).addEventListener('input', renderMargin); });
+
+  window.addEventListener('resize', function () { renderPool(); if (acc) renderMargin(); });
+
+  renderPool();
+  openAccount();
+  renderMargin();
+})();
+</script>
+</body>
+</html>

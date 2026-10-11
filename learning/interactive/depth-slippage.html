@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>深度与滑点</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .chart-wrap { width: 100%; }
+  .chart-wrap svg { width: 100%; height: auto; display: block; }
+  .ask-area { fill: var(--sell-soft); stroke: var(--sell); stroke-width: 1.5; }
+  .bid-area { fill: var(--buy-soft); stroke: var(--buy); stroke-width: 1.5; }
+  .ghost { fill: none; stroke: var(--text-2); stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .eat { fill: var(--accent); fill-opacity: .38; stroke: none; }
+  .axis { stroke: var(--border); stroke-width: 1; }
+  .grid-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 4; }
+  .mark-mid { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 3 3; }
+  .mark-avg { stroke: var(--accent); stroke-width: 2; }
+  .mark-size { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  svg text.lbl { font-size: 11px; fill: var(--text-2); }
+  svg text.lbl-strong { font-size: 12px; font-weight: 600; fill: var(--text); }
+  svg text.lbl-accent { font-size: 12px; font-weight: 700; fill: var(--accent); }
+  .side-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
+  .side-toggle button { opacity: .55; }
+  .side-toggle button.active { opacity: 1; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+  .check { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text); margin: 14px 0 4px; }
+  .check input { width: auto; margin: 0; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 8px 0 4px; }
+  .stat .v.small-v { font-size: 18px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .legend i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+  .legend i.ask { background: var(--sell-soft); border: 1px solid var(--sell); }
+  .legend i.bid { background: var(--buy-soft); border: 1px solid var(--buy); }
+  .legend i.eat { background: var(--accent); opacity: .5; }
+  .legend i.ghost { border: 1px dashed var(--text-2); }
+  .legend i.avg { background: var(--accent); height: 3px; vertical-align: 2px; }
+  td.worse { color: var(--sell); font-weight: 600; }
+  ol.howto, ul.try { padding-left: 20px; margin: 6px 0; }
+  ol.howto li, ul.try li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../08-market-data.md">配套章节：08 行情 →</a>
+    <a class="back" href="../06-order-matching.md">06 订单与撮合 →</a>
+  </header>
+  <h1>深度与滑点</h1>
+  <p class="lead">市价单会沿着订单簿逐档成交。订单越大、盘口越薄，成交均价离最优价越远，这个差距就是滑点。本页用一个模拟订单簿（DEMO/USDT，中间价 100.00，全部为示例数据）计算滑点和价格冲击。</p>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="howto small">
+      <li>拖动滑块，调整流动性厚度、价差和市价单大小。</li>
+      <li>看累计深度图：金色区域是你的订单吃掉的部分，金色竖线是成交均价。</li>
+      <li>勾选"做市商撤单"，模拟行情剧烈时做市商撤走挂单。虚线显示另一种情况作对比。</li>
+      <li>在页面底部调整拆单份数，比较一次性下单和拆单（TWAP）的均价。</li>
+    </ol>
+    <h3>试一试</h3>
+    <ul class="try small">
+      <li><b>薄与厚</b>：流动性调到 2，订单 1500。记下滑点。再把流动性调到 9，滑点缩小了多少倍？</li>
+      <li><b>流动性骤降</b>：保持订单 800，勾选"做市商撤单"。对比表里的滑点放大了几倍？订单簿有没有被吃穿？</li>
+      <li><b>拆单</b>：在撤单场景下把拆单份数调到 10。均价改善了多少？想一想：真实市场里，为什么改善通常没这么大？</li>
+    </ul>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+      <h3>参数</h3>
+      <div class="side-toggle">
+        <button class="buy active" id="sideBuy" type="button">市价买入</button>
+        <button class="sell" id="sideSell" type="button">市价卖出</button>
+      </div>
+      <label for="liq">流动性厚度（1 = 很薄，10 = 很厚）</label>
+      <div class="range-row"><input type="range" id="liq" min="1" max="10" step="1" value="5"><output id="liqOut"></output></div>
+      <label for="spread">价差（tick = 0.01 USDT）</label>
+      <div class="range-row"><input type="range" id="spread" min="1" max="40" step="1" value="2"><output id="spreadOut"></output></div>
+      <label for="size">市价单数量（DEMO）</label>
+      <div class="range-row"><input type="range" id="size" min="10" max="3000" step="10" value="500"><output id="sizeOut"></output></div>
+      <label class="check"><input type="checkbox" id="withdraw"> 做市商撤单（近端 20 档撤走 90%，远端撤走 50%，价差扩大）</label>
+      <p class="muted small" style="margin:6px 0 0">订单簿每 0.05 USDT 一档，每侧 60 档。各档数量用固定种子生成，拖动滑块时形状不会乱跳。</p>
+    </div>
+
+    <div class="card">
+      <h3>本单结果 <span class="muted small" id="scenarioName"></span></h3>
+      <div class="stats" id="stats"></div>
+      <div class="callout" id="verdict"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>累计深度图</h3>
+    <div class="chart-wrap" id="chart"></div>
+    <div class="legend">
+      <span><i class="bid"></i>买盘累计</span>
+      <span><i class="ask"></i>卖盘累计</span>
+      <span><i class="eat"></i>本单吃掉的流动性</span>
+      <span><i class="avg"></i>成交均价</span>
+      <span><i class="ghost"></i>另一场景（对比）</span>
+    </div>
+    <p class="muted small" style="margin:8px 0 0">读图：横轴是价格，纵轴是从最优价往外累加的挂单量。金色虚横线的高度等于订单数量，它和卖盘（或买盘）曲线的交点就是最差成交价。曲线越陡，流动性越厚，滑点越小。</p>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+      <h3>正常 vs 做市商撤单后</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>指标</th><th class="num">正常</th><th class="num">撤单后</th></tr></thead>
+          <tbody id="compare"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h3>逐档成交明细 <span class="muted small" id="fillScenario"></span></h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="num">价格</th><th class="num">档位数量</th><th class="num">吃掉</th><th class="num">累计</th><th class="num">累计均价</th></tr></thead>
+          <tbody id="fills"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>为什么大单要拆单：TWAP</h3>
+    <p class="small">TWAP（Time-Weighted Average Price，时间加权平均价格）策略把大单平均拆成 N 份，在一段时间内分批下单。每份只吃最近几档。理想情况下，做市商在两次下单之间补回挂单。</p>
+    <label for="slices">拆成几份</label>
+    <div class="range-row"><input type="range" id="slices" min="1" max="20" step="1" value="5"><output id="slicesOut"></output></div>
+    <div class="stats" id="twap"></div>
+    <div class="callout warn small">⚠️ 本计算假设每份之间订单簿完全恢复、价格不变。真实市场里，拆单期间价格可能朝不利方向移动，别人也可能识别出你的拆单节奏并提前交易。所以拆单降低了冲击成本，但增加了时间风险。</div>
+  </div>
+
+  <footer class="note">
+    数据全部为模拟示例，不代表币安任何交易对的真实深度。价格用整数分（0.01 USDT）计算，数量用整数单位计算，只有展示时才转换成小数。
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var MID = 10000;        // 中间价 100.00，单位：分（tick 0.01）
+  var STEP = 5;           // 每档间隔 0.05
+  var LEVELS = 60;
+  var $ = function (id) { return document.getElementById(id); };
+  var side = 'BUY';
+
+  function fmtP(c) { return (c / 100).toFixed(2); }
+  function fmtPct(x) { return (x * 100).toFixed(3) + '%'; }
+  function fmtInt(n) { return Math.round(n).toLocaleString('en-US'); }
+
+  // 固定种子的伪随机数，保证每次生成相同形状
+  function rng(seed) {
+    return function () {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // 生成订单簿：asks 从低到高，bids 从高到低；数量为整数
+  function buildBook(liq, spreadTicks, withdraw) {
+    var base = Math.round(4 * Math.pow(1.6, liq - 1));
+    var sp = withdraw ? Math.max(spreadTicks * 4, spreadTicks + 20) : spreadTicks;
+    var bestAsk = MID + Math.ceil(sp / 2), bestBid = MID - Math.floor(sp / 2);
+    function side(sign, best, seed) {
+      var r = rng(seed), out = [];
+      for (var i = 0; i < LEVELS; i++) {
+        var q = Math.max(1, Math.round(base * (0.5 + i * 0.05) * (0.6 + 0.8 * r())));
+        if (withdraw) q = i < 20 ? Math.floor(q * 10 / 100) : Math.floor(q * 50 / 100);
+        if (q > 0) out.push({ price: best + sign * i * STEP, qty: q });
+      }
+      return out;
+    }
+    return { asks: side(1, bestAsk, 7), bids: side(-1, bestBid, 11), bestAsk: bestAsk, bestBid: bestBid };
+  }
+
+  // 沿订单簿逐档成交
+  function execute(book, s, size) {
+    var levels = s === 'BUY' ? book.asks : book.bids;
+    var left = size, cost = 0, filled = 0, fills = [], i;
+    for (i = 0; i < levels.length && left > 0; i++) {
+      var take = Math.min(left, levels[i].qty);
+      left -= take; filled += take; cost += take * levels[i].price;
+      fills.push({ price: levels[i].price, qty: levels[i].qty, take: take, cum: filled, avg: cost / filled });
+    }
+    var best = levels.length ? levels[0].price : MID;
+    var avg = filled ? cost / filled : best;
+    var last = fills.length ? fills[fills.length - 1] : null;
+    var newBest = best;
+    if (last) newBest = last.take < last.qty ? last.price : (levels[fills.length] ? levels[fills.length].price : last.price);
+    var dir = s === 'BUY' ? 1 : -1;
+    return {
+      fills: fills, filled: filled, unfilled: left, avg: avg, best: best,
+      worst: last ? last.price : best,
+      slip: dir * (avg - best) / best,
+      vsMid: dir * (avg - MID) / MID,
+      impact: dir * (newBest - best) / best,
+      notional: cost / 100,
+      levelsUsed: fills.length,
+      spread: book.bestAsk - book.bestBid
+    };
+  }
+
+  // ---- 绘图 ----
+  var W = 720, H = 320, PL = 52, PR = 14, PT = 16, PB = 34; // W/H 按容器宽度调整，保证手机上字号可读
+  var XMIN = MID - 340, XMAX = MID + 340;
+  function sx(p) { return PL + (p - XMIN) / (XMAX - XMIN) * (W - PL - PR); }
+
+  function cumPath(levels, sy, dir, upTo) {
+    // dir=1 卖盘向右，dir=-1 买盘向左；upTo 限制累计量（用于"吃掉"区域）
+    if (!levels.length) return '';
+    var edge = dir === 1 ? XMAX : XMIN;
+    var d = 'M' + sx(levels[0].price).toFixed(1) + ',' + sy(0).toFixed(1);
+    var cum = 0, lastX = sx(levels[0].price);
+    for (var i = 0; i < levels.length; i++) {
+      var p = levels[i].price;
+      if ((dir === 1 && p > edge) || (dir === -1 && p < edge)) break;
+      var x = sx(p);
+      d += ' L' + x.toFixed(1) + ',' + sy(cum).toFixed(1);
+      cum += levels[i].qty;
+      if (upTo != null && cum >= upTo) { d += ' L' + x.toFixed(1) + ',' + sy(upTo).toFixed(1); lastX = x; break; }
+      d += ' L' + x.toFixed(1) + ',' + sy(cum).toFixed(1);
+      var nx = i + 1 < levels.length ? sx(levels[i + 1].price) : sx(edge);
+      if ((dir === 1 && nx > sx(edge)) || (dir === -1 && nx < sx(edge))) nx = sx(edge);
+      if (upTo == null || i + 1 < levels.length) { d += ' L' + nx.toFixed(1) + ',' + sy(cum).toFixed(1); lastX = nx; }
+    }
+    if (upTo == null) lastX = sx(edge);
+    if (upTo == null) d += ' L' + lastX.toFixed(1) + ',' + sy(cum).toFixed(1);
+    d += ' L' + lastX.toFixed(1) + ',' + sy(0).toFixed(1) + ' Z';
+    return d;
+  }
+  function cumLine(levels, sy, dir) {
+    // 只画轮廓（对比用）
+    var full = cumPath(levels, sy, dir, null);
+    return full.replace(/ L[\d.]+,[\d.]+ Z$/, '');
+  }
+  function totalWithin(levels, dir) {
+    var s = 0;
+    levels.forEach(function (l) { if ((dir === 1 && l.price <= XMAX) || (dir === -1 && l.price >= XMIN)) s += l.qty; });
+    return s;
+  }
+
+  function draw(book, other, res, size) {
+    var cw = $('chart').clientWidth || 720;
+    W = Math.max(320, Math.min(720, Math.round(cw)));
+    H = W < 500 ? 250 : 320;
+    PL = W < 500 ? 40 : 52;
+    var ymax = Math.max(totalWithin(book.asks, 1), totalWithin(book.bids, -1), totalWithin(other.asks, 1), totalWithin(other.bids, -1), size) * 1.08;
+    function sy(q) { return H - PB - q / ymax * (H - PT - PB); }
+    var dir = side === 'BUY' ? 1 : -1;
+    var g = [];
+    g.push('<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="累计深度图">');
+    // 网格与坐标
+    for (var k = 0; k <= 4; k++) {
+      var q = ymax * k / 4, y = sy(q);
+      g.push('<line class="grid-line" x1="' + PL + '" x2="' + (W - PR) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '"/>');
+      g.push('<text class="lbl" x="' + (PL - 6) + '" y="' + (y + 4).toFixed(1) + '" text-anchor="end">' + fmtInt(q) + '</text>');
+    }
+    for (var p = XMIN + 40; p <= XMAX; p += (W < 500 ? 200 : 100)) {
+      g.push('<text class="lbl" x="' + sx(p).toFixed(1) + '" y="' + (H - PB + 18) + '" text-anchor="middle">' + fmtP(p) + '</text>');
+    }
+    g.push('<line class="axis" x1="' + PL + '" x2="' + (W - PR) + '" y1="' + sy(0) + '" y2="' + sy(0) + '"/>');
+    // 面积
+    g.push('<path class="bid-area" d="' + cumPath(book.bids, sy, -1, null) + '"/>');
+    g.push('<path class="ask-area" d="' + cumPath(book.asks, sy, 1, null) + '"/>');
+    // 对比场景
+    g.push('<path class="ghost" d="' + cumLine(other.bids, sy, -1) + '"/>');
+    g.push('<path class="ghost" d="' + cumLine(other.asks, sy, 1) + '"/>');
+    // 吃掉的部分
+    var lv = side === 'BUY' ? book.asks : book.bids;
+    if (res.filled > 0) g.push('<path class="eat" d="' + cumPath(lv, sy, dir, res.filled) + '"/>');
+    // 订单大小水平线
+    var ys = sy(Math.min(size, ymax));
+    g.push('<line class="mark-size" x1="' + sx(res.best).toFixed(1) + '" x2="' + sx(res.worst).toFixed(1) + '" y1="' + ys.toFixed(1) + '" y2="' + ys.toFixed(1) + '"/>');
+    // 中间价与均价
+    g.push('<line class="mark-mid" x1="' + sx(MID) + '" x2="' + sx(MID) + '" y1="' + PT + '" y2="' + sy(0) + '"/>');
+    g.push('<text class="lbl" x="' + (sx(MID) + 4) + '" y="' + (PT + 10) + '">中间价</text>');
+    if (res.filled > 0) {
+      var xa = Math.max(PL, Math.min(W - PR, sx(res.avg)));
+      g.push('<line class="mark-avg" x1="' + xa.toFixed(1) + '" x2="' + xa.toFixed(1) + '" y1="' + (PT + 16) + '" y2="' + sy(0) + '"/>');
+      var anchor = xa > W - 150 ? 'end' : (xa < PL + 150 ? 'start' : (dir === 1 ? 'start' : 'end'));
+      var off = anchor === 'start' ? 5 : -5;
+      g.push('<text class="lbl-accent" x="' + (xa + off).toFixed(1) + '" y="' + (PT + 28) + '" text-anchor="' + anchor + '">均价 ' + fmtP(res.avg) + '</text>');
+      g.push('<text class="lbl-strong" x="' + (xa + off).toFixed(1) + '" y="' + (PT + 44) + '" text-anchor="' + anchor + '">滑点 ' + fmtPct(res.slip) + '</text>');
+    }
+    g.push('<text class="lbl" x="' + (PL + 4) + '" y="' + (H - PB - 6) + '">买盘</text>');
+    g.push('<text class="lbl" x="' + (W - PR - 4) + '" y="' + (H - PB - 6) + '" text-anchor="end">卖盘</text>');
+    g.push('</svg>');
+    $('chart').innerHTML = g.join('');
+  }
+
+  function stat(k, v, cls) { return '<div class="stat"><span class="k">' + k + '</span><span class="v small-v ' + (cls || '') + '">' + v + '</span></div>'; }
+
+  function update() {
+    var liq = +$('liq').value, spread = +$('spread').value, size = +$('size').value, wd = $('withdraw').checked;
+    $('liqOut').textContent = liq;
+    $('spreadOut').textContent = fmtP(spread);
+    $('sizeOut').textContent = fmtInt(size);
+    $('slicesOut').textContent = $('slices').value + ' 份';
+
+    var normal = buildBook(liq, spread, false), pulled = buildBook(liq, spread, true);
+    var rN = execute(normal, side, size), rW = execute(pulled, side, size);
+    var book = wd ? pulled : normal, other = wd ? normal : pulled, res = wd ? rW : rN;
+
+    $('scenarioName').textContent = wd ? '（做市商撤单后）' : '（正常盘口）';
+    $('fillScenario').textContent = wd ? '（做市商撤单后）' : '（正常盘口）';
+    $('stats').innerHTML =
+      stat(side === 'BUY' ? '卖一价' : '买一价', fmtP(res.best)) +
+      stat('成交均价', fmtP(res.avg)) +
+      stat('最差成交价', fmtP(res.worst)) +
+      stat('滑点（对最优价）', fmtPct(res.slip), res.slip > 0.005 ? 'down' : '') +
+      stat('价格冲击', fmtPct(res.impact)) +
+      stat('吃掉档位', res.levelsUsed + ' 档');
+
+    var v = $('verdict');
+    if (res.unfilled > 0) {
+      v.className = 'callout warn';
+      v.textContent = '⚠️ 订单簿被吃穿：只成交 ' + fmtInt(res.filled) + '，还有 ' + fmtInt(res.unfilled) + ' 没有对手盘。真实交易所会让市价单剩余部分过期（EXPIRED），或用价格保护提前拒绝。';
+    } else if (res.slip > 0.005) {
+      v.className = 'callout warn';
+      v.textContent = '滑点超过 0.5%。你按屏幕价格估算的成本，比实际少了约 ' + fmtInt(res.slip * res.notional) + ' USDT。建议改用限价单或拆单。';
+    } else {
+      v.className = 'callout info';
+      v.textContent = '成交额约 ' + fmtInt(res.notional) + ' USDT。相对中间价的总成本 ' + fmtPct(res.vsMid) + '，其中一半价差 = ' + fmtPct(res.spread / 2 / MID) + '。';
+    }
+
+    function row(name, a, b, worse) { return '<tr><td>' + name + '</td><td class="num">' + a + '</td><td class="num' + (worse ? ' worse' : '') + '">' + b + '</td></tr>'; }
+    $('compare').innerHTML =
+      row('价差', fmtP(rN.spread), fmtP(rW.spread), rW.spread > rN.spread) +
+      row('成交均价', fmtP(rN.avg), fmtP(rW.avg), rW.slip > rN.slip) +
+      row('滑点（对最优价）', fmtPct(rN.slip), fmtPct(rW.slip), rW.slip > rN.slip) +
+      row('相对中间价成本', fmtPct(rN.vsMid), fmtPct(rW.vsMid), rW.vsMid > rN.vsMid) +
+      row('价格冲击', fmtPct(rN.impact), fmtPct(rW.impact), rW.impact > rN.impact) +
+      row('吃掉档位', rN.levelsUsed, rW.levelsUsed, rW.levelsUsed > rN.levelsUsed) +
+      row('未成交', fmtInt(rN.unfilled), fmtInt(rW.unfilled), rW.unfilled > rN.unfilled) +
+      row('滑点放大倍数', '1×', rN.slip > 0 ? (rW.slip / rN.slip).toFixed(1) + '×' : '—', true);
+
+    var f = res.fills, shown = f.slice(0, 10);
+    $('fills').innerHTML = shown.map(function (x) {
+      return '<tr><td class="num ' + (side === 'BUY' ? 'down' : 'up') + '">' + fmtP(x.price) + '</td><td class="num">' + fmtInt(x.qty) + '</td><td class="num">' + fmtInt(x.take) +
+        '</td><td class="num">' + fmtInt(x.cum) + '</td><td class="num">' + fmtP(x.avg) + '</td></tr>';
+    }).join('') + (f.length > 10 ? '<tr><td colspan="5" class="muted">…… 共吃掉 ' + f.length + ' 档，省略 ' + (f.length - 10) + ' 档</td></tr>' : '');
+
+    // TWAP：拆成 N 份，假设每份之间订单簿恢复
+    var n = +$('slices').value, base = Math.floor(size / n), extra = size % n, cost = 0, filled = 0;
+    for (var i = 0; i < n; i++) {
+      var part = base + (i < extra ? 1 : 0);
+      if (!part) continue;
+      var r = execute(book, side, part);
+      cost += r.avg * r.filled; filled += r.filled;
+    }
+    var avgSplit = filled ? cost / filled : res.best;
+    var dir = side === 'BUY' ? 1 : -1;
+    var slipSplit = dir * (avgSplit - res.best) / res.best;
+    var saved = dir * (res.avg * res.filled - avgSplit * res.filled) / 100;
+    $('twap').innerHTML =
+      stat('一次性下单均价', fmtP(res.avg)) +
+      stat('拆单均价', fmtP(avgSplit), 'up') +
+      stat('拆单滑点', fmtPct(slipSplit)) +
+      stat('节省（示例）', fmtInt(Math.max(0, saved)) + ' USDT', 'up');
+
+    draw(book, other, res, size);
+  }
+
+  function setSide(s) {
+    side = s;
+    $('sideBuy').classList.toggle('active', s === 'BUY');
+    $('sideSell').classList.toggle('active', s === 'SELL');
+    update();
+  }
+  $('sideBuy').onclick = function () { setSide('BUY'); };
+  $('sideSell').onclick = function () { setSide('SELL'); };
+  ['liq', 'spread', 'size', 'slices'].forEach(function (id) { $(id).addEventListener('input', update); });
+  $('withdraw').addEventListener('change', update);
+  var rt = null;
+  window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(update, 120); });
+  update();
+})();
+</script>
+</body>
+</html>

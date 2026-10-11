@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP03 一笔订单的旅程</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .qa { display: flex; gap: 28px; margin-top: 12px; }
+  .qa .card { flex: 1; font-size: 34px; }
+  .src { display: inline-block; font-size: 22px; padding: 2px 12px; border-radius: 999px; margin-left: 10px; vertical-align: middle; font-weight: 600; }
+  .src.bn { background: var(--gold-soft); color: var(--gold); }
+  .src.ind { background: var(--info-soft); color: var(--info); }
+  .src.ex { background: var(--panel-2); color: var(--text-2); border: 1px solid var(--line); }
+  .road .card { min-height: 240px; }
+  .road .num { font-family: var(--mono); font-size: 56px; color: var(--gold); font-weight: 700; }
+  .zone { border-radius: 16px; padding: 22px 28px; }
+  .zone h3 { font-size: 38px; margin-bottom: 14px; }
+  .zone.sync { border: 2px solid var(--gold); background: var(--gold-soft); }
+  .zone.async { border: 2px dashed var(--info); background: var(--info-soft); }
+  .zone ul { margin: 0; padding: 0; list-style: none; font-size: 31px; line-height: 1.62; }
+  .zone li::before { content: "▸ "; color: var(--text-2); }
+  .crit { font-size: 34px; text-align: center; }
+  .stack { display: grid; } .stack > * { grid-area: 1 / 1; }
+  .fails { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .fails .card { padding: 18px 26px; font-size: 30px; line-height: 1.45; }
+  .fails .card h3 { font-size: 34px; margin-bottom: 6px; }
+  .fails .card .u { color: var(--sell); } .fails .card .f { color: var(--buy); }
+  .teaser { display: flex; gap: 24px; align-items: center; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP03" data-title="一笔订单的旅程：调用链、同步异步与故障">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解 · 第 3 集</div>
+    <h1>一笔订单的旅程：<br><span class="hl">调用链、同步异步与故障</span></h1>
+    <div class="qa">
+      <div class="card info" data-step="1">用户点了<b class="up">买入</b>，<br>钱是什么时候真正扣掉的？</div>
+      <div class="card gold" data-step="2">两步：下单时<span class="hl">冻结</span>，结算时才<span class="hl">扣掉</span>。<br>中间这段，最容易出故障。</div>
+    </div>
+    <ol class="say">
+      <li>欢迎回到交易所系统技术讲解。上一集我们画了一张六层架构图。这一集，我们让请求在图上跑起来。</li>
+      <li>先问一个问题。用户点了买入，钱是什么时候真正扣掉的？是点下按钮那一刻，还是成交那一刻？</li>
+      <li>答案是分两步。下单时先冻结，结算时才真正扣掉。中间这段时间，正是故障最容易发生的地方。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">本集路线图</div>
+    <h2>三条调用链，一条边界，一组故障</h2>
+    <div class="grid4 road">
+      <div class="card gold" data-step="0"><div class="num">01</div>下单调用链<br><span class="muted">十几个同步步骤</span></div>
+      <div class="card" data-step="1"><div class="num">02</div>充值与提币<br><span class="muted">链上事件驱动</span></div>
+      <div class="card" data-step="2"><div class="num">03</div>同步与异步<br><span class="muted">边界与 Outbox</span></div>
+      <div class="card" data-step="3"><div class="num">04</div>故障与补偿<br><span class="muted">补偿必须幂等</span></div>
+    </div>
+    <ol class="say">
+      <li>这一集分四段。第一段，走完一笔现货下单的完整调用链，看钱在哪一步被冻结，在哪一步被扣掉。</li>
+      <li>第二段，充值和提币。这两条链由链上事件驱动，节奏完全不同。</li>
+      <li>第三段，画出同步和异步的边界，再讲一个关键模式，叫 Outbox。</li>
+      <li>第四段，看出了故障以后，系统怎样补偿，以及为什么补偿必须幂等。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="下单调用链" data-onstep="orderStep">
+    <div class="kicker">调用链 ① · 现货下单 <span class="src ex">示例：限价买 0.1 BTC @ 60,000</span></div>
+    <h2>一笔下单，穿过六个服务</h2>
+    <svg id="seq" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>场景是这样的。用户 A 用 USDT 买 0.1 个 BTC，限价 60,000，这是示例。请求先打到 API 网关。</li>
+      <li>网关先校验 session 或 API Key 签名，再做限流。它还要检查幂等键，防止同一个请求被提交两次。</li>
+      <li>网关把请求交给订单服务。订单服务先问风控：精度对不对，价格偏离大不大，余额够不够。风控回复通过。</li>
+      <li>接着，订单服务让账本冻结 6,000 USDT。也就是 0.1 乘以 60,000。</li>
+      <li>冻结成功，订单才提交给撮合引擎。撮合按价格优先、时间优先配对，返回成交回报：成交 0.1 个 BTC。</li>
+      <li>订单服务再调用结算。结算服务让账本扣掉冻结的 USDT，写一条记账分录，拿回分录编号。</li>
+      <li>最后，订单状态变成已成交，网关给用户返回 200 OK。到这里，一共十几个同步步骤。用户等待的，就是这整条同步链。任何一步失败，请求就失败。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="钱什么时候扣掉" data-onstep="balStep">
+    <div class="kicker">数字推演 · 账户视角 <span class="src ex">示例数字，不含手续费</span></div>
+    <h2>只盯着账本里的数字看</h2>
+    <svg id="bal" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>现在只盯着账本里的数字。下单前，用户 A 有 10,000 USDT 可用，这是示例数字。</li>
+      <li>冻结那一步，6,000 USDT 从可用转到冻结。可用剩 4,000，总额还是 10,000。钱还没离开 A。</li>
+      <li>结算那一步，冻结的 6,000 被扣掉，A 拿到 0.1 个 BTC。这时，钱才真正换了手。手续费我们留到第 11 集再讲。</li>
+      <li>再看对手方。卖家 B 冻结的 0.1 个 BTC 被扣掉，拿到 6,000 USDT。两边加起来，USDT 和 BTC 的总量都没变。</li>
+      <li>所以开头的问题有了答案。钱在下单时被冻结，在结算时才真正扣掉。冻结，是一个中间状态。故障最容易出现在这里，我们稍后细看。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="响应之后的异步事件" data-onstep="asyncStep">
+    <div class="kicker">调用链 ① · 响应之后</div>
+    <h2>200 OK 之后，事件才开始流动</h2>
+    <svg id="async" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>用户拿到 200 OK，事情还没完。账本发出一条记账完成事件，订单服务发出一条成交事件。它们都进入 Kafka。</li>
+      <li>行情服务从 Kafka 消费成交事件。再通过 WebSocket，把盘口和成交推给所有用户。私有的余额变化，也走同样的路，推给用户自己。</li>
+      <li>注意这里的区别。前面的实线是同步调用，直接决定请求的成败。这里的虚线是异步事件。</li>
+      <li>行情推送慢几百毫秒，不影响任何人的资金正确性。所以它放在异步区，不拖慢下单。</li>
+      <li>补充一点。本仓库的订单服务是同步调用结算。大型交易所的业界做法，是撮合把成交写进日志流，结算服务异步消费。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="充值调用链" data-onstep="depStep">
+    <div class="kicker">调用链 ② · 充值 1 ETH <span class="src ex">示例：阈值 12 个确认</span></div>
+    <h2 id="depTitle">充值：由链上事件触发</h2>
+    <svg id="dep" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>再看充值。用户先通过网关，向钱包服务申请一个 ETH 充值地址，拿到一个专属地址。</li>
+      <li>用户从自己的钱包，向这个地址转 1 个 ETH。注意，这一步发生在链上，交易所还不知道。它只能等索引器在区块里发现这笔转账。</li>
+      <li>索引器每出一个新区块就扫描一次，匹配充值地址。发现这笔转账时，确认数是 1，状态是待确认。</li>
+      <li>区块继续往上长。确认数 1、2、3，一直数下去。没到阈值之前，用户的余额不变。</li>
+      <li>确认数达到阈值，示例是 12。钱包服务调用账本记账，用户的 ETH 加 1。再通过 Kafka，推送充值到账。</li>
+      <li>为什么要等确认数？为了防止链重组。如果入账以后区块被回滚，用户的币到了账，链上的钱却没了。</li>
+      <li>还有一条铁律：入账必须幂等。同一个交易哈希被扫描两次，只能入账一次。整条充值链，都是异步的。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="提币调用链" data-onstep="wdStep">
+    <div class="kicker">调用链 ③ · 提币 0.5 ETH <span class="src ex">示例数字</span></div>
+    <h2>提币：先冻结，后出账</h2>
+    <svg id="wd" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>再看提币。用户要把 0.5 个 ETH 提到外部地址。钱包服务先找身份服务，校验 2FA 和用户状态。</li>
+      <li>然后检查白名单、限额和风控规则。都通过了，让账本冻结 0.5 个 ETH，状态变成已申请。</li>
+      <li>接着是审核，可以人工，也可以自动。大额提币，通常要由运营后台人工审核。审核通过，钱包服务让托管适配器创建转账。</li>
+      <li>托管适配器签名并广播，拿到交易哈希。注意，私钥在托管层，钱包服务碰不到私钥。</li>
+      <li>索引器看到这笔交易的确认数达到阈值，钱包才让账本出账。冻结的 0.5 个 ETH，正式扣掉。提币到这里，才算真正完成。</li>
+      <li>如果审核拒绝呢？系统执行的是解冻，而不是出账。0.5 个 ETH 回到可用余额。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="同步与异步的边界">
+    <div class="kicker">同步 vs 异步</div>
+    <h2>这一步失败时，用户的请求该不该失败？</h2>
+    <div class="row">
+      <div class="zone sync col" data-step="0"><h3 class="hl">同步区：决定请求成败</h3>
+        <ul><li>网关 → 订单</li><li>订单 → 风控</li><li>订单 → 账本冻结</li><li>订单 → 撮合</li><li>钱包 → 2FA 校验</li></ul></div>
+      <div class="zone async col" data-step="1"><h3 class="blue">异步区：Kafka 事件，最终一致</h3>
+        <ul><li>成交 → 行情推送</li><li>账本 → 私有 WS 余额推送</li><li>链上 → 充值确认</li><li>托管 → 提币状态回查</li><li>账本 → 对账和报表</li></ul></div>
+    </div>
+    <div class="stack">
+      <div class="card gold crit" data-step="2" data-until="2">该失败 → 同步区；不该失败 → 异步区</div>
+      <div class="card warn crit" data-step="3" data-until="3">同步越长，延迟越高；异步的代价是延迟</div>
+      <div class="card sell crit" data-step="4">失败重试，超限进入死信队列 dead-letter</div>
+    </div>
+    <ol class="say">
+      <li>把三条链放在一起，就能画出同步和异步的边界。左边是同步区，这些步骤直接影响用户请求的成败。比如风控拒绝了，订单就不能下成功。</li>
+      <li>右边是异步区，走 Kafka 事件，最终一致。行情、余额推送、充值确认、提币状态回查、对账报表，都在这里。</li>
+      <li>判断标准只有一句话。这一步失败时，用户的请求是否应该失败？是，就放同步区。否，就放异步区。</li>
+      <li>同步区越长，下单延迟越高，故障面也越大。异步区的代价是延迟。Kafka 堆积时，用户会看到已成交、余额没变。</li>
+      <li>异步事件处理失败会重试。超过重试次数，就进入死信队列，等待人工处理。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="Outbox 模式" data-onstep="outboxStep">
+    <div class="kicker">关键模式 · Outbox 发件箱</div>
+    <h2>记账和发事件，怎样不会一个成功一个失败？</h2>
+    <svg id="ob" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>这里有个细节。账本记完账，要发一条事件。记账和发事件涉及两个系统，怎么保证不会一个成功、一个失败？</li>
+      <li>先看错误的做法。先写数据库，再发 Kafka。如果写完库，进程正好崩溃，事件就丢了。账变了，下游没人知道。</li>
+      <li>反过来，先发事件再写库，也不行。事件发出去了，库却没写成。下游看到的，是一笔不存在的账。</li>
+      <li>正确做法叫 Outbox 模式。服务把记账分录和一条待发事件，写进自己数据库的同一个事务。要么都成功，要么都失败。</li>
+      <li>后台任务再从 outbox 表里读出事件，发到 Kafka。发送失败就重试。所以下游通常要按事件编号去重。本仓库的账本服务，用的就是 PostgreSQL 加 Kafka outbox。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="最危险的一步" data-onstep="failStep">
+    <div class="kicker">故障与补偿 ① <span class="src ex">示例数字</span></div>
+    <h2>冻结之后、撮合之前，撮合引擎宕机了</h2>
+    <svg id="fail" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>现在来看故障。整条下单链路里，最危险的一步是冻结成功之后、撮合之前。</li>
+      <li>假设这时撮合引擎宕机。6,000 USDT 已经冻结，订单却没进订单簿。用户看到的是下单失败。</li>
+      <li>系统要补偿。订单服务把订单标记为已拒绝，再调用账本解冻。6,000 USDT 回到可用，余额恢复原样。</li>
+      <li>注意，补偿动作必须幂等。假设解冻请求超时，订单服务又重试了一次，解冻执行了两次。</li>
+      <li>如果没有幂等保护，可用余额会变成 16,000。用户凭空多出 6,000 USDT。这是真实的资金损失。</li>
+      <li>所以每次解冻都带一个唯一的请求编号。账本看到重复的编号，直接返回第一次的结果，不再改余额。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="更多故障">
+    <div class="kicker">故障与补偿 ②</div>
+    <h2>用户看到什么，系统怎样补偿</h2>
+    <div class="fails">
+      <div class="card" data-step="0"><h3>Kafka 堆积</h3><span class="u">看到：</span>已成交，余额和推送延迟<br><span class="f">补偿：</span>账本已正确，消费者追上即恢复</div>
+      <div class="card" data-step="1"><h3>结算失败</h3><span class="u">看到：</span>订单成交，资产没变<br><span class="f">补偿：</span>重试，多次失败进死信，人工处理</div>
+      <div class="card" data-step="2"><h3>索引器落后</h3><span class="u">看到：</span>充值迟迟不到账<br><span class="f">补偿：</span>追块补入账，按交易哈希幂等</div>
+      <div class="card warn" data-step="3"><h3>广播成功，索引器宕机</h3><span class="u">看到：</span>提币停在已广播<br><span class="f">补偿：</span>币已离开热钱包，靠对账发现</div>
+    </div>
+    <div class="card info" data-step="4">动手试试：architecture-explorer 里在节点上注入故障，看每个场景在哪一步失败。</div>
+    <ol class="say">
+      <li>第二种故障，Kafka 堆积。用户看到订单已成交，但余额和推送都延迟。账本其实已经正确，只是事件慢了。消费者追上，就自动恢复。</li>
+      <li>第三种，结算失败。用户看到订单成交了，资产却没变。系统会重试结算。多次失败后进入死信，由运营后台人工处理。</li>
+      <li>第四种，索引器落后，充值迟迟不到账。索引器追上区块后补齐入账。因为按交易哈希幂等，不会重复入账。</li>
+      <li>第五种最隐蔽。提币广播成功，但索引器宕机。提币停在已广播状态。币已经离开热钱包，账本却还没出账。这要靠对账任务发现。</li>
+      <li>这些故障，都能在交互实验 architecture-explorer 里注入。看看每个场景在哪一步失败，系统又怎样补偿。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">下单是同步链：钱在<span class="hl">冻结</span>时锁住，在<span class="hl">结算</span>时才扣掉。</li>
+      <li data-step="0">充值等确认数再入账；提币先冻结、后出账，拒绝就解冻。</li>
+      <li data-step="2">同步定成败，异步求最终一致；Outbox 防丢事件，补偿必须<span class="hl">幂等</span>。</li>
+    </ul>
+    <div class="card info teaser" data-step="3"><span class="chip info">下集 EP04</span>账户与身份：登录、2FA、API 签名、KYC</div>
+    <ol class="say">
+      <li>小结一下。第一，下单是一条同步链：网关、订单、风控、账本冻结、撮合、结算。钱在冻结时锁住，在结算时才真正扣掉。</li>
+      <li>第二，充值和提币由链上事件驱动。充值要等确认数再入账。提币先冻结、后出账，被拒绝就解冻。</li>
+      <li>第三，同步区决定成败，异步区追求最终一致。Outbox 保证记账和发事件一起成功，所有补偿都必须幂等。</li>
+      <li>下一集，我们回到调用链的第一站：账户与身份。登录、2FA、API 签名和 KYC，交易所怎样确认你就是你。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const $ = (el, id) => el.querySelector('#' + id);
+  const fmt = n => n.toLocaleString('en-US');
+  const box = (x, y, w, h, t, sub, o = {}) => {
+    const c = o.c || 'var(--line)', f = o.f || 'var(--panel)', op = o.op ?? 1;
+    let s = `<g opacity="${op}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12" fill="${f}" stroke="${c}" stroke-width="${o.sw || 2}" ${o.dash ? `stroke-dasharray="${o.dash}"` : ''}/>`;
+    if (sub) {
+      s += `<text x="${x + w / 2}" y="${y + h / 2 - 4}" text-anchor="middle" font-size="${o.fs || 30}" font-weight="700">${t}</text>`;
+      s += `<text x="${x + w / 2}" y="${y + h / 2 + 30}" text-anchor="middle" font-size="${o.ss || 24}" style="fill:${o.sc || 'var(--text-2)'}">${sub}</text>`;
+    } else s += `<text x="${x + w / 2}" y="${y + h / 2 + 11}" text-anchor="middle" font-size="${o.fs || 30}" font-weight="700" style="fill:${o.tc || 'var(--text)'}">${t}</text>`;
+    return s + '</g>';
+  };
+  const arrow = (x1, y1, x2, y2, c = 'var(--text-2)', dash = '', w = 4) => {
+    const a = Math.atan2(y2 - y1, x2 - x1), L = 16;
+    const p1 = [x2 - L * Math.cos(a - .45), y2 - L * Math.sin(a - .45)], p2 = [x2 - L * Math.cos(a + .45), y2 - L * Math.sin(a + .45)];
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${w}" ${dash ? `stroke-dasharray="${dash}"` : ''}/><path d="M${x2} ${y2} L${p1[0]} ${p1[1]} L${p2[0]} ${p2[1]}z" fill="${c}"/>`;
+  };
+  const txt = (x, y, t, o = {}) => `<text x="${x}" y="${y}" text-anchor="${o.a || 'middle'}" font-size="${o.fs || 30}" font-weight="${o.b ? 700 : 400}" style="fill:${o.c || 'var(--text)'};${o.mono ? 'font-family:var(--mono)' : ''}" opacity="${o.op ?? 1}">${t}</text>`;
+
+  // ---------- order sequence ----------
+  const LANES = ['用户 A', '网关', '订单', '风控', '账本', '撮合', '结算'];
+  const MSGS = [
+    [0, 0, 1, 'POST /orders 买 0.1 BTC @ 60,000'],
+    [1, 1, 1, '验签 · 限流 · 幂等键'],
+    [2, 1, 2, 'createOrder'],
+    [2, 2, 3, '校验：精度 · 价格偏离 · 余额 → 通过'],
+    [3, 2, 4, 'freezeBalance 冻结 6,000 USDT'],
+    [3, 4, 2, '冻结成功', 1],
+    [4, 2, 5, 'submitOrder · 价格优先、时间优先'],
+    [4, 5, 2, '成交回报 0.1 BTC', 1],
+    [5, 2, 6, 'settleTrade'],
+    [5, 6, 4, '扣冻结 + 记分录 → journalId'],
+    [6, 2, 1, '订单 filled', 1],
+    [6, 1, 0, '200 OK', 1],
+  ];
+  function orderStep(el, st) {
+    const LX = i => 110 + i * 237;
+    let s = '';
+    const active = new Set();
+    MSGS.forEach(m => { if (m[0] === st) { active.add(m[1]); active.add(m[2]); } });
+    LANES.forEach((n, i) => {
+      const on = active.has(i);
+      s += `<line x1="${LX(i)}" y1="58" x2="${LX(i)}" y2="595" stroke="var(--line)" stroke-width="2" stroke-dasharray="6 8"/>`;
+      s += box(LX(i) - 95, 0, 190, 56, n, '', { c: on ? 'var(--gold)' : 'var(--line)', f: on ? 'rgba(240,185,11,.14)' : 'var(--panel)', fs: 30 });
+    });
+    MSGS.forEach((m, k) => {
+      const [stp, a, b, label, ret] = m;
+      if (stp > st) return;
+      const y = 100 + k * 44, cur = stp === st;
+      const c = cur ? (ret ? 'var(--buy)' : 'var(--gold)') : '#5a606b';
+      const tc = cur ? 'var(--text)' : 'var(--text-2)';
+      if (a === b) {
+        s += `<path d="M${LX(a)} ${y - 10} h40 v18 h-34" fill="none" stroke="${c}" stroke-width="3"/>`;
+        s += txt(LX(a) + 52, y + 4, label, { a: 'start', fs: 28, c: tc });
+      } else {
+        const x1 = LX(a) + (b > a ? 4 : -4), x2 = LX(b) + (b > a ? -6 : 6);
+        s += arrow(x1, y, x2, y, c, ret ? '9 7' : '', 3);
+        s += txt(Math.min(LX(a), LX(b)) + 14, y - 9, label, { a: 'start', fs: 28, c: tc });
+      }
+    });
+    $(el, 'seq').innerHTML = s;
+  }
+
+  // ---------- balances ----------
+  function balStep(el, st) {
+    const A = [[10000, 0, 0], [4000, 6000, 0], [4000, 0, 0.1], [4000, 0, 0.1], [4000, 0, 0.1]][st];
+    const B = st >= 3 ? [6000, 0, 0.9] : [0, 0, st >= 2 ? 0.9 : 0.9];
+    const Blk = st >= 3 ? 0 : 0.1;
+    let s = '';
+    const card = (x, title, rows, hl) => {
+      let r = `<rect x="${x}" y="0" width="560" height="${rows.length * 70 + 90}" rx="16" fill="var(--panel)" stroke="${hl ? 'var(--gold)' : 'var(--line)'}" stroke-width="${hl ? 3 : 2}"/>`;
+      r += txt(x + 30, 54, title, { a: 'start', fs: 36, b: 1 });
+      rows.forEach(([k, v, c], i) => { r += txt(x + 30, 130 + i * 70, k, { a: 'start', fs: 32 }); r += txt(x + 530, 130 + i * 70, v, { a: 'end', fs: 36, b: 1, mono: 1, c: c || 'var(--text)' }); });
+      return r;
+    };
+    const chg = (cond, c) => cond ? c : undefined;
+    s += card(0, '用户 A · 买方', [
+      ['USDT 可用', fmt(A[0]), chg(st === 1, 'var(--gold)')],
+      ['USDT 冻结', fmt(A[1]), chg(st === 1 || st === 2, 'var(--gold)')],
+      ['BTC 可用', A[2].toFixed(1), chg(st === 2, 'var(--buy)')],
+      ['USDT 总额', fmt(A[0] + A[1]), st === 1 ? 'var(--buy)' : undefined],
+    ], st <= 2 || st === 4);
+    s += card(620, '用户 B · 卖方', [
+      ['BTC 冻结', Blk.toFixed(1), chg(st === 3, 'var(--gold)')],
+      ['BTC 可用', B[2].toFixed(1)],
+      ['USDT 可用', fmt(B[0]), chg(st === 3, 'var(--buy)')],
+    ], st === 3);
+    s += `<g opacity="${st >= 3 ? 1 : 0}">`;
+    // totals
+    s += `<rect x="1240" y="0" width="400" height="370" rx="16" fill="var(--panel-2)" stroke="var(--line)" stroke-width="2"/>`;
+    s += txt(1440, 54, '两人合计', { fs: 34, b: 1 });
+    const tu = (A[0] + A[1]) + B[0], tb = A[2] + Blk + B[2];
+    s += txt(1440, 150, fmt(tu) + ' USDT', { fs: 40, b: 1, mono: 1 });
+    s += txt(1440, 230, tb.toFixed(1) + ' BTC', { fs: 40, b: 1, mono: 1 });
+    s += txt(1440, 320, '总量不变 ✓', { fs: 32, c: 'var(--buy)' });
+    s += `</g>`;
+    const notes = ['下单前：10,000 USDT 全部可用',
+      '冻结：可用 → 冻结，钱还在 A 名下',
+      '结算：冻结 −6,000 USDT，BTC +0.1，钱换手',
+      '对手方 B：BTC −0.1，USDT +6,000',
+      '下单 = 冻结；结算 = 真正扣款'];
+    const nc = ['var(--text-2)', 'var(--gold)', 'var(--buy)', 'var(--buy)', 'var(--gold)'][st];
+    s += `<rect x="0" y="420" width="1640" height="110" rx="16" fill="var(--panel)" stroke="${nc}" stroke-width="3"/>`;
+    s += txt(820, 490, notes[st], { fs: 40, b: 1, c: nc });
+    // timeline dots
+    ['下单', '冻结', '撮合', '结算'].forEach((t, i) => {
+      const x = 380 + i * 300, lit = (st >= 1 && i <= 1) || (st >= 2 && i <= 3) || i === 0;
+      s += `<circle cx="${x}" cy="572" r="12" fill="${lit ? 'var(--gold)' : 'var(--line)'}"/>` + txt(x + 24, 582, t, { a: 'start', fs: 26, c: lit ? 'var(--text)' : 'var(--text-2)' });
+      if (i < 3) s += `<line x1="${x + 90}" y1="572" x2="${x + 280}" y2="572" stroke="${lit ? 'var(--gold)' : 'var(--line)'}" stroke-width="3"/>`;
+    });
+    $(el, 'bal').innerHTML = s;
+  }
+
+  // ---------- async after response ----------
+  function asyncStep(el, st) {
+    let s = '';
+    // sync part (compressed)
+    const sync = ['网关', '订单', '风控', '账本', '撮合', '结算'];
+    s += txt(0, 30, '同步区：决定请求成败', { a: 'start', fs: 30, b: 1, c: 'var(--gold)', op: st === 2 ? 1 : .8 });
+    sync.forEach((n, i) => {
+      s += box(i * 205, 50, 180, 70, n, '', { c: 'var(--gold)', op: st >= 3 ? .5 : 1 });
+      if (i < 5) s += arrow(i * 205 + 182, 85, i * 205 + 203, 85, 'var(--gold)', '', 4);
+    });
+    s += box(1260, 50, 200, 70, '200 OK', '', { c: 'var(--buy)', tc: 'var(--buy)' });
+    s += arrow(1230, 85, 1258, 85, 'var(--buy)', '', 4);
+    s += txt(1480, 96, '已响应', { a: 'start', fs: 28, c: 'var(--text-2)' });
+    // async part
+    s += `<rect x="0" y="170" width="1640" height="400" rx="18" fill="rgba(91,156,255,.06)" stroke="var(--info)" stroke-width="2" stroke-dasharray="12 8"/>`;
+    s += txt(24, 214, '异步区：Kafka 事件，最终一致', { a: 'start', fs: 30, b: 1, c: 'var(--info)' });
+    s += box(80, 260, 280, 90, '账本', 'ledger.journal_posted', { c: 'var(--buy)', ss: 22 });
+    s += box(80, 400, 280, 90, '订单', 'trade.executed', { c: 'var(--gold)', ss: 22 });
+    s += box(560, 320, 260, 110, 'Kafka', '事件总线', { c: 'var(--info)', fs: 36 });
+    s += arrow(362, 305, 556, 360, 'var(--info)', '10 8', 4) + arrow(362, 445, 556, 395, 'var(--info)', '10 8', 4);
+    if (st >= 1) {
+      s += box(960, 320, 260, 110, '行情服务', 'market-data', { c: 'var(--info)' });
+      s += arrow(822, 375, 956, 375, 'var(--info)', '10 8', 4);
+      s += box(1340, 320, 260, 110, '所有用户', 'WebSocket 推送', { c: 'var(--info)' });
+      s += arrow(1222, 375, 1336, 375, 'var(--info)', '10 8', 4);
+    }
+    if (st === 2) s += txt(820, 520, '实线 = 同步调用；虚线 = 异步事件', { fs: 34, b: 1 });
+    if (st === 3) s += txt(820, 520, '推送慢几百毫秒，资金依然正确', { fs: 34, b: 1, c: 'var(--buy)' });
+    if (st === 4) s += txt(820, 520, '业界通用做法：撮合写成交日志流，结算异步消费', { fs: 32, b: 1, c: 'var(--warn)' });
+    $(el, 'async').innerHTML = s;
+  }
+
+  // ---------- deposit ----------
+  function depStep(el, st) {
+    const titles = ['充值 ①：申请专属地址', '充值 ②：用户在链上转账', '充值 ③：索引器扫块发现', '充值 ④：数确认数', '充值 ⑤：达到阈值，入账', '为什么等确认：防链重组', '入账必须幂等'];
+    $(el, 'depTitle').textContent = titles[st];
+    const nodes = ['用户', '钱包服务', '区块链', '索引器', '账本', 'Kafka 推送'];
+    const act = [[0, 1], [0, 2], [2, 3], [2, 3], [1, 4, 5], [2, 4], [3, 4]][st];
+    let s = '';
+    nodes.forEach((n, i) => {
+      const on = act.includes(i);
+      s += box(i * 276, 0, 240, 70, n, '', { c: on ? 'var(--gold)' : 'var(--line)', f: on ? 'rgba(240,185,11,.14)' : 'var(--panel)', fs: 30 });
+      if (i < 5) s += arrow(i * 276 + 242, 35, i * 276 + 272, 35, 'var(--text-2)', '', 3);
+    });
+    // blocks
+    const conf = [0, 0, 1, 6, 12, 12, 12][st];
+    const txIn = st >= 1;
+    const nb = 13;
+    s += txt(0, 140, '区块高度', { a: 'start', fs: 26, c: 'var(--text-2)' });
+    for (let i = 0; i < nb; i++) {
+      const x = i * 100, y = 160;
+      const mined = st >= 2 ? i < conf : (st === 1 ? i === 0 : false);
+      const isTx = i === 0 && txIn;
+      const reorg = st === 5 && i >= 0 && i < 3;
+      let fill = mined ? 'rgba(91,156,255,.18)' : 'transparent', stroke = mined ? 'var(--info)' : 'var(--line)';
+      if (isTx) { fill = 'rgba(240,185,11,.18)'; stroke = 'var(--gold)'; }
+      s += `<rect x="${x}" y="${y}" width="84" height="84" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="${isTx ? 3 : 2}" ${mined || isTx ? '' : 'stroke-dasharray="6 6"'}/>`;
+      s += txt(x + 42, y + 52, '#' + (100 + i), { fs: 22, mono: 1, c: mined || isTx ? 'var(--text)' : 'var(--text-2)' });
+      if (i < nb - 1 && (mined || isTx)) s += `<line x1="${x + 84}" y1="${y + 42}" x2="${x + 100}" y2="${y + 42}" stroke="var(--info)" stroke-width="3"/>`;
+      if (reorg) s += `<line x1="${x + 4}" y1="${y + 4}" x2="${x + 80}" y2="${y + 80}" stroke="var(--sell)" stroke-width="4"/>`;
+    }
+    if (txIn) s += txt(42, 290, '1 ETH', { fs: 26, b: 1, c: 'var(--gold)' });
+    // counter
+    s += `<rect x="1320" y="150" width="320" height="200" rx="16" fill="var(--panel)" stroke="${conf >= 12 ? 'var(--buy)' : 'var(--line)'}" stroke-width="3"/>`;
+    s += txt(1480, 196, '确认数', { fs: 28, c: 'var(--text-2)' });
+    s += txt(1480, 280, `${conf} / 12`, { fs: 72, b: 1, mono: 1, c: conf >= 12 ? 'var(--buy)' : (conf ? 'var(--gold)' : 'var(--text-2)') });
+    const status = st < 2 ? '—' : (st < 4 ? 'pending 待确认' : '已入账');
+    s += txt(1480, 330, status, { fs: 28, c: st >= 4 ? 'var(--buy)' : 'var(--warn)' });
+    // bottom panel
+    let bottom = '';
+    const bal = st >= 4 ? '1' : '0';
+    bottom += `<rect x="0" y="390" width="560" height="170" rx="16" fill="var(--panel)" stroke="${st === 4 ? 'var(--buy)' : 'var(--line)'}" stroke-width="3"/>`;
+    bottom += txt(30, 445, '账本 · 用户 ETH 可用', { a: 'start', fs: 30 });
+    bottom += txt(530, 520, bal + ' ETH', { a: 'end', fs: 60, b: 1, mono: 1, c: st >= 4 ? 'var(--buy)' : 'var(--text)' });
+    const notes = [
+      ['专属充值地址', '0xabc…', 'var(--gold)'],
+      ['链上转账', '交易所此时还不知道', 'var(--info)'],
+      ['deposit.detected', '确认数 1，状态待确认', 'var(--warn)'],
+      ['继续出块', '确认数没到阈值，余额不动', 'var(--warn)'],
+      ['postJournal：ETH +1', 'Kafka → WebSocket：充值到账', 'var(--buy)'],
+      ['链重组：区块被回滚', '已入账的币，链上却消失 → 交易所亏损', 'var(--sell)'],
+      ['同一个 txHash 扫到两次', '第一次入账，第二次直接跳过', 'var(--buy)'],
+    ][st];
+    bottom += `<rect x="600" y="390" width="1040" height="170" rx="16" fill="var(--panel)" stroke="${notes[2]}" stroke-width="3"/>`;
+    bottom += txt(640, 455, notes[0], { a: 'start', fs: 36, b: 1, c: notes[2] });
+    bottom += txt(640, 520, notes[1], { a: 'start', fs: 32 });
+    s += bottom;
+    $(el, 'dep').innerHTML = s;
+  }
+
+  // ---------- withdrawal ----------
+  function wdStep(el, st) {
+    const nodes = [['申请', '0.5 ETH'], ['2FA · 风控', '身份 · 规则'], ['冻结', '账本'], ['审核', '人工或自动'], ['签名广播', '托管层'], ['确认', '索引器'], ['出账', '账本']];
+    const reach = [1, 2, 3, 4, 6, 3][st];
+    const reject = st === 5;
+    let s = '';
+    nodes.forEach(([n, sub], i) => {
+      const x = i * 234, lit = i <= reach, cur = i === reach || (st === 4 && i === 5);
+      let c = lit ? 'var(--gold)' : 'var(--line)';
+      if (reject && i === 3) c = 'var(--sell)';
+      if (reject && i > 3) c = 'var(--line)';
+      s += box(x, 20, 204, 100, n, sub, { c, f: cur ? 'rgba(240,185,11,.14)' : 'var(--panel)', op: lit || !reject ? 1 : .35, ss: 24 });
+      if (i < 6) s += arrow(x + 206, 70, x + 230, 70, lit && i < reach && !(reject && i >= 3) ? 'var(--gold)' : 'var(--line)', '', 3);
+    });
+    if (reject) {
+      s += `<path d="M${3 * 234 + 102} 122 V190" stroke="var(--sell)" stroke-width="4" stroke-dasharray="10 8"/>`;
+      s += box(3 * 234 - 20, 196, 244, 80, '拒绝 → 解冻', '', { c: 'var(--sell)', f: 'rgba(246,70,93,.14)', tc: 'var(--sell)' });
+    }
+    if (st >= 3 && !reject) s += txt(4 * 234 + 102, 170, 'txHash 0x9f…', { fs: 26, mono: 1, c: 'var(--info)' });
+    // balance
+    const bal = [[2, 0], [1.5, 0.5], [1.5, 0.5], [1.5, 0.5], [1.5, 0], [2, 0]][st];
+    s += `<rect x="0" y="300" width="620" height="250" rx="16" fill="var(--panel)" stroke="var(--line)" stroke-width="2"/>`;
+    s += txt(30, 356, '账本 · 用户 ETH', { a: 'start', fs: 34, b: 1 });
+    s += txt(30, 430, '可用', { a: 'start', fs: 32 }) + txt(590, 430, bal[0].toFixed(1), { a: 'end', fs: 48, b: 1, mono: 1, c: (st === 1 || st === 5) ? 'var(--gold)' : 'var(--text)' });
+    s += txt(30, 510, '冻结', { a: 'start', fs: 32 }) + txt(590, 510, bal[1].toFixed(1), { a: 'end', fs: 48, b: 1, mono: 1, c: (st === 1 || st === 4 || st === 5) ? 'var(--gold)' : 'var(--text)' });
+    const status = ['校验中', 'requested 已申请', '审核通过', '已广播', '已完成', '已拒绝'][st];
+    s += `<rect x="660" y="300" width="980" height="250" rx="16" fill="var(--panel)" stroke="${reject ? 'var(--sell)' : 'var(--info)'}" stroke-width="3"/>`;
+    s += txt(700, 360, '状态：' + status, { a: 'start', fs: 36, b: 1, c: reject ? 'var(--sell)' : 'var(--info)' });
+    const lines = [
+      ['钱包 → 身份服务：校验 2FA 和用户状态'],
+      ['白名单 · 限额 · 风控规则', '通过后冻结 0.5 ETH'],
+      ['审核通过 → createTransfer', '交给托管适配器'],
+      ['私钥在托管层或外部 MPC', '钱包服务不接触私钥'],
+      ['确认数达到阈值', '冻结 → 出账，0.5 ETH 正式扣掉'],
+      ['拒绝时执行“解冻”，不是“出账”', '0.5 ETH 回到可用'],
+    ][st];
+    lines.forEach((l, i) => s += txt(700, 430 + i * 60, l, { a: 'start', fs: 32 }));
+    $(el, 'wd').innerHTML = s;
+  }
+
+  // ---------- outbox ----------
+  function outboxStep(el, st) {
+    let s = '';
+    const svc = (x, y, label) => box(x, y, 260, 90, label, '', { c: 'var(--gold)' });
+    if (st === 0) {
+      s += svc(140, 220, '账本服务');
+      s += box(620, 100, 300, 90, 'PostgreSQL', '写记账分录', { c: 'var(--buy)' });
+      s += box(620, 340, 300, 90, 'Kafka', '发事件', { c: 'var(--info)' });
+      s += arrow(402, 250, 616, 150, 'var(--buy)') + arrow(402, 290, 616, 380, 'var(--info)');
+      s += txt(1280, 250, '两个系统', { fs: 44, b: 1 });
+      s += txt(1280, 320, '没有共同的事务', { fs: 34, c: 'var(--warn)' });
+    } else if (st <= 2) {
+      const first = st === 1 ? ['PostgreSQL', '写库 ✓', 'var(--buy)'] : ['Kafka', '发事件 ✓', 'var(--info)'];
+      const second = st === 1 ? ['Kafka', '发事件 ✗', 'var(--sell)'] : ['PostgreSQL', '写库 ✗', 'var(--sell)'];
+      s += txt(0, 40, st === 1 ? '错误做法 A：先写库，再发事件' : '错误做法 B：先发事件，再写库', { a: 'start', fs: 34, b: 1, c: 'var(--sell)' });
+      s += svc(0, 120, '账本服务');
+      s += box(360, 120, 300, 90, first[0], first[1], { c: first[2], sc: first[2] });
+      s += arrow(262, 165, 356, 165, first[2]);
+      s += `<text x="730" y="185" font-size="60">💥</text>`;
+      s += txt(800, 175, '进程崩溃', { a: 'start', fs: 32, c: 'var(--sell)' });
+      s += box(1080, 120, 300, 90, second[0], second[1], { c: 'var(--sell)', dash: '10 8', sc: 'var(--sell)' });
+      s += `<rect x="0" y="300" width="1640" height="200" rx="16" fill="rgba(246,70,93,.10)" stroke="var(--sell)" stroke-width="3"/>`;
+      s += txt(820, 380, st === 1 ? '账变了，事件丢了' : '事件发了，账没记', { fs: 44, b: 1, c: 'var(--sell)' });
+      s += txt(820, 450, st === 1 ? '余额推送、行情、对账：下游都不知道这笔账' : '下游看到一笔根本不存在的账', { fs: 32 });
+    } else {
+      s += txt(0, 40, 'Outbox 模式', { a: 'start', fs: 34, b: 1, c: 'var(--buy)' });
+      s += svc(0, 200, '账本服务');
+      s += `<rect x="340" y="90" width="560" height="330" rx="18" fill="rgba(46,189,133,.08)" stroke="var(--buy)" stroke-width="3"/>`;
+      s += txt(620, 135, '同一个数据库事务', { fs: 30, b: 1, c: 'var(--buy)' });
+      s += box(380, 165, 480, 90, 'journal 表', '记账分录', { c: 'var(--buy)' });
+      s += box(380, 290, 480, 90, 'outbox 表', '待发事件', { c: 'var(--buy)' });
+      s += arrow(262, 245, 336, 245, 'var(--buy)');
+      s += txt(620, 470, '要么都成功，要么都失败', { fs: 32, c: 'var(--buy)' });
+      if (st >= 4) {
+        s += box(980, 290, 240, 90, '后台任务', 'relay', { c: 'var(--info)' });
+        s += arrow(862, 335, 976, 335, 'var(--info)', '10 8');
+        s += box(1340, 290, 260, 90, 'Kafka', '', { c: 'var(--info)', fs: 34 });
+        s += arrow(1222, 335, 1336, 335, 'var(--info)', '10 8');
+        s += `<path d="M1100 288 C 1100 200, 1200 200, 1200 288" fill="none" stroke="var(--warn)" stroke-width="3" stroke-dasharray="8 6"/>`;
+        s += txt(1150, 190, '失败重试', { fs: 28, c: 'var(--warn)' });
+        s += txt(1470, 470, '下游按事件编号去重', { fs: 30, c: 'var(--text-2)' });
+      }
+    }
+    $(el, 'ob').innerHTML = s;
+  }
+
+  // ---------- failure + idempotent compensation ----------
+  function failStep(el, st) {
+    let s = '';
+    const chain = ['网关', '订单', '风控', '账本冻结', '撮合'];
+    chain.forEach((n, i) => {
+      const down = i === 4 && st >= 1;
+      const done = i < 4;
+      s += box(i * 300, 0, 250, 80, n + (down ? ' ✗' : ''), '', { c: down ? 'var(--sell)' : (done ? 'var(--gold)' : 'var(--line)'), f: down ? 'rgba(246,70,93,.16)' : 'var(--panel)', tc: down ? 'var(--sell)' : 'var(--text)' });
+      if (i < 4) s += arrow(i * 300 + 252, 40, i * 300 + 296, 40, i === 3 && st >= 1 ? 'var(--sell)' : 'var(--gold)', i === 3 && st >= 1 ? '8 6' : '', 4);
+    });
+    if (st === 0) s += `<rect x="880" y="-6" width="440" height="92" rx="14" fill="none" stroke="var(--gold)" stroke-width="4" stroke-dasharray="12 8"/>` + txt(1100, 130, '最危险的窗口', { fs: 32, b: 1, c: 'var(--gold)' });
+    // balance
+    const states = [
+      [4000, 6000, '订单进行中'],
+      [4000, 6000, '用户看到：下单失败'],
+      [10000, 0, '补偿：rejected + 解冻'],
+      [10000, 0, '解冻请求超时，重试一次'],
+      [16000, -6000, '无幂等：解冻执行两次'],
+      [10000, 0, '有幂等：重复编号直接返回'],
+    ][st];
+    const bad = st === 4;
+    s += `<rect x="0" y="190" width="760" height="330" rx="16" fill="var(--panel)" stroke="${bad ? 'var(--sell)' : (st === 5 || st === 2 ? 'var(--buy)' : 'var(--line)')}" stroke-width="3"/>`;
+    s += txt(30, 250, '账本 · 用户 A 的 USDT', { a: 'start', fs: 34, b: 1 });
+    s += txt(30, 340, '可用', { a: 'start', fs: 32 }) + txt(730, 345, fmt(states[0]), { a: 'end', fs: 60, b: 1, mono: 1, c: bad ? 'var(--sell)' : (st >= 2 ? 'var(--buy)' : 'var(--text)') });
+    s += txt(30, 440, '冻结', { a: 'start', fs: 32 }) + txt(730, 445, fmt(states[1]), { a: 'end', fs: 60, b: 1, mono: 1, c: bad ? 'var(--sell)' : (st <= 1 ? 'var(--gold)' : 'var(--text)') });
+    s += `<rect x="800" y="190" width="840" height="330" rx="16" fill="var(--panel)" stroke="${bad ? 'var(--sell)' : 'var(--info)'}" stroke-width="3"/>`;
+    s += txt(840, 260, states[2], { a: 'start', fs: 36, b: 1, c: bad ? 'var(--sell)' : 'var(--info)' });
+    const detail = [
+      ['冻结成功，订单还没进订单簿'],
+      ['6,000 USDT 被冻结', '订单不在订单簿里'],
+      ['订单 → rejected', '账本：冻结 −6,000，可用 +6,000'],
+      ['解冻 req-7f3a 第 1 次 ✓', '解冻 req-7f3a 第 2 次 …'],
+      ['可用 10,000 + 6,000 = 16,000', '凭空多出 6,000 USDT'],
+      ['req-7f3a 已处理 → 返回第一次结果', '余额保持 10,000 ✓'],
+    ][st];
+    detail.forEach((l, i) => s += txt(840, 340 + i * 70, l, { a: 'start', fs: 32, mono: /req|=/.test(l) ? 0 : 0 }));
+    $(el, 'fail').innerHTML = s;
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>储备金证明</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .tree-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tree-svg { width: 100%; min-width: 560px; height: auto; display: block; }
+  .nd { fill: var(--surface-2); stroke: var(--border); stroke-width: 1.5; }
+  .nd.leaf { cursor: pointer; }
+  .nd.path { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2.5; }
+  .nd.sib { fill: var(--info-soft); stroke: var(--info); stroke-width: 2; }
+  .nd.root { stroke: var(--text); stroke-width: 2; }
+  .nd.bad { fill: var(--sell-soft); stroke: var(--sell); stroke-width: 2.5; }
+  .nd.fake { fill: var(--warn-soft); stroke: var(--warn); stroke-dasharray: 5 3; }
+  .ed { stroke: var(--border); stroke-width: 1.5; fill: none; }
+  .ed.path { stroke: var(--accent); stroke-width: 3; }
+  .t-lab { font-size: 11px; font-weight: 600; }
+  .t-hash { font-size: 10px; font-family: var(--mono); fill: var(--text-2); }
+  .t-bal { font-size: 10px; font-family: var(--mono); fill: var(--text-2); }
+  .t-lvl { font-size: 10px; fill: var(--text-2); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-2); margin-top: 8px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; border: 1.5px solid; }
+  .lg-path { background: var(--accent-soft); border-color: var(--accent) !important; }
+  .lg-sib { background: var(--info-soft); border-color: var(--info) !important; }
+  .lg-fake { background: var(--warn-soft); border-color: var(--warn) !important; }
+  .lg-bad { background: var(--sell-soft); border-color: var(--sell) !important; }
+  .users td input { width: 100%; min-width: 70px; padding: 4px 6px; }
+  .users tr.sel td { background: var(--accent-soft); }
+  .hash { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  .root-box { font-family: var(--mono); font-size: 12px; word-break: break-all; background: var(--surface-2); padding: 8px 10px; border-radius: 8px; }
+  .steps { list-style: none; padding: 0; margin: 8px 0; }
+  .steps li { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 13px; background: var(--surface); }
+  .steps li .hash { display: block; margin-top: 2px; }
+  .verdict { font-weight: 650; padding: 8px 12px; border-radius: 8px; margin-top: 8px; }
+  .verdict.ok { background: var(--buy-soft); color: var(--buy); }
+  .verdict.err { background: var(--sell-soft); color: var(--sell); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 10px 0; }
+  .stat .v.sm { font-size: 18px; }
+  .checks { list-style: none; padding: 0; margin: 6px 0; }
+  .checks li { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  ol.how { padding-left: 20px; margin: 6px 0; }
+  ol.how li { margin: 2px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../04-wallet-custody.md">对应章节：04 钱包与托管</a>
+  </header>
+  <h1>储备金证明（Merkle 树）</h1>
+  <p class="lead">交易所把每个用户的余额做成一个叶子，两两哈希，层层向上，得到一个根哈希并公开。你只需要自己的余额和几个"兄弟哈希"，就能自己算出根哈希，确认你的余额被计入了负债。本页用浏览器自带的 SHA-256 实时计算。用户和金额都是<strong>示例</strong>。</p>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="how small">
+      <li>在左侧表格里查看或修改 8 个示例用户的余额。修改后，交易所重新构建树并发布新根哈希。</li>
+      <li>点击表格里的一行，或点击树底部的叶子，选中一个用户。树上会高亮他的 Merkle 路径（证明）。</li>
+      <li>在"自行验证"面板点击"开始验证"，逐步看到从叶子算到根的过程。</li>
+      <li>点击"偷偷篡改余额"或"塞入负余额假账户"，观察哪些检查能发现问题，哪些不能。</li>
+    </ol>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+      <h3>1. 用户余额（你自己账户页显示的余额）</h3>
+      <div class="table-wrap">
+        <table class="users">
+          <thead><tr><th>UID</th><th class="num">余额 BTC</th><th>交易所树中的记录</th></tr></thead>
+          <tbody id="userBody"></tbody>
+        </table>
+      </div>
+      <div class="btn-row">
+        <button class="sell" id="btnTamper">偷偷篡改余额</button>
+        <button class="sell" id="btnFake">塞入负余额假账户</button>
+        <button id="btnReset">重置</button>
+      </div>
+      <p class="small muted">"偷偷篡改"会在交易所的数据里把选中用户（未选中时随机选一个）的余额调低，然后重新发布根哈希。你账户页显示的余额不变。</p>
+    </div>
+    <div class="card">
+      <h3>2. 交易所公布的数据</h3>
+      <label>公开根哈希（Merkle Root）</label>
+      <div class="root-box" id="rootBox">–</div>
+      <p class="small muted" id="rootNote"></p>
+      <div class="stats">
+        <div class="stat"><span class="k">链上资产（示例）</span><span class="v sm" id="sAsset">–</span></div>
+        <div class="stat"><span class="k">公布的负债总额</span><span class="v sm" id="sLiab">–</span></div>
+        <div class="stat"><span class="k">储备率</span><span class="v sm" id="sRatio">–</span></div>
+      </div>
+      <p class="small muted">储备率 = 链上资产 ÷ 用户负债。大于 100% 表示资产足以覆盖负债（仅限这一时刻）。</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>3. Merkle 树</h3>
+    <div class="tree-wrap"><svg class="tree-svg" id="treeSvg" viewBox="0 0 760 330" role="img" aria-label="Merkle 树结构图"></svg></div>
+    <div class="legend">
+      <span><i class="lg-path"></i>选中用户的路径</span>
+      <span><i class="lg-sib"></i>证明中的兄弟哈希</span>
+      <span><i class="lg-fake"></i>负余额假账户</span>
+      <span><i class="lg-bad"></i>被篡改的记录</span>
+    </div>
+    <p class="small muted">叶子哈希 = SHA-256("UID:余额")；父节点哈希 = SHA-256(左子哈希 + 右子哈希)。节点个数为奇数时，最后一个节点与自己配对。图中只显示哈希前 8 位。</p>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+      <h3>4. 自行验证（站在用户角度）</h3>
+      <label for="vUid">我的 UID</label>
+      <select id="vUid"></select>
+      <label for="vBal">我账户页显示的余额（BTC）</label>
+      <input id="vBal" type="number" step="0.01">
+      <div class="btn-row"><button class="primary" id="btnVerify">开始验证</button></div>
+      <p class="small muted">你只用到三样东西：自己的 UID 和余额、交易所给你的兄弟哈希列表、公开根哈希。你看不到其他用户的余额。</p>
+      <ol class="steps" id="steps"></ol>
+      <div id="verdict"></div>
+    </div>
+    <div class="card">
+      <h3>5. zk-SNARK 约束检查（模拟）</h3>
+      <p class="small">Merkle 证明只回答"我在不在树里"。zk-SNARK 证明额外回答两件事，而且不公开任何用户余额。本面板直接检查这两条约束，用来模拟证明的效果，不是真实的零知识证明。</p>
+      <ul class="checks" id="zkChecks"></ul>
+      <div class="callout warn small">
+        <strong>为什么需要它？</strong> 交易所可以塞入一个余额为负数的假账户。每个真实用户的 Merkle 验证仍然全部通过，但负债总额被压低，储备率看起来更高。只有"所有叶子 ≥ 0 且总和 = 公布负债"这条约束能抓住它。币安于 2023 年 2 月在 PoR 中加入 zk-SNARK，正是为了证明这两点（公开资料）。
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>试一试</strong>
+    <ol class="how small">
+      <li>选中 U1003，点"开始验证"。数一数，8 个用户的树需要几个兄弟哈希？</li>
+      <li>保持选中 U1003，点"偷偷篡改余额"，再验证一次。然后换成 U1006 验证。为什么只有被篡改的用户能发现问题？这说明为什么需要大量用户去验证？</li>
+      <li>点"塞入负余额假账户"。所有真实用户的验证都通过了吗？储备率发生了什么变化？看 zk-SNARK 面板如何发现问题。</li>
+    </ol>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>6. 储备金证明的局限</h3>
+    <ul class="small">
+      <li><strong>只是某一时刻的快照。</strong>交易所可以在快照前借入资产，快照后还回去。</li>
+      <li><strong>不证明负债完整。</strong>交易所可能漏掉从不验证的账户。Merkle 树只能证明"在树里"，不能证明"所有人都在树里"。</li>
+      <li><strong>不证明资产没有借入或抵押。</strong>链上地址有余额，不代表这些资产没有对应的链下负债。</li>
+      <li><strong>不覆盖链下负债。</strong>例如交易所对机构的借款、法币负债，不在用户余额树里。</li>
+      <li><strong>依赖用户参与。</strong>验证的用户越少，被篡改却不被发现的概率越高。</li>
+    </ul>
+  </div>
+
+  <footer class="note">教学简化：币安的真实叶子包含用户 ID 哈希和多个币种的净余额，树的规模达到数千万叶子；本页用单一币种、8 个示例用户。链上资产 100 BTC 为示例值。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var NS = 'http://www.w3.org/2000/svg';
+  function $(id) { return document.getElementById(id); }
+  function el(tag, attrs, text) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) { if (Object.prototype.hasOwnProperty.call(attrs, k)) n.setAttribute(k, attrs[k]); }
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  /* ---------- SHA-256: SubtleCrypto, with a pure-JS fallback for non-secure contexts ---------- */
+  var enc = new TextEncoder();
+  function toHex(buf) {
+    var b = new Uint8Array(buf), s = '';
+    for (var i = 0; i < b.length; i++) s += b[i].toString(16).padStart(2, '0');
+    return s;
+  }
+  var K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  function sha256Fallback(bytes) {
+    var l = bytes.length, bitLen = l * 8;
+    var withPad = ((l + 9 + 63) >> 6) << 6;
+    var m = new Uint8Array(withPad);
+    m.set(bytes); m[l] = 0x80;
+    var dv = new DataView(m.buffer);
+    dv.setUint32(withPad - 4, bitLen >>> 0);
+    dv.setUint32(withPad - 8, Math.floor(bitLen / 4294967296));
+    var H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+    var W = new Uint32Array(64);
+    function rotr(x, n) { return (x >>> n) | (x << (32 - n)); }
+    for (var off = 0; off < withPad; off += 64) {
+      for (var t = 0; t < 16; t++) W[t] = dv.getUint32(off + t * 4);
+      for (t = 16; t < 64; t++) {
+        var s0 = rotr(W[t-15], 7) ^ rotr(W[t-15], 18) ^ (W[t-15] >>> 3);
+        var s1 = rotr(W[t-2], 17) ^ rotr(W[t-2], 19) ^ (W[t-2] >>> 10);
+        W[t] = (W[t-16] + s0 + W[t-7] + s1) >>> 0;
+      }
+      var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+      for (t = 0; t < 64; t++) {
+        var S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+        var ch = (e & f) ^ (~e & g);
+        var T1 = (h + S1 + ch + K[t] + W[t]) >>> 0;
+        var S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+        var mj = (a & b) ^ (a & c) ^ (b & c);
+        var T2 = (S0 + mj) >>> 0;
+        h = g; g = f; f = e; e = (d + T1) >>> 0; d = c; c = b; b = a; a = (T1 + T2) >>> 0;
+      }
+      H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+      H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+    }
+    return H.map(function (x) { return x.toString(16).padStart(8, '0'); }).join('');
+  }
+  var useSubtle = !!(window.crypto && window.crypto.subtle);
+  function sha256(str) {
+    var bytes = enc.encode(str);
+    if (useSubtle) {
+      return window.crypto.subtle.digest('SHA-256', bytes).then(toHex, function () { useSubtle = false; return sha256Fallback(bytes); });
+    }
+    return Promise.resolve(sha256Fallback(bytes));
+  }
+
+  /* ---------- State ---------- */
+  var ASSETS = 100; // 链上资产，示例
+  var SEED = [
+    ['U1001', 12.5], ['U1002', 3.2], ['U1003', 20], ['U1004', 0.75],
+    ['U1005', 8.4], ['U1006', 15], ['U1007', 1.1], ['U1008', 6.05]
+  ];
+  var users, selected, levels, prevRoot, tamperedNote;
+
+  function fmtBal(v) { return (Math.round(v * 1e8) / 1e8).toString(); }
+  function leafText(u) { return u.uid + ':' + fmtBal(u.recorded); }
+
+  function reset() {
+    users = SEED.map(function (s) { return { uid: s[0], real: s[1], recorded: s[1], fake: false }; });
+    selected = 2; prevRoot = null; tamperedNote = '';
+    rebuild('交易所发布初始根哈希。');
+  }
+
+  async function buildTree() {
+    var lv0 = [];
+    for (var i = 0; i < users.length; i++) {
+      lv0.push({ hash: await sha256(leafText(users[i])), user: i, kids: null });
+    }
+    var lv = [lv0];
+    var cur = lv0;
+    while (cur.length > 1) {
+      var next = [];
+      for (var j = 0; j < cur.length; j += 2) {
+        var L = cur[j], R = cur[j + 1] || cur[j];
+        next.push({ hash: await sha256(L.hash + R.hash), kids: [j, cur[j + 1] ? j + 1 : j] });
+      }
+      lv.push(next); cur = next;
+    }
+    return lv;
+  }
+
+  function rootHash() { return levels[levels.length - 1][0].hash; }
+  function liabilities() { return users.reduce(function (s, u) { return s + u.recorded; }, 0); }
+
+  // proof: list of {hash, side: 'L'|'R'} siblings from leaf to root
+  function proofFor(idx) {
+    var out = [], pathIdx = [idx];
+    for (var l = 0; l < levels.length - 1; l++) {
+      var lvl = levels[l];
+      var sibIdx = idx % 2 === 0 ? (idx + 1 < lvl.length ? idx + 1 : idx) : idx - 1;
+      out.push({ hash: lvl[sibIdx].hash, side: idx % 2 === 0 ? 'R' : 'L', level: l, idx: sibIdx });
+      idx = Math.floor(idx / 2);
+      pathIdx.push(idx);
+    }
+    return { sibs: out, path: pathIdx };
+  }
+
+  async function rebuild(note) {
+    var old = levels ? rootHash() : null;
+    levels = await buildTree();
+    prevRoot = old && old !== rootHash() ? old : prevRoot;
+    $('rootBox').textContent = rootHash();
+    var msg = note || '';
+    if (old && old !== rootHash()) msg += ' 根哈希已变化（旧根前 16 位：' + old.slice(0, 16) + '…）。';
+    $('rootNote').textContent = msg;
+    renderUsers(); renderTree(); renderStats(); renderZk(); fillVerifySelect();
+    clear($('steps')); $('verdict').textContent = ''; $('verdict').className = '';
+  }
+
+  /* ---------- Rendering ---------- */
+  function renderUsers() {
+    var body = $('userBody'); clear(body);
+    users.forEach(function (u, i) {
+      var tr = document.createElement('tr');
+      if (i === selected) tr.className = 'sel';
+      var td1 = document.createElement('td'); td1.textContent = u.uid; td1.className = 'mono';
+      var td2 = document.createElement('td'); td2.className = 'num';
+      if (u.fake) {
+        td2.textContent = '（不存在的用户）';
+      } else {
+        var inp = document.createElement('input');
+        inp.type = 'number'; inp.step = '0.01'; inp.min = '0'; inp.value = u.real;
+        inp.setAttribute('aria-label', u.uid + ' 余额');
+        inp.addEventListener('click', function (e) { e.stopPropagation(); });
+        inp.addEventListener('change', function () {
+          var v = Number(inp.value);
+          if (!isFinite(v) || v < 0) { inp.value = u.real; return; }
+          u.real = v; u.recorded = v;
+          rebuild(u.uid + ' 的余额变为 ' + fmtBal(v) + ' BTC（正常变动），交易所重新发布根哈希。');
+        });
+        td2.appendChild(inp);
+      }
+      var td3 = document.createElement('td');
+      var p = document.createElement('span');
+      if (u.fake) { p.className = 'pill warn'; p.textContent = fmtBal(u.recorded) + '（假账户）'; }
+      else if (u.recorded !== u.real) { p.className = 'pill sell'; p.textContent = fmtBal(u.recorded) + '（被篡改）'; }
+      else { p.className = 'pill buy'; p.textContent = fmtBal(u.recorded) + ' 一致'; }
+      td3.appendChild(p);
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', function () { select(i); });
+      body.appendChild(tr);
+    });
+  }
+
+  function renderTree() {
+    var svg = $('treeSvg'); clear(svg);
+    var n = users.length;
+    var nodeW = 82, nodeH = 40, gapX = 10;
+    var W = Math.max(760, n * (nodeW + gapX) + 20);
+    var depth = levels.length;
+    var rowH = 74, top = 14;
+    var H = top + depth * rowH + 20;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.style.minWidth = Math.max(560, n * 66) + 'px';
+    var pos = [];
+    // leaves at bottom row
+    var leafY = top + (depth - 1) * rowH;
+    var span = n * (nodeW + gapX) - gapX;
+    var x0 = (W - span) / 2;
+    pos[0] = levels[0].map(function (_, i) { return { x: x0 + i * (nodeW + gapX) + nodeW / 2, y: leafY }; });
+    for (var l = 1; l < depth; l++) {
+      pos[l] = levels[l].map(function (nd) {
+        var a = pos[l - 1][nd.kids[0]], b = pos[l - 1][nd.kids[1]];
+        return { x: (a.x + b.x) / 2, y: top + (depth - 1 - l) * rowH };
+      });
+    }
+    var pr = selected !== null && selected < n ? proofFor(selected) : null;
+    var onPath = {}, onSib = {};
+    if (pr) {
+      pr.path.forEach(function (idx, l) { onPath[l + ':' + idx] = true; });
+      pr.sibs.forEach(function (s) { if (!onPath[s.level + ':' + s.idx]) onSib[s.level + ':' + s.idx] = true; });
+    }
+    // edges
+    for (l = 1; l < depth; l++) {
+      levels[l].forEach(function (nd, i) {
+        var p = pos[l][i];
+        var kidsSeen = {};
+        nd.kids.forEach(function (k) {
+          if (kidsSeen[k]) return; kidsSeen[k] = true;
+          var c = pos[l - 1][k];
+          var isPath = onPath[l + ':' + i] && onPath[(l - 1) + ':' + k];
+          svg.appendChild(el('path', { d: 'M' + p.x + ' ' + (p.y + nodeH) + ' C' + p.x + ' ' + (p.y + nodeH + 20) + ' ' + c.x + ' ' + (c.y - 20) + ' ' + c.x + ' ' + c.y, 'class': 'ed' + (isPath ? ' path' : '') }));
+        });
+      });
+    }
+    // nodes
+    for (l = 0; l < depth; l++) {
+      levels[l].forEach(function (nd, i) {
+        var p = pos[l][i];
+        var key = l + ':' + i;
+        var cls = 'nd';
+        if (l === 0) {
+          cls += ' leaf';
+          var u = users[i];
+          if (u.fake) cls += ' fake';
+          else if (u.recorded !== u.real) cls += ' bad';
+        }
+        if (l === depth - 1) cls += ' root';
+        if (onPath[key]) cls += ' path';
+        else if (onSib[key]) cls += ' sib';
+        var g = el('g', {});
+        g.appendChild(el('rect', { x: p.x - nodeW / 2, y: p.y, width: nodeW, height: nodeH, rx: 7, 'class': cls }));
+        var label = l === 0 ? users[i].uid : (l === depth - 1 ? '根 Root' : 'H' + l + '-' + (i + 1));
+        g.appendChild(el('text', { x: p.x, y: p.y + 16, 'text-anchor': 'middle', 'class': 't-lab' }, label));
+        g.appendChild(el('text', { x: p.x, y: p.y + 31, 'text-anchor': 'middle', 'class': 't-hash' }, nd.hash.slice(0, 8)));
+        if (l === 0) {
+          g.appendChild(el('text', { x: p.x, y: p.y + nodeH + 14, 'text-anchor': 'middle', 'class': 't-bal' }, fmtBal(users[i].recorded) + ' BTC'));
+          g.style.cursor = 'pointer';
+          (function (idx) { g.addEventListener('click', function () { select(idx); }); })(i);
+        }
+        svg.appendChild(g);
+      });
+    }
+    svg.appendChild(el('text', { x: 6, y: leafY + 24, 'class': 't-lvl' }, '叶子'));
+    svg.appendChild(el('text', { x: 6, y: top + 24, 'class': 't-lvl' }, '根'));
+  }
+
+  function renderStats() {
+    var liab = liabilities();
+    $('sAsset').textContent = ASSETS + ' BTC';
+    $('sLiab').textContent = fmtBal(Math.round(liab * 100) / 100) + ' BTC';
+    var r = liab > 0 ? ASSETS / liab * 100 : Infinity;
+    var el2 = $('sRatio');
+    el2.textContent = isFinite(r) ? r.toFixed(1) + '%' : '∞';
+    el2.className = 'v sm ' + (r >= 100 ? 'up' : 'down');
+  }
+
+  function renderZk() {
+    var box = $('zkChecks'); clear(box);
+    var neg = users.filter(function (u) { return u.recorded < 0; });
+    var sumLeaves = liabilities();
+    var realSum = users.filter(function (u) { return !u.fake; }).reduce(function (s, u) { return s + u.real; }, 0);
+    var items = [
+      [neg.length === 0, '约束 1：每个叶子余额 ≥ 0', neg.length ? '发现 ' + neg.length + ' 个负余额叶子：' + neg.map(function (u) { return u.uid + ' = ' + fmtBal(u.recorded); }).join('，') + '。证明无法生成。' : '所有叶子余额非负。'],
+      [true, '约束 2：叶子余额总和 = 公布的负债总额', '总和 ' + fmtBal(Math.round(sumLeaves * 100) / 100) + ' BTC，与公布值一致（交易所按树中数据公布）。'],
+      [Math.abs(sumLeaves - realSum) < 1e-9, '参考（证明之外）：公布负债 = 用户真实余额之和', Math.abs(sumLeaves - realSum) < 1e-9 ? '一致。' : '少报了 ' + fmtBal(Math.round((realSum - sumLeaves) * 100) / 100) + ' BTC。电路无法知道"真实余额"，这一项只能靠每个用户自己做 Merkle 验证来发现。']
+    ];
+    items.forEach(function (it) {
+      var li = document.createElement('li');
+      var p = document.createElement('span');
+      p.className = 'pill ' + (it[0] ? 'buy' : 'sell');
+      p.textContent = it[0] ? '通过' : '失败';
+      var b = document.createElement('strong'); b.textContent = ' ' + it[1];
+      var d = document.createElement('div'); d.className = 'muted small'; d.textContent = it[2];
+      li.appendChild(p); li.appendChild(b); li.appendChild(d);
+      box.appendChild(li);
+    });
+  }
+
+  function fillVerifySelect() {
+    var s = $('vUid'); clear(s);
+    users.forEach(function (u, i) {
+      if (u.fake) return;
+      var o = document.createElement('option'); o.value = i; o.textContent = u.uid; s.appendChild(o);
+    });
+    if (selected !== null && users[selected] && !users[selected].fake) {
+      s.value = selected;
+      $('vBal').value = users[selected].real;
+    }
+  }
+
+  function select(i) {
+    selected = i;
+    renderUsers(); renderTree(); fillVerifySelect();
+    clear($('steps')); $('verdict').textContent = ''; $('verdict').className = '';
+  }
+
+  /* ---------- Verification (user side) ---------- */
+  async function verify() {
+    var idx = Number($('vUid').value);
+    var bal = Number($('vBal').value);
+    var u = users[idx];
+    if (selected !== idx) { selected = idx; renderUsers(); renderTree(); }
+    var steps = $('steps'); clear(steps);
+    var v = $('verdict'); v.textContent = ''; v.className = '';
+    var pr = proofFor(idx);
+    function addStep(title, detail) {
+      var li = document.createElement('li');
+      li.textContent = title;
+      var h = document.createElement('span'); h.className = 'hash'; h.textContent = detail;
+      li.appendChild(h); steps.appendChild(li);
+    }
+    var leafStr = u.uid + ':' + fmtBal(bal);
+    var h = await sha256(leafStr);
+    addStep('第 1 步：计算我的叶子 SHA-256("' + leafStr + '")', h);
+    for (var s = 0; s < pr.sibs.length; s++) {
+      var sib = pr.sibs[s];
+      await new Promise(function (r) { setTimeout(r, 220); });
+      var input = sib.side === 'R' ? h + sib.hash : sib.hash + h;
+      h = await sha256(input);
+      addStep('第 ' + (s + 2) + ' 步：兄弟哈希 ' + sib.hash.slice(0, 8) + '… 在' + (sib.side === 'R' ? '右' : '左') + '侧，拼接后哈希', h);
+    }
+    await new Promise(function (r) { setTimeout(r, 220); });
+    var ok = h === rootHash();
+    v.className = 'verdict ' + (ok ? 'ok' : 'err');
+    v.textContent = ok
+      ? '✓ 验证通过：算出的根哈希与公开根哈希一致。我的 ' + fmtBal(bal) + ' BTC 被计入了负债。共用 ' + pr.sibs.length + ' 个兄弟哈希。'
+      : '✗ 验证失败：算出的根哈希 ' + h.slice(0, 12) + '… ≠ 公开根哈希 ' + rootHash().slice(0, 12) + '…。交易所树中的记录与我的余额不一致，应向交易所和社区举报。';
+  }
+
+  /* ---------- Attacks ---------- */
+  function tamper() {
+    var cands = users.map(function (u, i) { return i; }).filter(function (i) { return !users[i].fake && users[i].real > 0; });
+    if (!cands.length) return;
+    var i = (selected !== null && cands.indexOf(selected) >= 0) ? selected : cands[Math.floor(Math.random() * cands.length)];
+    var u = users[i];
+    var cut = Math.round(u.recorded * 0.6 * 100) / 100;
+    u.recorded = Math.round((u.recorded - cut) * 100) / 100;
+    rebuild('交易所把 ' + u.uid + ' 在树中的余额偷偷少记 ' + fmtBal(cut) + ' BTC，并发布了新根哈希。');
+  }
+  function addFake() {
+    if (users.some(function (u) { return u.fake; })) return;
+    users.push({ uid: 'FAKE01', real: 0, recorded: -30, fake: true });
+    $('btnFake').disabled = true;
+    rebuild('交易所塞入假账户 FAKE01，余额 -30 BTC。负债总额被压低 30 BTC。');
+  }
+
+  $('btnVerify').addEventListener('click', verify);
+  $('btnTamper').addEventListener('click', tamper);
+  $('btnFake').addEventListener('click', addFake);
+  $('btnReset').addEventListener('click', function () { $('btnFake').disabled = false; levels = null; reset(); });
+  $('vUid').addEventListener('change', function () {
+    var i = Number(this.value);
+    $('vBal').value = users[i].real;
+    select(i);
+  });
+
+  reset();
+})();
+</script>
+</body>
+</html>

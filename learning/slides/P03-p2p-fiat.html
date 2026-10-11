@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P03 P2P 与法币通道</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .tight { padding: 18px 26px; font-size: 30px; }
+  .scene > h2 { font-size: 60px; }
+  table.t td, table.t th { padding: 12px 18px; }
+  table.t tr { transition: background .3s, opacity .3s; }
+  table.t tr.cur td { background: var(--gold-soft); }
+  .rules { display: flex; flex-direction: column; gap: 12px; }
+  .rules .r { font-size: 30px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 22px; transition: opacity .3s, border-color .3s, background .3s; }
+  .rules .r.cur { border-color: var(--gold); background: var(--gold-soft); }
+  .rules .r b { color: var(--gold); font-family: var(--mono); }
+  .ord { width: 640px; background: var(--panel); border: 2px solid var(--line); border-radius: 22px; padding: 26px 32px; display: flex; flex-direction: column; gap: 14px; font-size: 30px; }
+  .ord .rowx { display: flex; justify-content: space-between; }
+  #riskT td { padding: 22px 18px; }
+  .ord .ok { color: var(--buy); font-weight: 700; font-size: 36px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="P03" data-title="P2P 与法币通道：担保交易和反诈">
+
+  <!-- 1 开场 -->
+  <section class="scene" data-title="开场">
+    <div class="kicker">CEX 产品深潜 · P03</div>
+    <h1 style="font-size:88px">P2P：币没丢，<span class="hl">卡被冻了</span></h1>
+    <div class="row" style="align-items:flex-start">
+      <div class="ord" data-step="0">
+        <div class="ok">✓ 订单已完成</div>
+        <div class="rowx"><span class="muted">卖出</span><span class="mono">1,000 USDT</span></div>
+        <div class="rowx"><span class="muted">收款</span><span class="mono">7,200 元</span></div>
+        <div class="rowx"><span class="muted">状态</span><span>已确认收款 · 已放币</span></div>
+        <div class="muted" style="font-size:26px">示例数字</div>
+      </div>
+      <div class="col">
+        <div class="card sell" data-step="1" style="font-size:34px"><b>3 天后 · 示例</b><br>卖家银行卡被冻结</div>
+        <div class="card warn tight" data-step="2">只讲系统设计与风险机制 · 不构成投资或法律建议 · 请遵守所在地法律</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>你在 P2P 上卖出1000 USDT，收到7200元。确认收款，放币，订单完成。数字是示例。</li>
+      <li>三天后，你的银行卡被冻结了。平台上的交易看起来完全正常，币也没丢，为什么还会出事？</li>
+      <li>这一集，我们拆开 P2P 担保交易和法币充提通道。本集只讲系统设计和风险机制，不构成投资或法律建议。各地法律不同，请遵守所在地法律。</li>
+    </ol>
+  </section>
+
+  <!-- 2 路线图 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>平台托管币，不经手法币</h2>
+    <div class="grid2">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>P2P 担保交易<br><span class="muted">规则 · 托管 · 状态机 · 仲裁 · 反诈</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>法币充提通道<br><span class="muted">参考码 · 回调幂等 · 日终对账</span></div></div>
+    </div>
+    <div class="card info tight" data-step="1">比喻：二手平台的担保交易。卖家先把货交平台保管，卖家确认收钱，平台才放货</div>
+    <div class="card sell tight" data-step="2">比喻失效处：P2P 平台<b>不代收法币</b> → 只能看收据，而收据可以造假</div>
+    <ol class="say">
+      <li>本集分两段。第一段是 P2P：规则、托管、状态机、仲裁、商业逻辑和反诈。第二段是法币充提通道。</li>
+      <li>先打个比方。P2P 像二手平台的担保交易。卖家先把货交给平台保管，买家线下把钱转给卖家。卖家确认收到钱，平台才把货交给买家。</li>
+      <li>比喻在一点上不成立。二手平台通常代收货款，而 P2P 平台不代收法币。所以平台只能看收据判断钱付没付。收据可以造假，付款人可以是别人，钱也可能来自诈骗。</li>
+    </ol>
+  </section>
+
+  <!-- 3 规则 -->
+  <section class="scene" data-title="角色与公开规则" data-onstep="rulesStep">
+    <div class="kicker">P2P · 截至 2026 年币安 P2P 用户交易政策</div>
+    <h2>角色与公开规则</h2>
+    <div class="row">
+      <div class="col" style="flex:0 0 520px">
+        <div class="card gold tight"><b>广告方 · 商家</b><br><span style="font-size:26px" class="muted">币种 · 价格 · 数量 · 限额 · 收款方式 · 付款时限</span></div>
+        <div class="card info tight"><b>下单方</b><br><span style="font-size:26px" class="muted">浏览广告，选一个下单</span></div>
+        <div class="card tight" id="platform-card"><b>平台</b>：不是交易一方<br><span style="font-size:26px" class="muted">托管加密资产 · 中立撮合与争议处理</span></div>
+      </div>
+      <div class="rules col" id="rules">
+        <div class="r">买家在<b>广告时限</b>内付款</div>
+        <div class="r">卖家确认收到全额后 <b>15 分钟</b>内放币</div>
+        <div class="r">付款户名必须与买家<b>实名一致</b></div>
+        <div class="r">非实名付款：暂停 P2P 至少 <b>7 天</b> · 争议中买家担损失</div>
+        <div class="r">买家擅自取消 <b>3 次/天</b> → 当天不能再买</div>
+        <div class="r">连续 <b>5 笔</b>未付款 → 暂停 24 小时 · 广告方 <b>8 笔</b> → 永久关闭</div>
+        <div class="r">争议只认<b>官方订单聊天</b></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>先看角色。广告方也叫商家，发布广告：币种、价格、数量、限额、收款方式和付款时限。下单方浏览广告，选一个下单。</li>
+      <li>根据币安 P2P 用户交易政策，平台声明自己不是交易的一方。它托管加密资产，做中立的撮合和争议处理方。</li>
+      <li>规则很具体。买家必须在广告规定的时限内付款。卖家确认收到全额付款后，必须在15分钟内放币。付款账户户名，必须和买家实名一致。</li>
+      <li>用非实名付款方式的，至少暂停7天 P2P 权限，争议中由买家承担损失。没付款就点已转账，账户可能被暂停。</li>
+      <li>还有一组惩罚规则。买家未经同意取消订单，一天累计3次，当天不能再买。下单方连续5笔超时未付款，暂停买入24小时。广告方连续5笔，暂停发广告24小时。连续8笔，永久关闭广告权限。</li>
+    </ol>
+  </section>
+
+  <!-- 4 资金流 -->
+  <section class="scene" data-title="托管的资金流" data-onstep="escrowStep">
+    <div class="kicker">Escrow Money Flow · 示例</div>
+    <h2 id="esc-h">币走账本，钱走银行</h2>
+    <svg id="esc" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>来看资金流，数字是示例。卖家资金账户里有1000 USDT 可用。买家下单的瞬间，系统冻结这1000 USDT。托管在账本上，就是冻结。</li>
+      <li>买家线下银行转账7200元，直接打到卖家的银行卡。这一步完全在银行体系里，平台账本里没有任何法币分录。</li>
+      <li>卖家确认收款，放币。冻结的1000 USDT 被扣减，同时记入买家资金账户。广告方的手续费，从这里扣。</li>
+      <li>如果超时或者取消，冻结的币解冻，回到卖家可用余额。所以托管只用到三个账本操作：冻结、解冻、扣减。</li>
+      <li>出错点全在法币这一侧。转账可能根本没发生，只是假截图。付款人可能是第三人。钱也可能是诈骗赃款。</li>
+    </ol>
+  </section>
+
+  <!-- 5 状态机 -->
+  <section class="scene" data-title="P2P 订单状态机" data-onstep="smStep">
+    <div class="kicker">Order State Machine</div>
+    <h2 id="sm-h">订单状态机：币在哪里</h2>
+    <svg id="sm" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>把它画成状态机，顶部这条是币的位置。买家下单，系统冻结卖家的币，进入待付款。</li>
+      <li>待付款时，买家可以取消。付款时限到期，系统也会自动取消。两种情况，币都解冻退回卖家。</li>
+      <li>买家付款后点已付款，进入已标记付款。卖家核对银行到账和户名，确认收款并放币，订单完成。</li>
+      <li>关键规则来了。进入已标记付款以后，系统不再自动取消。因为买家可能真的付了款，自动退币会让买家钱币两空。没付款，就别点已付款。</li>
+      <li>卖家超时不放币，买家可以申诉。卖家没收到款，也可以申诉。申诉期间，币一直冻结。</li>
+      <li>申诉后双方可以协商。协商不成，客服要求举证，仲裁员裁决。判定已付款，强制放币。判定未付款，解冻退回。最终只有两个出口。</li>
+    </ol>
+  </section>
+
+  <!-- 6 调用链 -->
+  <section class="scene" data-title="调用链" data-onstep="seqStep">
+    <div class="kicker">Call Chain · 示意服务名</div>
+    <h2 id="seq-h">下单、放币、申诉</h2>
+    <svg id="seq" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>再看调用链，服务名是业界通用划分。买家下单，p2p 服务先问风控：买家 KYC、限额、黑名单。</li>
+      <li>通过后调用账本，冻结卖家1000 USDT，拿到一个锁定编号。然后给买家显示收款信息和倒计时，同时通知卖家。</li>
+      <li>卖家登录银行，核对到账和户名，回来点放币，并输入二次验证。放币不可逆，平台要确认是卖家本人。</li>
+      <li>p2p 服务调用账本，扣减卖家冻结的币，给买家入账。它自己不保存余额。</li>
+      <li>如果卖家15分钟内不放币，买家发起申诉。申诉服务在裁决前不碰账本。裁决后，调用和正常流程相同的接口。</li>
+    </ol>
+  </section>
+
+  <!-- 7 仲裁 -->
+  <section class="scene" data-title="仲裁与证据" data-onstep="arbStep">
+    <div class="kicker">Arbitration · 业界通用做法 · 裁决为示例</div>
+    <h2 id="arb-h">仲裁：看证据链</h2>
+    <svg id="arb" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>申诉之后怎么判？业界通常这样处理。系统先锁定订单，双方不能再取消或放币。客服在订单聊天里要求举证，举证有时限，示例是24小时。</li>
+      <li>买家提供转账回单，以及显示双方户名的流水。卖家提供银行流水的全页录屏。</li>
+      <li>仲裁员比对四件事：金额、时间、付款户名、收款账号，是否和订单一致。然后裁决，并对违规方扣分、限权或封号。</li>
+      <li>看几类常见争议。卖家收款不放币，强制放币。买家假截图，解冻退回卖家，买家封禁。三方支付，卖家原路退款，订单取消。</li>
+      <li>注意，截图是最弱的证据，因为容易伪造。录屏和银行官方流水更强。仲裁员看的是证据链是否一致，不是单张图片。</li>
+    </ol>
+  </section>
+
+  <!-- 8 商业逻辑 -->
+  <section class="scene" data-title="平台怎么赚钱" data-onstep="bizStep">
+    <div class="kicker">Business Model · 公开报道 + 示例</div>
+    <h2 id="biz-h">平台为什么少收费</h2>
+    <svg id="biz" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>先看价格。P2P 价格由商家自己定，通常围绕现货价乘以汇率上下浮动。浮动幅度，反映法币出入金的难度和风险。</li>
+      <li>再看费用。公开报道显示，币安对下单方收0手续费。对广告方按市场和币种收0到0.35%，以官网费率页为准。</li>
+      <li>为什么少收？一是拉新，P2P 是很多地区的第一个入金入口。二是带动下游，用户买到 USDT 会去现货、合约和理财。三是竞争，商家随时可以换平台。</li>
+      <li>第四，平台不经手法币，没有支付通道成本。主要成本是客服仲裁和风控。</li>
+      <li>商家的账也算一下，示例。7.15元买入，7.22元卖出，每1000 USDT 赚70元。扣掉0.2%的手续费约14.4元，净赚约55.6元。商家承担的风险，是收到问题资金被冻卡。</li>
+    </ol>
+  </section>
+
+  <!-- 9 商家认证与三类风险 -->
+  <section class="scene" data-title="商家认证与三类风险" data-onstep="riskStep">
+    <div class="kicker">Merchant · Fraud · 公开资料 + 业界通用做法</div>
+    <h2>商家认证与三类核心风险</h2>
+    <div class="card gold tight" id="merchant"></div>
+    <table class="t" id="riskT">
+      <tr><th>风险</th><th>怎么发生</th><th>谁受损</th><th>平台防线</th></tr>
+      <tr><td>三方支付</td><td>付款户名 ≠ 买家实名</td><td>卖家：钱被认定为赃款</td><td>户名一致 · 处罚</td></tr>
+      <tr><td>洗钱</td><td>赃款经 P2P 换 USDT 提走</td><td>卖家与平台</td><td>KYC · 限额 · 图谱 · 上报</td></tr>
+      <tr><td>冻卡</td><td>法币来自诈骗，卡被冻结</td><td>卖家：资金被扣划</td><td>只能提供订单记录</td></tr>
+    </table>
+    <ol class="say">
+      <li>先看商家认证。根据币安公开资料，申请商家需要完成高级身份认证。根据地区，可能要缴保证金。退出后，保证金在7个工作日内全额退还。</li>
+      <li>业界通常这样用它。保证金提高违约成本，可以赔付受害方。认证标识帮用户挑选对手方。平台也能对商家做更严的资金来源审查。</li>
+      <li>再看三类核心风险。第一，三方支付。付款户名和买家实名不一致。真实户主报案后，卖家收到的钱会被认定为赃款。</li>
+      <li>第二，洗钱。诈骗赃款经过 P2P 换成 USDT 后提走。防线是 KYC、限额、交易图谱分析和可疑交易上报。</li>
+      <li>第三，冻卡。卖家收到的法币来自电信诈骗，银行或执法机关冻结卖家银行卡。平台无法直接解冻，只能提供订单记录配合核查。</li>
+    </ol>
+  </section>
+
+  <!-- 10 冻卡链条 -->
+  <section class="scene" data-title="冻卡链条" data-onstep="chainStep">
+    <div class="kicker">Fraud Chain · 业界通用做法</div>
+    <h2 id="chain-h">回到开头：卡为什么被冻</h2>
+    <svg id="chain" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>回到开头的问题。看这条典型链条。诈骗分子骗受害人转账，钱进了他控制的账户。</li>
+      <li>他用这笔钱，以付款人身份转给 P2P 卖家，在平台上买币。</li>
+      <li>卖家确认收款，放币。USDT 进入买家账户，然后马上提到外部地址。</li>
+      <li>受害人报案，资金流水指向卖家的银行卡，银行卡被冻结。卖家的交易完全正常，但仍然受损。平台的托管只保护币，不保护钱。</li>
+      <li>平台能控制的，是放币、入账、提币这三步。只要卖家坚持户名一致，链条在放币前就会断。秒提是洗钱的强信号，平台可以设提币观察期。</li>
+      <li>局限也要说。诈骗分子如果用收购来的实名账户付款，户名一致规则就会失效。这时需要资金关系图谱分析。</li>
+    </ol>
+  </section>
+
+  <!-- 11 失败场景 -->
+  <section class="scene" data-title="失败场景" data-onstep="failStep">
+    <div class="kicker">Failure Cases</div>
+    <h2>四个常见失败场景</h2>
+    <table class="t" id="failT">
+      <tr><th>场景</th><th>系统表现</th><th>处置</th></tr>
+      <tr><td>付款后忘点已付款</td><td>时限到期自动取消，币解冻回卖家</td><td>联系卖家退款 · 平台尽力协助</td></tr>
+      <tr><td>卖家收款后失联</td><td>停在已标记付款，不自动取消</td><td>买家申诉 · 强制放币</td></tr>
+      <tr><td>买家假截图</td><td>卖家没核对就放币，不可逆</td><td class="down">追查成功率低</td></tr>
+      <tr><td>银行撤回付款</td><td>放币后付款被冲正，账本已完成</td><td>冻结买家剩余资产 · 配合调查</td></tr>
+    </table>
+    <div class="card warn tight" id="fail-note"></div>
+    <ol class="say">
+      <li>再看几个常见失败场景。买家付款后忘了点已付款，时限到期自动取消，币解冻回卖家。买家只能联系卖家退款，平台尽力协助，但不保证。</li>
+      <li>卖家收款后失联，订单停在已标记付款，不会自动取消。买家申诉，仲裁强制放币。</li>
+      <li>卖家没核对银行就放币，结果是假截图。币已划转，不可逆，追查成功率低。这是卖家最大的操作风险。</li>
+      <li>卖家放币后，付款被银行冲正。账本已经完成，平台只能冻结买家剩余资产，配合调查。</li>
+    </ol>
+  </section>
+
+  <!-- 12 法币通道 -->
+  <section class="scene" data-title="法币充提通道" data-onstep="fiatStep">
+    <div class="kicker">Fiat On/Off Ramp · 公开资料 + 业界通用做法</div>
+    <h2 id="fiat-h">法币通道：平台真正经手法币</h2>
+    <svg id="fiat" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>第二段，法币充提通道。用户选择币种和通道，比如欧元 SEPA 转账、银行卡、本地电子钱包。根据币安公开资料，可用通道按地区不同，由合作银行或持牌支付机构提供。</li>
+      <li>和 P2P 最大的不同是，这里平台通过合作机构，真正经手法币。所以账本里有法币科目，要和银行流水对账。</li>
+      <li>资金流是这样的。用户转账时附一个唯一参考码，钱进入平台的客户资金账户。合作机构发到账通知，法币网关按参考码匹配用户，记入欧元余额。</li>
+      <li>状态机有两个分支。参考码缺失，资金进入待人工认领。付款户名和实名不一致，业界通常原路退回，不入账。</li>
+      <li>注意，已入账之前，钱在客户资金账户里，但不属于任何用户余额。对账时，它是一个单独的在途科目。</li>
+    </ol>
+  </section>
+
+  <!-- 13 对账与风险 -->
+  <section class="scene" data-title="回调、对账与通道风险" data-onstep="recStep">
+    <div class="kicker">Reconciliation · 业界通用做法 + 示例</div>
+    <h2 id="rec-h">回调幂等与日终对账</h2>
+    <svg id="rec" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>系统怎么防错？到账回调可能重复，也可能丢失。法币网关按回调编号幂等去重，再做户名比对和反洗钱筛查。</li>
+      <li>对账服务每天拉取日终银行流水，和账本里的法币科目逐笔比对，有差异就报警。回调丢失的单子在这里被发现，人工补入账。</li>
+      <li>定价举个示例。某地区 SEPA 充值免费，银行卡充值收1.8%。平台在 SEPA 上不赚钱，用免费入金换后续的交易手续费。</li>
+      <li>最大的风险是银行合作中断。根据公开新闻，2023年前后，美国多家对加密友好的银行出了问题或收缩业务。多家交易所的美元通道因此受影响。</li>
+      <li>业界通常每个地区至少备两家合作机构。客户法币要和平台自有资金隔离，定期审计。对账差异，要在下一个工作日内清零。</li>
+    </ol>
+  </section>
+
+  <!-- 14 小结 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">P2P 托管 = <span class="hl">冻结 · 解冻 · 扣减</span>；难点在账本之外的证据。</li>
+      <li data-step="1">已标记付款后<span class="hl">不再自动取消</span>；托管只保护币，不保护钱。</li>
+      <li data-step="2">法币通道真正经手法币：<span class="hl">参考码 · 幂等回调 · 日终对账</span>。</li>
+    </ul>
+    <div class="grid3">
+      <div class="card gold col" data-step="0"><div class="stat"><div class="k">放币时限 · 公开规则</div><div class="v" style="font-size:44px">15 分钟</div></div></div>
+      <div class="card buy col" data-step="1"><div class="stat"><div class="k">两道关键防线</div><div class="v up" style="font-size:40px">户名一致 · 观察期</div></div></div>
+      <div class="card warn col" data-step="2"><div class="stat"><div class="k">通道冗余 · 业界通用</div><div class="v" style="font-size:44px">每地区 ≥ 2 家</div></div></div>
+    </div>
+    <div class="card info" data-step="3" style="font-size:32px;padding:16px 28px">下一集 P04 · 合约进阶：统一账户、组合保证金与期权</div>
+    <ol class="say">
+      <li>小结三点。第一，P2P 托管在账本上，只是冻结、解冻、扣减。难点不在账本，而在账本之外：钱有没有付，只能靠证据。</li>
+      <li>第二，已标记付款之后不再自动取消，申诉期间币保持冻结。托管只保护币，不保护钱。户名一致和提币观察期，是两道关键防线。</li>
+      <li>第三，法币通道里，平台真正经手法币。参考码匹配、幂等回调和日终对账，缺一不可。单一通道是系统性风险。</li>
+      <li>下一集，我们进入合约进阶：统一账户、组合保证金和期权。看平台怎样把多个仓位、多种资产，放进同一个风险框架。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', dim: '#5a5f6a', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10' };
+  const fmt = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 30}" text-anchor="${o.anchor || 'start'}" style="fill:${o.fill || C.text};${o.mono ? 'font-family:JetBrains Mono,SF Mono,Menlo,monospace;' : ''}${o.halo ? `stroke:${C.bg};stroke-width:8px;paint-order:stroke;` : ''}"${o.bold ? ' font-weight="700"' : ''}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  function arrow(x1, y1, x2, y2, o = {}) {
+    const col = o.col || C.t2, w = o.w || 4, a = Math.atan2(y2 - y1, x2 - x1), hl = 20;
+    const bx = x2 - hl * Math.cos(a), by = y2 - hl * Math.sin(a), px = Math.sin(a) * 11, py = -Math.cos(a) * 11;
+    return `<line x1="${x1}" y1="${y1}" x2="${bx}" y2="${by}" stroke="${col}" stroke-width="${w}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/><polygon points="${x2},${y2} ${bx + px},${by + py} ${bx - px},${by - py}" fill="${col}"/>`;
+  }
+  // box: {x,y,w,h}; lines: array of strings
+  function box(b, lines, o = {}) {
+    const size = o.size || 30, lh = size * 1.3;
+    let s = R(b.x, b.y, b.w, b.h, { fill: o.fill || C.panel, stroke: o.stroke || C.line, sw: o.sw || 3, dash: o.dash });
+    lines.forEach((t, i) => {
+      const y = b.y + b.h / 2 - (lines.length - 1) * lh / 2 + size * 0.36 + i * lh;
+      s += T(b.x + b.w / 2, y, t, { anchor: 'middle', size: i ? (o.sub || size - 4) : size, bold: !i && o.bold !== false, fill: i ? (o.subFill || C.t2) : (o.fill2 || C.text) });
+    });
+    return s;
+  }
+  function clip(b, tx, ty) {
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2, dx = tx - cx, dy = ty - cy;
+    const s = Math.min((b.w / 2 + 6) / Math.abs(dx || 1e-9), (b.h / 2 + 6) / Math.abs(dy || 1e-9));
+    return [cx + dx * s, cy + dy * s];
+  }
+  // edge between boxes with optional perpendicular offset and label
+  function edge(b1, b2, o = {}) {
+    const c1 = [b1.x + b1.w / 2, b1.y + b1.h / 2], c2 = [b2.x + b2.w / 2, b2.y + b2.h / 2];
+    const a = Math.atan2(c2[1] - c1[1], c2[0] - c1[0]), off = o.off || 0, ox = -Math.sin(a) * off, oy = Math.cos(a) * off;
+    const p1 = clip(b1, c2[0], c2[1]), p2 = clip(b2, c1[0], c1[1]);
+    let s = arrow(p1[0] + ox, p1[1] + oy, p2[0] + ox, p2[1] + oy, o);
+    if (o.label) {
+      const mx = (p1[0] + p2[0]) / 2 + ox + (o.lx || 0), my = (p1[1] + p2[1]) / 2 + oy + (o.ly || 0);
+      s += T(mx, my, o.label, { anchor: o.anchor || 'middle', size: o.size || 26, fill: o.lcol || o.col || C.t2, halo: true, bold: o.bold });
+    }
+    return s;
+  }
+  const on = (a, c = C.gold) => a ? { stroke: c, fill: 'rgba(240,185,11,.12)' } : {};
+  const onB = (a, c = C.gold) => a ? { stroke: c, fill: c === C.sell ? 'rgba(246,70,93,.14)' : c === C.buy ? 'rgba(46,189,133,.14)' : c === C.info ? 'rgba(91,156,255,.14)' : 'rgba(240,185,11,.12)' } : {};
+
+  function rulesStep(el, st) {
+    const cur = [[], [], [0, 1, 2], [3], [4, 5]][st];
+    el.querySelectorAll('#rules .r').forEach((r, i) => { r.classList.toggle('cur', cur.includes(i)); r.style.opacity = st < 2 ? .35 : (cur.includes(i) || i < Math.max(...cur) ? 1 : .35); });
+    el.querySelector('#platform-card').className = 'card tight' + (st === 1 ? ' info pulse' : '');
+  }
+
+  // coin-location bar: where are the 1,000 USDT
+  function coinBar(x, y, w, loc, o = {}) {
+    const segs = [['卖家可用', C.gold], ['托管冻结', C.info], ['买家资金账户', C.buy]];
+    let h = T(x, y - 14, o.title || '1,000 USDT 在哪里', { size: 26, fill: C.t2 });
+    const sw = w / 3;
+    segs.forEach(([t, c], i) => {
+      const a = i === loc;
+      h += R(x + i * sw + 4, y, sw - 8, 64, { rx: 10, fill: a ? c : C.panel, stroke: a ? c : C.line });
+      h += T(x + i * sw + sw / 2, y + 43, (a ? '● ' : '') + t, { anchor: 'middle', size: 28, bold: a, fill: a ? C.bg : C.t2 });
+    });
+    return h;
+  }
+
+  function escrowStep(el, st) {
+    const svg = el.querySelector('#esc');
+    let h = '';
+    const loc = [1, 1, 2, 0, 1][st];
+    h += coinBar(140, 50, 1360, loc);
+    // ledger lane
+    h += R(0, 160, 1640, 190, { fill: 'rgba(240,185,11,.05)', stroke: C.line, dash: '10 8' }) + T(20, 196, '平台账本', { size: 28, bold: true, fill: C.gold });
+    h += R(0, 380, 1640, 190, { fill: 'rgba(91,156,255,.05)', stroke: C.line, dash: '10 8' }) + T(20, 416, '银行体系 · 平台看不到', { size: 28, bold: true, fill: C.info });
+    const N = { sa: { x: 180, y: 220, w: 330, h: 110 }, esc: { x: 660, y: 220, w: 330, h: 110 }, ba: { x: 1140, y: 220, w: 330, h: 110 }, bb: { x: 180, y: 440, w: 330, h: 110 }, sb: { x: 1140, y: 440, w: 330, h: 110 } };
+    const ops = ['freeze', 'fiat', 'consume', 'release', 'risk'][st];
+    h += box(N.sa, ['卖家资金账户', loc === 0 ? '1,000 可用' : '可用 0'], onB(ops === 'freeze' || ops === 'release'));
+    h += box(N.esc, ['P2P 托管', loc === 1 ? '冻结 1,000' : '冻结 0'], onB(loc === 1, C.info));
+    h += box(N.ba, ['买家资金账户', loc === 2 ? '+1,000 USDT' : '0'], onB(ops === 'consume', C.buy));
+    h += box(N.bb, ['买家银行账户'], onB(ops === 'fiat' || ops === 'risk', ops === 'risk' ? C.sell : C.info));
+    h += box(N.sb, ['卖家银行账户'], onB(ops === 'fiat' || ops === 'risk', ops === 'risk' ? C.sell : C.info));
+    if (ops === 'freeze') h += edge(N.sa, N.esc, { label: '① 下单冻结', ly: -16, col: C.gold });
+    if (ops === 'fiat' || ops === 'risk') h += edge(N.bb, N.sb, { label: ops === 'risk' ? '假截图？第三人？赃款？' : '② 线下转账 7,200 元', ly: -16, col: ops === 'risk' ? C.sell : C.info, size: 30, bold: true });
+    if (ops === 'consume') h += edge(N.esc, N.ba, { label: '③ 放币', ly: -16, col: C.buy });
+    if (ops === 'release') h += edge(N.esc, N.sa, { label: '超时或取消 · 解冻', ly: 40, col: C.gold });
+    if (ops === 'fiat') h += T(820, 375, '账本里没有任何法币分录', { anchor: 'middle', size: 30, bold: true, fill: C.text, halo: true });
+    if (ops === 'consume') h += T(1305, 365, '广告方手续费在此扣', { anchor: 'middle', size: 26, fill: C.t2, halo: true });
+    if (ops === 'release') h += T(820, 375, '冻结 · 解冻 · 扣减 = 托管的全部账本操作', { anchor: 'middle', size: 30, bold: true, fill: C.gold, halo: true });
+    if (ops === 'risk') h += T(820, 375, '平台只能看双方标记与凭证', { anchor: 'middle', size: 30, bold: true, fill: C.sell, halo: true });
+    svg.innerHTML = h;
+  }
+
+  function smStep(el, st) {
+    const svg = el.querySelector('#sm');
+    let h = '';
+    const loc = [1, 0, 2, 1, 1, null][st];
+    if (loc !== null) h += coinBar(200, 40, 1240, loc, { title: '币在哪里' });
+    else { h += T(200, 26, '币在哪里：只有两个出口', { size: 26, fill: C.t2 }) + R(204, 40, 600, 64, { rx: 10, fill: C.buy, stroke: C.buy }) + T(504, 83, '放给买家', { anchor: 'middle', size: 28, bold: true, fill: C.bg }) + R(836, 40, 600, 64, { rx: 10, fill: C.gold, stroke: C.gold }) + T(1136, 83, '解冻退回卖家', { anchor: 'middle', size: 28, bold: true, fill: C.bg }); }
+    const N = {
+      wp: { x: 20, y: 260, w: 260, h: 110 }, cx: { x: 20, y: 470, w: 260, h: 100 }, pd: { x: 420, y: 260, w: 280, h: 110 }, dn: { x: 860, y: 150, w: 240, h: 100 },
+      ap: { x: 860, y: 380, w: 240, h: 100 }, ev: { x: 1150, y: 470, w: 220, h: 100 }, ru: { x: 1400, y: 380, w: 220, h: 100 },
+    };
+    const act = [['wp'], ['wp', 'cx'], ['pd', 'dn'], ['pd'], ['pd', 'ap'], ['ap', 'ev', 'ru', 'dn', 'cx']][st];
+    const ea = [[], ['wc'], ['wpd', 'pdd'], [], ['pda'], ['ae', 'er', 'rd', 'rc', 'ad', 'ac']][st];
+    const ec = k => ea.includes(k) ? C.gold : C.dim;
+    h += edge(N.wp, N.cx, { label: '取消 · 超时自动取消', anchor: 'start', lx: 14, col: ec('wc') });
+    h += edge(N.wp, N.pd, { label: '已付款', ly: -16, col: ec('wpd') });
+    h += edge(N.pd, N.dn, { label: '确认收款 · 放币', anchor: 'end', lx: -10, ly: -6, col: ec('pdd') });
+    h += edge(N.pd, N.ap, { label: '超时不放 · 未收到款', anchor: 'end', lx: -8, ly: 50, col: ec('pda') });
+    h += edge(N.ap, N.ev, { label: '举证', anchor: 'end', lx: -30, ly: 50, col: ec('ae') });
+    h += edge(N.ev, N.ru, { label: '仲裁', anchor: 'start', lx: 12, ly: 30, col: ec('er') });
+    h += edge(N.ru, N.dn, { label: '判已付 · 强制放币', anchor: 'start', lx: 10, col: ec('rd') });
+    h += edge(N.ap, N.dn, { label: '协商放币', anchor: 'end', lx: -10, col: ec('ad') });
+    if (ea.includes('rc') || ea.includes('ac')) h += `<path d="M ${N.ap.x} ${N.ap.y + 70} C 700 560, 400 560, ${N.cx.x + N.cx.w + 6} ${N.cx.y + 60}" fill="none" stroke="${C.gold}" stroke-width="4"/>` + T(560, 580, '判未付 · 协商取消 → 解冻退回', { anchor: 'middle', size: 26, fill: C.gold, halo: true });
+    const nm = { wp: ['待付款', '卖家币已冻结'], cx: ['已取消', '解冻退回'], pd: ['已标记付款'], dn: ['已完成'], ap: ['申诉中', '币保持冻结'], ev: ['举证中'], ru: ['已裁决'] };
+    const col = { cx: C.gold, dn: C.buy, ap: C.sell, ev: C.warn, ru: C.warn, pd: C.gold, wp: C.info };
+    for (const k in N) h += box(N[k], nm[k], act.includes(k) ? onB(true, col[k]) : {}, );
+    if (st === 3) {
+      h += R(450, 450, 400, 120, { fill: 'rgba(246,70,93,.16)', stroke: C.sell }) + T(650, 500, '不再自动取消', { anchor: 'middle', size: 34, bold: true, fill: C.sell }) + T(650, 545, '自动退币 → 买家钱币两空', { anchor: 'middle', size: 26, fill: C.text });
+    }
+    svg.innerHTML = h;
+  }
+
+  function seqStep(el, st) {
+    const svg = el.querySelector('#seq');
+    const lanes = ['买家', '卖家', 'p2p-service', 'risk', 'ledger', 'appeal'];
+    const X = i => 130 + i * 276;
+    let h = '';
+    lanes.forEach((l, i) => {
+      h += R(X(i) - 110, 10, 220, 56, { rx: 10, fill: C.panel2 }) + T(X(i), 48, l, { anchor: 'middle', size: 28, bold: true, fill: i < 2 ? C.gold : C.text });
+      h += `<line x1="${X(i)}" y1="70" x2="${X(i)}" y2="580" stroke="${C.line}" stroke-width="3" stroke-dasharray="6 8"/>`;
+    });
+    const M = [
+      [[0, 2, '下单 买 1,000 USDT'], [2, 3, 'KYC · 限额 · 黑名单'], [3, 2, '通过', 1]],
+      [[2, 4, 'freezeBalance 卖家 1,000'], [4, 2, '冻结成功 · lockId', 1], [2, 0, '收款信息 + 倒计时', 1], [2, 1, '新订单通知', 1]],
+      [[0, 0, '线下银行转账'], [0, 2, '标记已付款 · 上传凭证'], [1, 1, '登录银行 · 核对到账与户名'], [1, 2, '确认收款 · 放币 · 2FA']],
+      [[2, 4, 'consumeBalance + 买家入账'], [4, 2, '成功', 1], [2, 0, '订单完成', 1]],
+      [[0, 5, '卖家 15 分钟未放币 → 申诉'], [5, 4, '裁决前：不做任何操作', 0, 1], [5, 4, '裁决后：同样的划转或解冻接口']],
+    ][st];
+    M.forEach(([a, b, lab, ret, dim], i) => {
+      const y = 150 + i * 96;
+      const col = dim ? C.t2 : ret ? C.info : C.gold;
+      if (a === b) {
+        h += `<path d="M ${X(a)} ${y - 18} h 60 v 36 h -54" fill="none" stroke="${col}" stroke-width="4"/><polygon points="${X(a) + 4},${y + 18} ${X(a) + 22},${y + 8} ${X(a) + 22},${y + 28}" fill="${col}"/>`;
+        h += T(X(a) + 76, y + 10, lab, { size: 30, bold: true, fill: col, halo: true });
+      } else {
+        h += arrow(X(a) + (b > a ? 8 : -8), y, X(b) + (b > a ? -8 : 8), y, { col, w: 4, dash: ret || dim ? '10 6' : '' });
+        h += T((X(a) + X(b)) / 2, y - 14, lab, { anchor: 'middle', size: 30, bold: true, fill: dim ? C.t2 : ret ? C.info : C.text, halo: true });
+      }
+    });
+    const note = ['', 'p2p-service 自己不保存余额', '放币不可逆 → 二次验证', '与正常成交相同的账本操作', '申诉期间币保持冻结'][st];
+    if (note) h += T(1620, 570, note, { anchor: 'end', size: 30, bold: true, fill: C.gold, halo: true });
+    svg.innerHTML = h;
+    el.querySelector('#seq-h').textContent = ['下单：先过风控', '冻结：拿到锁定编号', '付款与放币', '放币：扣减 + 入账', '申诉：裁决前不碰账本'][st];
+  }
+
+  function arbStep(el, st) {
+    const svg = el.querySelector('#arb');
+    let h = '';
+    if (st <= 2) {
+      const steps = ['锁定订单', '要求举证', '买家：回单与流水', '卖家：流水录屏', '比对四要素', '裁决并执行', '记录违规'];
+      const on = [[0, 1], [2, 3], [4, 5, 6]][st];
+      steps.forEach((t, i) => {
+        const b = { x: 20 + (i % 4) * 405, y: i < 4 ? 30 : 200, w: 370, h: 100 };
+        h += box(b, [(i + 1) + ' · ' + t], on.includes(i) ? onB(true) : i < Math.min(...on) ? { stroke: C.dim } : {});
+      });
+      if (st === 0) h += T(20, 400, '举证时限 · 示例 24 小时 · 期间双方不能取消或放币', { size: 32, bold: true, fill: C.gold });
+      if (st === 1) h += T(20, 400, '买家证明付了 · 卖家证明没收到或户名不符', { size: 32, bold: true, fill: C.gold });
+      if (st === 2) {
+        ['金额', '时间', '付款户名', '收款账号'].forEach((t, i) => h += R(20 + i * 300, 360, 270, 80, { fill: 'rgba(46,189,133,.14)', stroke: C.buy }) + T(155 + i * 300, 412, '✓ ' + t, { anchor: 'middle', size: 32, bold: true, fill: C.buy }));
+        h += T(20, 510, '与订单一致？→ 放币或解冻 → 违规方扣分、限权或封号', { size: 30, fill: C.text });
+      }
+    } else if (st === 3) {
+      const rows = [['卖家收款不放币', '买家回单 + 流水', '强制放币 · 卖家受罚', C.buy], ['买家假截图', '卖家流水录屏', '解冻退回 · 买家封禁', C.gold], ['三方支付', '户名 ≠ 实名', '原路退款 · 订单取消', C.warn], ['付款金额不足', '银行流水', '补款，或退款后取消', C.t2]];
+      h += T(20, 40, '争议类型', { size: 26, fill: C.t2 }) + T(470, 40, '关键证据', { size: 26, fill: C.t2 }) + T(960, 40, '常见裁决 · 示例', { size: 26, fill: C.t2 });
+      rows.forEach(([a, b, c, col], i) => { const y = 70 + i * 120; h += R(10, y, 1620, 100, { fill: C.panel, stroke: col }) + T(30, y + 62, a, { size: 32, bold: true }) + T(470, y + 62, b, { size: 30, fill: C.t2 }) + T(960, y + 62, c, { size: 30, bold: true, fill: col }); });
+    } else {
+      h += T(20, 50, '证据强度 · 业界通用判断', { size: 32, bold: true });
+      const ev = [['截图', 0.2, C.sell, '最弱：容易伪造'], ['录屏', 0.6, C.warn, '更强：连续画面'], ['银行官方流水', 0.9, C.buy, '最强：可核验']];
+      ev.forEach(([t, v, c, d], i) => { const y = 110 + i * 130; h += T(20, y + 50, t, { size: 34, bold: true, fill: c }) + R(300, y, 1000, 72, { rx: 10 }) + `<rect x="300" y="${y}" width="${1000 * v}" height="72" rx="10" fill="${c}" fill-opacity=".7"/>` + T(1320, y + 48, d, { size: 28, fill: C.text }); });
+      h += T(20, 540, '看证据链是否一致，不看单张图片', { size: 34, bold: true, fill: C.gold });
+    }
+    svg.innerHTML = h;
+    el.querySelector('#arb-h').textContent = ['仲裁：先锁定，再举证', '仲裁：双方各举证', '仲裁：比对四要素', '常见争议与裁决', '证据强度'][st];
+  }
+
+  function bizStep(el, st) {
+    const svg = el.querySelector('#biz');
+    let h = '';
+    if (st === 0) {
+      const x0 = 120, x1 = 1500, mid = 300;
+      h += `<line x1="${x0}" y1="${mid}" x2="${x1}" y2="${mid}" stroke="${C.gold}" stroke-width="4" stroke-dasharray="12 8"/>` + T(x1, mid - 16, '现货价 × 汇率', { anchor: 'end', size: 30, bold: true, fill: C.gold });
+      const ads = [[200, -40], [380, 30], [560, -70], [740, 55], [920, -25], [1100, 80], [1280, -55]];
+      ads.forEach(([x, d]) => h += `<circle cx="${x}" cy="${mid + d}" r="16" fill="${d < 0 ? C.sell : C.buy}"/>`);
+      h += `<rect x="${x0}" y="${mid - 100}" width="${x1 - x0}" height="200" fill="rgba(240,185,11,.06)" stroke="${C.line}" stroke-dasharray="8 8"/>`;
+      h += T(x0, 470, '每个点 = 一条商家广告 · 示意', { size: 28, fill: C.t2 });
+      h += T(x0, 530, '浮动幅度 = 法币出入金的难度与风险', { size: 34, bold: true, fill: C.text });
+    } else if (st === 1) {
+      h += box({ x: 60, y: 60, w: 680, h: 220 }, ['下单方 Taker', '0 手续费'], { stroke: C.buy, size: 40, sub: 36, subFill: C.buy });
+      h += box({ x: 900, y: 60, w: 680, h: 220 }, ['广告方 Maker', '0% – 0.35%'], { stroke: C.gold, size: 40, sub: 36, subFill: C.gold });
+      h += T(60, 380, '公开报道 · 按法币市场和币种不同 · 以官网费率页为准', { size: 30, fill: C.t2 });
+      h += T(60, 460, '平台 P2P 收入 = Σ 广告方成交额 × 广告方费率', { size: 34, bold: true, mono: true, fill: C.text });
+    } else if (st <= 3) {
+      const why = [['拉新', '第一个入金入口', C.buy], ['带动下游', '现货 · 合约 · 理财', C.info], ['竞争', '商家随时换平台', C.warn], ['成本结构', '不经手法币 · 无通道成本', C.gold]];
+      why.forEach(([t, d, c], i) => { const b = { x: 20 + (i % 2) * 820, y: 40 + Math.floor(i / 2) * 200, w: 780, h: 160 }; h += box(b, [t, d], (st === 2 ? i < 3 : i === 3) ? { stroke: c, size: 40, sub: 30 } : { stroke: C.line, size: 40, sub: 30 }); });
+      if (st === 3) h += T(20, 480, '主要成本 = 客服仲裁人力 + 风控系统 + 保证金管理 + 合规', { size: 32, bold: true, fill: C.gold });
+    } else {
+      const S = v => v * 4, base = 420, x0 = 200;
+      const it = [['买卖价差', 70, C.buy, '(7.22 − 7.15) × 1,000'], ['手续费 0.2%', -14.4, C.sell, '7,220 × 0.2%'], ['商家净赚', 55.6, C.gold, '70 − 14.4']];
+      h += T(20, 50, '商家每 1,000 USDT · 单位 元 · 示例', { size: 30, bold: true });
+      h += `<line x1="${x0 - 20}" y1="${base}" x2="1200" y2="${base}" stroke="${C.t2}" stroke-width="3"/>`;
+      let lvl = 0;
+      it.forEach(([t, v, c, d], i) => {
+        const x = x0 + i * 330, w = 220; let top, hh;
+        if (i === 2) { top = base - S(v); hh = S(v); } else if (v > 0) { top = base - S(v); hh = S(v); lvl = v; } else { top = base - S(lvl); hh = S(-v); }
+        h += `<rect x="${x}" y="${top}" width="${w}" height="${hh}" rx="6" fill="${c}" fill-opacity=".75"/>` + T(x + w / 2, top - 14, (v > 0 ? '+' : '') + v, { anchor: 'middle', size: 38, bold: true, mono: true, fill: c });
+        h += T(x + w / 2, base + 42, t, { anchor: 'middle', size: 30, bold: true }) + T(x + w / 2, base + 80, d, { anchor: 'middle', size: 24, fill: C.t2 });
+      });
+      h += R(1250, 120, 380, 220, { fill: 'rgba(246,70,93,.1)', stroke: C.sell }) + T(1440, 190, '商家的风险', { anchor: 'middle', size: 32, bold: true, fill: C.sell }) + T(1440, 250, '收到问题资金', { anchor: 'middle', size: 30 }) + T(1440, 300, '→ 银行卡被冻结', { anchor: 'middle', size: 30 });
+    }
+    svg.innerHTML = h;
+    el.querySelector('#biz-h').textContent = ['价格：商家自己定', '费用：只收广告方', '为什么少收费', '平台的成本在哪', '商家怎么赚'][st];
+  }
+
+  function riskStep(el, st) {
+    const m = el.querySelector('#merchant');
+    m.innerHTML = st === 0 ? '商家认证 · 截至 2026 年公开资料：高级身份认证 · 按地区可能需缴保证金 · 退出后 <b>7 个工作日</b>内全额退还'
+      : st === 1 ? '保证金 → 提高违约成本、赔付受害方 · 认证标识 → 帮用户选对手方 · 更严的资金来源审查'
+      : '平台托管的是币 · 这三类风险都发生在法币一侧';
+    m.className = 'card tight ' + (st <= 1 ? 'gold' : 'info');
+    const rows = el.querySelectorAll('#riskT tr');
+    rows.forEach((r, i) => { if (i) { r.classList.toggle('cur', i === st - 1); r.style.opacity = st < 2 ? .3 : (i <= st - 1 ? 1 : .3); } });
+  }
+
+  function chainStep(el, st) {
+    const svg = el.querySelector('#chain');
+    let h = '';
+    const N = {
+      v: { x: 20, y: 40, w: 300, h: 110 }, f: { x: 440, y: 40, w: 320, h: 110 }, s: { x: 880, y: 40, w: 320, h: 110 }, esc: { x: 1320, y: 40, w: 300, h: 110 },
+      buy: { x: 1320, y: 260, w: 300, h: 110 }, out: { x: 880, y: 260, w: 320, h: 110 }, pol: { x: 20, y: 260, w: 300, h: 110 },
+    };
+    const shown = [['v', 'f'], ['v', 'f', 's'], ['v', 'f', 's', 'esc', 'buy', 'out'], ['v', 'f', 's', 'esc', 'buy', 'out', 'pol'], ['v', 'f', 's', 'esc', 'buy', 'out', 'pol'], ['v', 'f', 's', 'esc', 'buy', 'out', 'pol']][st];
+    const act = [['v', 'f'], ['f', 's'], ['s', 'esc', 'buy', 'out'], ['pol', 's'], ['esc', 'buy', 'out'], ['f', 's']][st];
+    const nm = { v: ['受害人银行卡'], f: ['诈骗分子账户'], s: ['P2P 卖家银行卡', st >= 3 ? '已冻结' : ''], esc: ['平台托管 USDT'], buy: ['买家账户'], out: ['外部地址'], pol: ['执法机关与银行'] };
+    const cl = { v: C.info, f: C.sell, s: st >= 3 ? C.sell : C.gold, esc: C.gold, buy: C.gold, out: C.sell, pol: C.info };
+    const E = (a, b, lab, o = {}) => (shown.includes(a) && shown.includes(b)) ? edge(N[a], N[b], { label: lab, col: act.includes(a) && act.includes(b) ? C.gold : C.dim, ...o }) : '';
+    if (st >= 4) h += `<rect x="860" y="20" width="780" height="370" rx="18" fill="rgba(46,189,133,.06)" stroke="${C.buy}" stroke-width="3" stroke-dasharray="12 8"/>` + T(1250, 420, '平台能控制的区域：放币 · 入账 · 提币', { anchor: 'middle', size: 30, bold: true, fill: C.buy });
+    h += E('v', 'f', '1 被骗', { ly: -16 });
+    h += E('f', 's', '2 付款', { ly: -16 });
+    h += E('s', 'esc', '3 放币', { ly: -16 });
+    h += E('esc', 'buy', '4 入账', { anchor: 'start', lx: 12 });
+    h += E('buy', 'out', '5 秒提', { ly: -16 });
+    if (st >= 3) h += edge(N.v, N.pol, { label: '6 报案', anchor: 'start', lx: 12, col: st === 3 ? C.sell : C.dim }) + `<path d="M ${N.pol.x + N.pol.w} ${N.pol.y + 30} C 600 250, 800 230, ${N.s.x + 60} ${N.s.y + N.s.h + 6}" fill="none" stroke="${st === 3 ? C.sell : C.dim}" stroke-width="4"/>` + T(640, 230, '7 冻结卖家银行卡', { anchor: 'middle', size: 28, bold: true, fill: st === 3 ? C.sell : C.t2, halo: true });
+    for (const k of shown) h += box(N[k], nm[k].filter(Boolean), act.includes(k) ? onB(true, cl[k]) : {});
+    if (st === 4) {
+      h += `<line x1="${N.s.x + N.s.w + 20}" y1="60" x2="${N.s.x + N.s.w + 100}" y2="130" stroke="${C.buy}" stroke-width="8"/>`;
+      h += T(20, 500, '户名一致 → 链条在第 3 步断开', { size: 32, bold: true, fill: C.buy }) + T(20, 550, '秒提 = 强信号 → 提币观察期', { size: 32, bold: true, fill: C.buy });
+    }
+    const note = ['', '付款人户名往往不是买家本人', '卖家交易看起来完全正常', '托管只保护币，不保护钱', '', '收购来的实名账户 → 户名规则失效 → 需要资金关系图谱'][st];
+    if (note) h += T(20, st === 5 ? 520 : 500, note, { size: 32, bold: true, fill: st === 3 || st === 5 ? C.sell : C.gold });
+    svg.innerHTML = h;
+    el.querySelector('#chain-h').textContent = st >= 4 ? (st === 4 ? '平台能切断哪几步' : '户名规则也会失效') : '回到开头：卡为什么被冻';
+  }
+
+  function failStep(el, st) {
+    el.querySelectorAll('#failT tr').forEach((r, i) => { if (i) { r.classList.toggle('cur', i === st + 1); r.style.opacity = i <= st + 1 ? 1 : .3; } });
+    el.querySelector('#fail-note').innerHTML = ['自动取消只发生在待付款 → 没点已付款，系统就当没付', '已标记付款不会超时取消 → 买家不会钱币两空', '卖家最大的操作风险：先看银行，再点放币', '账本已完成也可能被追回 → 冻结剩余资产，配合调查'][st];
+  }
+
+  function fiatStep(el, st) {
+    const svg = el.querySelector('#fiat');
+    let h = '';
+    if (st === 0) {
+      const ch = [['SEPA 银行转账', '欧元区 · 1 个工作日内 · 即时 SEPA 更快', '户名不一致需退款'], ['银行卡', '即时', '拒付 · 见 P02'], ['本地电子钱包', '即时到数小时', '通道稳定性 · 合规审查']];
+      h += T(20, 40, '典型到账时间 · 业界通用 · 具体以页面为准', { size: 28, fill: C.t2 });
+      ch.forEach(([a, b, c], i) => { const y = 70 + i * 150; h += R(10, y, 1620, 126, { stroke: [C.info, C.gold, C.buy][i] }) + T(40, y + 56, a, { size: 34, bold: true, fill: [C.info, C.gold, C.buy][i] }) + T(40, y + 100, b, { size: 28, fill: C.t2 }) + T(1600, y + 78, '风险：' + c, { anchor: 'end', size: 30, fill: C.text }); });
+      h += T(20, 560, '通道由合作银行或持牌支付机构提供 · 按地区不同', { size: 30, bold: true, fill: C.gold });
+    } else if (st <= 2) {
+      const N = { ub: { x: 0, y: 60, w: 280, h: 120 }, pb: { x: 500, y: 60, w: 340, h: 120 }, fg: { x: 1080, y: 60, w: 300, h: 120 }, l: { x: 1080, y: 320, w: 300, h: 120 } };
+      h += box(N.ub, ['用户银行账户'], onB(st === 2, C.info));
+      h += box(N.pb, ['合作机构', '平台客户资金账户'], onB(true, C.info));
+      h += box(N.fg, ['fiat-gateway'], onB(st === 2));
+      h += box(N.l, ['ledger-service', '用户 EUR 余额'], onB(st >= 1));
+      if (st === 1) h += T(20, 330, '与 P2P 的区别', { size: 36, bold: true, fill: C.gold }) + T(20, 390, '法币真的进入平台控制的账户', { size: 32 }) + T(20, 440, '→ 账本有法币科目 → 必须与银行流水对账', { size: 32, fill: C.info });
+      if (st === 2) {
+        h += edge(N.ub, N.pb, { label: '1 转账 + 参考码', ly: -16, col: C.gold }) + edge(N.pb, N.fg, { label: '2 到账通知', ly: -16, col: C.gold }) + edge(N.fg, N.l, { label: '3 按参考码匹配 · 入账', anchor: 'start', lx: 14, col: C.gold });
+        h += T(0, 520, '提现反向：冻结 EUR → 网关发起付款 → 合作机构打款', { size: 30, fill: C.t2 });
+      }
+    } else {
+      const N = { w: { x: 20, y: 220, w: 240, h: 100 }, r: { x: 400, y: 220, w: 300, h: 100 }, c: { x: 900, y: 40, w: 260, h: 100 }, u: { x: 900, y: 220, w: 260, h: 100 }, ret: { x: 900, y: 400, w: 260, h: 100 } };
+      const act = st === 3 ? ['r', 'u', 'ret'] : ['r'];
+      h += edge(N.w, N.r, { label: '通知', ly: -16, col: C.t2 });
+      h += edge(N.r, N.c, { label: '参考码与户名都匹配', anchor: 'end', lx: -20, ly: -10, col: C.t2 });
+      h += edge(N.r, N.u, { label: '参考码缺失', ly: -16, col: st === 3 ? C.gold : C.dim });
+      h += edge(N.r, N.ret, { label: '户名 ≠ 实名', anchor: 'end', lx: -20, ly: 30, col: st === 3 ? C.sell : C.dim });
+      h += edge(N.u, N.c, { off: 0, label: '人工确认', anchor: 'start', lx: 14, col: st === 3 ? C.gold : C.dim });
+      const nm = { w: ['等待到账'], r: ['已到账待匹配'], c: ['已入账'], u: ['待人工认领'], ret: ['已退回'] };
+      const cl = { w: C.t2, r: C.info, c: C.buy, u: C.gold, ret: C.sell };
+      for (const k in N) h += box(N[k], nm[k], act.includes(k) ? onB(true, cl[k]) : {});
+      if (st === 4) {
+        h += R(1220, 60, 410, 300, { fill: 'rgba(91,156,255,.1)', stroke: C.info }) + T(1425, 130, '在途科目', { anchor: 'middle', size: 40, bold: true, fill: C.info });
+        h += T(1425, 200, '钱在客户资金账户', { anchor: 'middle', size: 30 }) + T(1425, 250, '但不属于任何用户余额', { anchor: 'middle', size: 30 }) + T(1425, 320, '对账时单独核对', { anchor: 'middle', size: 28, fill: C.t2 });
+        h += `<rect x="390" y="210" width="320" height="120" rx="16" fill="none" stroke="${C.info}" stroke-width="4" stroke-dasharray="10 6"/>`;
+      } else h += T(20, 560, '退回也有成本和时间 · 还可能涉及反洗钱核查', { size: 30, fill: C.t2 });
+    }
+    svg.innerHTML = h;
+    el.querySelector('#fiat-h').textContent = ['法币通道：按地区不同', '法币通道：平台真正经手法币', '充值资金流：靠参考码匹配', '充值状态机：两个分支', '入账之前：在途科目'][st];
+  }
+
+  function recStep(el, st) {
+    const svg = el.querySelector('#rec');
+    let h = '';
+    if (st <= 1) {
+      const bank = [['EUR 500', 'REF-A'], ['EUR 1,200', 'REF-B'], ['EUR 300', 'REF-C'], ['EUR 800', 'REF-D']];
+      const led = st === 0 ? [0, 1, 1, 2, 3] : [0, 1, 3];
+      h += T(160, 40, '银行流水 · 日终', { anchor: 'middle', size: 30, bold: true, fill: C.info }) + T(1260, 40, st === 0 ? '回调' : '账本法币科目', { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+      bank.forEach(([a, r], i) => h += R(20, 70 + i * 110, 300, 90, { stroke: C.info }) + T(170, 108 + i * 110, a, { anchor: 'middle', size: 30, bold: true, mono: true }) + T(170, 144 + i * 110, r, { anchor: 'middle', size: 24, fill: C.t2 }));
+      if (st === 0) {
+        h += R(560, 200, 420, 140, { fill: 'rgba(240,185,11,.12)', stroke: C.gold }) + T(770, 250, 'fiat-gateway', { anchor: 'middle', size: 32, bold: true, fill: C.gold }) + T(770, 300, '按回调编号幂等去重', { anchor: 'middle', size: 28 });
+        led.forEach((k, j) => { const y = 70 + j * 100; const dup = j === 2; h += R(1120, y, 300, 80, { stroke: dup ? C.sell : C.gold, dash: dup ? '8 6' : '' }) + T(1270, y + 50, 'cb#' + (k + 1) + (dup ? ' 重复' : ''), { anchor: 'middle', size: 28, bold: true, fill: dup ? C.sell : C.text }); h += arrow(1110, y + 40, 990, 270, { col: dup ? C.sell : C.t2, w: 2 }); });
+        h += T(560, 420, '→ 户名比对 → AML 筛查 → 入账', { size: 30, fill: C.text });
+        h += T(1270, 590 - 20, '回调丢失：REF-C 没有回调', { anchor: 'middle', size: 26, fill: C.sell });
+      } else {
+        const rows = [0, 1, null, 3];
+        rows.forEach((k, i) => {
+          const y = 70 + i * 110;
+          if (k === null) { h += R(1110, y, 300, 90, { stroke: C.sell, dash: '10 6', fill: 'rgba(246,70,93,.12)' }) + T(1260, y + 56, '缺失 · 报警', { anchor: 'middle', size: 30, bold: true, fill: C.sell }); h += `<line x1="330" y1="${y + 45}" x2="1100" y2="${y + 45}" stroke="${C.sell}" stroke-width="4" stroke-dasharray="10 6"/>` + T(715, y + 30, '差异 → 人工补入账', { anchor: 'middle', size: 30, bold: true, fill: C.sell, halo: true }); }
+          else { h += R(1110, y, 300, 90, { stroke: C.gold }) + T(1260, y + 56, bank[k][0], { anchor: 'middle', size: 30, bold: true, mono: true }); h += `<line x1="330" y1="${y + 45}" x2="1100" y2="${y + 45}" stroke="${C.buy}" stroke-width="3"/>` + T(715, y + 34, '✓ 一致', { anchor: 'middle', size: 26, fill: C.buy, halo: true }); }
+        });
+        h += T(20, 560, '逐笔比对 · 示例金额', { size: 28, fill: C.t2 });
+      }
+    } else if (st === 2) {
+      h += box({ x: 40, y: 60, w: 700, h: 200 }, ['SEPA 充值', '免费 · 示例'], { stroke: C.buy, size: 42, sub: 34, subFill: C.buy });
+      h += box({ x: 900, y: 60, w: 700, h: 200 }, ['银行卡充值', '1.8% · 示例'], { stroke: C.gold, size: 42, sub: 34, subFill: C.gold });
+      h += T(40, 360, '平台收入 = 通道手续费 − 合作机构成本 + 后续交易收入', { size: 32, bold: true, mono: true });
+      h += T(40, 440, '免费入金 → 换用户后续的交易手续费', { size: 34, bold: true, fill: C.gold });
+    } else {
+      const risks = [['银行合作中断', '每个地区至少两家合作机构 · 预留切换', C.sell], ['客户资金隔离', '专用客户资金账户 · 定期审计', C.info], ['反洗钱', '户名一致 · 来源审查 · 大额报告', C.warn], ['对账差异', '日终逐笔对账 · 下一工作日内清零', C.buy]];
+      if (st === 3) {
+        h += R(20, 30, 1600, 170, { fill: 'rgba(246,70,93,.1)', stroke: C.sell }) + T(50, 95, '2023 年前后 · 公开新闻', { size: 30, fill: C.t2 }) + T(50, 160, '美国多家加密友好银行出问题或收缩业务 → 多家交易所美元通道受影响', { size: 32, bold: true, fill: C.sell });
+        h += T(20, 290, '单一通道 = 系统性风险', { size: 40, bold: true, fill: C.text });
+      }
+      risks.forEach(([a, b, c], i) => { if (st === 3 && i) return; const y = st === 3 ? 340 : 30 + i * 135; h += R(20, y, 1600, 115, { stroke: c }) + T(50, y + 70, a, { size: 34, bold: true, fill: c }) + T(480, y + 70, b, { size: 30 }); });
+    }
+    svg.innerHTML = h;
+    el.querySelector('#rec-h').textContent = ['回调：幂等去重', '日终对账：逐笔比对', '定价：免费入金', '风险：银行合作中断', '风险与防线 · 业界通用'][st];
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

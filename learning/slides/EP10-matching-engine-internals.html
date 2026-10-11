@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP10 撮合引擎内部</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .stack { display: grid; } .stack > * { grid-area: 1 / 1; align-self: start; }
+  .lane { display: flex; align-items: center; gap: 14px; padding: 12px 18px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); font-size: 30px; min-height: 76px; }
+  .lane .sym { font-family: var(--mono); width: 200px; font-weight: 700; }
+  .lane .th { font-size: 24px; color: var(--info); width: 110px; }
+  .lane .blk { width: 26px; height: 40px; border-radius: 5px; background: var(--info); opacity: .8; flex: 0 0 auto; }
+  .lane .blk.hot { background: var(--sell); }
+  .lane.hot { border-color: var(--sell); background: var(--sell-soft); }
+  .mtx { display: flex; align-items: center; gap: 16px; font-size: 30px; }
+  .mtx .t { padding: 12px 18px; border: 2px solid var(--info); border-radius: 12px; font-family: var(--mono); }
+  .mtx .lock { padding: 12px 18px; border: 2px dashed var(--sell); border-radius: 12px; color: var(--sell); }
+  .ds-row { display: flex; align-items: center; gap: 14px; font-family: var(--mono); font-size: 30px; min-height: 84px; }
+  .lvbox { width: 230px; padding: 10px 16px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel); transition: all .3s; }
+  .lvbox .p { color: var(--sell); font-weight: 700; }
+  .lvbox .tt { font-size: 24px; color: var(--text-2); }
+  .lvbox.best { border-color: var(--gold); }
+  .lvbox.tot .tt { color: var(--gold); font-weight: 700; }
+  .node { padding: 12px 18px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel-2); transition: all .3s; white-space: nowrap; }
+  .node.new { border-color: var(--info); background: var(--info-soft); color: var(--info); }
+  .node.hit { border-color: var(--gold); background: var(--gold-soft); color: var(--gold); }
+  .node.gone { opacity: .25; text-decoration: line-through; border-style: dashed; }
+  .lk { color: var(--text-2); font-size: 26px; }
+  .hash { font-family: var(--mono); font-size: 28px; display: flex; flex-direction: column; gap: 8px; }
+  .hash .e { padding: 8px 16px; border-radius: 8px; background: var(--panel-2); border: 2px solid transparent; transition: all .3s; }
+  .hash .e.hit { border-color: var(--gold); color: var(--gold); }
+  .hash .e.new { border-color: var(--info); color: var(--info); }
+  .hash .e.gone { opacity: .25; text-decoration: line-through; }
+  .tag { font-family: var(--sans); font-size: 22px; padding: 2px 10px; border-radius: 6px; background: var(--gold); color: #000; font-weight: 700; }
+  .cellgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .cell { position: relative; padding: 8px 12px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel); font-family: var(--mono); font-size: 26px; transition: all .3s; min-height: 70px; }
+  .cell b { color: var(--text-2); margin-right: 8px; }
+  .cell.on { border-color: var(--gold); background: var(--gold-soft); }
+  .cell.snap { border-color: var(--buy); background: var(--buy-soft); }
+  .cell.crash { border-color: var(--sell); background: var(--sell-soft); }
+  .cell.rep { border-color: var(--info); background: var(--info-soft); }
+  .cell.off { opacity: .2; }
+  .cell .flag { position: absolute; right: 6px; top: -14px; font-family: var(--sans); font-size: 20px; padding: 0 8px; border-radius: 6px; color: #000; font-weight: 700; }
+  .panel { background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 16px 22px; transition: all .3s; }
+  .panel.dead { border-color: var(--sell); opacity: .55; }
+  .panel.ok { border-color: var(--buy); }
+  .panel .pt { font-size: 28px; color: var(--text-2); margin-bottom: 8px; }
+  .mb { font-family: var(--mono); font-size: 28px; display: flex; flex-direction: column; gap: 4px; }
+  .mb .r { display: flex; justify-content: space-between; padding: 3px 14px; border-radius: 6px; }
+  .mb .r.ask span:first-child { color: var(--sell); } .mb .r.bid span:first-child { color: var(--buy); }
+  .mb .sp { border-top: 1px dashed var(--line); margin: 2px 0; }
+  .ck { font-family: var(--mono); font-size: 26px; margin-top: 8px; }
+  .flowc { display: flex; flex-direction: column; gap: 10px; font-family: var(--mono); font-size: 28px; }
+  .inq { padding: 10px 16px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel-2); transition: all .3s; }
+  .inq.on { border-color: var(--gold); }
+  .bigbox { border: 3px solid var(--gold); border-radius: 16px; padding: 22px; text-align: center; font-size: 32px; background: var(--gold-soft); }
+  .logrow { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 8px 14px; border-radius: 8px; background: var(--panel-2); font-family: var(--mono); font-size: 28px; border: 2px solid transparent; transition: all .3s; }
+  .logrow.on { border-color: var(--gold); }
+  .logrow.done { color: var(--text-2); }
+  .harrow { font-size: 44px; color: var(--text-2); align-self: center; }
+  .chk { display: grid; grid-template-columns: 1fr 210px; gap: 14px; align-items: center; padding: 10px 20px; border-radius: 12px; background: var(--panel); border: 2px solid var(--line); font-family: var(--mono); font-size: 30px; transition: all .3s; }
+  .chk.bad { border-color: var(--sell); background: var(--sell-soft); }
+  .chk.good { border-color: var(--buy); background: var(--buy-soft); }
+  .chk .v { text-align: right; font-family: var(--sans); font-weight: 700; }
+  .mode { display: flex; flex-direction: column; gap: 10px; transition: all .3s; }
+  .mode .mn { font-family: var(--mono); font-size: 28px; font-weight: 700; }
+  .mode .res { font-family: var(--mono); font-size: 26px; line-height: 1.5; }
+  .bar { height: 54px; border-radius: 10px; background: var(--sell); transition: width .4s; }
+  .ring text { font-family: var(--mono); font-size: 22px; text-anchor: middle; dominant-baseline: middle; }
+  .ex { font-family: var(--mono); font-size: 42px; line-height: 1.4; }
+  table.t.tight th, table.t.tight td { padding: 8px 20px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP10" data-title="撮合引擎内部：数据结构、定序与重放">
+
+  <!-- 1 开场 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解</div>
+    <h1>撮合引擎内部：<span class="hl">定序与重放</span></h1>
+    <div class="row" style="gap:28px; align-items:center" data-step="1">
+      <div class="card info" style="font-size:36px">订单簿全在<span class="hl">内存</span></div>
+      <div class="harrow">→</div>
+      <div class="card sell" style="font-size:36px">进程<span class="down">崩溃</span></div>
+      <div class="harrow">→</div>
+      <div class="card" style="font-size:36px" data-step="2">怎样恢复得<span class="hl">一模一样</span>？</div>
+    </div>
+    <ol class="say">
+      <li>大家好，欢迎回到交易所系统技术讲解。上一集我们讲了撮合规则。这一集，我们拆开撮合引擎本身。</li>
+      <li>先想一个场景。撮合引擎把整本订单簿放在内存里。内存很快，但进程一崩溃，内存里的数据就没了。</li>
+      <li>那么崩溃之后，引擎怎样把订单簿恢复成一模一样？一张订单都不能错，一个顺序都不能乱。</li>
+    </ol>
+  </section>
+
+  <!-- 2 路线图 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">本集路线图</div>
+    <h2>五段内容</h2>
+    <div class="grid3" style="grid-template-columns: repeat(5, 1fr); gap:22px">
+      <div class="card info" data-step="0"><div class="mono hl" style="font-size:44px">01</div>单线程<br>与分片</div>
+      <div class="card info" data-step="0"><div class="mono hl" style="font-size:44px">02</div>内存<br>数据结构</div>
+      <div class="card gold" data-step="1"><div class="mono hl" style="font-size:44px">03</div>定序 · 日志<br>快照重放</div>
+      <div class="card" data-step="2"><div class="mono hl" style="font-size:44px">04</div>确定性<br>与 LMAX</div>
+      <div class="card" data-step="2"><div class="mono hl" style="font-size:44px">05</div>精度 · STP<br>与局限</div>
+    </div>
+    <p class="lead" data-step="2">内部实现币安未完全公开：本集多为<span class="hl">业界通用做法</span>；filters 与 STP 模式来自币安公开文档，截至 2026 年。</p>
+    <ol class="say">
+      <li>本集分五段。先讲为什么一个交易对只用一个线程，再讲内存里的三种数据结构。</li>
+      <li>然后是本集重点。定序器、事件日志和快照怎样配合，让引擎能够重放恢复。</li>
+      <li>最后讲确定性、LMAX 架构、精度过滤器、自成交预防，以及撮合引擎的局限。注意，币安没有完全公开内部实现，今天讲的多是业界通用做法。</li>
+    </ol>
+  </section>
+
+  <!-- 3 单线程与分片 -->
+  <section class="scene" data-title="为什么是单线程" data-onstep="threadStep">
+    <div class="kicker">01 · 并发模型</div>
+    <h2>一个交易对，一个线程</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="col" style="flex:0 0 640px; gap:22px">
+        <div class="stack">
+          <div class="card" data-step="0" data-until="3" style="font-size:32px">订单 A 先到，订单 B 后到<br><span class="hl">→ A 必须先成交</span></div>
+          <div class="card warn" data-step="4" style="font-size:32px">收银台可以加开，<br>单个交易对的线程<span class="hl">不能拆</span></div>
+        </div>
+        <div class="card sell" data-step="0">
+          <div class="mtx"><div class="col" style="gap:10px; flex:0 0 auto"><div class="t">线程 1</div><div class="t">线程 2</div></div><div class="harrow">→</div><div class="lock">锁</div><div class="harrow">→</div><div>同一本<br>订单簿</div></div>
+          <div style="margin-top:12px" class="down">锁竞争 · 执行顺序不确定</div>
+        </div>
+      </div>
+      <div class="col" data-step="2" style="gap:14px" id="lanes"></div>
+    </div>
+    <ol class="say">
+      <li>撮合必须严格有序。两个订单谁先到，决定了谁先成交。这是上一集讲的时间优先。</li>
+      <li>如果多个线程同时改同一本订单簿，就得加锁。锁带来竞争，执行顺序也变得不确定。</li>
+      <li>业界通用做法是，一个交易对只由一个线程处理。交易对之间没有依赖，所以可以按交易对分片。BTC 在线程 A，ETH 在线程 B。</li>
+      <li>打个比方，每个交易对是一个收银台，只有一个收银员。他不用和别人商量，所以速度很快。</li>
+      <li>比喻不成立的地方在这里。超市排长队可以加开收银台，撮合引擎不行。热门币上线，大家都挤进同一个交易对，这条队只能越排越长。</li>
+    </ol>
+  </section>
+
+  <!-- 4 三种操作 -->
+  <section class="scene" data-title="订单簿的三种操作">
+    <div class="kicker">02 · 数据结构需求</div>
+    <h2>订单簿要快速完成三件事</h2>
+    <table class="t" style="font-size:34px">
+      <tr><th>操作</th><th>频率</th><th>需要的结构</th><th>复杂度</th></tr>
+      <tr data-step="0"><td>找到最优价</td><td>每个订单都要做</td><td>有序结构 + 缓存最优档</td><td class="num hl">O(1)</td></tr>
+      <tr data-step="1"><td>新增价格档 · 删除空档</td><td>频繁</td><td>红黑树或跳表</td><td class="num hl">O(log n)</td></tr>
+      <tr data-step="2"><td>按订单 id 撤单</td><td>非常频繁</td><td>哈希表</td><td class="num hl">O(1)</td></tr>
+    </table>
+    <div class="card info" data-step="2" style="font-size:32px">三种结构叠在一起用：<span class="hl">价格档有序结构 + 档内双向链表 + 订单 id 哈希索引</span></div>
+    <ol class="say">
+      <li>订单簿要高效完成三种操作。第一，找到最优价。每个新订单都要做，所以必须是常数时间。</li>
+      <li>第二，新增价格档，或者删除空档。这件事很频繁，需要有序结构，做到对数时间。</li>
+      <li>第三，按订单 id 撤单。这是最频繁的操作之一，需要哈希表，在常数时间里定位订单。三者叠在一起，就是生产级订单簿的常见做法。</li>
+    </ol>
+  </section>
+
+  <!-- 5 数据结构 -->
+  <section class="scene" data-title="价格档、链表与哈希索引" data-onstep="dsStep">
+    <div class="kicker">02 · 内存订单簿</div>
+    <h2>卖盘的内存结构</h2>
+    <div class="row" style="align-items:flex-start; gap:40px">
+      <div class="col" style="flex:0 0 auto; gap:10px">
+        <div class="muted" style="font-size:26px">价格档 · 红黑树或跳表 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 档内双向链表 · 队头在左</div>
+        <div id="ds" class="col" style="gap:10px"></div>
+      </div>
+      <div class="col" style="gap:10px" data-step="3">
+        <div class="muted" style="font-size:26px">订单 id 哈希索引</div>
+        <div class="hash" id="hash"></div>
+      </div>
+    </div>
+    <div class="card" id="dsNote" style="padding:14px 26px; font-size:30px"></div>
+    <ol class="say">
+      <li>来看这三种结构怎么拼在一起。左边是价格档，用红黑树或跳表按价格排序。引擎缓存最优档的指针，读取最优价是常数时间。</li>
+      <li>每个价格档挂一条双向链表。新订单追加到链表尾部，成交从链表头部取。这正是 FIFO。</li>
+      <li>示例，新卖单 S6 挂在 100.10，数量 0.5。它直接接到 S2 后面。这一档的总量从 2.0 变成 2.5。</li>
+      <li>现在用户撤销 S2。引擎查哈希表，一步找到 S2 的节点。再把它从双向链表里摘掉，不需要遍历。</li>
+      <li>每个价格档还缓存一个总量。行情的深度数据直接读这个值，不用逐单求和。第 12 集讲行情深度时，还会用到它。</li>
+    </ol>
+  </section>
+
+  <!-- 6 整数 -->
+  <section class="scene" data-title="为什么用整数" data-onstep="intStep">
+    <div class="kicker">02 · 数值表示</div>
+    <h2>价格和数量，全部用整数</h2>
+    <div class="formula" data-step="0">价格 100.10 ÷ tickSize 0.01 = <span class="hl">10010</span><br>数量 0.5 ÷ stepSize 0.00001 = <span class="hl">50000</span></div>
+    <div class="grid2" data-step="1">
+      <div class="card sell"><h3>浮点数</h3><div class="ex">0.1 + 0.2<br>= <span class="down" id="fl"></span></div></div>
+      <div class="card buy" data-step="3"><h3>整数 tick</h3><div class="ex">1 + 2<br>= <span class="up">3</span> &nbsp;<span class="muted">永远精确</span></div></div>
+    </div>
+    <ol class="say">
+      <li>还有一个细节。引擎内部的价格和数量，全部用整数表示。</li>
+      <li>示例，tickSize 是 0.01。价格 100.10 就存成整数 10010。数量也按 stepSize 换算成整数。</li>
+      <li>为什么要这样做？因为浮点数有误差。在很多语言里，0.1 加 0.2 并不精确等于 0.3。</li>
+      <li>撮合差一点都不行。剩余数量会出现极小的灰尘，账就对不上。换成整数，1 加 2 永远等于 3。所以精度换算在入口完成，引擎里只有整数。</li>
+    </ol>
+  </section>
+
+  <!-- 7 定序器 -->
+  <section class="scene" data-title="定序器与事件日志" data-onstep="seqStep">
+    <div class="kicker">03 · 定序</div>
+    <h2>先定序，再落日志，再撮合</h2>
+    <div class="row" style="align-items:center; gap:24px">
+      <div class="flowc" style="flex:0 0 480px" id="ins"></div>
+      <div class="harrow">→</div>
+      <div class="bigbox" style="flex:0 0 220px; padding:22px 12px" data-step="1">定序器<br><span class="mono hl" style="font-size:26px">seq + 时间戳</span></div>
+      <div class="harrow" data-step="2">→</div>
+      <div class="col" style="gap:10px" data-step="2">
+        <div class="muted" style="font-size:26px">事件日志 · 只追加</div>
+        <div class="col" style="gap:8px" id="logl"></div>
+      </div>
+      <div class="harrow" data-step="3">→</div>
+      <div class="bigbox" style="flex:0 0 220px; padding:22px 12px; border-color:var(--buy); background:var(--buy-soft)" data-step="3">撮合引擎<br><span style="font-size:26px" id="meNow" class="mono"></span></div>
+    </div>
+    <div class="card warn" data-step="4" style="font-size:32px">反过来：撮合已执行、日志没写成 → <span class="down">两边不一致</span>。日志是<span class="hl">唯一事实来源</span>。</div>
+    <ol class="say">
+      <li>现在进入本集重点。订单服务有多个入口，订单是并发到达的。谁先谁后，必须有唯一的答案。</li>
+      <li>这个答案由定序器给出。它给每条输入指令分配一个全局递增的序号。序号决定处理顺序。</li>
+      <li>定序以后，指令先写进事件日志。日志只追加，不修改。时间戳也由定序器写进指令。</li>
+      <li>然后撮合引擎按序号，一条一条处理。注意顺序，先落日志，再撮合。</li>
+      <li>如果反过来，撮合执行了，日志却没写成功，两边就不一致。所以日志才是唯一的事实来源。下游的清算、行情和用户推送，也都按序号消费撮合输出的事件。</li>
+    </ol>
+  </section>
+
+  <!-- 8 快照与重放 -->
+  <section class="scene" data-title="快照与重放恢复" data-onstep="replayStep">
+    <div class="kicker">03 · 快照 + 日志 = 恢复</div>
+    <h2 id="rpTitle">事件日志 seq 1–12</h2>
+    <div class="cellgrid" id="cells"></div>
+    <div class="grid2" style="gap:28px">
+      <div class="panel" id="pA"></div>
+      <div class="panel" id="pB"></div>
+    </div>
+    <ol class="say">
+      <li>光有日志还不够。日志越来越长，每次都从头重放太慢。所以引擎会定期做快照。</li>
+      <li>快照就是把整本订单簿写到磁盘，并记下对应的序号。这个示例里，快照停在序号 8。</li>
+      <li>现在，引擎处理完序号 12 以后崩溃了。内存里的订单簿全部丢失。</li>
+      <li>恢复第一步，启动一个新引擎实例，加载最近的快照。订单簿回到序号 8 的状态。</li>
+      <li>第二步，重放快照之后的日志。序号 9、10、11、12，一条一条重新执行。</li>
+      <li>重放完成，订单簿和崩溃前完全一样，校验和也一致。备用引擎还可以实时消费同一份日志，主引擎故障时直接接管。</li>
+      <li>快照间隔是一个取舍。这个示例里，有序号 8 的快照，恢复只需重放 4 条指令。间隔太长，要重放的日志就多，恢复就慢。</li>
+    </ol>
+  </section>
+
+  <!-- 9 确定性 -->
+  <section class="scene" data-title="确定性的五条规则" data-onstep="detStep">
+    <div class="kicker">04 · 确定性 Deterministic</div>
+    <h2>相同初始状态 + 相同顺序输入 = 相同输出</h2>
+    <div class="row" style="align-items:flex-start">
+      <ul class="bullets" style="flex:0 0 900px; font-size:32px; gap:16px">
+        <li data-step="0">不读系统时钟，时间戳由定序器写入</li>
+        <li data-step="0">不使用随机数</li>
+        <li data-step="2">不依赖哈希表的遍历顺序</li>
+        <li data-step="2">不用浮点数计算价格和数量</li>
+        <li data-step="3">撮合逻辑里不调用数据库、网络</li>
+      </ul>
+      <div class="col" style="gap:16px" data-step="4">
+        <div class="chk" id="c1"><span>主引擎<br><span style="font-size:24px" class="muted" id="c1t"></span></span><span class="v" id="c1v"></span></div>
+        <div class="chk" id="c2"><span>重放引擎<br><span style="font-size:24px" class="muted" id="c2t"></span></span><span class="v" id="c2v"></span></div>
+        <div class="muted" style="font-size:26px" id="c3"></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>重放能成功，有一个前提，撮合必须是确定性的。相同的初始状态，加上相同顺序的输入，得到完全相同的输出。</li>
+      <li>为此要守住五条规则。第一，不读系统时钟，时间戳由定序器写进指令。第二，不用随机数。</li>
+      <li>第三，不依赖哈希表的遍历顺序。第四，不用浮点数计算价格和数量。</li>
+      <li>第五，撮合逻辑里，不调用数据库、网络这些外部服务。</li>
+      <li>守住这五条，重放日志就能得到逐字节相同的订单簿和成交记录。故障恢复、主备切换、审计对账，都靠它。在配套的撮合实验页里，点重放事件日志按钮，可以亲眼验证。</li>
+      <li>反过来，假如同价订单的先后顺序用随机数决定。重放一次，成交对象就可能变，主备从此对不上。</li>
+    </ol>
+  </section>
+
+  <!-- 10 LMAX -->
+  <section class="scene" data-title="LMAX 架构思路" data-onstep="ringStep">
+    <div class="kicker">04 · 参考架构</div>
+    <h2>LMAX：单线程也能很快</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="col" style="gap:16px">
+        <div class="card" data-step="0" style="padding:18px 26px">英国外汇交易所，<span class="hl">2010 年前后</span>公开架构</div>
+        <div class="card info" data-step="0" style="padding:18px 26px"><b>单线程业务逻辑</b> · 全部状态在内存<br><b>事件溯源</b> · 重放事件重建状态</div>
+        <div class="card gold" data-step="2" style="padding:18px 26px"><b>Disruptor</b> · 无锁环形缓冲区，替代队列</div>
+        <div class="card" data-step="3" style="padding:18px 26px">落盘、复制备机、反序列化 → <span class="hl">业务线程之外</span>并行</div>
+      </div>
+      <div class="card" data-step="2" style="flex:0 0 520px; padding:12px; display:flex; flex-direction:column; align-items:center">
+        <svg class="ring" id="ring" viewBox="0 0 480 440" width="480" height="440"></svg>
+      </div>
+    </div>
+    <ol class="say">
+      <li>这套思路有一个著名的参考，LMAX。它是英国的一家外汇交易所，2010 年前后公开了自己的架构。</li>
+      <li>核心是单线程的业务逻辑处理器，全部状态放在内存里。再加上事件溯源，状态可以通过重放事件重建。</li>
+      <li>线程之间用 Disruptor 传递消息。它是一个无锁的环形缓冲区，用来替代传统队列。写入方和读取方各自推进指针，不需要加锁。</li>
+      <li>日志落盘、复制到备机、反序列化，都放在业务线程之外，并行完成。</li>
+      <li>LMAX 公开资料称，单线程每秒能处理数百万个订单，具体以原始资料为准。关键在于没有锁，没有磁盘等待，CPU 缓存命中率高。</li>
+    </ol>
+  </section>
+
+  <!-- 11 精度过滤器 -->
+  <section class="scene" data-title="tickSize、stepSize、minNotional" data-onstep="filterStep">
+    <div class="kicker">05 · 精度过滤器 · 币安 exchangeInfo</div>
+    <h2>不合规的订单，在撮合之前被挡住</h2>
+    <table class="t tight" data-step="0" style="font-size:30px">
+      <tr><th>过滤器</th><th>关键字段</th><th>示例值</th></tr>
+      <tr><td class="mono">PRICE_FILTER</td><td class="mono">tickSize</td><td class="num">0.01</td></tr>
+      <tr><td class="mono">LOT_SIZE</td><td class="mono">stepSize</td><td class="num">0.00001</td></tr>
+      <tr><td class="mono">NOTIONAL</td><td class="mono">minNotional</td><td class="num">5 USDT</td></tr>
+    </table>
+    <div class="col" style="gap:12px; flex:0 0 auto" id="flt"></div>
+    <ol class="say">
+      <li>引擎只处理对齐了精度的整数。那么不合规的订单在哪里被挡住？答案是进入撮合之前。</li>
+      <li>币安通过 exchangeInfo 接口公开每个交易对的过滤器。PRICE_FILTER 管价格，LOT_SIZE 管数量。NOTIONAL 管订单金额。</li>
+      <li>举个示例，tickSize 是 0.01。价格 100.123 不是 0.01 的整数倍，拒绝。</li>
+      <li>stepSize 是 0.00001。数量 0.000001 不是它的整数倍，也拒绝。</li>
+      <li>minNotional 是 5 USDT。价格 100，数量 0.01，金额只有 1 USDT，还是拒绝。</li>
+      <li>这些校验都在撮合之前完成。被拒的订单状态是 REJECTED，根本不会进入订单簿。这样，引擎内部只需要处理已经对齐精度的整数。</li>
+    </ol>
+  </section>
+
+  <!-- 12 STP -->
+  <section class="scene" data-title="自成交预防 STP" data-onstep="stpStep">
+    <div class="kicker">05 · Self-Trade Prevention</div>
+    <h2>自己的买单碰上自己的卖单</h2>
+    <div class="stack">
+      <div class="card warn" data-step="0" data-until="1" style="font-size:32px">自成交：不改变持仓，却制造<span class="hl">虚假成交量</span><span data-step="0">，监管上常视为对敲</span></div>
+      <div class="row" data-step="2" style="gap:24px">
+        <div class="card sell" style="flex:1; padding:16px 24px">簿内 Maker · 账户 A · <span class="mono">卖 100.10 × 1.0</span></div>
+        <div class="card buy" style="flex:1; padding:16px 24px">新到 Taker · 账户 A · <span class="mono">买 100.10 × 0.6</span></div>
+      </div>
+    </div>
+    <div class="grid4" id="stp"></div>
+    <ol class="say">
+      <li>下一个机制，自成交预防，简称 STP。同一个账户的买单和卖单互相成交，叫自成交。</li>
+      <li>它不改变持仓，却制造了虚假成交量，监管上常被视为对敲。所以引擎发现双方属于同一账户，就按规则取消订单，不产生成交。</li>
+      <li>示例，账户 A 在 100.10 挂卖 1.0。现在 A 又下了一个 100.10 的买单，数量 0.6。看币安公开的几种模式。</li>
+      <li>EXPIRE_TAKER，取消新来的买单剩余部分。EXPIRE_MAKER，取消簿里的那张卖单。</li>
+      <li>EXPIRE_BOTH，两边都取消。DECREMENT，双方都扣减重叠的 0.6，不产生成交。完整的模式列表，以币安官方文档为准。</li>
+      <li>因为 STP 被取消的订单，状态是 EXPIRED_IN_MATCH。上一集的状态机里提到过它。</li>
+    </ol>
+  </section>
+
+  <!-- 13 局限 -->
+  <section class="scene" data-title="撮合引擎的局限" data-onstep="limStep">
+    <div class="kicker">故障与边界</div>
+    <h2>热门币上线的第一分钟</h2>
+    <div class="row" style="align-items:center; gap:24px">
+      <div class="muted" style="font-size:28px; flex:0 0 220px">单线程输入队列<br><span class="mono hl" id="qn"></span></div>
+      <div style="flex:1; background:var(--panel); border-radius:12px; padding:8px"><div class="bar" id="bar"></div></div>
+    </div>
+    <div class="stack">
+    <div class="grid2" data-step="0" data-until="1">
+      <div class="card info" style="font-size:32px">单个交易对的吞吐上限<br>= <span class="hl">一个线程</span>的处理能力</div>
+      <div class="card warn" data-step="0" style="font-size:32px">分片扩展的是<span class="hl">交易对数量</span><br>不是单个交易对的吞吐</div>
+    </div>
+    <div class="grid3" data-step="1">
+      <div class="card sell" data-step="1">输入队列积压<br><span class="muted">下单数秒才收到回报</span></div>
+      <div class="card sell" data-step="2">价格几秒内剧烈波动<br><span class="muted">早到的市价单成交很差</span></div>
+      <div class="card sell" data-step="2">撤单排在新订单后面<br><span class="muted">想撤撤不掉</span></div>
+    </div>
+    </div>
+    <div class="card buy" data-step="4" style="font-size:30px">缓解 · 业界通用做法：仅限价单阶段 · 价格保护 <span class="mono">PERCENT_PRICE_BY_SIDE</span> · 单用户限频</div>
+    <ol class="say">
+      <li>最后看撮合引擎的局限。一个交易对只有一个线程。这个线程的处理能力，就是这个交易对的上限。</li>
+      <li>分片只能扩展交易对的数量，不能扩展单个交易对的吞吐。</li>
+      <li>热门币上线的第一分钟，最能暴露这一点。输入队列积压，用户下单后好几秒才收到回报。</li>
+      <li>价格几秒内剧烈波动，早到的市价单成交价远高于预期。撤单指令排在大量新订单后面，迟迟撤不掉。</li>
+      <li>业界常见的缓解办法有三个。上线初期只开放限价单。设置价格保护，币安有 PERCENT_PRICE_BY_SIDE 过滤器。再对单个用户限频。还要提醒一句，撤单也要排队定序，它不是即时生效的。</li>
+    </ol>
+  </section>
+
+  <!-- 14 小结 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">按交易对<span class="hl">分片、单线程</span>、内存订单簿：有序价格档 + 双向链表 + 哈希索引。</li>
+      <li data-step="0"><span class="hl">先定序，再落日志，再撮合</span>；崩溃后加载快照，重放后续日志。</li>
+      <li data-step="2">一切依赖<span class="hl">确定性</span>：不读时钟、不用随机数、不用浮点数。</li>
+    </ul>
+    <div class="card info" data-step="3" style="font-size:34px">下一集 EP11 · 成交之后：<span class="hl">清算、结算与手续费</span></div>
+    <ol class="say">
+      <li>小结一下。第一，撮合引擎按交易对分片，单线程，订单簿全在内存。价格档用有序结构，档内用双向链表，撤单靠哈希表。</li>
+      <li>第二，先定序，再落日志，再撮合。崩溃后加载快照，重放之后的日志，就能恢复到崩溃前的状态。</li>
+      <li>第三，这一切依赖确定性。不读时钟，不用随机数，不用浮点数。精度校验和自成交预防，也都在规则之内。</li>
+      <li>撮合引擎只产出成交事件，它不碰余额。下一集，我们看成交之后，清算、结算和手续费是怎么做的。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const P = t => (t / 100).toFixed(2);   // price ticks of 0.01
+  const Q = q => (q / 10).toFixed(1);    // quantity tenths
+
+  function threadStep(el, st) {
+    const lanes = [['BTC/USDT', '线程 A', 6], ['ETH/USDT', '线程 B', 4], ['SOL/USDT', '线程 C', 2]];
+    if (st >= 4) lanes.push(['NEW/USDT', '线程 D', 16, true]);
+    el.querySelector('#lanes').innerHTML = lanes.map(([s, t, n, hot]) =>
+      `<div class="lane ${hot ? 'hot' : ''}"><span class="sym">${s}</span><span class="th">${t}</span>${Array.from({ length: n }, () => `<span class="blk ${hot ? 'hot' : ''}"></span>`).join('')}</div>`).join('') +
+      (st === 3 ? '<div class="muted" style="font-size:28px">每个交易对 = 一个收银台，一个收银员</div>' : '') +
+      (st >= 4 ? '<div class="down" style="font-size:28px">热门币上线：同一条队越排越长</div>' : '');
+  }
+
+  function dsStep(el, st) {
+    const lv = [
+      { p: 10010, ord: [['S1', 8], ['S2', 12]] },
+      { p: 10020, ord: [['S3', 5], ['S4', 20]] },
+      { p: 10030, ord: [['S5', 10]] },
+    ];
+    const cls = {};
+    if (st >= 2) { lv[0].ord.push(['S6', 5]); cls.S6 = st === 2 ? 'new' : ''; }
+    if (st >= 3) cls.S2 = st === 3 ? 'hit gone' : 'gone';
+    el.querySelector('#ds').innerHTML = lv.map((l, i) => {
+      const tot = l.ord.filter(o => !/gone/.test(cls[o[0]] || '')).reduce((a, o) => a + o[1], 0);
+      const nodes = st >= 1 ? l.ord.map((o, j) => (j ? '<span class="lk">⇄</span>' : '<span class="lk">→</span>') + `<span class="node ${cls[o[0]] || ''}">${o[0]} ${Q(o[1])}</span>`).join('') : '';
+      return `<div class="ds-row"><div class="lvbox ${i === 0 && st === 0 ? 'best' : ''} ${st === 4 ? 'tot' : ''}"><span class="p">${P(l.p)}</span> ${i === 0 ? '<span class="tag">最优</span>' : ''}<div class="tt">总量 ${Q(tot)}</div></div>${nodes}</div>`;
+    }).join('');
+    const ids = ['S1', 'S2', 'S3', 'S4', 'S5'].concat(st >= 2 ? ['S6'] : []);
+    el.querySelector('#hash').innerHTML = ids.map(id => `<div class="e ${id === 'S2' && st >= 3 ? (st === 3 ? 'hit' : 'gone') : ''} ${id === 'S6' && st === 2 ? 'new' : ''}">${id} → 节点指针</div>`).join('');
+    el.querySelector('#dsNote').innerHTML = [
+      '最优档指针缓存在引擎里：读最优价 <span class="hl">O(1)</span>，增删价格档 <span class="hl">O(log n)</span>',
+      '新订单追加到<span class="hl">尾部</span>，成交从<span class="hl">头部</span>取 → FIFO',
+      'S6 挂 100.10 × 0.5：接在 S2 后面，档总量 2.0 → <span class="hl">2.5</span>',
+      '撤 S2：哈希表 O(1) 找到节点 → 从链表 O(1) 摘除，<span class="hl">不遍历</span>',
+      '每档缓存总量：深度行情直接读，<span class="hl">不逐单求和</span>'][st];
+  }
+
+  function intStep(el, st) { el.querySelector('#fl').textContent = String(0.1 + 0.2); }
+
+  function seqStep(el, st) {
+    const ins = [['入口 1', '买 0.5 @100.20'], ['入口 2', '撤单 S2'], ['入口 3', '卖 0.3 @100.10']];
+    const order = [1, 0, 2]; // arrival order chosen by the sequencer
+    el.querySelector('#ins').innerHTML = ins.map((x, i) => `<div class="inq ${st >= 1 ? 'on' : ''}"><span class="muted" style="font-size:24px">${x[0]}</span> ${x[1]}${st >= 1 ? ` <span class="hl">#${101 + order.indexOf(i)}</span>` : ''}</div>`).join('') +
+      '<div class="muted" style="font-size:24px">并发到达，先后不明</div>';
+    const rows = order.map((i, k) => [101 + k, ins[i][1]]);
+    const proc = st >= 3 ? 3 : 0;
+    el.querySelector('#logl').innerHTML = rows.map((r, k) => `<div class="logrow ${st >= 3 && k < proc ? 'done' : ''} ${st === 2 && k === 2 ? 'on' : ''}"><span class="hl">#${r[0]}</span><span>${r[1]}</span></div>`).join('');
+    el.querySelector('#meNow').innerHTML = st >= 3 ? '已处理到 #103' : '';
+  }
+
+  // ---- tiny deterministic matching engine for the replay scene ----
+  const LOG = [
+    ['S', 'S1', 10010, 8], ['S', 'S2', 10010, 12], ['B', 'B1', 10000, 15], ['S', 'S3', 10020, 5],
+    ['B', 'B2', 9990, 20], ['S', 'S4', 10020, 20], ['X', 'S2'], ['B', 'B3', 10010, 5],
+    ['S', 'S5', 10030, 10], ['B', 'B4', 10020, 10], ['X', 'B2'], ['S', 'S6', 10000, 4],
+  ];
+  const label = c => c[0] === 'X' ? `撤 ${c[1]}` : `${c[0] === 'B' ? '买' : '卖'} ${P(c[2])}×${Q(c[3])}`;
+  function runTo(n, from) {
+    const book = from ? JSON.parse(JSON.stringify(from.book)) : { S: [], B: [] };
+    for (let i = from ? from.n : 0; i < n; i++) {
+      const c = LOG[i];
+      if (c[0] === 'X') { ['S', 'B'].forEach(s => book[s] = book[s].filter(o => o.id !== c[1])); continue; }
+      const [side, id, p] = c; let q = c[3];
+      const opp = side === 'B' ? 'S' : 'B';
+      book[opp].sort((a, b) => (side === 'B' ? a.p - b.p : b.p - a.p) || a.seq - b.seq);
+      while (q > 0 && book[opp].length && (side === 'B' ? book[opp][0].p <= p : book[opp][0].p >= p)) {
+        const m = book[opp][0], f = Math.min(q, m.q); q -= f; m.q -= f; if (!m.q) book[opp].shift();
+      }
+      if (q > 0) book[side].push({ id, p, q, seq: i + 1 });
+    }
+    return { n, book };
+  }
+  function levelsOf(book) {
+    const agg = s => { const m = {}; book[s].forEach(o => m[o.p] = (m[o.p] || 0) + o.q); return Object.entries(m).map(([p, q]) => [+p, q]); };
+    return { asks: agg('S').sort((a, b) => b[0] - a[0]), bids: agg('B').sort((a, b) => b[0] - a[0]) };
+  }
+  function checksum(book) {
+    const l = levelsOf(book); const s = JSON.stringify(l); let h = 7;
+    for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) % 65521;
+    return '0x' + h.toString(16).padStart(4, '0');
+  }
+  function bookPanel(title, state, extra) {
+    const l = levelsOf(state.book);
+    const rows = l.asks.map(([p, q]) => `<div class="r ask"><span>${P(p)}</span><span>${Q(q)}</span></div>`).join('') + '<div class="sp"></div>' +
+      l.bids.map(([p, q]) => `<div class="r bid"><span>${P(p)}</span><span>${Q(q)}</span></div>`).join('');
+    return `<div class="pt">${title}</div><div class="mb">${rows}</div><div class="ck">校验和 <span class="hl">${checksum(state.book)}</span>${extra || ''}</div>`;
+  }
+  function replayStep(el, st) {
+    const snap = runTo(8), full = runTo(12);
+    el.querySelector('#cells').innerHTML = LOG.map((c, i) => {
+      const n = i + 1; let cls = '', flag = '';
+      if (st >= 1 && n === 8) { cls = 'snap'; flag = '<span class="flag" style="background:var(--buy)">快照</span>'; }
+      if (st >= 2 && n === 12) { cls = 'crash'; flag = '<span class="flag" style="background:var(--sell)">崩溃</span>'; }
+      if (st === 3 && n <= 8) cls = n === 8 ? 'snap' : 'off';
+      if (st >= 4 && n > 8) cls = 'rep';
+      if (st >= 4 && n <= 7) cls = 'off';
+      return `<div class="cell ${cls}"><b>#${n}</b>${label(c)}${flag}</div>`;
+    }).join('');
+    el.querySelector('#rpTitle').textContent = ['事件日志 seq 1–12', '每隔 N 条指令做一次快照', '处理完 seq 12 后崩溃', '恢复 ① 加载快照 seq 8', '恢复 ② 重放 seq 9–12', '恢复完成：逐字节一致', '取舍：快照间隔'][st];
+    const pA = el.querySelector('#pA'), pB = el.querySelector('#pB');
+    pA.className = 'panel ' + (st >= 2 ? 'dead' : '');
+    pA.innerHTML = bookPanel(st >= 2 ? '主引擎 · 崩溃前 @12 · 内存已丢失' : '主引擎 · 运行中 @12', full);
+    pB.className = 'panel ' + (st >= 5 ? 'ok' : '');
+    if (st === 0) pB.innerHTML = '<div class="pt">磁盘快照</div><div class="muted" style="font-size:30px">还没有快照</div>';
+    else if (st <= 2) pB.innerHTML = bookPanel('磁盘快照 @8', snap);
+    else if (st === 3) pB.innerHTML = bookPanel('新引擎 · 加载快照 @8', snap);
+    else if (st === 4) pB.innerHTML = bookPanel('新引擎 · 重放 9→12 后', runTo(12, snap));
+    else if (st === 5) pB.innerHTML = bookPanel('新引擎 @12', runTo(12, snap), ' <span class="up">= 崩溃前 ✓</span>');
+    else pB.innerHTML = bookPanel('新引擎 @12', runTo(12, snap), '<br><span class="muted">间隔越长 → 重放越多 → 恢复越慢</span>');
+  }
+
+  function detStep(el, st) {
+    const bad = st >= 5;
+    const t1 = '同价 S1、S2 → 先成交 S1';
+    el.querySelector('#c1t').textContent = t1;
+    el.querySelector('#c2t').textContent = bad ? '随机数 → 先成交 S2' : t1;
+    el.querySelector('#c1v').textContent = '0x1f3a';
+    el.querySelector('#c2v').innerHTML = bad ? '<span class="down">0x8c07 ✗</span>' : '<span class="up">0x1f3a ✓</span>';
+    el.querySelector('#c2').className = 'chk ' + (bad ? 'bad' : 'good');
+    el.querySelector('#c1').className = 'chk ' + (bad ? '' : 'good');
+    el.querySelector('#c3').innerHTML = bad ? '<span class="down">主备从此对不上</span>' : '故障恢复 · 主备切换 · 审计对账';
+  }
+
+  function ringStep(el, st) {
+    const N = 12, cx = 240, cy = 210, R = 160;
+    const w = [0, 0, 5, 8, 10][st], r = [0, 0, 1, 4, 7][st];
+    let s = `<circle cx="${cx}" cy="${cy}" r="${R + 34}" fill="none" stroke="#2c3038" stroke-width="2"/>`;
+    for (let i = 0; i < N; i++) {
+      const a = -Math.PI / 2 + i * 2 * Math.PI / N, x = cx + R * Math.cos(a), y = cy + R * Math.sin(a);
+      const filled = i >= r && i < w;
+      s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="30" fill="${filled ? 'rgba(240,185,11,.25)' : '#1e2127'}" stroke="${filled ? '#f0b90b' : '#3a3f48'}" stroke-width="2"/><text x="${x.toFixed(1)}" y="${y.toFixed(1)}" style="fill:${filled ? '#f0b90b' : '#6b7079'}">${i}</text>`;
+    }
+    const ptr = (i, col, txt, rr) => { const a = -Math.PI / 2 + (i % N) * 2 * Math.PI / N; const x = cx + rr * Math.cos(a), y = cy + rr * Math.sin(a); return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${col}" stroke-width="5"/><text x="${(cx + (rr - 40) * Math.cos(a)).toFixed(1)}" y="${(cy + (rr - 40) * Math.sin(a) - 16).toFixed(1)}" style="fill:${col}; font-size:22px">${txt}</text>`; };
+    s += ptr(w, '#2ebd85', '写', 120) + ptr(r, '#5b9cff', '读', 95);
+    s += `<text x="${cx}" y="425" style="fill:#9ea3ad; font-size:24px">无锁 · 待处理 ${w - r} 条 · 示例</text>`;
+    el.querySelector('#ring').innerHTML = s;
+  }
+
+  function filterStep(el, st) {
+    const rows = [
+      ['价格 100.123', '不是 0.01 的整数倍', 2],
+      ['数量 0.000001', '不是 0.00001 的整数倍', 3],
+      ['100 × 0.01 = 1 USDT', '小于 minNotional 5 USDT', 4],
+    ];
+    el.querySelector('#flt').innerHTML = rows.filter(r => st >= r[2]).map(r =>
+      `<div class="chk ${st === r[2] ? 'bad' : ''}" style="grid-template-columns: 420px 1fr 230px"><span>${r[0]}</span><span class="muted" style="font-family:var(--sans)">${r[1]}</span><span class="v down">REJECTED</span></div>`).join('') +
+      (st >= 5 ? '<div class="card info" style="padding:12px 24px">校验在<span class="hl">撮合之前</span>完成，引擎只收对齐精度的整数</div>' : '');
+  }
+
+  function stpStep(el, st) {
+    const modes = [
+      ['EXPIRE_TAKER', 3, '买 0.6 → <span class="down">取消</span>', '卖 1.0 → 保留'],
+      ['EXPIRE_MAKER', 3, '买 0.6 → 继续撮合', '卖 1.0 → <span class="down">取消</span>'],
+      ['EXPIRE_BOTH', 4, '买 0.6 → <span class="down">取消</span>', '卖 1.0 → <span class="down">取消</span>'],
+      ['DECREMENT', 4, '买 0.6 → 剩 <span class="hl">0</span>', '卖 1.0 → 剩 <span class="hl">0.4</span>'],
+    ];
+    el.querySelector('#stp').innerHTML = st < 2 ? '' : modes.map(([n, at, tk, mk]) => {
+      const on = st >= at;
+      return `<div class="card mode" style="padding:18px 20px; ${on ? (st === at ? 'border-color:var(--gold)' : '') : ''}"><div class="mn ${on ? 'hl' : 'muted'}">${n}</div>${on ? `<div class="res">Taker ${tk}<br>Maker ${mk}<br><span class="muted">成交 0</span></div>` : '<div class="res muted">…</div>'}${on && st >= 5 ? '<span class="chip sell" style="font-size:20px">EXPIRED_IN_MATCH</span>' : ''}</div>`;
+    }).join('');
+  }
+
+  function limStep(el, st) {
+    const n = [3, 3, 40, 70, 25][st];
+    el.querySelector('#bar').style.width = n + '%';
+    el.querySelector('#bar').style.background = n > 30 ? 'var(--sell)' : 'var(--info)';
+    el.querySelector('#qn').textContent = ['平时', '平时', '积压', '严重积压', '缓解后'][st];
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

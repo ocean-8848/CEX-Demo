@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P06 双币投资</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px 28px; font-size: 30px; line-height: 1.5; }
+  .panel.gold { border-color: var(--gold); background: var(--gold-soft); }
+  .panel.sell { border-color: var(--sell); background: var(--sell-soft); }
+  .panel.info { border-color: var(--info); background: var(--info-soft); }
+  .panel.buy { border-color: var(--buy); background: var(--buy-soft); }
+  .panel h3 { font-size: 34px; margin-bottom: 6px; }
+  .calc { font-family: var(--mono); font-size: 30px; line-height: 1.65; }
+  table.t td, table.t th { padding: 12px 18px; }
+  table.t tr { transition: background .3s, opacity .3s; }
+  table.t tr.cur td { background: var(--gold-soft); }
+  table.t tr[data-step]:not(.shown) td { border-color: transparent; }
+  #s2 .card { padding: 20px 28px; }
+  #s2 .grid2 { gap: 24px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="P06" data-title="双币投资：高收益背后的期权">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 产品深潜 · P06</div>
+    <h1>双币投资：<span class="hl">高收益从哪来</span></h1>
+    <div class="row" style="max-width:1640px">
+      <div class="card col" data-step="0"><div class="stat"><div class="k">1,000 USDT 低买 BTC · 目标价 95,000 · 7 天 · 示例</div><div class="v hl">APR 36.5%</div></div><span class="muted">"无论涨跌都赚利息"</span></div>
+      <div class="card sell col" data-step="1"><div class="stat"><div class="k">到期价 85,000 · 示例</div><div class="v">0.0106 BTC ≈ 901</div></div><span class="down">按 USDT 计，亏 99</span></div>
+    </div>
+    <div class="card warn" data-step="2" style="max-width:1640px">本集内容不构成投资建议 · 双币投资不保本 · 除公开资料外数字均为示例</div>
+    <ol class="say">
+      <li>双币投资的页面上，经常写着年化36.5%这样的数字。示例，用1000 USDT 低买 BTC，目标价95000，期限7天。宣传语说，无论涨跌都赚利息。</li>
+      <li>可是如果到期时 BTC 跌到85000，你拿回的是0.0106个 BTC。按市价只值901 USDT，本金亏了99。</li>
+      <li>利息确实拿到了，亏损从哪来？这一集我们拆开它，双币投资等于一笔存款，加上你卖出的一份期权。先说明，本集内容不构成投资建议。双币投资不保本，数字除公开资料外都是示例。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图" id="s2">
+    <div class="kicker">Roadmap</div>
+    <h2>结构化产品 = 存款 + 期权</h2>
+    <div class="grid2">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>用户看到什么<br><span class="muted">低买 · 高卖 · 结算规则</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>拆解：存款 + 卖期权<br><span class="muted">1,000 USDT 完整算例</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">3</span><div>平台怎么赚、怎么对冲<br><span class="muted">抽成 · 波动率 · 适当性</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">4</span><div>鲨鱼鳍<br><span class="muted">反过来买期权的保本型产品</span></div></div>
+    </div>
+    <div class="row">
+      <div class="card info col" data-step="2">比喻：替别人卖保险<br><span class="muted">BTC 跌破 95,000 → 你按 95,000 接货</span></div>
+      <div class="card sell col" data-step="3">局限：平台在中间转手<br><span class="muted">从保费里抽成，你看不到原价</span></div>
+    </div>
+    <ol class="say">
+      <li>本集分四段。第一，用户看到什么。第二，把双币投资拆成存款加卖期权，用一个完整例子算清楚。</li>
+      <li>第三，平台怎么赚钱，怎么对冲。第四，反过来买期权的保本型产品，鲨鱼鳍。</li>
+      <li>先打个比方。双币投资像替别人卖保险。你拿出一笔钱做担保，承诺 BTC 跌破95000时，按95000接货。买保险的人付你保费，这就是页面上的高年化。</li>
+      <li>平时风平浪静，你白赚保费。一旦出险，你必须按约定价接下已经贬值的 BTC。比喻不完全的地方是，平台在中间转手，从保费里抽走一部分，而你看不到原价。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="用户看到什么" data-onstep="ruleStep">
+    <div class="kicker">Dual Investment · 截至 2026 年公开资料</div>
+    <h2>两个方向，四种结局</h2>
+    <table class="t" id="dir">
+      <tr><th>方向</th><th>投入</th><th>目标价</th><th>到期价 vs 目标价</th><th>拿回</th></tr>
+      <tr><td>低买 Buy Low</td><td>USDT</td><td>低于当前价</td><td>到期价 ≤ 目标价</td><td class="hl">BTC = 本息 ÷ 目标价</td></tr>
+      <tr><td>低买 Buy Low</td><td>USDT</td><td>低于当前价</td><td>到期价 &gt; 目标价</td><td>USDT 本息</td></tr>
+      <tr><td>高卖 Sell High</td><td>BTC</td><td>高于当前价</td><td>到期价 ≥ 目标价</td><td class="hl">USDT = 本息 × 目标价</td></tr>
+      <tr><td>高卖 Sell High</td><td>BTC</td><td>高于当前价</td><td>到期价 &lt; 目标价</td><td>BTC 本息</td></tr>
+    </table>
+    <div class="row" id="rules"></div>
+    <ol class="say">
+      <li>根据币安公开资料，双币投资有两个方向。低买，投入 USDT，目标价低于当前价。到期价小于等于目标价，你拿回 BTC，否则拿回 USDT 本息。</li>
+      <li>高卖，投入 BTC，目标价高于当前价。到期价大于等于目标价，你拿回 USDT，否则拿回 BTC 本息。</li>
+      <li>产品规则有几条。申购后 APR 锁定，结算时间是到期日 UTC 8点。结算价是到期前一段时间的指数均价。业界通常取7点半到8点，币安口径以官网为准。</li>
+      <li>申购截止早于结算时间，业界通常提前24小时。一般不支持提前赎回。注意，两种结果都有收益，区别只是拿回哪种币。以投入币种的价值算，你可能亏损。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="1000 USDT 完整算例" data-onstep="exStep">
+    <div class="kicker">Worked Example · 示例</div>
+    <h2>本金 1,000 USDT · 目标价 95,000 · 7 天 · APR 36.5%</h2>
+    <div class="row" style="gap:36px">
+      <div class="col" style="flex:0 0 640px" id="ex-l"></div>
+      <div class="col" id="ex-r"></div>
+    </div>
+    <ol class="say">
+      <li>先写公式。期限收益率 y，等于 APR 乘以天数，除以365。低买时，到期价高于目标价，拿回本金乘以1加 y 的 USDT。否则把同样的本息除以目标价，换成 BTC。</li>
+      <li>代入示例。本金1000 USDT，当前价100000，目标价95000。期限7天，APR 36.5%。y 等于36.5%乘7除以365，就是0.7%。本息1007 USDT。</li>
+      <li>期权数量 N，等于1007除以95000，约0.0106个 BTC。</li>
+      <li>情形 A，到期价98000，高于目标价。拿回1007 USDT，赚7块。一直拿着 USDT 是1000，今天直接买0.01个 BTC 只值980。</li>
+      <li>情形 B，到期价正好95000。拿回0.0106个 BTC，折算还是1007。</li>
+      <li>情形 C，到期价85000。0.0106个 BTC 只值901，亏99，也就是9.9%。你按95000接到了只值85000的 BTC。但它比今天直接买多出51。所以低买适合本来就想在95000买 BTC 的人。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="两条曲线完全重合" data-onstep="payStep">
+    <div class="kicker">Decomposition · Cash-Secured Put</div>
+    <h2 id="pay-h">双币投资的到期价值</h2>
+    <div class="row" style="gap:30px">
+      <svg id="pay" width="1100" height="600" viewBox="0 0 1100 600"></svg>
+      <div class="col" id="pay-r"></div>
+    </div>
+    <ol class="say">
+      <li>现在把所有结果都换算成到期时的 USDT 价值，画成一条曲线。横轴是到期价。到期价高于95000，是一条水平线，1007。</li>
+      <li>到期价低于95000，拿回的是0.0106个 BTC，价值随价格线性下跌。整条曲线像一个折角。</li>
+      <li>再画两条线。第一条是存款，到期1007 USDT，一条水平线。第二条是卖出 N 份看跌期权的赔付，价格低于目标价时，每跌1块赔 N 块。</li>
+      <li>把两条线相加，结果和双币投资的曲线完全重合。所以低买就等于现金担保卖看跌，业界叫 Cash-Secured Put。</li>
+      <li>验证情形 C。存款1007，减去期权赔付。赔付是0.0106乘以95000减85000，约106。1007减106，得到901，和直接结算的结果一样。</li>
+      <li>高卖也一样。它等于持有 BTC，再卖出同样数量的看涨期权，叫备兑看涨。价格涨过目标价，上涨被换成固定的 USDT，你错过了上涨。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="资金流" data-onstep="flowStep">
+    <div class="kicker">Money Flow · 对冲细节币安未公开</div>
+    <h2>本金不出平台，期权卖给了交易台</h2>
+    <svg id="flow" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>钱是怎么流的？申购时，1000 USDT 被冻结，划入双币持仓。本金不出平台，账本上记成对用户的负债。</li>
+      <li>这笔持仓，等价于你把一份看跌期权，卖给了平台的期权交易台。</li>
+      <li>交易台在外部市场买入同样的期权，或者用永续合约做 Delta 对冲。这是业界通用做法，币安的对冲细节没有公开。示例里，市场给这份期权的价格是9.53 USDT。</li>
+      <li>交易台付给你7块收益，留下2.53作为平台收入。你看不到9.53这个市场价。</li>
+      <li>到期时，价格高于目标价，你收到1007 USDT。否则收到0.0106个 BTC。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="平台抽成" data-onstep="cutStep">
+    <div class="kicker">Black-Scholes · r = 0 · IV 50% · 示例</div>
+    <h2>公允期权费 9.53，你拿到 7.00</h2>
+    <svg id="cut" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>平台抽多少？用 Black-Scholes 给这份看跌期权定价，示例利率0，IV 50%。1个 BTC 名义、行权价95000、7天的看跌期权，公允价格约899.12 USDT。</li>
+      <li>你卖出0.0106份，公允期权费约9.53 USDT。平台付给你7块，差价约2.53，约占公允期权费的27%。</li>
+      <li>换成年化来看，公允 APR 约49.8%，你拿到36.5%，差了13.3个百分点。这就是平台的抽成，它藏在报价里，用户看不到。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="高收益就是卖出波动率" data-onstep="ivStep">
+    <div class="kicker">Short Volatility · 示例</div>
+    <h2>APR 最高的时候，往往最危险</h2>
+    <svg id="iv" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>为什么 APR 有时高有时低？因为期权价格随隐含波动率上升。同样的目标价和期限，示例中 IV 40%时，公允 APR 约28.5%。</li>
+      <li>IV 50%时约49.8%，IV 60%时升到约73.9%。</li>
+      <li>所以每次申购，你都是在卖出波动率。平静时赚小钱，暴跌时亏大钱。页面 APR 最高的时候，通常正是市场恐慌、IV 最高的时候，下跌风险也最大。</li>
+      <li>还有一条规律。目标价越接近当前价，期权越值钱，APR 越高，被换成另一种币的概率也越高。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="状态机与调用链" data-onstep="chainStep">
+    <div class="kicker">State · Call Chain · 组件名为示例</div>
+    <h2>报价、申购、对冲、结算</h2>
+    <svg id="chain" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>系统里怎么实现？主线没有结构化产品服务，我们新增几个示例组件。用户查看报价时，产品服务找定价引擎，读取 IV 和利率。算出公允 APR 49.8%，扣掉抽成，报价36.5%。</li>
+      <li>报价有效期示例是10秒。报价和申购分两步，防止用户拿旧报价套利。行情一变，旧报价就作废。</li>
+      <li>首次申购要先过适当性测评。通过后，账本冻结1000 USDT，划入双币持仓。然后通知对冲引擎，新增0.0106 BTC 的空头看跌敞口。</li>
+      <li>对冲引擎按净敞口对冲。很多用户的低买和高卖，可以相互抵消一部分。剩下的再去外部市场买期权，或者做 Delta 对冲。</li>
+      <li>到期日 UTC 8点，读取结算价，记结算分录，返还 USDT 或发放 BTC。发 BTC 时，对手方是平台的对冲账户。结算价不能取本所插针价，要用多交易所指数的时间均价。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="风险与适当性评估">
+    <div class="kicker">Risk · Suitability · 业界通用做法</div>
+    <h2>用户和平台各担什么风险</h2>
+    <div class="row" style="gap:28px">
+      <table class="t col" style="font-size:28px" data-step="0" data-dim="1">
+        <tr><th>用户风险</th><th>结果</th></tr>
+        <tr><td>低买被行权</td><td>高于市价买入 BTC</td></tr>
+        <tr><td>高卖被行权</td><td>低于市价卖出，错过上涨</td></tr>
+        <tr><td>流动性锁定</td><td>不能赎回，不能止损</td></tr>
+      </table>
+      <table class="t col" style="font-size:28px" data-step="1" data-dim="3">
+        <tr><th>平台风险</th><th>兜底</th></tr>
+        <tr><td>对冲失败</td><td>永续 Delta 对冲 · 单币种总额度</td></tr>
+        <tr><td>跳空风险</td><td>限制临近到期目标价 · 风险准备金</td></tr>
+        <tr data-step="2"><td>对手方 · 模型 · 操纵</td><td>分散场所 · 报价上下限 · 多源指数 30 分钟均价</td></tr>
+      </table>
+    </div>
+    <div class="flow" data-step="3">
+      <div class="node info">风险测评问卷</div><div class="arrow"></div>
+      <div class="node info">用户风险等级</div><div class="arrow"></div>
+      <div class="node gold">不得申购<br>高于自身等级</div><div class="arrow"></div>
+      <div class="node sell">强制展示<br>非保本 · 最坏情形</div>
+    </div>
+    <ol class="say">
+      <li>用户承担三种风险。低买被行权，以高于市价的价格买入 BTC。高卖被行权，以低于市价的价格卖出，错过上涨。还有流动性锁定，期限内不能赎回，也不能止损。</li>
+      <li>平台也有风险。对冲失败，外部期权市场深度不够，就用永续做 Delta 对冲，再给单币种设总额度。跳空风险，价格瞬间跳过目标价，对冲来不及调。</li>
+      <li>还有对手方风险、定价模型错误和结算价操纵。对应的兜底是分散对冲场所，报价上下限，多交易所指数加30分钟均价。</li>
+      <li>所以平台要做适当性评估。业界通常先让用户填风险测评问卷，定风险等级。产品也有等级，用户不能申购高于自己等级的产品。申购页强制展示非保本和最坏情形，部分地区直接下线。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="失败场景" data-onstep="failStep">
+    <div class="kicker">Failure Cases</div>
+    <h2 id="fail-h">单日暴跌：所有低买一起被行权</h2>
+    <svg id="fail" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>看几个失败场景。情景示例，BTC 一天下跌20%。所有目标价在区间内的低买订单，全部被行权。用户按目标价接货，账面立刻亏损。</li>
+      <li>更麻烦的是，这时新报价的 APR 暴涨，吸引更多用户继续接飞刀。</li>
+      <li>根据公开报道，2025年10月10日，全市场单日强平超过190亿美元。期权和永续市场的流动性同时枯竭，对冲引擎在这种时刻最难调整仓位。</li>
+      <li>业界最常见的投诉，是把它误解为保本。用户只看到无论涨跌都有收益，忽略了拿回的币种会变。这正是适当性评估和信息披露要解决的问题。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="鲨鱼鳍：收益曲线" data-onstep="sharkStep">
+    <div class="kicker">Shark Fin · 示例条款 · 币安同类产品以官网为准</div>
+    <h2>先上升，再断崖：鲨鱼鳍</h2>
+    <div class="row" style="gap:30px">
+      <svg id="shark" width="1100" height="600" viewBox="0 0 1100 600"></svg>
+      <div class="col" id="shark-r"></div>
+    </div>
+    <ol class="say">
+      <li>最后看反方向的产品，鲨鱼鳍。它是保本型结构化产品，OKX、Bybit 等交易所公开提供。示例条款：本金10000 USDT，到期全额返还，期限14天，当前价100000。</li>
+      <li>到期价在100000到110000之间，APR 从2%线性升到20%。低于下限，拿保底2%。</li>
+      <li>但期限内只要曾经突破110000，就敲出，APR 回落到2%。收益曲线先上升再断崖，像鲨鱼的背鳍，所以叫这个名字。</li>
+      <li>敲出判断必须用指数价格。示例，本所插针到110050，指数没到110000。如果误用本所价格，用户收益就被错误降为保底。修复方式是只用指数，并保留价格证据。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="鲨鱼鳍的拆解与定价" data-onstep="fundStep">
+    <div class="kicker">Deposit + Bull Call Spread + Knock-Out · 示例</div>
+    <h2 id="fund-h">利息预算买期权</h2>
+    <svg id="fund" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>拆开看，鲨鱼鳍等于存款，加上买入看涨价差，再加敲出条款。这次用户是期权的买方，本金不承担价格风险。平台是买方，对冲压力也小于双币投资。</li>
+      <li>钱从哪来？平台把本金用于出借或理财，示例年化5%，14天赚约19.18 USDT。保底2%要付7.67。剩下11.51，就是买期权的预算。</li>
+      <li>看涨价差是买入100000看涨，卖出110000看涨。额外收益上限是10000乘18%，乘14除以365，约69.04。期权数量约0.0069个 BTC。</li>
+      <li>用 Black-Scholes 算，示例 IV 50%。普通看涨价差约20.75 USDT，超出预算。加上敲出条款，期权在敲出时作废，就便宜下来，压进预算。所以断崖是设计的必然，不是巧合。</li>
+      <li>风险也要看清。保本依赖平台信用，平台破产时承诺无效。大多数情形只拿保底，可能低于活期。利率越低，预算越少，收益上限也越低。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与下集预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">双币投资 = 存款 + <span class="hl">卖出期权</span>：低买 = 现金担保卖看跌，高卖 = 备兑看涨。</li>
+      <li data-step="1">高年化是<span class="hl">卖出波动率</span>的报酬，平台从公允期权费里抽成。</li>
+      <li data-step="2">鲨鱼鳍用<span class="hl">利息预算买期权</span>，敲出让期权变便宜，也造出断崖。</li>
+    </ul>
+    <div class="grid3" data-step="0">
+      <div class="card stat"><div class="k">情形 C 到期价值 · 示例</div><div class="v down" style="font-size:52px">901 USDT</div></div>
+      <div class="card stat"><div class="k">公允 vs 用户 APR · 示例</div><div class="v" style="font-size:52px">49.8% → <span class="hl">36.5%</span></div></div>
+      <div class="card stat"><div class="k">鲨鱼鳍期权预算 · 示例</div><div class="v" style="font-size:52px">11.51</div></div>
+    </div>
+    <div class="card gold" data-step="3" style="font-size:34px">下集 P07 · 上币与新币分发：Launchpad、Launchpool 与空投</div>
+    <ol class="say">
+      <li>小结一下。第一，双币投资等于存款加卖出期权。低买是现金担保卖看跌，高卖是备兑看涨，两条曲线完全重合。</li>
+      <li>第二，高年化是卖出波动率的报酬，平台从公允期权费里抽走一部分。示例里公允 APR 49.8%，你拿到36.5%。</li>
+      <li>第三，鲨鱼鳍反过来，用利息预算买期权。敲出条款让期权变便宜，也让收益曲线出现断崖。</li>
+      <li>下一集，我们看交易所怎样把新币送到用户手里。Launchpad、Launchpool 和空投，新币分发背后有哪些规则？我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10', dim: '#3a3f48' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const fmt = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 30}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.mono ? ' font-family="JetBrains Mono, SF Mono, Menlo, monospace"' : ''}${o.plain ? '' : ` stroke="${C.bg}" stroke-width="8" paint-order="stroke"`}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const L = (x1, y1, x2, y2, col, o = {}) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="${o.w || 4}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const ARW = (x1, y1, x2, y2, col, w = 4, dash) => { const a = Math.atan2(y2 - y1, x2 - x1), s = 16; return L(x1, y1, x2 - Math.cos(a) * 8, y2 - Math.sin(a) * 8, col, { w, dash }) + `<polygon points="${x2},${y2} ${x2 - s * Math.cos(a - .45)},${y2 - s * Math.sin(a - .45)} ${x2 - s * Math.cos(a + .45)},${y2 - s * Math.sin(a + .45)}" fill="${col}"/>`; };
+  const soft = { gold: 'rgba(240,185,11,.16)', buy: 'rgba(46,189,133,.16)', sell: 'rgba(246,70,93,.16)', info: 'rgba(91,156,255,.14)', warn: 'rgba(240,163,64,.16)' };
+  const BOX = (x, y, w, h, t, s, on, col = 'gold') => R(x, y, w, h, { fill: on ? soft[col] : C.panel, stroke: on ? C[col] : C.line, sw: on ? 4 : 3 }) + T(x + w / 2, y + (s ? h / 2 - 4 : h / 2 + 11), t, { anchor: 'middle', size: 30, bold: true, plain: true, fill: on ? C.text : C.t2 }) + (s ? T(x + w / 2, y + h / 2 + 32, s, { anchor: 'middle', size: 24, fill: C.t2, plain: true }) : '');
+
+  // Scene 3
+  function ruleStep(el, st) {
+    const rows = el.querySelectorAll('#dir tr');
+    const cur = [[1, 2], [3, 4], [], [1, 3]][st];
+    rows.forEach((r, i) => { if (i) { r.classList.toggle('cur', cur.includes(i)); r.style.opacity = st >= 2 && !cur.includes(i) ? .45 : 1; } });
+    const r = [
+      `<div class="panel col">低买 = 想在更低价买 BTC<br><span class="muted">跌破目标价 → 换成 BTC</span></div>`,
+      `<div class="panel col">高卖 = 想在更高价卖 BTC<br><span class="muted">涨过目标价 → 换成 USDT</span></div>`,
+      `<div class="panel gold col">申购后 APR 锁定<br><span class="muted">到期日 UTC 08:00 结算</span></div><div class="panel col">结算价 = 指数均价<br><span class="muted">业界通常 07:30–08:00 · 币安以官网为准</span></div>`,
+      `<div class="panel col">申购截止早于结算<br><span class="muted">业界通常提前 24 小时 · 一般不能提前赎回</span></div><div class="panel sell col">两种结果都有"收益"<br>以投入币种计，可能亏损</div>`,
+    ][st];
+    el.querySelector('#rules').innerHTML = r;
+  }
+
+  // Scene 4
+  function exStep(el, st) {
+    const l = [];
+    l.push(`<div class="panel ${st === 0 ? 'gold' : ''} calc" style="font-size:28px">y = APR × 天数 ÷ 365<br>P &gt; K：拿回 A(1+y) USDT<br>P ≤ K：拿回 A(1+y) ÷ K 个 BTC</div>`);
+    if (st >= 1) l.push(`<div class="panel ${st === 1 ? 'gold' : ''} calc" style="font-size:28px">y = 36.5% × 7 ÷ 365 = 0.7%<br>本息 = 1,000 × 1.007 = <b>1,007</b></div>`);
+    if (st >= 2) l.push(`<div class="panel ${st === 2 ? 'gold' : ''} calc" style="font-size:28px">N = 1,007 ÷ 95,000 ≈ <b>0.0106 BTC</b></div>`);
+    el.querySelector('#ex-l').innerHTML = l.join('');
+    const cases = [['A', '98,000', '1,007 USDT', '1,007', '1,000', '980'], ['B', '95,000', '0.0106 BTC', '1,007', '1,000', '950'], ['C', '85,000', '0.0106 BTC', '901', '1,000', '850']];
+    let r = '';
+    if (st <= 2) {
+      r = `<div class="panel" style="font-size:30px"><h3>条件 · 示例</h3>当前价 100,000<br>目标价 K = 95,000<br>期限 7 天 · APR 36.5%<br>本金 A = 1,000 USDT</div>`;
+    } else {
+      r = `<table class="t" style="font-size:28px"><tr><th>情形</th><th>到期价</th><th>拿回</th><th>折算</th><th>持 USDT</th><th>直接买</th></tr>` +
+        cases.map((c, i) => { const on = i <= st - 3; const col = i === 2 && st === 5 ? 'down' : ''; return `<tr class="${i === st - 3 ? 'cur' : ''}" style="opacity:${on ? 1 : .2}"><td>${c[0]}</td><td class="num">${c[1]}</td><td>${c[2]}</td><td class="num ${col}"><b>${c[3]}</b></td><td class="num">${c[4]}</td><td class="num">${c[5]}</td></tr>`; }).join('') + `</table>`;
+      if (st === 3) r += `<div class="panel buy">赚 7 USDT = 卖出看跌期权的期权费</div>`;
+      if (st === 4) r += `<div class="panel">正好在目标价：换成 BTC，价值不变</div>`;
+      if (st === 5) r += `<div class="panel sell">按 USDT 计亏 99（−9.9%）<br><span style="color:#eceae4">比今天直接买多 51 → 适合本来就想 95,000 买的人</span></div>`;
+    }
+    el.querySelector('#ex-r').innerHTML = r;
+  }
+
+  // Scene 5
+  function payStep(el, st) {
+    const svg = el.querySelector('#pay');
+    const K = 95000, N = 1007 / 95000;
+    const prod = p => Math.min(1007, N * p);
+    const zoom = st <= 1;
+    const lo = zoom ? 820 : -220, hi = zoom ? 1040 : 1100;
+    const X = p => 110 + (p - 80000) / 30000 * 960, Y = v => 40 + (hi - v) / (hi - lo) * 480;
+    el.querySelector('#pay-h').textContent = st <= 1 ? '双币投资的到期价值' : st <= 4 ? '存款 + 卖出看跌 = 双币投资' : '高卖 = 持有 BTC + 卖出看涨';
+    let h = '';
+    h += L(110, 40, 110, 520, C.t2, { w: 3 }) + L(110, 520, 1070, 520, C.t2, { w: 3 });
+    [80000, 85000, 90000, 95000, 100000, 105000, 110000].forEach(p => h += T(X(p), 556, fmt(p / 1000) + 'k', { anchor: 'middle', size: 24, fill: C.t2, mono: true }));
+    (zoom ? [850, 900, 950, 1000] : [-200, 0, 500, 1000]).forEach(v => h += T(100, Y(v) + 8, fmt(v), { anchor: 'end', size: 22, fill: C.t2, mono: true }) + L(110, Y(v), 1070, Y(v), '#22262c', { w: 2 }));
+    h += T(1070, 592, '到期价', { anchor: 'end', size: 26, fill: C.t2 });
+    h += L(X(K), 40, X(K), 520, C.dim, { w: 3, dash: '8 6' }) + T(X(K) + 10, 66, 'K 95,000', { size: 26, fill: C.t2 });
+    const line = (f, col, w, op = 1, dash) => `<polyline points="${[80000, 85000, 90000, K, 100000, 110000].map(p => `${X(p)},${Y(f(p))}`).join(' ')}" fill="none" stroke="${col}" stroke-width="${w}" opacity="${op}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`;
+    if (st <= 1) {
+      if (st === 0) h += `<polyline points="${X(K)},${Y(1007)} ${X(110000)},${Y(1007)}" fill="none" stroke="${C.gold}" stroke-width="8"/>`;
+      else h += line(prod, C.gold, 8);
+      h += T(X(103000), Y(1007) - 18, '1,007 USDT', { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+      if (st === 1) h += T(X(84000), Y(prod(84000)) + 50, '0.0106 BTC × 到期价', { anchor: 'middle', size: 28, bold: true, fill: C.gold });
+    } else {
+      h += L(110, Y(0), 1070, Y(0), C.t2, { w: 2 });
+      h += line(() => 1007, C.info, 5, 1, '14 8') + T(X(82000), Y(1007) - 16, '存款 1,007', { size: 28, bold: true, fill: C.info });
+      h += line(p => -N * Math.max(K - p, 0), C.sell, 6) + T(X(102000), Y(0) - 16, '卖看跌赔付', { anchor: 'middle', size: 28, bold: true, fill: C.sell });
+      if (st >= 3) h += line(prod, C.gold, 12, .55) + line(p => 1007 - N * Math.max(K - p, 0), C.gold, 4) + T(X(100000), Y(1007) + 46, '相加 = 双币投资，完全重合', { size: 28, bold: true, fill: C.gold });
+      if (st === 4) {
+        const yc = Y(prod(85000));
+        h += `<circle cx="${X(85000)}" cy="${yc}" r="12" fill="${C.gold}"/>`;
+        h += T(X(85000) + 18, yc + 44, '901', { size: 34, bold: true, fill: C.gold, mono: true });
+        h += L(X(85000), Y(0), X(85000), Y(-N * 10000), C.sell, { w: 4, dash: '6 6' }) + `<circle cx="${X(85000)}" cy="${Y(-N * 10000)}" r="9" fill="${C.sell}"/>` + T(X(85000) + 18, Y(-N * 10000) + 40, '− 106', { size: 32, bold: true, fill: C.sell, mono: true });
+      }
+    }
+    if (st === 5) {
+      h = '';
+      const Ks = 105000, q = 1;
+      const Xs = p => 110 + (p - 85000) / 40000 * 960, Ys = v => 520 - (v - 85000) / 40000 * 470;
+      h += L(110, 40, 110, 520, C.t2, { w: 3 }) + L(110, 520, 1070, 520, C.t2, { w: 3 });
+      [85000, 95000, 105000, 115000, 125000].forEach(p => h += T(Xs(p), 556, fmt(p / 1000) + 'k', { anchor: 'middle', size: 24, fill: C.t2, mono: true }));
+      h += `<polyline points="${Xs(85000)},${Ys(85000)} ${Xs(125000)},${Ys(125000)}" fill="none" stroke="${C.info}" stroke-width="5" stroke-dasharray="14 8"/>` + T(Xs(122000), Ys(122000) - 26, '一直持有 BTC', { anchor: 'end', size: 28, fill: C.info, bold: true });
+      h += `<polyline points="${Xs(85000)},${Ys(85000)} ${Xs(Ks)},${Ys(Ks)} ${Xs(125000)},${Ys(Ks)}" fill="none" stroke="${C.gold}" stroke-width="9"/>` + T(Xs(118000), Ys(Ks) + 44, '换成固定 USDT', { anchor: 'middle', size: 28, fill: C.gold, bold: true });
+      h += `<polygon points="${Xs(Ks)},${Ys(Ks)} ${Xs(125000)},${Ys(125000)} ${Xs(125000)},${Ys(Ks)}" fill="rgba(246,70,93,.25)"/>` + T(Xs(121000), Ys(116000), '错过的上涨', { anchor: 'middle', size: 28, bold: true, fill: C.sell });
+      h += T(124, 40, '高卖 · 到期价值示意 · 收益略去', { size: 24, fill: C.t2 });
+      h += L(Xs(Ks), 40, Xs(Ks), 520, C.dim, { w: 3, dash: '8 6' }) + T(Xs(Ks) - 10, 66, '目标价 K', { anchor: 'end', size: 26, fill: C.t2 });
+    }
+    svgEl(svg, h);
+    const r = [
+      `<div class="panel gold calc">P &gt; 95,000<br>→ 1,007 USDT</div><div class="panel muted">纵轴：按到期价折算的 USDT 价值</div>`,
+      `<div class="panel gold calc">P ≤ 95,000<br>→ 0.0106 × P</div><div class="panel">一条折线：上方封顶，下方随价格下跌</div>`,
+      `<div class="panel info calc">存款：1,007</div><div class="panel sell calc">卖看跌赔付<br>− N × max(K − P, 0)</div>`,
+      `<div class="panel gold"><h3>Cash-Secured Put</h3>现金担保卖看跌<br><span class="muted">对任意到期价都相等</span></div>`,
+      `<div class="panel gold calc">1,007 − 0.0106 ×<br>(95,000 − 85,000)<br>= 1,007 − 106<br>= <b>901</b></div>`,
+      `<div class="panel gold"><h3>Covered Call</h3>备兑看涨<br>持有 Q(1+y) BTC<br>+ 卖出同量看涨</div><div class="panel sell">涨过目标价 → 错过上涨</div>`,
+    ][st];
+    el.querySelector('#pay-r').innerHTML = r;
+  }
+
+  // Scene 6
+  function flowStep(el, st) {
+    const svg = el.querySelector('#flow');
+    let h = '';
+    h += BOX(20, 40, 320, 120, '用户现货', '1,000 USDT', st === 0, 'info');
+    h += BOX(460, 40, 360, 120, '双币投资持仓', '用户负债 · 冻结划转', st <= 1 || st === 4, 'info');
+    h += ARW(340, 100, 460, 100, st === 0 ? C.gold : C.dim, 5) + T(400, 84, '申购', { anchor: 'middle', size: 26, fill: st === 0 ? C.gold : C.t2 });
+    if (st >= 1) {
+      h += BOX(960, 40, 400, 120, '平台期权交易台', '', st >= 1 && st <= 3, 'gold');
+      h += ARW(820, 100, 960, 100, C.gold, 4, '10 8') + T(890, 84, '≈ 卖出看跌', { anchor: 'middle', size: 26, fill: C.gold });
+    }
+    if (st >= 2) {
+      h += BOX(960, 300, 400, 120, '期权市场 · 合约市场', '买入同等期权 · Delta 对冲', st === 2, 'buy');
+      h += ARW(1120, 160, 1120, 300, C.t2, 4) + ARW(1200, 300, 1200, 160, C.buy, 5) + T(1215, 240, '市场期权费 9.53', { size: 30, bold: true, fill: C.buy });
+    }
+    if (st >= 3) {
+      h += `<path d="M960 130 H 870 V 190 H 640 V 160" fill="none" stroke="${C.gold}" stroke-width="5"/><polygon points="640,160 628,184 652,184" fill="${C.gold}"/>` + T(700, 228, '给用户 7.00', { size: 30, bold: true, fill: C.gold });
+      h += BOX(1420, 40, 200, 120, '平台收入', '差价 2.53', true, 'sell') + ARW(1360, 100, 1420, 100, C.sell, 5);
+      h += T(1160, 470, '用户看不到 9.53 这个市场价', { anchor: 'middle', size: 30, fill: C.sell, bold: true });
+    }
+    if (st === 4) {
+      h += BOX(260, 380, 300, 110, '1,007 USDT', '到期 > 目标价', true, 'buy') + BOX(600, 380, 300, 110, '0.0106 BTC', '到期 ≤ 目标价', true, 'sell');
+      h += ARW(600, 160, 410, 380, C.buy, 5) + ARW(680, 160, 750, 380, C.sell, 5);
+    }
+    if (st === 0) h += R(460, 230, 900, 110, { fill: soft.info, stroke: C.info }) + T(910, 297, '本金不出平台 · 账本里记一笔双币持仓', { anchor: 'middle', size: 32, bold: true, plain: true });
+    svgEl(svg, h);
+  }
+
+  // Scene 7
+  function cutStep(el, st) {
+    const svg = el.querySelector('#cut');
+    let h = '';
+    h += R(40, 40, 620, 230, { fill: st === 0 ? soft.gold : C.panel, stroke: st === 0 ? C.gold : C.line });
+    h += T(70, 100, '95,000 看跌 · 7 天 · 1 BTC 名义', { size: 28, fill: C.t2, plain: true });
+    h += T(70, 180, '≈ 899.12 USDT', { size: 56, bold: true, mono: true, plain: true, fill: C.gold });
+    h += T(70, 240, 'Black-Scholes · r 0 · IV 50%', { size: 26, fill: C.t2, plain: true });
+    if (st >= 1) {
+      h += T(720, 80, '× 0.0106 份 = 公允期权费', { size: 30, fill: C.t2 });
+      const x0 = 720, w = 860, k = w / 9.53;
+      h += `<rect x="${x0}" y="110" width="${7 * k}" height="110" rx="8" fill="${C.buy}"/>` + T(x0 + 3.5 * k, 178, '付给用户 7.00', { anchor: 'middle', size: 34, bold: true, plain: true, fill: '#0d0e10' });
+      h += `<rect x="${x0 + 7 * k}" y="110" width="${2.53 * k}" height="110" rx="8" fill="${C.sell}"/>` + T(x0 + 8.26 * k, 178, '2.53', { anchor: 'middle', size: 34, bold: true, plain: true, fill: '#0d0e10' });
+      h += T(x0 + w, 260, '≈ 9.53 USDT · 平台差价约 27%', { anchor: 'end', size: 30, bold: true, fill: C.gold });
+    }
+    if (st >= 2) {
+      const x0 = 300, k = 1200 / 60;
+      h += T(40, 360, '换成 APR', { size: 30, fill: C.t2 });
+      h += T(280, 430, '公允 APR', { anchor: 'end', size: 30 }) + `<rect x="${x0}" y="395" width="${49.8 * k}" height="56" rx="8" fill="${C.t2}"/>` + T(x0 + 49.8 * k + 16, 435, '≈ 49.8%', { size: 34, bold: true, mono: true });
+      h += T(280, 520, '用户 APR', { anchor: 'end', size: 30 }) + `<rect x="${x0}" y="485" width="${36.5 * k}" height="56" rx="8" fill="${C.gold}"/>` + T(x0 + 36.5 * k + 16, 525, '36.5%', { size: 34, bold: true, mono: true, fill: C.gold });
+      h += `<rect x="${x0 + 36.5 * k}" y="485" width="${13.3 * k}" height="56" rx="8" fill="rgba(246,70,93,.35)" stroke="${C.sell}" stroke-width="3" stroke-dasharray="8 6"/>` + T(x0 + 43.15 * k, 590, '差 13.3 个百分点', { anchor: 'middle', size: 30, bold: true, fill: C.sell });
+    }
+    svgEl(svg, h);
+  }
+
+  // Scene 8
+  function ivStep(el, st) {
+    const svg = el.querySelector('#iv');
+    let h = '';
+    const bars = [[40, 28.5], [50, 49.8], [60, 73.9]];
+    const base = 500, k = 380 / 80;
+    h += T(40, 40, '同样目标价和期限 · 公允 APR 随 IV 变化 · 示例', { size: 28, fill: C.t2 });
+    h += L(60, base, 900, base, C.t2, { w: 3 });
+    bars.forEach(([iv, apr], i) => {
+      const show = st >= 1 || i === 0;
+      if (!show) return;
+      const x = 120 + i * 260, hh = apr * k, col = i === 2 ? C.sell : i === 1 ? C.gold : C.info;
+      h += `<rect x="${x}" y="${base - hh}" width="170" height="${hh}" rx="8" fill="${col}" opacity=".85"/>`;
+      h += T(x + 85, base - hh - 16, '≈ ' + apr + '%', { anchor: 'middle', size: 34, bold: true, mono: true, fill: col });
+      h += T(x + 85, base + 44, 'IV ' + iv + '%', { anchor: 'middle', size: 30, mono: true });
+    });
+    if (st === 2) {
+      h += R(980, 60, 620, 440, { fill: soft.sell, stroke: C.sell });
+      h += T(1020, 130, '卖出波动率 Short Vol', { size: 36, bold: true, plain: true });
+      h += T(1020, 210, '平静：赚小钱', { size: 32, plain: true, fill: C.buy });
+      h += T(1020, 280, '暴跌：亏大钱', { size: 32, plain: true, fill: C.sell });
+      h += T(1020, 370, 'APR 最高 ≈ 恐慌 ≈ IV 最高', { size: 32, bold: true, plain: true, fill: C.gold });
+      h += T(1020, 430, '下跌风险也最大', { size: 30, plain: true });
+    }
+    if (st === 3) {
+      h += T(1000, 80, '目标价离当前价越近', { size: 32, bold: true, fill: C.gold });
+      const X = p => 1000 + (p - 88000) / 14000 * 600;
+      h += L(1000, 300, 1600, 300, C.t2, { w: 3 });
+      h += L(X(100000), 140, X(100000), 320, C.buy, { w: 5 }) + T(X(100000), 130, '当前 100k', { anchor: 'middle', size: 26, fill: C.buy });
+      [[90000, '远 · APR 低', C.info], [97000, '近 · APR 高', C.sell]].forEach(([p, t, c], i) => h += L(X(p), 220, X(p), 320, c, { w: 5 }) + T(X(p), 360 + i * 44, (p / 1000) + 'k ' + t, { anchor: 'middle', size: 26, fill: c }));
+      h += T(1000, 480, '期权更值钱 → APR 更高', { size: 30 }) + T(1000, 530, '被换币的概率也更高', { size: 30, fill: C.sell, bold: true });
+    }
+    svgEl(svg, h);
+  }
+
+  // Scene 9
+  function chainStep(el, st) {
+    const svg = el.querySelector('#chain');
+    let h = '';
+    const S = [['Assessing', '适当性测评'], ['Quoting', '报价 · 有效期'], ['Subscribed', '冻结本金'], ['Settling', 'UTC 08:00'], ['Settled', '原币 · 或换币']];
+    const sAct = [[1], [1], [0, 2], [2], [3, 4]][st];
+    S.forEach(([t, s], i) => { h += BOX(20 + i * 325, 10, 290, 110, t, s, sAct.includes(i), i === 0 ? 'info' : 'gold'); if (i < 4) h += ARW(310 + i * 325, 65, 345 + i * 325, 65, C.t2, 4); });
+    const lanes = ['structured-service', 'pricing-engine', 'suitability', 'ledger-service', 'hedge-engine'];
+    const X = i => 180 + i * 320;
+    const lAct = [[0, 1], [0, 1], [0, 2, 3, 4], [4], [0, 1, 3]][st];
+    lanes.forEach((n, i) => { const a = lAct.includes(i); h += R(X(i) - 150, 170, 300, 70, { fill: a ? soft.gold : C.panel, stroke: a ? C.gold : C.line }) + T(X(i), 215, n, { anchor: 'middle', size: 24, mono: true, plain: true, fill: a ? C.text : C.t2 }) + L(X(i), 240, X(i), 590, C.dim, { w: 3, dash: '6 8' }); });
+    const msg = (a, b, y, t, c = C.gold) => a === b ? `<path d="M${X(a)} ${y - 18} h 46 v 28 h -38" fill="none" stroke="${c}" stroke-width="4"/>` + T(X(a) + 60, y + 4, t, { size: 28, fill: C.text }) : ARW(X(a), y, X(b), y, c, 4) + T((X(a) + X(b)) / 2, y - 12, t, { anchor: 'middle', size: 28 });
+    if (st === 0) h += msg(0, 1, 300, '读取 IV、利率 → 公允价') + msg(1, 0, 380, '公允 APR 49.8% → 扣抽成 36.5%') + T(X(0) - 150, 470, '报价 36.5% → 用户', { size: 30, bold: true, fill: C.gold });
+    if (st === 1) h += msg(0, 1, 300, 'quote(BTC, put, 95000, 7d)') + R(X(0) - 150, 360, 980, 160, { fill: soft.warn, stroke: C.warn }) + T(X(0) - 120, 420, '报价有效期 10 秒 · 示例', { size: 32, bold: true, plain: true }) + T(X(0) - 120, 480, '报价与申购分两步 · 旧报价作废', { size: 30, plain: true, fill: C.t2 });
+    if (st === 2) h += msg(0, 2, 290, '检查测评与地区') + msg(0, 3, 370, '冻结 1,000 USDT → 双币持仓') + msg(0, 4, 450, '新增空头 put 敞口 0.0106 BTC');
+    if (st === 3) {
+      h += R(X(4) - 300, 280, 450, 280, { fill: '#16181c', stroke: C.gold });
+      h += T(X(4) - 270, 330, '净敞口对冲', { size: 32, bold: true, plain: true, fill: C.gold });
+      h += T(X(4) - 270, 390, '低买 put 空头', { size: 28, plain: true, fill: C.sell }) + T(X(4) - 270, 440, '高卖 call 空头', { size: 28, plain: true, fill: C.info }) + T(X(4) - 270, 500, '部分抵消 → 剩余外部对冲', { size: 28, plain: true });
+    }
+    if (st === 4) h += msg(0, 1, 300, '读取结算价 · 多交易所指数时间均价') + msg(0, 3, 380, '结算分录：返还 USDT 或发放 BTC') + T(X(3) + 20, 460, '发 BTC 的对手方 = 平台对冲账户', { size: 28, fill: C.t2 }) + T(X(0) - 150, 540, '× 不能取本所插针价', { size: 30, bold: true, fill: C.sell });
+    svgEl(svg, h);
+  }
+
+  // Scene 11
+  function failStep(el, st) {
+    const svg = el.querySelector('#fail');
+    el.querySelector('#fail-h').textContent = st <= 1 ? '单日暴跌：所有低买一起被行权' : st === 2 ? '2025-10-10：对冲最难的时刻' : '最常见的投诉：误以为保本';
+    let h = '';
+    if (st <= 1) {
+      const X = i => 120 + i * 80, Y = p => 60 + (100 - p) * 20;
+      const path = [100, 99.5, 99, 98, 96, 93, 90, 86, 83, 81, 80];
+      h += L(110, 40, 110, 520, C.t2, { w: 3 }) + T(100, Y(100) + 8, '100%', { anchor: 'end', size: 22, fill: C.t2, mono: true }) + T(100, Y(80) + 8, '80%', { anchor: 'end', size: 22, fill: C.t2, mono: true });
+      [97, 95, 92, 88, 85].forEach(k => h += L(110, Y(k), 960, Y(k), C.sell, { w: 3, dash: '10 8' }) + T(970, Y(k) + 8, '目标价 ' + k + '% · 被行权', { size: 24, fill: C.sell }));
+      h += `<polyline points="${path.map((p, i) => `${X(i)},${Y(p)}`).join(' ')}" fill="none" stroke="${C.text}" stroke-width="6"/>`;
+      h += T(X(10), Y(80) + 44, 'BTC −20% · 情景示例', { anchor: 'end', size: 30, bold: true, fill: C.sell });
+      if (st === 1) {
+        h += R(1240, 60, 360, 360, { fill: soft.warn, stroke: C.warn });
+        h += T(1420, 130, '新报价 APR', { anchor: 'middle', size: 32, bold: true, plain: true });
+        h += `<rect x="1300" y="${380 - 60}" width="80" height="60" fill="${C.t2}"/><rect x="1440" y="160" width="80" height="220" fill="${C.sell}"/>`;
+        h += T(1340, 410, '平时', { anchor: 'middle', size: 26, plain: true }) + T(1480, 410, '暴跌后', { anchor: 'middle', size: 26, plain: true });
+        h += T(1420, 470, '吸引更多人接飞刀', { anchor: 'middle', size: 30, bold: true, fill: C.sell });
+      }
+    } else if (st === 2) {
+      h += R(40, 40, 1560, 170, { fill: soft.sell, stroke: C.sell });
+      h += T(80, 110, '全市场单日强平 > 190 亿美元', { size: 44, bold: true, plain: true });
+      h += T(80, 170, '2025-10-10 · 公开报道', { size: 30, plain: true, fill: C.t2 });
+      [['期权市场', '流动性枯竭'], ['永续市场', '流动性枯竭'], ['对冲引擎', '最难调整仓位']].forEach(([a, b], i) => h += BOX(40 + i * 530, 290, 500, 150, a, b, true, i === 2 ? 'warn' : 'sell'));
+    } else {
+      h += R(40, 40, 760, 300, { fill: soft.buy, stroke: C.buy });
+      h += T(80, 120, '用户看到', { size: 30, fill: C.t2, plain: true });
+      h += T(80, 210, '"无论涨跌都有收益"', { size: 40, bold: true, plain: true });
+      h += R(840, 40, 760, 300, { fill: soft.sell, stroke: C.sell });
+      h += T(880, 120, '用户忽略', { size: 30, fill: C.t2, plain: true });
+      h += T(880, 210, '拿回的币种会变', { size: 40, bold: true, plain: true });
+      h += T(880, 280, '以投入币种计可能亏损', { size: 30, plain: true, fill: C.sell });
+      h += T(820, 440, '→ 适当性评估 + 信息披露 · 业界常见投诉', { anchor: 'middle', size: 34, bold: true, fill: C.gold });
+    }
+    svgEl(svg, h);
+  }
+
+  // Scene 12
+  function sharkStep(el, st) {
+    const svg = el.querySelector('#shark');
+    const X = p => 110 + (p - 94000) / 22000 * 940, Y = a => 520 - a / 22 * 460;
+    let h = '';
+    h += L(110, 40, 110, 520, C.t2, { w: 3 }) + L(110, 520, 1060, 520, C.t2, { w: 3 });
+    [95000, 100000, 105000, 110000, 115000].forEach(p => h += T(X(p), 556, fmt(p / 1000) + 'k', { anchor: 'middle', size: 24, fill: C.t2, mono: true }));
+    [0, 5, 10, 15, 20].forEach(a => h += T(100, Y(a) + 8, a + '%', { anchor: 'end', size: 22, fill: C.t2, mono: true }) + L(110, Y(a), 1060, Y(a), '#22262c', { w: 2 }));
+    h += T(1060, 592, '到期价', { anchor: 'end', size: 26, fill: C.t2 }) + T(124, 36, 'APR · 示例条款', { size: 24, fill: C.t2 });
+    if (st === 0) {
+      h += R(250, 150, 700, 240, { fill: C.panel2 });
+      h += T(290, 220, '本金 10,000 USDT · 到期 100% 返还', { size: 30, plain: true });
+      h += T(290, 280, '期限 14 天 · 当前价 100,000', { size: 30, plain: true });
+      h += T(290, 340, '区间 100,000 – 110,000', { size: 30, plain: true, fill: C.gold });
+    }
+    if (st >= 1) {
+      h += `<polyline points="${X(94000)},${Y(2)} ${X(100000)},${Y(2)} ${X(110000)},${Y(20)}" fill="none" stroke="${C.gold}" stroke-width="8"/>`;
+      h += T(X(96500), Y(2) - 18, '保底 2%', { anchor: 'middle', size: 28, bold: true, fill: C.gold });
+      h += T(X(110000) - 10, Y(20) - 16, '20%', { anchor: 'end', size: 30, bold: true, fill: C.gold, mono: true });
+    }
+    if (st >= 2) {
+      h += `<polyline points="${X(110000)},${Y(20)} ${X(110000)},${Y(2)} ${X(116000)},${Y(2)}" fill="none" stroke="${C.sell}" stroke-width="8"/>`;
+      h += `<path d="M${X(100000)} ${Y(2)} L ${X(110000)} ${Y(20)} L ${X(110000)} ${Y(2)} Z" fill="rgba(240,185,11,.15)"/>`;
+      h += T(X(113000), Y(2) - 60, '敲出 → 2%', { anchor: 'middle', size: 30, bold: true, fill: C.sell });
+    }
+    if (st === 3) {
+      h += L(X(110000), 40, X(110000), 520, C.info, { w: 3, dash: '8 6' }) + T(X(110000) + 10, 66, '指数 110,000', { size: 24, fill: C.info });
+      h += L(X(110050) + 14, 90, X(110050) + 14, 520, C.sell, { w: 3, dash: '3 6' }) + T(X(110050) + 24, 110, '插针 110,050', { size: 24, fill: C.sell });
+    }
+    svgEl(svg, h);
+    const r = [
+      `<div class="panel"><h3>保本型</h3>OKX、Bybit 等公开提供<br><span class="muted">币安同类产品以官网为准</span></div><div class="panel muted">以下均为示例条款</div>`,
+      `<div class="panel gold">区间内：APR 2% → 20% 线性上升</div><div class="panel">低于下限：保底 2%</div>`,
+      `<div class="panel sell"><h3>敲出 Knock-Out</h3>期限内<b>曾经</b>触及 110,000<br>→ APR 回落 2%</div><div class="panel muted">敲出后本金仍到期返还 · 业界常见做法</div>`,
+      `<div class="panel sell">本所插针 110,050<br>指数未到 110,000</div><div class="panel gold">只用指数价判断敲出<br>保留价格证据</div>`,
+    ][st];
+    el.querySelector('#shark-r').innerHTML = r;
+  }
+
+  // Scene 13
+  function fundStep(el, st) {
+    const svg = el.querySelector('#fund');
+    el.querySelector('#fund-h').textContent = st === 0 ? '鲨鱼鳍 = 存款 + 看涨价差 + 敲出' : st <= 3 ? '利息预算 11.51，买得起期权吗' : '保本依赖平台信用';
+    let h = '';
+    if (st === 0) {
+      [['存款', '本金 10,000 · 到期返还', 'info'], ['买入看涨价差', '买 100k 看涨 · 卖 110k 看涨', 'buy'], ['敲出条款', '触及上限即作废', 'sell']].forEach(([a, b, c], i) => { h += BOX(40 + i * 540, 80, 480, 150, a, b, true, c); if (i < 2) h += T(550 + i * 540, 170, '+', { anchor: 'middle', size: 50, bold: true }); });
+      h += R(40, 320, 1560, 160, { fill: C.panel2 });
+      h += T(80, 385, '用户是期权买方 → 本金不承担价格风险', { size: 34, bold: true, plain: true, fill: C.gold });
+      h += T(80, 440, '平台是买方 → 对冲压力小于双币投资', { size: 30, plain: true, fill: C.t2 });
+      svgEl(svg, h); return;
+    }
+    if (st === 4) {
+      [['平台破产', '保本承诺无效', 'sell'], ['多数情形只拿保底', '可能低于同期活期', 'warn'], ['利率越低', '预算越少 · 上限越低', 'info']].forEach(([a, b, c], i) => h += BOX(40 + i * 540, 120, 480, 180, a, b, true, c));
+      h += T(820, 420, '最多损失：本来可以拿到的利息 · 机会成本', { anchor: 'middle', size: 34, bold: true, fill: C.gold });
+      svgEl(svg, h); return;
+    }
+    const base = 520, k = 300 / 22;
+    const bar = (x, v, col, lab, top) => `<rect x="${x}" y="${base - v * k}" width="200" height="${v * k}" rx="8" fill="${col}"/>` + T(x + 100, base - v * k - 14, lab, { anchor: 'middle', size: 30, bold: true, mono: true, fill: col }) + T(x + 100, base + 40, top, { anchor: 'middle', size: 26 });
+    h += L(40, base, 1600, base, C.t2, { w: 3 });
+    h += bar(80, 19.18, C.info, '19.18', '利息预算');
+    h += T(180, 80, '10,000 × 5% × 14 ÷ 365', { anchor: 'middle', size: 24, fill: C.t2, mono: true });
+    h += `<rect x="360" y="${base - 7.67 * k}" width="200" height="${7.67 * k}" rx="8" fill="${C.t2}"/>` + T(460, base - 7.67 * k - 14, '7.67', { anchor: 'middle', size: 30, bold: true, mono: true, fill: C.t2 }) + T(460, base + 40, '保底 2%', { anchor: 'middle', size: 26 });
+    h += `<rect x="640" y="${base - 11.51 * k}" width="200" height="${11.51 * k}" rx="8" fill="${C.gold}"/>` + T(740, base - 11.51 * k - 14, '11.51', { anchor: 'middle', size: 30, bold: true, mono: true, fill: C.gold }) + T(740, base + 40, '期权预算', { anchor: 'middle', size: 26, fill: C.gold });
+    if (st >= 2) {
+      h += R(940, 40, 660, 170, { fill: C.panel2 });
+      h += T(970, 95, '额外收益上限', { size: 26, fill: C.t2, plain: true });
+      h += T(970, 145, '10,000 × 18% × 14 ÷ 365 ≈ 69.04', { size: 28, mono: true, plain: true });
+      h += T(970, 190, 'N ≈ 69.04 ÷ (110k − 100k) ≈ 0.0069', { size: 28, mono: true, plain: true, fill: C.gold });
+    }
+    if (st >= 3) {
+      h += `<rect x="1000" y="${base - 20.75 * k}" width="200" height="${20.75 * k}" rx="8" fill="rgba(246,70,93,.35)" stroke="${C.sell}" stroke-width="3"/>` + T(1100, base - 20.75 * k + 40, '≈ 20.75', { anchor: 'middle', size: 30, bold: true, mono: true, fill: C.sell }) + T(1100, base + 40, '普通价差', { anchor: 'middle', size: 26, fill: C.sell });
+      h += L(640, base - 11.51 * k, 1560, base - 11.51 * k, C.gold, { w: 3, dash: '10 8' });
+      h += `<rect x="1300" y="${base - 10 * k}" width="200" height="${10 * k}" rx="8" fill="${C.buy}" opacity=".8"/>` + T(1400, base - 10 * k - 14, '更便宜', { anchor: 'middle', size: 30, bold: true, fill: C.buy }) + T(1400, base + 40, '加敲出', { anchor: 'middle', size: 26, fill: C.buy });
+      h += T(1400, base - 10 * k + 44, '示意', { anchor: 'middle', size: 24, plain: true, fill: '#0d0e10' });
+    }
+    svgEl(svg, h);
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

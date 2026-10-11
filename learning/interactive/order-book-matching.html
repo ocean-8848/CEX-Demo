@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>撮合引擎实验</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .book { font-family: var(--mono); font-size: 13px; }
+  .book .hdr, .book .row {
+    display: grid; grid-template-columns: 58px 54px 54px minmax(0, 1fr);
+    gap: 6px; align-items: center; padding: 3px 6px;
+  }
+  .book .hdr { color: var(--text-2); font-family: var(--sans); font-size: 12px; border-bottom: 1px solid var(--border); }
+  .book .row { position: relative; min-height: 28px; border-radius: 4px; transition: outline-color .2s; outline: 2px solid transparent; }
+  .book .row > * { position: relative; z-index: 1; }
+  .book .row .bar { position: absolute; z-index: 0; top: 2px; bottom: 2px; right: 0; border-radius: 3px; transition: width .3s; }
+  .book .row.ask .bar { background: var(--sell-soft); }
+  .book .row.bid .bar { background: var(--buy-soft); }
+  .book .row.hit { outline-color: var(--accent); }
+  .book .num { text-align: right; }
+  .book .price.ask { color: var(--sell); font-weight: 600; }
+  .book .price.bid { color: var(--buy); font-weight: 600; }
+  .book .queue { display: flex; flex-wrap: wrap; gap: 3px; }
+  .chip {
+    font-size: 11px; line-height: 1.5; padding: 0 5px; border-radius: 4px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); white-space: nowrap;
+  }
+  .chip.me { background: var(--accent-soft); border-color: var(--accent); }
+  .chip.robot { background: var(--info-soft); border-color: var(--info); }
+  .chip.hit { background: var(--accent); color: #1d1d1b; border-color: var(--accent); }
+  .chip:hover { border-color: var(--accent); }
+  .mid { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 8px 6px; margin: 4px 0;
+    border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .mid .last { font-family: var(--mono); font-size: 18px; font-weight: 700; }
+  .empty-side { color: var(--text-2); font-size: 12px; padding: 6px; font-family: var(--sans); }
+  .side-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .side-toggle button { opacity: .55; }
+  .side-toggle button.active { opacity: 1; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  .check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); margin: 12px 0 4px; }
+  .check input { width: auto; margin: 0; }
+  .now { min-height: 48px; font-size: 13px; }
+  .pill.plain { background: var(--surface-2); color: var(--text-2); }
+  .hist { font-family: var(--mono); font-size: 11px; color: var(--text-2); }
+  .tiny-btn { padding: 2px 8px; font-size: 12px; }
+  .log { max-height: 320px; }
+  .log .seq { color: var(--accent); }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  .controls select { width: auto; }
+  .replay-result { font-family: var(--mono); font-size: 13px; }
+  ol.howto, ul.try { padding-left: 20px; margin: 6px 0; }
+  ol.howto li, ul.try li { margin: 4px 0; }
+  td .pill { white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../06-order-matching.md">配套章节：06 订单与撮合 →</a>
+  </header>
+  <h1>撮合引擎实验</h1>
+  <p class="lead">这是一个在浏览器里运行的迷你撮合引擎。它使用价格优先、时间优先（FIFO）规则。价格最小变动 0.1，数量最小变动 0.01，最小下单金额 5 USDT（均为示例参数）。内部全部用整数计算，没有浮点误差。</p>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="howto small">
+      <li>在右侧选择方向、类型、TIF，输入价格和数量，点击"提交订单"。</li>
+      <li>观察左侧订单簿：金色框表示引擎正在比较的价格档，金色块表示正在成交的挂单。</li>
+      <li>点击订单簿里的任意订单块，可以撤掉这个订单。</li>
+      <li>点击"重放事件日志"。页面从空订单簿开始，按序号重新执行全部指令，并比较结果。</li>
+    </ol>
+    <h3>试一试</h3>
+    <ul class="try small">
+      <li><b>逐档吃单</b>：买入，限价 100.3，数量 6.00，GTC。看它依次吃掉 100.1、100.2、100.3 三档共 5.50，剩余 0.50 挂到买盘 100.3 档。</li>
+      <li><b>FOK 全有或全无</b>：买入，市价，FOK，数量 50。卖盘总量不够，订单 EXPIRED，订单簿完全不变。改成 IOC 再试。</li>
+      <li><b>Post-Only 与时间优先</b>：勾选 Post-Only，买入限价 100.2，系统拒绝它。改成 100.0，它排到 100.0 档队尾，必须等前面的订单先成交。</li>
+    </ul>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+      <h3>订单簿 <span class="muted small">DEMO/USDT</span></h3>
+      <div class="book" id="book"></div>
+      <p class="muted small" style="margin:8px 0 0">队列中块的顺序就是成交顺序。灰色 = 种子做市商，金色 = 你，蓝色 = 机器人。</p>
+    </div>
+
+    <div class="card">
+      <h3>下单</h3>
+      <div class="side-toggle">
+        <button class="buy active" id="sideBuy" type="button">买入 BUY</button>
+        <button class="sell" id="sideSell" type="button">卖出 SELL</button>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label for="otype">类型</label>
+          <select id="otype">
+            <option value="LIMIT">限价 LIMIT</option>
+            <option value="MARKET">市价 MARKET</option>
+          </select>
+        </div>
+        <div>
+          <label for="tif">有效方式 TIF</label>
+          <select id="tif">
+            <option value="GTC">GTC 一直有效</option>
+            <option value="IOC">IOC 立即成交否则取消</option>
+            <option value="FOK">FOK 全部成交否则取消</option>
+          </select>
+        </div>
+        <div>
+          <label for="price">价格（步长 0.1）</label>
+          <input type="number" id="price" step="0.1" min="0.1" value="100.2">
+        </div>
+        <div>
+          <label for="qty">数量（步长 0.01）</label>
+          <input type="number" id="qty" step="0.01" min="0.01" value="1.50">
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="postOnly"> Post-Only（只做 Maker，会立即成交则拒绝）</label>
+      <div class="btn-row">
+        <button class="primary" id="submitBtn" type="button">提交订单</button>
+      </div>
+      <div class="callout info now" id="now">等待下单。</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="controls">
+      <button id="robotBtn" type="button">随机机器人下单</button>
+      <button id="replayBtn" type="button">重放事件日志</button>
+      <button id="resetBtn" type="button">重置</button>
+      <label class="check" style="margin:0">动画速度
+        <select id="speed">
+          <option value="900">慢</option>
+          <option value="500" selected>中</option>
+          <option value="150">快</option>
+          <option value="0">跳过</option>
+        </select>
+      </label>
+      <label class="check" style="margin:0"><input type="checkbox" id="bug"> 注入 bug：同价订单随机排队（非确定性）</label>
+    </div>
+    <div class="replay-result" id="replayResult"></div>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+      <h3>成交记录</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>seq</th><th>成交</th><th class="num">价格</th><th class="num">数量</th><th>Maker / Taker</th></tr></thead>
+          <tbody id="trades"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h3>订单与状态 <span class="muted small">（你和机器人的订单）</span></h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>订单</th><th>委托</th><th class="num">已成交</th><th>状态 / 历史</th><th></th></tr></thead>
+          <tbody id="orders"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>事件日志 <span class="muted small">#序号 = 定序器分配的输入序号；#序号.n = 该输入产生的第 n 个输出事件</span></h3>
+    <div class="log" id="log"></div>
+  </div>
+
+  <footer class="note">
+    简化说明：本页没有实现止损单、冰山单、自成交预防和手续费。真实交易所的撮合引擎在服务器端运行，并把输入指令持久化到事件日志。参数均为示例，不代表币安实际配置。
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  // ---- 精度：全部用整数 ----
+  var TICK = 10;          // 1 USDT = 10 个价格 tick（tickSize 0.1）
+  var LOT = 100;          // 1 DEMO = 100 个数量 lot（stepSize 0.01）
+  var MIN_NOTIONAL = 5;   // USDT（示例）
+  var SHOW_LEVELS = 7;
+
+  function fmtP(t) { return (t / TICK).toFixed(1); }
+  function fmtQ(l) { return (l / LOT).toFixed(2); }
+  function sideCn(s) { return s === 'BUY' ? '买' : '卖'; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  // ---- 撮合引擎（纯函数式状态机：同样的输入序列 => 同样的结果） ----
+  function newEngine() { return { bids: [], asks: [], orders: {}, trades: [], last: null }; }
+  function ownBook(eng, side) { return side === 'BUY' ? eng.bids : eng.asks; }
+  function oppBook(eng, side) { return side === 'BUY' ? eng.asks : eng.bids; }
+  function remaining(o) { return o.qty - o.filled; }
+  function isOpen(o) { return o.status === 'NEW' || o.status === 'PARTIALLY_FILLED'; }
+  function crosses(side, type, limit, makerPrice) {
+    if (type === 'MARKET') return true;
+    return side === 'BUY' ? makerPrice <= limit : makerPrice >= limit;
+  }
+  function insertResting(eng, o, randomQueue) {
+    var levels = ownBook(eng, o.side);
+    var i = -1, k;
+    for (k = 0; k < levels.length; k++) if (levels[k].price === o.price) { i = k; break; }
+    if (i < 0) {
+      var j = 0;
+      if (o.side === 'BUY') { while (j < levels.length && levels[j].price > o.price) j++; }
+      else { while (j < levels.length && levels[j].price < o.price) j++; }
+      levels.splice(j, 0, { price: o.price, ids: [] });
+      i = j;
+    }
+    var q = levels[i].ids;
+    if (randomQueue && q.length) {
+      // 故意的 bug：使用随机数决定同价队列位置，破坏确定性
+      q.splice(Math.floor(Math.random() * (q.length + 1)), 0, o.id);
+    } else {
+      q.push(o.id); // 正确做法：追加到队尾（时间优先）
+    }
+  }
+  function removeFromBook(eng, o) {
+    var levels = ownBook(eng, o.side);
+    for (var i = 0; i < levels.length; i++) {
+      if (levels[i].price === o.price) {
+        var q = levels[i].ids, k = q.indexOf(o.id);
+        if (k >= 0) q.splice(k, 1);
+        if (!q.length) levels.splice(i, 1);
+        return;
+      }
+    }
+  }
+  function setStatus(o, s, out) {
+    if (o.status !== s) { o.status = s; o.hist.push(s); out.push({ t: 'STATUS', id: o.id, s: s }); }
+  }
+  function snapshotBook(eng) {
+    function side(levels) {
+      return levels.map(function (l) {
+        return { price: l.price, orders: l.ids.map(function (id) { var o = eng.orders[id]; return { id: id, rem: remaining(o), owner: o.owner }; }) };
+      });
+    }
+    return { bids: side(eng.bids), asks: side(eng.asks), last: eng.last };
+  }
+
+  // apply 返回输出事件；opt.frames 用于动画，opt.randomQueue 为注入的 bug
+  function apply(eng, cmd, opt) {
+    var out = [], frames = opt.frames;
+    function snap(hl, msg) { if (frames) frames.push({ book: snapshotBook(eng), hl: hl, msg: msg }); }
+
+    if (cmd.type === 'CANCEL') {
+      var c = eng.orders[cmd.id];
+      if (!c || !isOpen(c)) { out.push({ t: 'ERR', msg: '撤单失败：' + cmd.id + ' 不在订单簿中（可能已成交）' }); return out; }
+      removeFromBook(eng, c);
+      setStatus(c, 'CANCELED', out);
+      snap(null, cmd.id + ' 已撤单，剩余 ' + fmtQ(remaining(c)) + ' 移出订单簿。');
+      return out;
+    }
+
+    var o = { id: cmd.id, owner: cmd.owner, side: cmd.side, type: cmd.otype, tif: cmd.tif, postOnly: cmd.postOnly,
+      price: cmd.price, qty: cmd.qty, filled: 0, status: null, hist: [], seq: cmd.seq, reason: '' };
+    eng.orders[o.id] = o;
+    var opp = oppBook(eng, o.side);
+
+    function reject(reason) { o.reason = reason; setStatus(o, 'REJECTED', out); out.push({ t: 'NOTE', msg: o.id + ' 拒绝原因：' + reason }); snap(null, o.id + ' 被拒绝：' + reason); return out; }
+
+    // 1. 精度与金额校验（相当于 exchangeInfo filters）
+    if (!(o.qty > 0)) return reject('数量必须大于 0');
+    if (o.type === 'LIMIT') {
+      if (!(o.price > 0)) return reject('价格必须大于 0');
+      if (o.price * o.qty < MIN_NOTIONAL * TICK * LOT) return reject('金额低于 minNotional ' + MIN_NOTIONAL + ' USDT');
+    } else {
+      if (!opp.length) return reject('对手盘为空，市价单无法成交');
+      if (opp[0].price * o.qty < MIN_NOTIONAL * TICK * LOT) return reject('金额低于 minNotional ' + MIN_NOTIONAL + ' USDT');
+    }
+    // 2. Post-Only：会立即成交就拒绝
+    if (o.postOnly && opp.length && crosses(o.side, o.type, o.price, opp[0].price)) {
+      return reject('Post-Only 订单会立即成交（对手最优价 ' + fmtP(opp[0].price) + '）');
+    }
+    setStatus(o, 'NEW', out);
+    snap({ taker: o.id }, o.id + ' 进入撮合引擎，状态 NEW。');
+
+    // 3. FOK 预演：先算可成交总量
+    if (o.tif === 'FOK') {
+      var avail = 0;
+      for (var a = 0; a < opp.length && crosses(o.side, o.type, o.price, opp[a].price); a++) {
+        for (var b = 0; b < opp[a].ids.length; b++) avail += remaining(eng.orders[opp[a].ids[b]]);
+      }
+      out.push({ t: 'NOTE', msg: 'FOK 预演：可成交 ' + fmtQ(avail) + '，需要 ' + fmtQ(o.qty) });
+      if (avail < o.qty) {
+        setStatus(o, 'EXPIRED', out);
+        snap(null, 'FOK 预演失败：可成交 ' + fmtQ(avail) + ' 小于 ' + fmtQ(o.qty) + '。整单 EXPIRED，订单簿不变。');
+        return out;
+      }
+    }
+
+    // 4. 逐档、逐单撮合
+    while (remaining(o) > 0 && opp.length) {
+      var lv = opp[0];
+      if (!crosses(o.side, o.type, o.price, lv.price)) {
+        snap({ price: lv.price }, '对手最优价 ' + fmtP(lv.price) + ' 不满足限价 ' + fmtP(o.price) + '，停止撮合。');
+        break;
+      }
+      var mid = lv.ids[0], m = eng.orders[mid];
+      snap({ price: lv.price, id: mid }, '比较：' + fmtP(lv.price) + ' 档队首是 ' + mid + '（剩余 ' + fmtQ(remaining(m)) + '）。价格可成交。');
+      var f = Math.min(remaining(o), remaining(m));
+      o.filled += f; m.filled += f;
+      var tr = { id: 'T' + (eng.trades.length + 1), seq: cmd.seq, price: lv.price, qty: f, maker: mid, taker: o.id, takerSide: o.side };
+      eng.trades.push(tr); eng.last = lv.price;
+      out.push({ t: 'TRADE', tr: tr });
+      if (remaining(m) === 0) { lv.ids.shift(); setStatus(m, 'FILLED', out); if (!lv.ids.length) opp.shift(); }
+      else setStatus(m, 'PARTIALLY_FILLED', out);
+      setStatus(o, remaining(o) === 0 ? 'FILLED' : 'PARTIALLY_FILLED', out);
+      snap({ price: lv.price, id: mid, done: true }, '成交 ' + fmtQ(f) + ' @ ' + fmtP(lv.price) + '（Maker 价格）。' + o.id + ' 剩余 ' + fmtQ(remaining(o)) + '，状态 ' + o.status + '。');
+    }
+
+    // 5. 处理剩余
+    var rem = remaining(o);
+    if (rem > 0) {
+      if (o.type === 'LIMIT' && o.tif === 'GTC') {
+        insertResting(eng, o, opt.randomQueue);
+        out.push({ t: 'REST', msg: o.id + ' 剩余 ' + fmtQ(rem) + ' 挂入' + (o.side === 'BUY' ? '买盘' : '卖盘') + ' ' + fmtP(o.price) + ' 档' });
+        snap({ price: o.price, id: o.id }, o.id + ' 剩余 ' + fmtQ(rem) + ' 挂入订单簿 ' + fmtP(o.price) + ' 档，排在队尾，等待成交。');
+      } else {
+        setStatus(o, 'EXPIRED', out);
+        snap(null, o.id + ' 剩余 ' + fmtQ(rem) + ' 按 ' + (o.type === 'MARKET' ? '市价单' : o.tif) + ' 规则取消，状态 EXPIRED。');
+      }
+    }
+    return out;
+  }
+
+  function fnv(s) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    return (h >>> 0).toString(16);
+  }
+  function stateHash(eng) {
+    var b = snapshotBook(eng);
+    var st = Object.keys(eng.orders).sort().map(function (k) { return k + ':' + eng.orders[k].status + ':' + eng.orders[k].filled; });
+    return fnv(JSON.stringify([b.bids, b.asks, eng.trades.map(function (t) { return [t.price, t.qty, t.maker, t.taker]; }), st]));
+  }
+
+  // ---- 应用状态 ----
+  var eng, cmdLog, seq, idCounter, busy = false, side = 'BUY';
+  var $ = function (id) { return document.getElementById(id); };
+  var logEl = $('log');
+
+  function logLine(html) { var d = document.createElement('div'); d.innerHTML = html; logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight; }
+  function seqTag(n, sub) { var s = '#' + String(n).padStart(4, '0') + (sub ? '.' + sub : ''); return '<span class="seq">' + s + '</span>'; }
+  function describeCmd(c) {
+    if (c.type === 'CANCEL') return 'CANCEL ' + c.id;
+    return 'SUBMIT ' + c.id + ' ' + c.side + ' ' + c.otype + (c.otype === 'LIMIT' ? ' ' + fmtP(c.price) : '') +
+      ' × ' + fmtQ(c.qty) + (c.otype === 'LIMIT' && !c.postOnly ? ' ' + c.tif : '') + (c.otype === 'MARKET' ? (c.tif === 'FOK' ? ' FOK' : '') : '') + (c.postOnly ? ' POST_ONLY' : '');
+  }
+  function logOutputs(c, out) {
+    out.forEach(function (e, i) {
+      var tag = seqTag(c.seq, i + 1), txt;
+      if (e.t === 'STATUS') txt = 'STATUS ' + e.id + ' → ' + e.s;
+      else if (e.t === 'TRADE') txt = '<span class="ok">TRADE ' + e.tr.id + ' ' + fmtP(e.tr.price) + ' × ' + fmtQ(e.tr.qty) + ' maker=' + e.tr.maker + ' taker=' + e.tr.taker + '</span>';
+      else if (e.t === 'ERR') txt = '<span class="err">' + esc(e.msg) + '</span>';
+      else txt = '<span class="note">' + esc(e.msg) + '</span>';
+      logLine(tag + ' ' + txt);
+    });
+  }
+
+  var SEEDS = [
+    ['SELL', 1001, 80], ['SELL', 1001, 120], ['SELL', 1002, 50], ['SELL', 1002, 200], ['SELL', 1003, 100],
+    ['SELL', 1004, 150], ['SELL', 1004, 70], ['SELL', 1005, 300], ['SELL', 1007, 200],
+    ['BUY', 1000, 150], ['BUY', 1000, 30], ['BUY', 999, 200], ['BUY', 998, 70], ['BUY', 998, 110],
+    ['BUY', 997, 120], ['BUY', 996, 250], ['BUY', 994, 300]
+  ];
+
+  function reset() {
+    eng = newEngine(); cmdLog = []; seq = 0; idCounter = { S: 0, U: 0, R: 0 };
+    logEl.innerHTML = '';
+    SEEDS.forEach(function (s) {
+      var c = { seq: ++seq, type: 'SUBMIT', id: 'S' + (++idCounter.S), owner: 'seed', side: s[0], otype: 'LIMIT', tif: 'GTC', postOnly: false, price: s[1], qty: s[2] };
+      cmdLog.push(c); apply(eng, c, { frames: null, randomQueue: false });
+    });
+    logLine(seqTag(1) + '–' + seqTag(seq) + ' <span class="note">种子做市商挂单 ' + SEEDS.length + ' 笔（S1–S' + SEEDS.length + '）</span>');
+    $('replayResult').textContent = '';
+    $('now').textContent = '等待下单。';
+    render(snapshotBook(eng), null);
+  }
+
+  // ---- 渲染 ----
+  function render(book, hl) {
+    var asks = book.asks.slice(0, SHOW_LEVELS), bids = book.bids.slice(0, SHOW_LEVELS);
+    function withCum(levels) {
+      var cum = 0;
+      return levels.map(function (l) { var q = 0; l.orders.forEach(function (o) { q += o.rem; }); cum += q; return { price: l.price, orders: l.orders, q: q, cum: cum }; });
+    }
+    var A = withCum(asks), B = withCum(bids);
+    var maxCum = Math.max(1, A.length ? A[A.length - 1].cum : 0, B.length ? B[B.length - 1].cum : 0);
+    function rowHtml(l, cls) {
+      var hit = hl && hl.price === l.price ? ' hit' : '';
+      var chips = l.orders.map(function (o) {
+        var c = 'chip' + (o.owner === 'user' ? ' me' : o.owner === 'robot' ? ' robot' : '') + (hl && hl.id === o.id ? ' hit' : '');
+        return '<span class="' + c + '" data-id="' + o.id + '" title="点击撤单">' + o.id + ' ' + fmtQ(o.rem) + '</span>';
+      }).join('');
+      return '<div class="row ' + cls + hit + '"><div class="bar" style="width:' + (l.cum / maxCum * 100).toFixed(1) + '%"></div>' +
+        '<span class="num price ' + cls + '">' + fmtP(l.price) + '</span><span class="num">' + fmtQ(l.q) + '</span><span class="num">' + fmtQ(l.cum) + '</span>' +
+        '<span class="queue">' + chips + '</span></div>';
+    }
+    var h = '<div class="hdr"><span class="num">价格</span><span class="num">数量</span><span class="num">累计</span><span>队列（先到在左）</span></div>';
+    h += A.length ? A.slice().reverse().map(function (l) { return rowHtml(l, 'ask'); }).join('') : '<div class="empty-side">卖盘为空</div>';
+    var spread = (book.asks.length && book.bids.length) ? fmtP(book.asks[0].price - book.bids[0].price) : '—';
+    h += '<div class="mid"><span>最新价 <span class="last">' + (book.last == null ? '—' : fmtP(book.last)) + '</span></span><span class="muted">价差 ' + spread +
+      ' · 卖盘 ' + book.asks.length + ' 档 · 买盘 ' + book.bids.length + ' 档</span></div>';
+    h += B.length ? B.map(function (l) { return rowHtml(l, 'bid'); }).join('') : '<div class="empty-side">买盘为空</div>';
+    $('book').innerHTML = h;
+  }
+
+  var PILL = { NEW: 'info', PARTIALLY_FILLED: 'accent', FILLED: 'buy', CANCELED: 'plain', REJECTED: 'sell', EXPIRED: 'warn' };
+  function renderTables() {
+    var tb = eng.trades.slice(-30).reverse().map(function (t) {
+      return '<tr><td class="mono">#' + t.seq + '</td><td><span class="pill ' + (t.takerSide === 'BUY' ? 'buy' : 'sell') + '">' + (t.takerSide === 'BUY' ? '主动买' : '主动卖') + '</span></td>' +
+        '<td class="num ' + (t.takerSide === 'BUY' ? 'up' : 'down') + '">' + fmtP(t.price) + '</td><td class="num">' + fmtQ(t.qty) + '</td><td class="mono small">' + t.maker + ' / ' + t.taker + '</td></tr>';
+    }).join('');
+    $('trades').innerHTML = tb || '<tr><td colspan="5" class="muted">还没有成交。</td></tr>';
+    var list = Object.keys(eng.orders).map(function (k) { return eng.orders[k]; })
+      .filter(function (o) { return o.owner !== 'seed'; }).sort(function (a, b) { return b.seq - a.seq; }).slice(0, 30);
+    $('orders').innerHTML = list.map(function (o) {
+      var desc = '<span class="pill ' + (o.side === 'BUY' ? 'buy' : 'sell') + '">' + sideCn(o.side) + '</span> ' +
+        '<span class="small">' + (o.type === 'LIMIT' ? fmtP(o.price) : '市价') + ' × ' + fmtQ(o.qty) + ' ' + (o.postOnly ? 'POST' : (o.type === 'MARKET' && o.tif !== 'FOK' ? '' : o.tif)) + '</span>';
+      return '<tr><td class="mono">' + o.id + '</td><td>' + desc + '</td><td class="num">' + fmtQ(o.filled) + '</td>' +
+        '<td><span class="pill ' + (PILL[o.status] || 'plain') + '">' + o.status + '</span><div class="hist">' + o.hist.join(' → ') + '</div></td>' +
+        '<td>' + (isOpen(o) ? '<button class="tiny-btn" data-cancel="' + o.id + '" type="button">撤单</button>' : '') + '</td></tr>';
+    }).join('') || '<tr><td colspan="5" class="muted">还没有订单。</td></tr>';
+  }
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function setBusy(b) {
+    busy = b;
+    ['submitBtn', 'robotBtn', 'replayBtn', 'resetBtn'].forEach(function (id) { $(id).disabled = b; });
+  }
+
+  async function run(cmd) {
+    if (busy) return;
+    setBusy(true);
+    cmd.seq = ++seq;
+    cmdLog.push(cmd);
+    logLine(seqTag(cmd.seq) + ' ' + esc(describeCmd(cmd)));
+    var frames = [];
+    var out = apply(eng, cmd, { frames: frames, randomQueue: $('bug').checked });
+    var delay = +$('speed').value;
+    if (delay > 0) {
+      for (var i = 0; i < frames.length; i++) {
+        render(frames[i].book, frames[i].hl);
+        $('now').textContent = frames[i].msg;
+        await sleep(delay);
+      }
+    } else if (frames.length) {
+      $('now').textContent = frames[frames.length - 1].msg;
+    }
+    logOutputs(cmd, out);
+    render(snapshotBook(eng), null);
+    renderTables();
+    setBusy(false);
+  }
+
+  // ---- 表单 ----
+  function syncForm() {
+    var market = $('otype').value === 'MARKET';
+    $('price').disabled = market;
+    $('postOnly').disabled = market;
+    if (market) $('postOnly').checked = false;
+    var po = $('postOnly').checked;
+    $('tif').disabled = po;
+    if (po) $('tif').value = 'GTC';
+    $('tif').options[0].disabled = market;
+    if (market && $('tif').value === 'GTC') $('tif').value = 'IOC';
+  }
+  function setSide(s) {
+    side = s;
+    $('sideBuy').classList.toggle('active', s === 'BUY');
+    $('sideSell').classList.toggle('active', s === 'SELL');
+  }
+  $('sideBuy').onclick = function () { setSide('BUY'); };
+  $('sideSell').onclick = function () { setSide('SELL'); };
+  $('otype').onchange = syncForm;
+  $('postOnly').onchange = syncForm;
+
+  function toUnits(str, scale) {
+    var v = Number(str);
+    if (!isFinite(v)) return { ok: false };
+    var u = Math.round(v * scale);
+    return { ok: Math.abs(u - v * scale) < 1e-6, u: u };
+  }
+
+  $('submitBtn').onclick = function () {
+    var otype = $('otype').value;
+    var q = toUnits($('qty').value, LOT);
+    if (!q.ok || q.u <= 0) { $('now').textContent = '数量不合法：必须是 0.01 的正整数倍（stepSize）。'; return; }
+    var p = { ok: true, u: null };
+    if (otype === 'LIMIT') {
+      p = toUnits($('price').value, TICK);
+      if (!p.ok || p.u <= 0) { $('now').textContent = '价格不合法：必须是 0.1 的正整数倍（tickSize）。'; return; }
+    }
+    run({ type: 'SUBMIT', id: 'U' + (++idCounter.U), owner: 'user', side: side, otype: otype,
+      tif: $('tif').value, postOnly: $('postOnly').checked, price: p.u, qty: q.u });
+  };
+
+  // 机器人：随机数只在"生成指令"时使用。指令写进日志后，重放不再需要随机数。
+  $('robotBtn').onclick = function () {
+    var ref = eng.last != null ? eng.last : 1000;
+    if (eng.asks.length && eng.bids.length) ref = Math.round((eng.asks[0].price + eng.bids[0].price) / 2);
+    var s = Math.random() < 0.5 ? 'BUY' : 'SELL';
+    var market = Math.random() < 0.25;
+    var offset = Math.floor(Math.random() * 7) - 2; // -2..4：正数表示更"激进"
+    var price = s === 'BUY' ? ref + offset : ref - offset;
+    var qty = 10 * (5 + Math.floor(Math.random() * 20)); // 0.50 – 2.40
+    run({ type: 'SUBMIT', id: 'R' + (++idCounter.R), owner: 'robot', side: s, otype: market ? 'MARKET' : 'LIMIT',
+      tif: market ? 'IOC' : (Math.random() < 0.8 ? 'GTC' : 'IOC'), postOnly: false, price: market ? null : Math.max(1, price), qty: qty });
+  };
+
+  function cancel(id) { if (!busy) run({ type: 'CANCEL', id: id }); }
+  $('book').addEventListener('click', function (e) { var t = e.target.closest('[data-id]'); if (t) cancel(t.getAttribute('data-id')); });
+  $('orders').addEventListener('click', function (e) { var t = e.target.closest('[data-cancel]'); if (t) cancel(t.getAttribute('data-cancel')); });
+
+  $('replayBtn').onclick = async function () {
+    if (busy) return;
+    setBusy(true);
+    var before = stateHash(eng);
+    var e2 = newEngine();
+    var rnd = $('bug').checked;
+    var delay = +$('speed').value > 0 ? Math.max(20, Math.min(80, 1600 / cmdLog.length)) : 0;
+    $('now').textContent = '重放中：从空订单簿开始，按序号执行 ' + cmdLog.length + ' 条指令……';
+    for (var i = 0; i < cmdLog.length; i++) {
+      apply(e2, cmdLog[i], { frames: null, randomQueue: rnd });
+      if (delay) { render(snapshotBook(e2), null); await sleep(delay); }
+    }
+    var after = stateHash(e2);
+    var same = before === after;
+    $('replayResult').innerHTML = '当前状态哈希 <b>' + before + '</b> ｜ 重放后哈希 <b>' + after + '</b> ｜ ' +
+      (same ? '<span class="up">一致：撮合是确定性的</span>' : '<span class="down">不一致：存在非确定性代码</span>');
+    logLine('<span class="note">REPLAY 重放 #1–#' + seq + '：' + (same ? '结果一致 ' + after : '结果不一致 ' + before + ' ≠ ' + after) + '</span>');
+    $('now').textContent = same
+      ? '重放完成。重建的订单簿、成交和订单状态与当前完全一致。这就是"事件日志 + 确定性撮合"可以做故障恢复的原因。'
+      : '重放完成，但结果不一致。原因：同价订单的排队位置由 Math.random() 决定，重放时随机数不同。生产系统必须杜绝这类代码。';
+    render(snapshotBook(eng), null);
+    setBusy(false);
+  };
+
+  $('resetBtn').onclick = function () { if (!busy) { reset(); renderTables(); } };
+
+  syncForm();
+  reset();
+  renderTables();
+})();
+</script>
+</body>
+</html>

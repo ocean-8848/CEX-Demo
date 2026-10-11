@@ -1,0 +1,34 @@
+{
+  "name": "@web3-cex/blockchain-indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "pnpm --filter @web3-cex/domain --filter @web3-cex/telemetry build",
+    "build": "tsc -p tsconfig.json",
+    "db:prepare": "pnpm build && node ./dist/scripts/run-db-prepare.js",
+    "scan-evm": "pnpm build && node ./dist/scripts/scan-evm.js",
+    "replay-evm": "pnpm build && node ./dist/scripts/replay-evm.js",
+    "repair-backlog": "pnpm build && node ./dist/scripts/repair-backlog.js",
+    "check-alerts": "pnpm build && node ./dist/scripts/check-alerts.js",
+    "start": "pnpm build && node --import @web3-cex/telemetry/register ./dist/main.js",
+    "pretypecheck": "pnpm --filter @web3-cex/domain --filter @web3-cex/telemetry build",
+    "test": "pnpm build && node --test dist/__tests__/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.6",
+    "@web3-cex/domain": "workspace:*",
+    "@web3-cex/telemetry": "workspace:*",
+    "pg": "^8.15.6",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "web3-cex",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.6.0",
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.15.5",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "check:structure": "node ./scripts/check-structure.mjs",
+    "check:markets": "pnpm build && node ./scripts/check-market-config.mjs",
+    "db:prepare:core": "pnpm --filter @web3-cex/ledger-service db:prepare && pnpm --filter @web3-cex/identity-service db:prepare && pnpm --filter @web3-cex/wallet-service db:prepare && pnpm --filter @web3-cex/blockchain-indexer db:prepare && pnpm --filter @web3-cex/custody-adapter db:prepare && pnpm --filter @web3-cex/order-service db:prepare && pnpm --filter @web3-cex/settlement-service db:prepare && pnpm --filter @web3-cex/risk-service db:prepare",
+    "db:prepare:demo": "pnpm db:prepare:core && pnpm --filter @web3-cex/ops-console db:prepare",
+    "demo:bootstrap": "node ./scripts/bootstrap-mvp-demo.mjs",
+    "demo:prepare": "pnpm demo:reset && pnpm demo:bootstrap",
+    "demo:reset": "node ./scripts/reset-mvp-demo.mjs",
+    "demo:simulator": "node ./scripts/demo-simulator.mjs",
+    "demo:up": "pnpm stack:start && pnpm demo:prepare",
+    "demo:verify": "node ./scripts/verify-mvp-demo.mjs",
+    "demo:verify:flow": "node ./scripts/verify-demo-main-flow.mjs",
+    "demo:verify:evidence": "node ./scripts/verify-demo-main-flow.mjs | node ./scripts/render-demo-evidence.mjs",
+    "demo:verify:evidence:archive": "node ./scripts/verify-demo-main-flow.mjs | node ./scripts/archive-demo-evidence.mjs",
+    "demo:verify:evidence:compare": "node ./scripts/compare-demo-evidence.mjs",
+    "demo:verify:evidence:gate": "node ./scripts/compare-demo-evidence.mjs --fail-on-drift",
+    "ops:totp": "node ./scripts/ops-totp.mjs",
+    "stack:start": "node ./scripts/start-all-services.mjs",
+    "stack:start:observability": "node ./scripts/start-all-services.mjs --observability",
+    "stack:status": "node ./scripts/status-all-services.mjs",
+    "stack:stop": "node ./scripts/stop-all-services.mjs",
+    "stack:stop:infra": "node ./scripts/stop-all-services.mjs --with-infra",
+    "test:mvp": "node ./scripts/run-mvp-verification.mjs",
+    "test:e2e": "node ./scripts/run-e2e-all.mjs",
+    "test:features": "node ./scripts/verify-feature-e2e.mjs",
+    "test:ops-console:local": "node ./scripts/run-ops-console-local-e2e.mjs",
+    "test:trade-domain:replay": "node ./scripts/test-trade-domain-replay.mjs",
+    "test:trader-web:smoke": "pnpm --filter @web3-cex/trader-web test",
+    "test:trader-web:local": "node ./scripts/run-trader-web-local-e2e.mjs",
+    "typecheck": "pnpm -r --if-present typecheck"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP15 保证金与强平</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .concept h3 { font-size: 36px; margin-bottom: 6px; }
+  .concept .f { font-family: var(--mono); font-size: 26px; color: var(--text-2); }
+  .concept .val { font-family: var(--mono); font-size: 44px; font-weight: 700; margin-top: 4px; }
+  .concept { padding: 20px 30px; }
+  .pos { display: flex; gap: 18px; align-items: center; font-size: 30px; }
+  table.t td, table.t th { padding: 12px 18px; }
+  table.t tr { transition: background .3s, opacity .3s; }
+  table.t tr.cur td { background: var(--gold-soft); }
+  .lines { display: flex; flex-direction: column; gap: 14px; }
+  .lines .ln { font-family: var(--mono); font-size: 32px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 24px; }
+  .lines .ln.gold { border-color: var(--gold); background: var(--gold-soft); }
+  .lines .ln small { font-family: var(--sans); font-size: 24px; color: var(--text-2); margin-left: 16px; }
+  .adl { position: relative; height: 380px; }
+  .adl .r { position: absolute; left: 0; right: 0; height: 82px; display: grid; grid-template-columns: 120px 200px 200px 220px 1fr; align-items: center; padding: 0 22px; background: var(--panel); border: 2px solid var(--line); border-radius: 12px; font-size: 30px; transition: top .5s ease, border-color .3s, background .3s; }
+  .adl .r.hd { background: transparent; border-color: transparent; color: var(--text-2); font-size: 26px; height: 50px; }
+  .adl .r.top { border-color: var(--sell); background: var(--sell-soft); }
+  .adl .r .mono { font-family: var(--mono); }
+  .lights { display: flex; gap: 8px; }
+  .lights i { width: 30px; height: 30px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line); }
+  .lights i.on { background: var(--sell); border-color: var(--sell); }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP15" data-title="保证金与强平：保险基金和 ADL">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解 · EP15</div>
+    <h1>保证金与强平：<span class="hl">谁来兜底</span></h1>
+    <div class="row" style="max-width:1640px">
+      <div class="card col" data-step="0"><div class="stat"><div class="k">10x 多单 · 开仓价 · 示例</div><div class="v">50,000</div></div><span class="muted">直觉：跌 10% 才亏光</span></div>
+      <div class="card sell col" data-step="1"><div class="stat"><div class="k">实际强平价 · 示例</div><div class="v">45,180.72</div></div><span class="down">跌约 9.6% 就强平</span></div>
+    </div>
+    <div class="card warn" data-step="2" style="max-width:1640px">仅讲系统设计，不构成投资建议 · 杠杆会放大亏损 · 除公开资料外数字均为示例</div>
+    <ol class="say">
+      <li>你开了一个10倍多单，开仓价50000。很多人以为，价格要跌10%，保证金才会亏光，仓位才会被强平。</li>
+      <li>实际上，示例里价格跌到大约45180，也就是跌约9.6%，仓位就被强平了。少掉的这一截，去哪儿了？</li>
+      <li>这一集，我们一步步算清楚强平价，再看强平之后，亏损由谁兜底。先说明，本集只讲系统设计，不构成投资建议。杠杆会放大亏损，除了公开资料，数字都是示例。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>本集路线图</h2>
+    <div class="grid2">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>保证金四个概念<br><span class="muted">初始 · 维持 · 余额 · 保证金率 · 分层</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>逐仓与全仓 · 强平价<br><span class="muted">45,180.72 一步步算</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">3</span><div>强平流程<br><span class="muted">接管 · 破产价 · 保险基金 · ADL</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">4</span><div>币本位与 U 本位<br><span class="muted">组合保证金预告</span></div></div>
+    </div>
+    <ol class="say">
+      <li>本集分四段。第一，保证金的四个概念，以及分层杠杆。第二，逐仓和全仓的区别，然后推导强平价公式。</li>
+      <li>第三，强平流程：强平引擎接管、破产价格、保险基金、自动减仓 ADL。第四，币本位和 U 本位的差别，最后预告组合保证金。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="保证金的四个概念">
+    <div class="kicker">Margin Basics</div>
+    <h2>保证金的四个概念</h2>
+    <div class="pos card gold" data-step="0" style="padding:16px 28px">示例仓位：<b>1 BTC 多单</b> · 开仓价 <span class="mono">50,000</span> · <b>10x</b> · MMR <span class="mono">0.4%</span> · cum <span class="mono">0</span></div>
+    <div class="grid2">
+      <div class="card concept" data-step="0"><h3>初始保证金</h3><div class="f">名义价值 ÷ 杠杆</div><div class="val">5,000</div></div>
+      <div class="card concept" data-step="2"><h3>维持保证金</h3><div class="f">名义价值 × MMR − cum</div><div class="val">200</div></div>
+      <div class="card concept" data-step="3"><h3>保证金余额</h3><div class="f">钱包余额 + 未实现盈亏</div><div class="val">5,000</div></div>
+      <div class="card concept gold" data-step="4"><h3>保证金率</h3><div class="f">维持保证金 ÷ 保证金余额 · 100% 触发强平</div><div class="val">4%</div></div>
+    </div>
+    <ol class="say">
+      <li>先认识四个概念。示例仓位是：1个 BTC 多单，开仓价50000，10倍杠杆。</li>
+      <li>初始保证金，等于仓位名义价值除以杠杆。50000除以10，开仓时系统冻结5000 USDT。</li>
+      <li>维持保证金，等于名义价值乘以维持保证金率，再减去速算额。示例里 MMR 是0.4%，速算额是0，所以是200 USDT。</li>
+      <li>保证金余额，等于钱包余额加上未实现盈亏。刚开仓时没有盈亏，就是5000。</li>
+      <li>保证金率，等于维持保证金除以保证金余额。现在是200除以5000，也就是4%。根据币安公开资料，保证金率达到100%时触发强平。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="保证金率走向 100%" data-onstep="ratioStep">
+    <div class="kicker">Margin Ratio</div>
+    <h2>价格下跌，保证金率加速上升</h2>
+    <svg id="ratio" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>现在让价格往下走。价格跌到48000，未实现亏损2000，保证金余额剩3000。维持保证金按标记价格算是192，保证金率6.4%。</li>
+      <li>跌到46000，余额只剩1000，保证金率升到18.4%。</li>
+      <li>跌到45500，余额500，保证金率36.4%。注意它在加速上升，因为分母在快速变小。</li>
+      <li>跌到45180.72，保证金余额正好等于维持保证金，都是180.72。保证金率达到100%，触发强平。</li>
+      <li>所以强平不是在亏光时发生，而是在余额跌到维持保证金时发生。中间留出的这一截，是给强平引擎的操作空间。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="分层杠杆与速算额" data-onstep="tierStep">
+    <div class="kicker">Leverage Bracket · BTCUSDT 示例</div>
+    <h2>仓位越大，杠杆越低，MMR 越高</h2>
+    <table class="t" id="tiers">
+      <tr><th>层级</th><th>名义价值 USDT</th><th>最大杠杆</th><th>MMR</th><th>速算额 cum</th></tr>
+      <tr><td>1</td><td class="mono">0 – 50,000</td><td>125x</td><td class="mono">0.40%</td><td class="mono">0</td></tr>
+      <tr><td>2</td><td class="mono">50,000 – 250,000</td><td>100x</td><td class="mono">0.50%</td><td class="mono">50</td></tr>
+      <tr><td>3</td><td class="mono">250,000 – 3,000,000</td><td>50x</td><td class="mono">1.00%</td><td class="mono">1,300</td></tr>
+      <tr><td>4</td><td class="mono">3,000,000 – 15,000,000</td><td>20x</td><td class="mono">2.50%</td><td class="mono">46,300</td></tr>
+    </table>
+    <div class="card gold" id="tier-calc" style="font-family:var(--mono);font-size:30px;padding:18px 28px"></div>
+    <ol class="say">
+      <li>维持保证金率不是固定的。仓位越大，允许的最大杠杆越低，维持保证金率越高。这叫分层杠杆。原因是大仓位在强平时，更难在市场上平掉。</li>
+      <li>来看 BTCUSDT 的分层示例，数值参考历史公开资料，实际以币安官网为准。第1层，名义价值5万以内，最高125倍，MMR 0.4%，速算额是0。</li>
+      <li>第2层，5万到25万，最高100倍，MMR 0.5%，速算额50。本层速算额，等于上层速算额加上本层下限乘以两层 MMR 之差。0加50000乘以0.1%，就是50。</li>
+      <li>它的作用是让维持保证金在层级边界上连续。名义价值正好50000时，按第1层算是200。按第2层算，50000乘以0.5%再减50，也是200，不会跳变。</li>
+      <li>同样的方法，第3层是50加上250000乘以0.5%，得到1300。第4层是46300。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="逐仓与全仓" data-onstep="crossStep">
+    <div class="kicker">Isolated vs Cross</div>
+    <h2>逐仓与全仓：风险边界不同</h2>
+    <div class="row">
+      <svg id="cross" width="1000" height="580" viewBox="0 0 1000 580"></svg>
+      <div class="col">
+        <div class="card info" data-step="0" style="font-size:29px;padding:18px 24px"><b>逐仓</b>：只亏该仓位的保证金<br><b>全仓</b>：全部余额支撑全部仓位</div>
+        <div class="card" data-step="1" style="font-size:29px;padding:18px 24px">比喻：逐仓 = 每艘船配救生艇<br>全仓 = 所有船共用一个仓库</div>
+        <div class="card sell" data-step="2" style="font-size:29px;padding:18px 24px">局限：仓库也会被搬空，全部仓位一起强平</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>接下来是保证金模式。逐仓，每个仓位单独使用保证金，最多亏掉这个仓位的保证金。全仓，账户全部余额共同支撑全部仓位。</li>
+      <li>打个比方。逐仓像给每艘船单独配救生艇，一艘船沉了，只损失它的救生艇。全仓像所有船共用一个大仓库，谁漏水都从仓库调物资。</li>
+      <li>但比喻有局限，全仓并不是不会沉。漏得太多，仓库会被搬空，所有仓位一起被强平。</li>
+      <li>用数字看。同样是1个 BTC 的10倍多单。逐仓时，钱包余额是5000，强平价45180.72。全仓时，假设账户另有5000可用。钱包余额变成10000，强平价降到约40160.64。</li>
+      <li>所以全仓不容易被强平，但真被强平时，亏掉的更多。逐仓亏损有上限，代价是更容易被强平。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="强平价公式推导">
+    <div class="kicker">Liquidation Price · 币安 U 本位公开公式</div>
+    <h2>强平价：从通用公式到 45,180.72</h2>
+    <div class="lines">
+      <div class="ln" data-step="0" style="font-size:30px">LP = (WB − TMM1 + UPNL1 + cum − Side×Q×EP) / (Q×MMR − Side×Q)</div>
+      <div class="ln" data-step="1" style="font-size:28px">逐仓 · 单一仓位 · cum = 0 · 忽略费用 → TMM1 = UPNL1 = 0，WB = Q×EP/L</div>
+      <div class="ln gold" data-step="2">多仓 LP = EP × (1 − 1/L) / (1 − MMR)<small>空仓：EP × (1 + 1/L) / (1 + MMR)</small></div>
+      <div class="row" style="gap:20px">
+        <div class="ln col" data-step="3">① 1 − 1/10 = 0.9</div>
+        <div class="ln col" data-step="4">② 50,000 × 0.9 = 45,000</div>
+        <div class="ln col gold" data-step="5">③ 45,000 / 0.996 ≈ <b>45,180.72</b></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>现在推导强平价。根据币安公开资料，U 本位单向持仓有一个通用公式。分子从钱包余额开始，减去其他仓位的维持保证金，加上其他仓位的未实现盈亏。再加上速算额，减去方向乘以数量乘以开仓价。分母是数量乘以 MMR，减去方向乘以数量。多仓方向记为1，空仓记为负1。</li>
+      <li>我们做几个简化假设：逐仓，单一仓位，速算额为0，忽略手续费和资金费。这时其他仓位的两项都是0，钱包余额就是初始保证金。</li>
+      <li>代入化简，多仓强平价等于开仓价乘以1减杠杆倒数，再除以1减 MMR。空仓是开仓价乘以1加杠杆倒数，再除以1加 MMR。</li>
+      <li>代入示例数字。第一步，1减10分之1，等于0.9。</li>
+      <li>第二步，50000乘以0.9，等于45000。</li>
+      <li>第三步，45000除以0.996，约等于45180.72。价格只需下跌约9.6%，仓位就会被强平。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="破产价与杠杆" data-onstep="levStep">
+    <div class="kicker">Bankruptcy Price · Leverage</div>
+    <h2 id="lev-h">强平价、破产价与杠杆</h2>
+    <svg id="lev" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>再看另一个关键价格，破产价格。它是保证金余额恰好为0的价格。逐仓多仓的破产价，等于开仓价乘以1减杠杆倒数，示例里是45000。</li>
+      <li>强平价45180.72，在破产价上方。两者之间的距离，就是给强平引擎留的操作空间。</li>
+      <li>把杠杆加到20倍，强平价升到约47690.76，下跌约4.6%就强平。</li>
+      <li>50倍时，强平价约49196.79，下跌约1.6%就强平。</li>
+      <li>125倍时，强平价约49799.20。价格下跌约0.4%，就会触发强平。杠杆越高，强平价离开仓价越近。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="强平流程" data-onstep="flowStep">
+    <div class="kicker">Liquidation Flow · 业界通用做法</div>
+    <h2>强平流程：先撤单，再接管</h2>
+    <svg id="lflow" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>保证金率到了100%，会发生什么？业界通常这样做。强平引擎订阅标记价格，每次更新都重算保证金率。没到100%，就继续等待。</li>
+      <li>到了100%，第一步不是平仓，而是撤销这个账户的全部挂单。撤单能释放冻结的保证金，可能让账户脱离强平。</li>
+      <li>撤单之后，保证金率仍然达到100%，强平引擎就接管仓位。从这一刻起，用户失去对仓位的控制权。</li>
+      <li>引擎以破产价格向市场发出平仓单，业界通常用 IOC，能成交多少算多少。注意，强平单的价格是破产价，不是强平价。</li>
+      <li>还有一个细节。根据币安公开资料，大仓位可能先被部分强平。系统逐步降低仓位层级，而不是一次全平。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="保险基金" data-onstep="insStep">
+    <div class="kicker">Insurance Fund</div>
+    <h2>保险基金：盈余存进去，穿仓补出来</h2>
+    <svg id="ins" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>平仓单发出去，结果有三种。先看第一种。示例里破产价是45000，强平单以45100成交，比破产价好100。</li>
+      <li>这100乘以仓位数量的盈余，注入保险基金。强平价到破产价之间的余量，大部分时候就这样变成了保险基金的收入。</li>
+      <li>第二种，行情太快，强平单以44800成交，比破产价差200。这200叫穿仓亏损，由保险基金补足。</li>
+      <li>第三种，保险基金不够补，或者强平单根本无法成交。这时启动最后一道防线，自动减仓 ADL。另外，根据币安公开资料，各合约保险基金的余额历史是公开的。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="自动减仓 ADL" data-onstep="adlStep">
+    <div class="kicker">Auto-Deleveraging</div>
+    <h2>ADL：盈利最多、杠杆最高的对手先减仓</h2>
+    <div class="row">
+      <div class="code" style="font-size:28px;flex:0 0 640px" id="adl-f">收益率 &gt; 0：排名分 = 收益率 × 有效杠杆
+收益率 &lt; 0：排名分 = 收益率 ÷ 有效杠杆
+收益率   = 未实现盈亏 ÷ 仓位开仓价值
+有效杠杆 = |标记价值| ÷ 保证金余额</div>
+      <div class="col">
+        <div class="adl" id="adl">
+          <div class="r hd" style="top:0"><span>对手</span><span>收益率</span><span>有效杠杆</span><span>排名分</span><span>指示灯</span></div>
+          <div class="r" data-k="0"><span>甲</span><span class="mono up">+20%</span><span class="mono">10x</span><span class="mono">2.0</span><span class="lights"></span></div>
+          <div class="r" data-k="1"><span>乙</span><span class="mono up">+50%</span><span class="mono">2x</span><span class="mono">1.0</span><span class="lights"></span></div>
+          <div class="r" data-k="2"><span>丙</span><span class="mono up">+8%</span><span class="mono">20x</span><span class="mono">1.6</span><span class="lights"></span></div>
+          <div class="r" data-k="3"><span>丁</span><span class="mono down">−10%</span><span class="mono">5x</span><span class="mono">−0.02</span><span class="lights"></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card gold" data-step="4" style="padding:16px 28px">ADL 按破产价成交 · 被减仓者不付手续费 · 交易所不承担穿仓亏损</div>
+    <ol class="say">
+      <li>ADL 选谁来减仓？它选盈利最多、杠杆最高的对手方。业界通用的排序公式由 BitMEX 公开，币安使用同类方法。</li>
+      <li>收益率大于0时，排名分等于收益率乘以有效杠杆。收益率小于0时，等于收益率除以有效杠杆。</li>
+      <li>举个示例，4个空头对手方。甲收益20%，杠杆10倍，得分2.0。丙收益8%，杠杆20倍，得分1.6。乙收益50%，但杠杆只有2倍，得分1.0。丁在亏损，排在最后。</li>
+      <li>所以甲先被减仓。根据币安公开资料，界面上用5格指示灯，显示你在 ADL 队列中的位置。灯越多，被减仓的优先级越高。</li>
+      <li>ADL 按破产价成交，被减仓的用户不付手续费。他没有亏钱，但失去了继续盈利的机会。ADL 保证交易所本身不承担穿仓亏损。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="极端行情与误区">
+    <div class="kicker">312 · Misconception</div>
+    <h2>防线也会被击穿</h2>
+    <div class="row">
+      <div class="card sell col" data-step="0"><div class="stat"><div class="k">2020-03-12 · 公开报道</div><div class="v">BTC 一天约 −40%</div></div>大量强平 · BitMEX 一度暂停交易</div>
+      <div class="card warn col" data-step="1"><h3>保险基金被大幅消耗</h3>触发 ADL<br><span class="muted">流动性枯竭，强平单无法按破产价成交</span></div>
+    </div>
+    <div class="flow" data-step="2">
+      <div class="node buy">正常持仓</div><div class="arrow"></div>
+      <div class="node gold">风险预警<small>保证金率 ≥ 80% · 示例</small></div><div class="arrow"></div>
+      <div class="node sell">强平中<small>保证金率 ≥ 100%</small></div><div class="arrow"></div>
+      <div class="node">已强平<small>保证金归零</small></div>
+    </div>
+    <ol class="say">
+      <li>这些防线在极端行情下会怎样？根据公开报道，2020年3月12日，BTC 一天内跌幅约40%。多家交易所出现大量强平，BitMEX 一度暂停交易。</li>
+      <li>部分交易所的保险基金被大幅消耗，触发了 ADL。教训是，极端行情下订单簿的流动性会枯竭，强平单无法按破产价成交。</li>
+      <li>再说一个常见误区，以为强平价就是亏光价，自己还有余量。其实到了强平价，仓位就被接管，保证金归零。风险预警是最后的自救窗口，示例阈值是保证金率80%。所以前端要同时显示强平价和保证金率。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="币本位与组合保证金" data-onstep="coinStep">
+    <div class="kicker">COIN-M · USDⓈ-M · Portfolio Margin</div>
+    <h2>币本位、U 本位与组合保证金</h2>
+    <svg id="coin" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>前面讲的都是 U 本位。U 本位用 USDT 或 USDC 作保证金和结算。盈亏用 USDT 计算，很直观。</li>
+      <li>币本位用标的币本身作保证金，比如用 BTC 做 BTCUSD 永续。每张合约面值固定，比如100 USD。盈亏用 BTC 计算，是非线性的。</li>
+      <li>注意，币本位多单有双重敞口。BTC 下跌时，仓位在亏损，同时作为保证金的 BTC 本身也在贬值。</li>
+      <li>最后预告一个更高级的模式，组合保证金。比如现货多1个 BTC，加上合约空1个 BTC。这个组合几乎没有价格风险，所需保证金远低于分开计算之和。</li>
+      <li>代价是计算量。每次价格变化，都要重算整个组合的风险。业界通常用情景压力测试，比如价格正负15%，再加上波动率变化，取最差的结果。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与下集预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">保证金余额跌到维持保证金，<span class="hl">保证金率 100%</span> 触发强平。</li>
+      <li data-step="0">多仓 LP = EP × (1 − 1/L) / (1 − MMR)：10x 跌约 <span class="hl">9.6%</span> 就强平。</li>
+      <li data-step="2">三道防线：市场平仓 → <span class="hl">保险基金</span> → <span class="hl">ADL</span>。</li>
+    </ul>
+    <div class="grid3" data-step="0">
+      <div class="card stat"><div class="k">10x 强平价 · 示例</div><div class="v hl" style="font-size:52px">45,180.72</div></div>
+      <div class="card stat"><div class="k">破产价 · 示例</div><div class="v" style="font-size:52px">45,000</div></div>
+      <div class="card stat"><div class="k">125x 下跌即强平</div><div class="v" style="font-size:52px">≈ 0.4%</div></div>
+    </div>
+    <div class="card gold" data-step="3" style="font-size:34px">下集 EP16 · 交易所怎么赚钱：产品生态与商业模式</div>
+    <ol class="say">
+      <li>小结一下。第一，强平看保证金率。保证金余额跌到维持保证金时，保证金率达到100%，触发强平。</li>
+      <li>第二，在逐仓简化公式下，多仓强平价等于开仓价乘以1减杠杆倒数，除以1减 MMR。10倍多单，跌约9.6%就强平。杠杆越高，离得越近。</li>
+      <li>第三，强平之后有三道防线：市场平仓，保险基金，最后是 ADL。交易所本身不承担穿仓亏损。</li>
+      <li>下一集换个视角。交易所到底怎么赚钱？从手续费到产品生态，我们拆开它的商业模式。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const fmt = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 28}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.plain ? '' : ` stroke="${C.bg}" stroke-width="8" paint-order="stroke"`}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+
+  function ratioStep(el, st) {
+    const svg = el.querySelector('#ratio');
+    const P = [48000, 46000, 45500, 45180.72, 45180.72][st];
+    const bal = 5000 + (P - 50000), mm = P * 0.004, ratio = mm / bal * 100;
+    const Y = p => 40 + (50200 - p) / 5400 * 500;
+    let h = '';
+    // price axis
+    h += `<line x1="200" y1="${Y(50200)}" x2="200" y2="${Y(44800)}" stroke="${C.t2}" stroke-width="3"/>`;
+    [50000, 48000, 46000, 45000].forEach(p => h += `<line x1="190" y1="${Y(p)}" x2="210" y2="${Y(p)}" stroke="${C.t2}" stroke-width="3"/>` + T(180, Y(p) + 9, fmt(p), { anchor: 'end', fill: C.t2, size: 24 }));
+    if (st < 3) h += `<line x1="200" y1="${Y(45180.72)}" x2="420" y2="${Y(45180.72)}" stroke="${C.sell}" stroke-width="3" stroke-dasharray="10 6"/>` + T(230, Y(45180.72) + 36, '强平 45,180.72', { fill: C.sell, size: 26 });
+    h += `<polygon points="210,${Y(P)} 240,${Y(P) - 16} 240,${Y(P) + 16}" fill="${C.gold}"/>` + (st >= 3 ? T(250, Y(P) - 30, '标记价格 = 强平价', { fill: C.sell, size: 30, bold: true }) + T(250, Y(P) + 10, fmt(P, 2), { fill: C.sell, size: 30, bold: true }) : T(250, Y(P) + 10, '标记价格 ' + fmt(P), { fill: C.gold, size: 30, bold: true }));
+    h += T(200, 30, '价格 · 示例', { anchor: 'middle', fill: C.t2, size: 24 });
+    // bars
+    const bx = 640, bw = 520, BX = v => v / 5000 * bw;
+    const bar = (y, label, v, col) => T(bx, y - 14, label, { size: 28, fill: C.t2 }) + R(bx, y, bw, 56, { fill: C.panel, rx: 8 }) + `<rect x="${bx}" y="${y}" width="${Math.max(BX(v), 4)}" height="56" rx="8" fill="${col}"/>` + T(bx + bw + 20, y + 40, fmt(v, v % 1 ? 2 : 0), { size: 34, bold: true, fill: col });
+    h += bar(90, '保证金余额 = 5,000 + 未实现盈亏', bal, C.buy);
+    h += bar(220, '维持保证金 = 名义价值 × 0.4%', mm, C.sell);
+    // gauge
+    const gx = 640, gy = 380, gw = 900;
+    h += T(gx, gy - 20, '保证金率 = 维持保证金 ÷ 保证金余额', { size: 28, fill: C.t2 });
+    h += R(gx, gy, gw, 70, { rx: 10 });
+    h += `<rect x="${gx}" y="${gy}" width="${gw * Math.min(ratio, 100) / 100}" height="70" rx="10" fill="${ratio >= 99.99 ? C.sell : C.gold}"/>`;
+    h += `<line x1="${gx + gw}" y1="${gy - 10}" x2="${gx + gw}" y2="${gy + 80}" stroke="${C.sell}" stroke-width="4"/>` + T(gx + gw, gy + 116, '100% 触发强平', { anchor: 'end', fill: C.sell, size: 26 });
+    h += T(gx, gy + 150, ratio.toFixed(1) + '%', { size: 72, bold: true, fill: ratio >= 99.99 ? C.sell : C.gold });
+    if (st === 4) h += T(gx + 300, gy + 150, '余额 = 维持保证金，不是 0', { size: 32, bold: true, fill: C.text });
+    svgEl(svg, h);
+  }
+
+  function tierStep(el, st) {
+    const rows = el.querySelectorAll('#tiers tr');
+    const cur = [[1, 2, 3, 4], [1], [2], [1, 2], [3, 4]][st];
+    rows.forEach((r, i) => { if (i) { r.classList.toggle('cur', cur.includes(i)); r.style.opacity = st === 0 || cur.includes(i) ? 1 : .4; } });
+    const c = [
+      '大仓位更难平掉 → 最大杠杆降低，MMR 提高',
+      '第 1 层：MM = 名义价值 × 0.4% − 0',
+      '本层 cum = 上层 cum + 本层下限 × (本层 MMR − 上层 MMR)<br>第 2 层：0 + 50,000 × (0.5% − 0.4%) = <span class="hl">50</span>',
+      '边界 50,000：第 1 层 50,000 × 0.4% = 200<br>　　　　　　　第 2 层 50,000 × 0.5% − 50 = <span class="hl">200</span>　连续',
+      '第 3 层：50 + 250,000 × 0.5% = <span class="hl">1,300</span><br>第 4 层：1,300 + 3,000,000 × 1.5% = <span class="hl">46,300</span>',
+    ][st];
+    el.querySelector('#tier-calc').innerHTML = c;
+  }
+
+  function crossStep(el, st) {
+    const svg = el.querySelector('#cross');
+    const Y = p => 40 + (52000 - p) / 13000 * 480;
+    let h = '';
+    [52000, 50000, 48000, 46000, 44000, 42000, 40000].forEach(p => h += `<line x1="140" y1="${Y(p)}" x2="980" y2="${Y(p)}" stroke="${C.line}" stroke-width="2"/>` + T(126, Y(p) + 9, fmt(p), { anchor: 'end', fill: C.t2, size: 24 }));
+    const col = (x, title, wb, lp, show) => {
+      let s = R(x, Y(50000) - 4, 300, 8, { fill: C.t2, stroke: C.t2, rx: 2 });
+      s += T(x + 150, 570, title, { anchor: 'middle', size: 32, bold: true });
+      if (show) {
+        s += `<rect x="${x + 40}" y="${Y(50000)}" width="220" height="${Y(lp) - Y(50000)}" fill="rgba(46,189,133,.14)"/>`;
+        s += `<line x1="${x}" y1="${Y(lp)}" x2="${x + 300}" y2="${Y(lp)}" stroke="${C.sell}" stroke-width="5"/>`;
+        s += T(x + 150, Y(lp) + 40, '强平 ' + fmt(lp, 2), { anchor: 'middle', fill: C.sell, size: 30, bold: true });
+        s += T(x + 150, Y(50000) + 44, 'WB = ' + fmt(wb), { anchor: 'middle', fill: C.buy, size: 28 });
+      }
+      return s;
+    };
+    h += T(560, Y(50000) - 16, '开仓 50,000', { anchor: 'middle', fill: C.t2, size: 26 });
+    h += col(180, '逐仓', 5000, 45180.72, st >= 3);
+    h += col(640, '全仓 · 另有 5,000', 10000, 40160.64, st >= 3);
+    if (st < 3) {
+      h += T(330, Y(46000), st === 0 ? '仓位自己的保证金' : '救生艇', { anchor: 'middle', fill: C.info, size: 32, bold: true });
+      h += T(790, Y(46000), st === 0 ? '账户全部余额' : st === 1 ? '共用仓库' : '仓库搬空 → 一起沉', { anchor: 'middle', fill: st === 2 ? C.sell : C.info, size: 32, bold: true });
+    }
+    if (st === 4) h += T(560, 30, '全仓：更远，但亏得更多', { anchor: 'middle', fill: C.gold, size: 30, bold: true });
+    svgEl(svg, h);
+  }
+
+  function levStep(el, st) {
+    const L = [10, 10, 20, 50, 125][st];
+    const lp = 50000 * (1 - 1 / L) / 0.996, bp = 50000 * (1 - 1 / L);
+    el.querySelector('#lev-h').textContent = st < 2 ? '强平价在破产价之上' : `杠杆 ${L}x：强平价逼近开仓价`;
+    const svg = el.querySelector('#lev');
+    const X = p => 100 + (p - 44500) / 6000 * 1440;
+    let h = '';
+    h += `<line x1="${X(44500)}" y1="300" x2="${X(50500)}" y2="300" stroke="${C.t2}" stroke-width="4"/>`;
+    for (let p = 45000; p <= 50000; p += 1000) h += `<line x1="${X(p)}" y1="290" x2="${X(p)}" y2="310" stroke="${C.t2}" stroke-width="3"/>` + T(X(p), 346, fmt(p), { anchor: 'middle', fill: C.t2, size: 24 });
+    // zone between bp and lp
+    if (st >= 1) h += `<rect x="${X(bp)}" y="180" width="${Math.max(X(lp) - X(bp), 3)}" height="120" fill="rgba(240,185,11,.25)"/>` + T(X(bp) - 10, 170, '操作空间', { anchor: 'end', fill: C.gold, size: 26 });
+    h += `<line x1="${X(50000)}" y1="120" x2="${X(50000)}" y2="300" stroke="${C.buy}" stroke-width="5"/>` + T(X(50000), 108, '开仓 50,000', { anchor: 'middle', fill: C.buy, size: 30, bold: true });
+    h += `<line x1="${X(bp)}" y1="300" x2="${X(bp)}" y2="440" stroke="${C.t2}" stroke-width="4" stroke-dasharray="8 6"/>` + T(X(bp), 480, '破产 ' + fmt(bp), { anchor: L >= 50 ? 'end' : 'middle', fill: C.t2, size: 28 });
+    if (st >= 1) h += `<line x1="${X(lp)}" y1="180" x2="${X(lp)}" y2="300" stroke="${C.sell}" stroke-width="5"/>` + T(X(lp), 230, '强平 ' + fmt(lp, 2), { anchor: L >= 20 ? 'end' : 'start', fill: C.sell, size: 30, bold: true }).replace(`x="${X(lp)}"`, `x="${L >= 20 ? X(lp) - 12 : X(lp) + 12}"`);
+    if (st >= 1) {
+      h += T(X(50000) - 40, 540, `杠杆 ${L}x · 下跌 ${((1 - lp / 50000) * 100).toFixed(1)}% 即强平`, { anchor: 'end', fill: C.gold, size: 36, bold: true });
+      // leverage chips
+      [10, 20, 50, 125].forEach((l, i) => h += R(100 + i * 150, 30, 130, 56, { fill: l === L ? 'rgba(240,185,11,.2)' : C.panel, stroke: l === L ? C.gold : C.line }) + T(165 + i * 150, 68, l + 'x', { anchor: 'middle', size: 30, bold: l === L, fill: l === L ? C.gold : C.t2, plain: true }));
+    } else {
+      h += T(X(bp), 540, '破产价 = EP × (1 − 1/L) · 保证金余额 = 0', { anchor: 'start', fill: C.text, size: 32, bold: true }).replace(`x="${X(bp)}"`, 'x="100"');
+    }
+    svgEl(svg, h);
+  }
+
+  function flowStep(el, st) {
+    const svg = el.querySelector('#lflow');
+    const nodes = [
+      [60, 60, '标记价格更新', '重算保证金率'], [470, 60, '保证金率 ≥ 100%？', '否 → 继续等待'], [880, 60, '撤销全部挂单', '释放冻结保证金'],
+      [1290, 60, '仍 ≥ 100%？', '否 → 回到监控'], [1290, 330, '强平引擎接管', '用户失去控制权'], [880, 330, '以破产价发 IOC', '平仓单进入市场'],
+    ];
+    const on = [[0, 1], [2], [3, 4], [5], [5]][st];
+    const done = [[], [0, 1], [0, 1, 2], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4]][st];
+    let h = '';
+    const arrow = (x1, y1, x2, y2, a) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${a ? C.gold : C.line}" stroke-width="5"/><circle cx="${x2}" cy="${y2}" r="8" fill="${a ? C.gold : C.line}"/>`;
+    h += arrow(370, 125, 465, 125, done.includes(0) || on.includes(1));
+    h += arrow(780, 125, 875, 125, on.includes(2) || done.includes(2));
+    h += arrow(1190, 125, 1285, 125, on.includes(3) || done.includes(3));
+    h += arrow(1440, 190, 1440, 325, on.includes(4) || done.includes(4));
+    h += arrow(1290, 395, 1195, 395, on.includes(5));
+    nodes.forEach(([x, y, t, s], i) => {
+      const a = on.includes(i), d = done.includes(i);
+      h += R(x, y, 310, 130, { fill: a ? 'rgba(240,185,11,.16)' : C.panel, stroke: a ? C.gold : d ? '#5a5f6a' : C.line });
+      h += T(x + 155, y + 58, t, { anchor: 'middle', size: 32, bold: true, fill: a || d ? C.text : C.t2 });
+      h += T(x + 155, y + 100, s, { anchor: 'middle', size: 24, fill: C.t2 });
+    });
+    if (st >= 3) h += T(60, 400, '价格 = 破产价', { size: 34, bold: true, fill: C.gold }) + T(60, 446, '不是强平价', { size: 34, bold: true, fill: C.sell });
+    if (st === 4) h += R(60, 500, 1540, 80, { fill: 'rgba(91,156,255,.12)', stroke: C.info }) + T(830, 552, '大仓位：可能先部分强平，逐步降低层级 · 以官网为准', { anchor: 'middle', size: 30, fill: C.info, plain: true });
+    svgEl(svg, h);
+  }
+
+  function insStep(el, st) {
+    const svg = el.querySelector('#ins');
+    const X = p => 120 + (p - 44600) / 700 * 900;
+    let h = '';
+    h += `<line x1="${X(44600)}" y1="360" x2="${X(45300)}" y2="360" stroke="${C.t2}" stroke-width="4"/>`;
+    for (let p = 44600; p <= 45300; p += 100) h += `<line x1="${X(p)}" y1="350" x2="${X(p)}" y2="370" stroke="${C.t2}" stroke-width="3"/>` + T(X(p), 404, fmt(p), { anchor: 'middle', fill: C.t2, size: 24 });
+    h += `<line x1="${X(45000)}" y1="140" x2="${X(45000)}" y2="360" stroke="${C.text}" stroke-width="5"/>` + T(X(45000), 128, '破产价 45,000', { anchor: 'middle', size: 30, bold: true });
+    h += `<line x1="${X(45180.72)}" y1="200" x2="${X(45180.72)}" y2="360" stroke="${C.sell}" stroke-width="3" stroke-dasharray="8 6"/>` + T(X(45180.72) + 10, 196, '强平价', { fill: C.sell, size: 26 });
+    const fill = [45100, 45100, 44800, null][st];
+    if (fill) {
+      const good = fill > 45000;
+      h += `<circle cx="${X(fill)}" cy="300" r="22" fill="${good ? C.buy : C.sell}"/>` + T(X(fill), 260, '成交 ' + fmt(fill), { anchor: 'middle', fill: good ? C.buy : C.sell, size: 30, bold: true });
+      h += `<line x1="${X(45000)}" y1="330" x2="${X(fill)}" y2="330" stroke="${good ? C.buy : C.sell}" stroke-width="8"/>`;
+      h += T((X(45000) + X(fill)) / 2, 450, good ? '盈余 +100 × Q' : '穿仓 −200 × Q', { anchor: 'middle', fill: good ? C.buy : C.sell, size: 32, bold: true });
+    } else {
+      h += T(X(44950), 270, '无法成交 / 基金不足', { anchor: 'middle', fill: C.sell, size: 34, bold: true });
+    }
+    // fund tank
+    const bal = [1000, 1100, 900, 0][st];
+    const fx = 1200, fy = 100, fh = 380;
+    h += T(fx + 160, fy - 20, '保险基金 · 示例余额', { anchor: 'middle', size: 28, fill: C.t2 });
+    h += R(fx, fy, 320, fh, { rx: 18 });
+    const lh = bal / 1200 * (fh - 20);
+    h += `<rect x="${fx + 10}" y="${fy + fh - 10 - lh}" width="300" height="${lh}" rx="10" fill="${C.info}" opacity=".7"/>`;
+    h += T(fx + 160, fy + fh - 30 - lh, st === 3 ? '不足' : fmt(bal) + ' × Q', { anchor: 'middle', size: 40, bold: true, fill: st === 3 ? C.sell : C.text });
+    if (st === 1) h += T(fx + 160, fy + fh + 60, '+100 注入', { anchor: 'middle', size: 32, bold: true, fill: C.buy });
+    if (st === 2) h += T(fx + 160, fy + fh + 60, '−200 补亏', { anchor: 'middle', size: 32, bold: true, fill: C.sell });
+    if (st === 3) h += R(120, 490, 900, 90, { fill: 'rgba(246,70,93,.14)', stroke: C.sell }) + T(570, 548, '最后防线 → 自动减仓 ADL', { anchor: 'middle', size: 36, bold: true, fill: C.sell, plain: true });
+    svgEl(svg, h);
+  }
+
+  function adlStep(el, st) {
+    const rows = [...el.querySelectorAll('#adl .r[data-k]')];
+    const orderInit = [0, 1, 2, 3], orderSorted = [0, 2, 1, 3]; // 甲 丙 乙 丁
+    const lights = [5, 2, 4, 1];
+    rows.forEach(r => {
+      const k = +r.dataset.k;
+      const pos = st >= 2 ? orderSorted.indexOf(k) : orderInit.indexOf(k);
+      r.style.top = (60 + pos * 92) + 'px';
+      r.style.opacity = st === 0 ? .35 : 1;
+      r.classList.toggle('top', st >= 3 && k === 0);
+      const n = st >= 3 ? lights[k] : 0;
+      r.querySelector('.lights').innerHTML = [0, 1, 2, 3, 4].map(i => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
+      r.children[3].style.color = st >= 2 ? C.gold : '';
+    });
+    el.querySelector('#adl-f').style.borderColor = st === 1 ? C.gold : '';
+  }
+
+  function coinStep(el, st) {
+    const svg = el.querySelector('#coin');
+    let h = '';
+    if (st <= 2) {
+      const panel = (x, title, sub, col, act) => R(x, 20, 760, 540, { fill: act ? 'rgba(255,255,255,.03)' : C.panel, stroke: act ? col : C.line }) + T(x + 30, 80, title, { size: 38, bold: true, fill: col }) + T(x + 30, 124, sub, { size: 26, fill: C.t2 });
+      h += panel(20, 'U 本位 · USDⓈ-M', 'BTCUSDT 永续 · 保证金 USDT', C.buy, st === 0);
+      h += panel(860, '币本位 · COIN-M', 'BTCUSD 永续 · 保证金 BTC', C.warn, st >= 1);
+      h += T(50, 200, '盈亏用 USDT 计算 · 线性', { size: 30 });
+      h += T(890, 200, '每张面值固定 · 例如 100 USD', { size: 30, fill: st >= 1 ? C.text : C.t2 });
+      h += T(890, 246, '盈亏用 BTC 计算 · 非线性', { size: 30, fill: st >= 1 ? C.text : C.t2 });
+      // BTC drop illustration
+      const drop = st === 2;
+      h += T(50, 320, drop ? 'BTC 下跌 ↓' : '保证金', { size: 30, fill: drop ? C.sell : C.t2, bold: drop });
+      h += R(50, 340, 300, 70, { fill: 'rgba(46,189,133,.2)', stroke: C.buy }) + T(200, 386, 'USDT 保证金', { anchor: 'middle', size: 28, plain: true });
+      h += T(370, 386, drop ? '价值不变' : '', { size: 28, fill: C.buy });
+      h += R(50, 430, 300, 70, { fill: drop ? 'rgba(246,70,93,.2)' : C.panel, stroke: drop ? C.sell : C.line }) + T(200, 476, '多单仓位', { anchor: 'middle', size: 28, plain: true });
+      h += T(370, 476, drop ? '亏损' : '', { size: 28, fill: C.sell });
+      h += T(890, 320, drop ? 'BTC 下跌 ↓' : '保证金', { size: 30, fill: drop ? C.sell : C.t2, bold: drop });
+      h += R(890, 340, 300, 70, { fill: drop ? 'rgba(246,70,93,.2)' : 'rgba(240,163,64,.2)', stroke: drop ? C.sell : C.warn }) + T(1040, 386, 'BTC 保证金', { anchor: 'middle', size: 28, plain: true });
+      h += T(1210, 386, drop ? '本身贬值' : '', { size: 28, fill: C.sell, bold: true });
+      h += R(890, 430, 300, 70, { fill: drop ? 'rgba(246,70,93,.2)' : C.panel, stroke: drop ? C.sell : C.line }) + T(1040, 476, '多单仓位', { anchor: 'middle', size: 28, plain: true });
+      h += T(1210, 476, drop ? '亏损' : '', { size: 28, fill: C.sell, bold: true });
+      if (drop) h += T(1210, 540, '双重敞口', { size: 36, fill: C.sell, bold: true });
+    } else {
+      h += T(820, 50, '组合保证金：按整个组合的风险算保证金', { anchor: 'middle', size: 34, bold: true, fill: C.gold });
+      const Y0 = 300;
+      h += `<line x1="120" y1="${Y0}" x2="1520" y2="${Y0}" stroke="${C.t2}" stroke-width="3"/>`;
+      h += R(160, Y0 - 160, 300, 160, { fill: 'rgba(46,189,133,.25)', stroke: C.buy, rx: 8 }) + T(310, Y0 - 70, '现货多 1 BTC', { anchor: 'middle', size: 30, bold: true, plain: true });
+      h += R(520, Y0, 300, 160, { fill: 'rgba(246,70,93,.25)', stroke: C.sell, rx: 8 }) + T(670, Y0 + 90, '合约空 1 BTC', { anchor: 'middle', size: 30, bold: true, plain: true });
+      h += T(880, Y0 + 12, '=', { size: 60, bold: true });
+      h += R(950, Y0 - 12, 300, 24, { fill: C.gold, stroke: C.gold, rx: 6 }) + T(1100, Y0 - 30, '净价格风险 ≈ 0', { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+      if (st === 4) {
+        h += R(120, 480, 1400, 100, { fill: 'rgba(91,156,255,.12)', stroke: C.info });
+        h += T(820, 542, '情景压力测试：价格 ±15% · 波动率变化 → 取最差结果', { anchor: 'middle', size: 32, fill: C.info, plain: true });
+      } else {
+        h += T(820, 540, '所需保证金 ≪ 分开计算之和', { anchor: 'middle', size: 34, fill: C.text });
+      }
+    }
+    svgEl(svg, h);
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

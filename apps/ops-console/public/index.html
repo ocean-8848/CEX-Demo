@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b0e13" />
+    <title>Web3 CEX Ops</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/base.css" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script>
+      // Apply the saved theme before first paint to avoid a flash.
+      try {
+        if (localStorage.getItem("ops-console:theme") === "light") document.documentElement.dataset.theme = "light";
+      } catch (error) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Ops Console 需要启用 JavaScript。</noscript>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P08 策略交易与跟单</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .layers { position: relative; height: 600px; }
+  .layers > .layer { position: absolute; left: 0; right: 0; top: 0; }
+  .calc { display: flex; flex-direction: column; gap: 10px; }
+  .calc .ln { font-family: var(--mono); font-size: 27px; padding: 10px 18px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); line-height: 1.5; }
+  .calc .ln.cur { border-color: var(--gold); background: var(--gold-soft); }
+  .calc .ln.red { border-color: var(--sell); background: var(--sell-soft); }
+  .params .card { padding: 14px 24px; font-size: 30px; display: flex; justify-content: space-between; }
+  .params .card .v { font-family: var(--mono); color: var(--gold); }
+  table.t.tier td, table.t.tier th { padding: 10px 18px; }
+  table.t.tier tr.cur td { background: var(--gold-soft); }
+  .mini .card { padding: 18px 24px; font-size: 28px; }
+  .mini .card h3 { font-size: 32px; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="P08" data-title="策略交易与跟单：网格、定投与带单分润">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 产品深潜 · P08</div>
+    <h1>谁在<span class="hl">替你下单</span></h1>
+    <div class="row" style="max-width:1640px" data-step="0">
+      <div class="card col"><div class="stat"><div class="k">网格策略 · 运行中 · 示例</div><div class="v">数十笔 / 天</div></div><span class="muted">你只提交了一次参数</span></div>
+      <div class="card col gold" data-step="1"><div class="stat"><div class="k">撮合引擎看到的</div><div class="v hl">普通订单</div></div><span class="muted">不知道来自人还是策略</span></div>
+    </div>
+    <div class="flow" data-step="1">
+      <div class="node">策略参数</div><div class="arrow"></div>
+      <div class="node gold">策略引擎<small>翻译成订单</small></div><div class="arrow"></div>
+      <div class="node">一串普通订单</div><div class="arrow"></div>
+      <div class="node info">撮合引擎</div>
+    </div>
+    <div class="card warn" data-step="2" style="max-width:1640px">本集内容不构成投资建议 · 策略工具不保证盈利 · 合约网格和合约跟单使用杠杆，可能损失全部保证金</div>
+    <ol class="say">
+      <li>你设好一个网格策略，然后去睡觉。举个示例，醒来一看，账户里多了几十笔成交。</li>
+      <li>是谁在替你交易？是策略引擎。你只提交一次参数，它把参数翻译成一串普通订单，送进撮合引擎。撮合引擎并不知道，订单来自人还是策略。</li>
+      <li>先说明，本集内容不构成投资建议。策略工具不保证盈利。合约网格和合约跟单使用杠杆，可能损失全部保证金。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>本集路线图</h2>
+    <div class="grid3">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>网格交易<br><span class="muted">画线 · 每格利润 · 失效</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>定投<br><span class="muted">平均成本</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">3</span><div>TWAP<br><span class="muted">母单拆子单</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">4</span><div>跟单交易<br><span class="muted">滑点 · 高水位线分成</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">5</span><div>策略引擎架构<br><span class="muted">触发 · 风控 · 限频</span></div></div>
+      <div class="card gold" data-step="1" style="font-size:30px;line-height:1.6">每个产品看五件事<br><span class="muted">看到什么 · 钱怎么流 · 状态 · 怎么赚钱 · 风险</span></div>
+    </div>
+    <ol class="say">
+      <li>本集分五段。网格交易，定投，TWAP 算法单，跟单交易，最后是策略引擎的系统架构。</li>
+      <li>每个产品都看同样几件事。用户看到什么，钱怎么流，状态怎么变，平台怎么赚钱，风险在哪里。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="网格：怎样画线" data-onstep="linesStep">
+    <div class="kicker">Grid Trading · 现货网格 / 合约网格</div>
+    <h2>五个参数，画出 N + 1 条线</h2>
+    <div class="row">
+      <div class="col params" style="flex:0 0 560px">
+        <div class="card" data-step="0"><span>价格下限 L</span><span class="v">80</span></div>
+        <div class="card" data-step="0"><span>价格上限 U</span><span class="v">120</span></div>
+        <div class="card" data-step="0"><span>网格数 N</span><span class="v">10</span></div>
+        <div class="card" data-step="0"><span>类型</span><span class="v">等差 / 等比</span></div>
+        <div class="card" data-step="0"><span>投入资金</span><span class="v">1,000 USDT</span></div>
+        <div class="card info" data-step="0" style="font-size:26px">合约网格另选：方向 · 杠杆 · 示例参数</div>
+      </div>
+      <svg id="lines" width="1050" height="600" viewBox="0 0 1050 600"></svg>
+    </div>
+    <ol class="say">
+      <li>先看网格。用户填五个参数，下限、上限、网格数、类型和投入资金。根据币安公开资料，有现货网格和合约网格。合约网格还能选方向和杠杆。</li>
+      <li>网格数是 N，就画 N 加1条线。等差网格，相邻两线的价格差固定。示例区间80到120，N 等于10，间距是4 USDT。</li>
+      <li>等比网格，相邻两线的价格比固定。比值是1.5开10次方，约等于1.04138。所以线在低处密，在高处疏。</li>
+      <li>两种画法，决定了每一格能赚多少。下面我们来算。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="网格：每格利润" data-onstep="profitStep">
+    <div class="kicker">Per-Grid Profit · f = 单边手续费率</div>
+    <h2>每一格往返一次，赚多少</h2>
+    <div class="formula" style="font-size:30px;padding:18px 30px">每格资金 B = 投入 ÷ N　·　数量 qᵢ = B ÷ Pᵢ<br>利润 = qᵢ × (Pᵢ₊₁ − Pᵢ) − f × qᵢ × (Pᵢ + Pᵢ₊₁)</div>
+    <svg id="profit" width="1640" height="440" viewBox="0 0 1640 440"></svg>
+    <ol class="say">
+      <li>每格资金 B，等于投入资金除以 N。每一格买入的数量，是 B 除以这一格的下沿价格。一次买卖往返，赚上下两线的差价，再减去两次手续费。</li>
+      <li>示例，投入1000 USDT，手续费率0.1%。等差网格最低一格，80到84。数量是100除以80，等于1.25。利润约4.795 USDT，也就是4.80%。</li>
+      <li>最高一格，116到120。数量约0.8621，利润约3.245 USDT，只有3.24%。等差网格低价区利润率高，高价区低。</li>
+      <li>等比网格每格利润率相同，约3.934%，适合宽区间。注意，网格太密时，每格利润率会小于0。示例，等差200格时，最高一格约负0.03%，每成交一次都亏钱。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="网格：价格来回，逐格成交" data-onstep="runStep">
+    <div class="kicker">Grid Running · 等差 80–120 · 示例</div>
+    <h2 id="run-h">一格成交 → 相邻线反向补挂一单</h2>
+    <svg id="run" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>现在让网格跑起来，示例起始价100。创建时，系统先市价买入底仓，因为上方每一格都需要一份币等着卖出。然后下方挂买单，上方挂卖单。</li>
+      <li>价格跌到96，96的买单成交。网格的核心动作只有一个，一格成交，就在相邻线反向补挂一单。于是在100挂出卖单。</li>
+      <li>价格继续跌到92，92的买单成交，在96补挂卖单。</li>
+      <li>价格反弹到96，刚才的卖单成交。92到96这一格完成一次往返。数量是100除以92，利润约4.14 USDT。</li>
+      <li>价格再回到100，96到100这一格也完成往返，利润约3.96。两格累计约8.11 USDT。价格来回穿越越多，往返越多。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="网格：状态机与调用链" data-onstep="gsmStep">
+    <div class="kicker">State Machine · Call Chain · strategy-engine 为示例服务名</div>
+    <h2 id="gsm-h">网格的状态机</h2>
+    <svg id="gsm" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>网格的状态机很简单。初始化时买底仓、挂单，然后进入运行。运行中每一格成交，就补挂一张反向单。</li>
+      <li>价格高于上限，币全部卖光，只剩 USDT，不再享受上涨。价格低于下限，全部买满，只剩币，承担全部下跌。这两个状态就是网格失效。除非开启移动网格选项，网格不会自动移动区间。</li>
+      <li>再看调用链。策略引擎批量下限价单，每单走正常风控，挂进订单簿。触发靠的是预埋限价单，价格到了，撮合引擎直接成交，策略引擎不用盯价。</li>
+      <li>策略引擎只在成交之后动作。它从 Kafka 成交流消费事件，补挂反向单。clientOrderId 由策略 ID、格号和轮次组成。重复消费同一事件时，订单服务据此去重。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="网格：收益拆解与单边下跌" data-onstep="dropStep">
+    <div class="kicker">Grid PnL · Failure Case · 示例</div>
+    <h2 id="drop-h">总收益 = 网格利润 + 浮动盈亏</h2>
+    <svg id="drop" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>用户的总收益分两部分。网格利润来自波动，是已完成往返的累计。浮动盈亏来自趋势，是持仓市值减去成本。</li>
+      <li>看一个失败示例。起始价100，价格单边跌到60，网格全部买满。用户持有约10.35个币，市值约621 USDT，现金约35 USDT。</li>
+      <li>不计途中的网格利润，总亏损约344 USDT。单边下跌时，浮动亏损可以远大于网格利润。另一种失败是网格过密，成交很多，网格利润却是负的。</li>
+      <li>平台怎么赚钱？每次成交都收手续费，策略工具本身通常不另收费。平台的风险是，大量网格挂在同一价位，形成假深度。行情突破时被集中吃掉，深度瞬间变薄。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="定投：平均成本" data-onstep="dcaStep">
+    <div class="kicker">DCA · Convert Recurring</div>
+    <h2 id="dca-h">定投：固定金额，定期买入</h2>
+    <svg id="dca" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>第二个产品是定投，每隔固定时间，用固定金额买入同一资产。根据公开报道，币安的定投从2025年起，迁移到闪兑的定期买入。周期从每小时到每月可选。</li>
+      <li>示例，三期各投100 USDT，价格分别是10、5、10。分别买到10个、20个、10个，一共40个。</li>
+      <li>平均成本是300除以40，等于7.5，低于三次价格的算术平均8.33。价格越低，买得越多。但定投不消除下跌风险，它只平滑买入时点。</li>
+      <li>系统侧有两个要点。失败的一期不补执行，否则用户会在不知情时买入两倍金额。同一时刻触发的大量定投单，要在时间窗里打散执行，否则小币种盘口会被打穿。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="TWAP：母单拆子单" data-onstep="twapStep">
+    <div class="kicker">TWAP · Algo Order</div>
+    <h2 id="twap-h">TWAP：把大单在时间上摊开</h2>
+    <svg id="twap" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>第三个产品，TWAP 算法单，也就是时间加权平均价格。它把一笔大单，在指定时间里均匀拆成很多小单。根据公开资料，币安向部分用户提供这类算法单。</li>
+      <li>示例，买100个 BTC，2小时完成。每30秒一片，一共240片，每片约0.4167个。母单冻结全部资金，子单成交后逐步消耗。</li>
+      <li>一次性市价买入，可能吃掉多档深度，示例滑点0.5%。拆单之后，每一片的冲击接近0。子单量还会加随机扰动，避免别人识别出固定节奏。</li>
+      <li>母单状态由子单汇总得出，价格超出限价就暂停。一个风险是行情服务延迟，策略引擎按旧价格下单。防线是，行情时间戳过期就暂停发单。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="跟单：分成规则与仓位映射" data-onstep="tierStep">
+    <div class="kicker">Copy Trading · 截至 2026 年币安官方 FAQ</div>
+    <h2 id="tier-h">带单员与跟随者</h2>
+    <div class="layers">
+      <div class="layer row" data-step="0" data-until="0">
+        <div class="card col gold"><h3>带单员 Lead Trader</h3>公开仓位和业绩<br>只能触发下单，不能动用跟随者资金</div>
+        <div class="card col info"><h3>跟随者 Copy Trader</h3>选择带单员，投入跟单资金<br>资金始终在自己的子账户</div>
+      </div>
+      <div class="layer" data-step="1" data-until="2">
+        <table class="t tier" id="tier-t">
+          <tr><th>带单员等级</th><th>保证金余额门槛 · 之一</th><th>可设分成比例</th></tr>
+          <tr><td>Regular</td><td class="num">≥ 500 USDT</td><td class="num">0% – 10%</td></tr>
+          <tr><td>Cadet</td><td class="num">≥ 1,000 USDT</td><td class="num">0% – 15%</td></tr>
+          <tr><td>Champion</td><td class="num">≥ 5,000 USDT</td><td class="num">0% – 20%</td></tr>
+          <tr><td>Master</td><td class="num">≥ 10,000 USDT</td><td class="num">0% – 30%</td></tr>
+          <tr><td>Legend</td><td class="num">≥ 20,000 USDT</td><td class="num">0% – 30%</td></tr>
+        </table>
+        <div class="card" id="tier-note" style="margin-top:22px;font-size:29px;padding:16px 26px"></div>
+      </div>
+      <div class="layer" data-step="3"><svg id="map" width="1640" height="600" viewBox="0 0 1640 600"></svg></div>
+    </div>
+    <ol class="say">
+      <li>第四个产品，跟单交易。带单员公开仓位和业绩，跟随者投入资金，自动复制操作。公开报道显示，币安2023年推出合约跟单，2024年推出现货跟单。</li>
+      <li>上线时报道的分成是固定10%。根据币安官方 FAQ，合约跟单已改为按等级设上限，带单员自选比例。Regular 等级是0到10%，Master 和 Legend 是0到30%。</li>
+      <li>比例每周最多调整2次，等级至少保持7天才会再升降。带单员还能拿到跟随者手续费的10%作为佣金，每周有上限。</li>
+      <li>仓位怎么映射？按比例模式，带单员1万 USDT 里开2000，跟随者有1000，就开200。固定金额模式，带单员每开一单，跟随者固定开50 USDT，这是示例。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="跟单：调用链与滑点" data-onstep="copyStep">
+    <div class="kicker">Copy Trading · Call Chain · 示例</div>
+    <h2 id="copy-h">跟随者一定晚于带单员</h2>
+    <svg id="copy" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>看调用链。带单员下单，撮合成交，成交事件写进 Kafka。跟单服务消费事件，为每个跟随者计算子订单。</li>
+      <li>子订单分批经过风控，检查保证金和杠杆上限，再进入撮合。所以跟随者的订单，一定晚于带单员。</li>
+      <li>示例，500个跟随者的子订单，集中进入同一方向，把价格推高。带单员成交在100.00，跟随者成交在100.03到100.12之间。</li>
+      <li>跟随者平均成交100.06。100万 USDT 跟单资金，单向成本就是600 USDT。所以平台会限制跟单资金。资金太大，子订单本身就会推动价格，策略不再可复制。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="跟单：高水位线分成" data-onstep="hwmStep">
+    <div class="kicker">Profit Sharing · High-Water Mark · 官方 FAQ</div>
+    <h2 id="hwm-h">每周结算：总盈亏 × 比例 − 已分成</h2>
+    <div class="formula" style="font-size:29px;padding:16px 28px">本期分成 = max[ (已实现 + 未实现盈亏) × 分成比例 − 已分成金额 , 0 ]</div>
+    <svg id="hwm" width="1640" height="460" viewBox="0 0 1640 460"></svg>
+    <ol class="say">
+      <li>分成怎么结算？根据官方 FAQ，每周一零点 UTC，系统对每个跟单组合的总盈亏拍快照。总盈亏是已实现加未实现。2024年9月23日起，基础从已实现盈亏改成了总盈亏。</li>
+      <li>公式是总盈亏乘以分成比例，减去已分成金额，最小为0。示例，比例10%，第一周总盈亏涨到200，分成20。跟随者净得180，未计手续费。</li>
+      <li>第二周总盈亏回落到150。150乘以10%是15，减去已分的20，小于0，本周不分成。这就是高水位线，亏损之后必须先赚回来。</li>
+      <li>再补一个示例，第三周涨到300。300乘以10%是30，减去已分的20，本周分成10。</li>
+      <li>跟单的风险也要看清。带单员可以用小资金高杠杆，赌出漂亮的收益率。排行榜只显示活下来的人，这是幸存者偏差。带单员一次爆仓，所有跟随者会同时被强平。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="策略引擎的系统架构" data-onstep="archStep">
+    <div class="kicker">Strategy Engine Architecture · 业界通用做法</div>
+    <h2>策略引擎：撮合引擎的客户端</h2>
+    <svg id="arch" width="1640" height="610" viewBox="0 0 1640 610"></svg>
+    <ol class="say">
+      <li>最后看系统架构。策略引擎有三种输入，行情、成交流和定时调度。触发器据此判断，价格到了，成交回报到了，或者时间到了。</li>
+      <li>触发后读取策略状态，再过策略风控，比如单策略资金上限和止损。然后过限频。限频有两层，单策略限频防刷单，全局令牌桶防止挤占人工下单。</li>
+      <li>关键是，策略引擎在撮合引擎之外。它和普通 API 用户走同一条下单路径。把策略逻辑放进撮合引擎，会破坏确定性和吞吐。</li>
+      <li>还有三个业界做法。确定性生成 clientOrderId，防止重复下单。价格穿越大量触发点时，按优先级分批下单。引擎重启后，与订单服务对账，补发或撤销。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与下集预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">策略交易 = 平台替你挂单撤单：策略引擎在撮合之外，走<span class="hl">普通下单路径</span>。</li>
+      <li data-step="1">网格利润来自<span class="hl">波动</span>，浮动盈亏来自<span class="hl">趋势</span>；单边行情网格失效。</li>
+      <li data-step="2">跟单有<span class="hl">滑点</span>；分成按总盈亏 + <span class="hl">高水位线</span>每周结算。</li>
+    </ul>
+    <div class="grid3" data-step="0">
+      <div class="card stat"><div class="k">等比每格利润率 · 示例</div><div class="v hl" style="font-size:50px">3.934%</div></div>
+      <div class="card stat"><div class="k">跌到 60 的亏损 · 示例</div><div class="v" style="font-size:50px">≈ 344</div></div>
+      <div class="card stat"><div class="k">分成比例上限</div><div class="v" style="font-size:50px">0–30%</div></div>
+    </div>
+    <div class="card gold" data-step="3" style="font-size:34px">下集 P09 · 支付与卡：Binance Pay、礼品卡与加密借记卡</div>
+    <ol class="say">
+      <li>小结一下。第一，策略交易是平台替你挂单撤单。策略引擎在撮合引擎之外，走普通下单路径。</li>
+      <li>第二，网格利润来自波动，浮动盈亏来自趋势。单边行情里，网格会失效。</li>
+      <li>第三，跟单一定晚于带单员，会有滑点。分成按总盈亏和高水位线每周结算，亏损之后要先赚回来。</li>
+      <li>下一集，我们看钱怎样走出交易所。Binance Pay、礼品卡和加密借记卡，我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10', dim: '#5a5f6a' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const fmt = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 28}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.mono ? ' font-family="JetBrains Mono, SF Mono, Menlo, monospace"' : ''}${o.op != null ? ` opacity="${o.op}"` : ''}${o.plain ? '' : ` stroke="${C.bg}" stroke-width="7" paint-order="stroke"`}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op != null ? ` opacity="${o.op}"` : ''}/>`;
+  const Ln = (x1, y1, x2, y2, o = {}) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${o.c || C.t2}" stroke-width="${o.w || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op != null ? ` opacity="${o.op}"` : ''}/>`;
+  function A(x1, y1, x2, y2, o = {}) {
+    const c = o.c || C.t2, w = o.w || 4, a = Math.atan2(y2 - y1, x2 - x1), hl = 18, hw = 10;
+    const bx = x2 - Math.cos(a) * hl, by = y2 - Math.sin(a) * hl;
+    const p1 = [bx + Math.sin(a) * hw, by - Math.cos(a) * hw], p2 = [bx - Math.sin(a) * hw, by + Math.cos(a) * hw];
+    return `<g${o.op != null ? ` opacity="${o.op}"` : ''}><line x1="${x1}" y1="${y1}" x2="${bx}" y2="${by}" stroke="${c}" stroke-width="${w}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/><polygon points="${x2},${y2} ${p1} ${p2}" fill="${c}"/></g>`;
+  }
+  const Box = (x, y, w, h, t, s, o = {}) => R(x, y, w, h, o) + T(x + w / 2, y + (s ? h / 2 - 4 : h / 2 + 11), t, { anchor: 'middle', size: o.size || 30, bold: true, fill: o.tc || C.text, plain: true, op: o.op }) + (s ? T(x + w / 2, y + h / 2 + 30, s, { anchor: 'middle', size: o.ss || 22, fill: C.t2, plain: true, op: o.op }) : '');
+  const F = 0.001;
+  const gridRate = (a, b) => (b / a - 1) - F * (1 + b / a);
+
+  // 3. grid lines
+  function linesStep(el, st) {
+    let h = '';
+    const Y = p => 50 + (120 - p) / 40 * 480;
+    const lad = (x, title, prices, on, col, sub) => {
+      let s = T(x + 170, 30, title, { anchor: 'middle', size: 32, bold: true, fill: on ? col : C.t2 });
+      prices.forEach((p, i) => {
+        s += Ln(x, Y(p), x + 340, Y(p), { c: on ? col : C.line, w: on ? 3 : 2, op: on ? 1 : .5 });
+        if (on) s += T(x - 12, Y(p) + 9, p.toFixed(i === 0 || i === 10 ? 0 : (Number.isInteger(p) ? 0 : 2)), { anchor: 'end', size: 22, fill: C.t2, mono: true });
+      });
+      if (on) s += T(x + 170, 572, sub, { anchor: 'middle', size: 26, fill: col, bold: true });
+      return s;
+    };
+    const ar = Array.from({ length: 11 }, (_, i) => 80 + 4 * i);
+    const r = Math.pow(1.5, 0.1), ge = Array.from({ length: 11 }, (_, i) => 80 * Math.pow(r, i));
+    h += lad(110, '等差 Arithmetic', ar, st >= 1, C.gold, '价格差固定 d = 4');
+    h += lad(620, '等比 Geometric', ge, st >= 2, C.info, '价格比固定 r ≈ 1.04138');
+    if (st === 0) h += T(525, 300, 'N 格 = N + 1 条线', { anchor: 'middle', size: 40, bold: true, fill: C.t2 });
+    if (st === 3) h += R(110, 250, 850, 100, { fill: 'rgba(240,185,11,.12)', stroke: C.gold }) + T(535, 312, '画法决定每格利润 → 下一页', { anchor: 'middle', size: 34, bold: true, fill: C.gold, plain: true });
+    svgEl(el.querySelector('#lines'), h);
+  }
+
+  // 4. per-grid profit bars
+  function profitStep(el, st) {
+    let h = '';
+    const ar = Array.from({ length: 11 }, (_, i) => 80 + 4 * i);
+    const rates = ar.slice(0, 10).map((p, i) => gridRate(p, ar[i + 1]));
+    const g = gridRate(1, Math.pow(1.5, 0.1));
+    const base = 380, sc = 6000, x0 = 140, bw = 112;
+    h += Ln(x0 - 10, base, x0 + 10 * bw + 10, base, { c: C.t2 });
+    [0, 0.01, 0.02, 0.03, 0.04, 0.05].forEach(v => h += Ln(x0 - 10, base - v * sc, x0 + 10 * bw + 10, base - v * sc, { c: C.line, w: 1 }) + T(x0 - 20, base - v * sc + 8, (v * 100) + '%', { anchor: 'end', size: 22, fill: C.t2 }));
+    rates.forEach((rt, i) => {
+      const x = x0 + i * bw + 14, on = st >= 2 || (st === 1 && i === 0);
+      const cur = (st === 1 && i === 0) || (st === 2 && (i === 9 || i === 0));
+      if (st >= 1) h += `<rect x="${x}" y="${base - rt * sc}" width="${st === 3 ? 44 : 92}" height="${rt * sc}" rx="4" fill="${C.gold}" opacity="${cur ? 1 : on ? .55 : .15}"/>`;
+      if (st === 3) h += `<rect x="${x + 48}" y="${base - g * sc}" width="44" height="${g * sc}" rx="4" fill="${C.info}"/>`;
+      h += T(x + 46, base + 32, ar[i] + '→' + ar[i + 1], { anchor: 'middle', size: 20, fill: C.t2, mono: true });
+    });
+    if (st >= 1) h += T(x0 + 60, base - rates[0] * sc - 16, '4.80%', { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+    if (st >= 2) h += T(x0 + 9 * bw + 60, base - Math.max(rates[9], st === 3 ? g : 0) * sc - 16, '3.24%', { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+    if (st === 0) h += T(740, 220, '第 i 格利润率 = (Pᵢ₊₁ ÷ Pᵢ − 1) − f × (1 + Pᵢ₊₁ ÷ Pᵢ)', { anchor: 'middle', size: 32, fill: C.text, bold: true });
+    const side = [['示例', '投入 1,000 · N = 10', 'f = 0.1%', '买、卖各付一次'], ['最低一格 80 → 84', 'q = 1.25', '利润 ≈ 4.795', '≈ 4.80%'], ['最高一格 116 → 120', 'q ≈ 0.8621', '利润 ≈ 3.245', '≈ 3.24%'], ['等比每格 ≈ 3.934%', '示例：等差 200 格', '最高一格 ≈ −0.03%', '每成交一次都亏']][st];
+    h += R(1300, 40, 330, 270, { fill: C.panel, stroke: st === 3 ? C.info : C.gold });
+    side.forEach((s, k) => h += T(1324, 96 + k * 58, s, { size: k ? 28 : 30, bold: !k, plain: true, fill: k === 0 ? (st === 3 ? C.info : C.gold) : (st === 3 && k >= 2 ? C.sell : C.text) }));
+    if (st === 3) h += `<rect x="1310" y="352" width="22" height="22" fill="${C.gold}"/>` + T(1342, 372, '等差', { size: 24, fill: C.t2 }) + `<rect x="1430" y="352" width="22" height="22" fill="${C.info}"/>` + T(1462, 372, '等比', { size: 24, fill: C.t2 });
+    svgEl(el.querySelector('#profit'), h);
+  }
+
+  // 5. running grid
+  function runStep(el, st) {
+    const S = [
+      { p: 100, buys: [80, 84, 88, 92, 96], sells: [104, 108, 112, 116, 120], hit: null, add: null, done: [] },
+      { p: 96, buys: [80, 84, 88, 92], sells: [100, 104, 108, 112, 116, 120], hit: [96, 'buy'], add: 100, done: [] },
+      { p: 92, buys: [80, 84, 88], sells: [96, 100, 104, 108, 112, 116, 120], hit: [92, 'buy'], add: 96, done: [] },
+      { p: 96, buys: [80, 84, 88, 92], sells: [100, 104, 108, 112, 116, 120], hit: [96, 'sell'], add: 92, done: [['92 → 96', 4.1435]] },
+      { p: 100, buys: [80, 84, 88, 92, 96], sells: [104, 108, 112, 116, 120], hit: [100, 'sell'], add: 96, done: [['92 → 96', 4.1435], ['96 → 100', 3.9625]] },
+    ][st];
+    const path = [100, 96, 92, 96, 100].slice(0, st + 1);
+    const Y = p => 40 + (120 - p) * 13;
+    let h = '';
+    for (let p = 80; p <= 120; p += 4) {
+      h += Ln(120, Y(p), 640, Y(p), { c: C.line, w: 2 }) + T(100, Y(p) + 8, p, { anchor: 'end', size: 24, fill: C.t2, mono: true });
+      const isB = S.buys.includes(p), isS = S.sells.includes(p);
+      const isHit = S.hit && S.hit[0] === p, isAdd = S.add === p;
+      if (isB || isS) h += R(150, Y(p) - 20, 190, 40, { fill: isB ? 'rgba(46,189,133,.18)' : 'rgba(246,70,93,.18)', stroke: isAdd ? C.gold : isB ? C.buy : C.sell, sw: isAdd ? 4 : 2, rx: 8 }) + T(245, Y(p) + 9, (isB ? '买单 ' : '卖单 ') + p + (isAdd ? ' 新' : ''), { anchor: 'middle', size: 22, fill: isAdd ? C.gold : isB ? C.buy : C.sell, plain: true, bold: isAdd });
+      if (isHit) h += R(360, Y(p) - 20, 240, 40, { fill: 'rgba(240,185,11,.2)', stroke: C.gold, rx: 8 }) + T(480, Y(p) + 9, (S.hit[1] === 'buy' ? '买单' : '卖单') + ' 成交 ✓', { anchor: 'middle', size: 24, fill: C.gold, bold: true, plain: true });
+    }
+    if (st === 0) h += R(360, Y(116) - 20, 260, 160, { fill: 'rgba(91,156,255,.1)', stroke: C.info, dash: '8 6', rx: 10 }) + T(490, Y(116) + 30, '底仓：市价买入', { anchor: 'middle', size: 24, fill: C.info, plain: true }) + T(490, Y(116) + 64, '上方每格一份币', { anchor: 'middle', size: 24, fill: C.info, plain: true });
+    h += `<polygon points="122,${Y(S.p)} 104,${Y(S.p) - 12} 104,${Y(S.p) + 12}" fill="${C.gold}"/>`.replace('122', '138').replace('104', '120').replace('104', '120');
+    // price path
+    const X = i => 760 + i * 130;
+    h += T(760, 26, '价格路径 · 示例', { size: 24, fill: C.t2 });
+    for (let p = 88; p <= 104; p += 4) h += Ln(740, Y(p), 1320, Y(p), { c: C.line, w: 1, dash: '4 6' });
+    h += `<polyline fill="none" stroke="${C.gold}" stroke-width="5" points="${path.map((p, i) => X(i) + ',' + Y(p)).join(' ')}"/>`;
+    path.forEach((p, i) => h += `<circle cx="${X(i)}" cy="${Y(p)}" r="${i === path.length - 1 ? 12 : 7}" fill="${i === path.length - 1 ? C.gold : C.t2}"/>` + T(X(i), Y(p) - 18, p, { anchor: 'middle', size: 24, fill: C.text, mono: true }));
+    // ledger
+    h += R(1350, 40, 290, 520, { fill: C.panel, stroke: C.line });
+    h += T(1495, 84, '已完成往返', { anchor: 'middle', size: 28, bold: true, plain: true });
+    S.done.forEach(([g, v], i) => h += T(1374, 140 + i * 70, g, { size: 26, fill: C.t2, plain: true, mono: true }) + T(1616, 140 + i * 70, '+' + v.toFixed(2), { anchor: 'end', size: 30, fill: C.buy, bold: true, plain: true, mono: true }));
+    if (!S.done.length) h += T(1495, 160, '暂无', { anchor: 'middle', size: 26, fill: C.t2, plain: true });
+    const tot = S.done.reduce((a, d) => a + d[1], 0);
+    h += Ln(1374, 440, 1616, 440, { c: C.line });
+    h += T(1374, 486, '网格利润', { size: 26, fill: C.t2, plain: true }) + T(1616, 536, tot.toFixed(2), { anchor: 'end', size: 48, bold: true, fill: tot ? C.gold : C.t2, plain: true, mono: true });
+    const notes = ['下方买单 · 上方卖单 · 底仓等待卖出', '96 买入 → 在 100 补挂卖单', '92 买入 → 在 96 补挂卖单', '96 卖出：q = 100 ÷ 92 ≈ 1.087', '100 卖出：q = 100 ÷ 96 ≈ 1.042'];
+    h += T(760, 520, notes[st], { size: 28, bold: true, fill: C.gold });
+    svgEl(el.querySelector('#run'), h);
+  }
+
+  // 6. grid state machine + call chain
+  function gsmStep(el, st) {
+    el.querySelector('#gsm-h').textContent = st <= 1 ? '网格的状态机：失效 = 区间外' : '调用链：预埋限价单 + 成交后补单';
+    let h = '';
+    if (st <= 1) {
+      const n = (x, y, t, s, on, col) => Box(x, y, 320, 100, t, s, { stroke: on ? col : C.line, fill: on ? (col === C.sell ? 'rgba(246,70,93,.12)' : 'rgba(240,185,11,.12)') : C.panel, op: 1, ss: 22 });
+      h += n(40, 230, '初始化', 'Initializing · 底仓 + 挂单', st === 0, C.gold);
+      h += n(560, 230, '运行中', 'Running', st === 0, C.gold);
+      h += n(1080, 40, '区间上方', 'OutOfRangeUp · 只剩 USDT', st === 1, C.sell);
+      h += n(1080, 420, '区间下方', 'OutOfRangeDown · 只剩币', st === 1, C.sell);
+      h += n(1080, 230, '已停止', 'Stopped · 止盈止损或手动', false, C.gold);
+      h += A(360, 280, 560, 280, { c: st === 0 ? C.gold : C.t2 });
+      h += `<path d="M 640 230 C 640 140, 800 140, 800 230" fill="none" stroke="${st === 0 ? C.gold : C.t2}" stroke-width="4"/>` + `<polygon points="800,232 790,212 810,212" fill="${st === 0 ? C.gold : C.t2}"/>`;
+      h += T(720, 128, '一格成交 → 反向补挂一单', { anchor: 'middle', size: 26, fill: st === 0 ? C.gold : C.t2, bold: true });
+      h += A(880, 250, 1080, 110, { c: st === 1 ? C.sell : C.t2 }) + A(1080, 140, 880, 270, { c: C.dim, dash: '6 6' });
+      h += A(880, 310, 1080, 450, { c: st === 1 ? C.sell : C.t2 }) + A(1080, 420, 880, 290, { c: C.dim, dash: '6 6' });
+      h += A(880, 280, 1080, 280, { c: C.t2 });
+      h += T(990, 200, '价格 > 上限', { anchor: 'end', size: 22, fill: st === 1 ? C.sell : C.t2 }).replace('x="990"', 'x="960"');
+      h += T(960, 400, '价格 < 下限', { anchor: 'end', size: 22, fill: st === 1 ? C.sell : C.t2 });
+      if (st === 1) h += R(40, 420, 840, 140, { fill: 'rgba(246,70,93,.08)', stroke: C.sell }) + T(70, 476, '上方：卖光，不再享受上涨', { size: 30, bold: true, fill: C.sell, plain: true }) + T(70, 526, '下方：买满，承担全部下跌 · 不自动移动区间', { size: 28, plain: true });
+      else h += T(40, 470, '虚线：价格回到区间，恢复运行', { size: 26, fill: C.t2 });
+    } else {
+      const L = [['用户', ''], ['策略引擎', 'strategy-engine'], ['订单服务', 'order-service'], ['风控', 'risk-service'], ['撮合引擎', 'matching-engine'], ['成交流', 'Kafka']];
+      const X = i => 140 + i * 272;
+      L.forEach(([c, e], i) => { h += Ln(X(i), 90, X(i), 600, { c: C.line, dash: '6 6' }) + R(X(i) - 120, 0, 240, 90, { fill: C.panel2 }) + T(X(i), 42, c, { anchor: 'middle', size: 28, bold: true, plain: true }) + (e ? T(X(i), 74, e, { anchor: 'middle', size: 18, fill: C.t2, plain: true, mono: true }) : ''); });
+      const M = [[0, 1, '创建网格：区间、N、类型、资金', 2], [1, 2, '市价买入底仓', 2], [1, 2, '批量下 N 个限价单', 2], [2, 3, '每单正常风控', 2], [2, 4, '挂入订单簿', 2],
+        [4, 5, '成交事件：P4 买单成交', 3], [5, 1, '消费成交事件', 3], [1, 2, '在 P5 挂卖单 · clientOrderId', 3]];
+      M.forEach(([a, b, t, s], i) => {
+        if (s > st) return;
+        const y = 140 + i * 52, cur = s === st, c = cur ? C.gold : C.t2;
+        h += A(X(a) + (b > a ? 8 : -8), y, X(b) + (b > a ? -8 : 8), y, { c, w: 3 });
+        h += T(Math.min(X(a), X(b)) + 16, y - 9, t, { size: 23, fill: cur ? C.gold : C.text });
+      });
+      if (st === 3) h += R(140, 520, 1360, 56, { fill: 'rgba(240,185,11,.12)', stroke: C.gold }) + T(820, 558, 'clientOrderId = 策略 ID + 格号 + 轮次 → 重复消费时去重', { anchor: 'middle', size: 28, bold: true, fill: C.gold, plain: true });
+      else h += R(140, 520, 1360, 56, { fill: 'rgba(91,156,255,.1)', stroke: C.info }) + T(820, 558, '触发 = 预埋限价单簇：价格到达，撮合直接成交，不需要盯价', { anchor: 'middle', size: 28, bold: true, fill: C.info, plain: true });
+    }
+    svgEl(el.querySelector('#gsm'), h);
+  }
+
+  // 7. drop failure
+  function dropStep(el, st) {
+    el.querySelector('#drop-h').textContent = ['总收益 = 网格利润 + 浮动盈亏', '单边跌到 60：网格全部买满', '浮动亏损远大于网格利润', '平台：手续费收入与假深度'][st];
+    let h = '';
+    if (st === 0) {
+      h += Box(60, 60, 460, 160, '总收益', '', { stroke: C.gold, size: 44 });
+      h += T(570, 160, '=', { size: 60, bold: true });
+      h += Box(640, 60, 420, 160, '网格利润', 'Σ 已完成往返 · 来自波动', { stroke: C.buy, size: 40, ss: 24 });
+      h += T(1100, 160, '+', { size: 60, bold: true });
+      h += Box(1170, 60, 420, 160, '浮动盈亏', '持仓市值 − 成本 · 来自趋势', { stroke: C.info, size: 40, ss: 24 });
+      const sx = 120, sY = p => 300 + (130 - p) * 4.5;
+      let zz = []; for (let i = 0; i <= 40; i++) zz.push((640 + i * 22) + ',' + (300 + 120 + Math.sin(i * 0.9) * 70));
+      h += T(640, 330, '震荡：往返多 → 网格利润多', { size: 28, fill: C.buy, bold: true });
+      h += `<polyline fill="none" stroke="${C.buy}" stroke-width="5" points="${zz.join(' ')}"/>`;
+      h += T(60, 330, '单边：往返少 → 浮动盈亏主导', { size: 28, fill: C.sell, bold: true });
+      h += `<polyline fill="none" stroke="${C.sell}" stroke-width="5" points="70,370 200,420 330,470 460,540 560,580"/>`;
+      svgEl(el.querySelector('#drop'), h); return;
+    }
+    if (st <= 2) {
+      const Y = p => 40 + (120 - p) * 8.5, X = t => 120 + t * 9;
+      for (let p = 60; p <= 120; p += 4) if (p >= 80) h += Ln(100, Y(p), 780, Y(p), { c: C.line, w: 2 }) + T(90, Y(p) + 8, p, { anchor: 'end', size: 20, fill: C.t2, mono: true });
+      h += Ln(100, Y(60), 780, Y(60), { c: C.sell, w: 2, dash: '6 6' }) + T(90, Y(60) + 8, 60, { anchor: 'end', size: 22, fill: C.sell, mono: true });
+      h += T(440, Y(80) + 40, '区间下限 80', { anchor: 'middle', size: 24, fill: C.t2 });
+      const pts = [[0, 100], [10, 97], [18, 99], [28, 92], [36, 94], [46, 86], [54, 88], [62, 80], [70, 72], [74, 66], [75, 60]];
+      h += `<polyline fill="none" stroke="${C.sell}" stroke-width="5" points="${pts.map(([t, p]) => X(t) + ',' + Y(p)).join(' ')}"/>`;
+      [96, 92, 88, 84, 80].forEach(p => h += `<circle cx="${X(pts.find(q => q[1] <= p)[0])}" cy="${Y(p)}" r="10" fill="${C.buy}"/>`);
+      h += T(X(75) + 14, Y(60) + 8, '60', { size: 28, bold: true, fill: C.sell });
+      // stacked bars
+      const bx = 900, base = 560, sc = 0.48;
+      const bar = (x, label, parts) => { let y = base, s = ''; parts.forEach(([v, c, t]) => { const hh = v * sc; y -= hh; s += `<rect x="${x}" y="${y}" width="200" height="${hh}" fill="${c}" rx="4"/>` + (hh > 34 ? T(x + 100, y + hh / 2 + 10, t, { anchor: 'middle', size: 24, bold: true, plain: true, fill: '#0d0e10' }) : ''); }); return s + T(x + 100, base + 36, label, { anchor: 'middle', size: 26, fill: C.t2 }); };
+      h += bar(bx, '起始 · 示例', [[1000, C.t2, '1,000 USDT']]);
+      h += bar(bx + 280, '跌到 60', st === 1 ? [[35.76, C.info, ''], [620.9, C.gold, '币 ≈ 621']] : [[35.76, C.info, ''], [620.9, C.gold, '币 ≈ 621'], [343.3, 'rgba(246,70,93,.75)', '亏 ≈ 344']]);
+      h += T(bx + 500, base - 20, '现金 ≈ 35', { size: 24, fill: C.info });
+      h += T(1400, 300, '持有 ≈ 10.35 个币', { size: 26, bold: true, fill: C.gold });
+      h += T(1400, 340, '买满 5.71 + 底仓 4.64', { size: 22, fill: C.t2 });
+      if (st === 2) h += R(400, 40, 380, 100, { fill: 'rgba(246,70,93,.1)', stroke: C.sell }) + T(590, 82, '另一种失败：网格过密', { anchor: 'middle', size: 26, bold: true, fill: C.sell, plain: true }) + T(590, 120, '成交很多，每格利润率 < 0', { anchor: 'middle', size: 24, plain: true });
+    } else {
+      const cards = [['手续费', '每次成交都收 · 50 格网格一天可能数十笔 · 示例', C.gold], ['工具本身', '通常不另收费 · 业界', C.text], ['假深度', '大量网格挂同一价位 → 突破时被集中吃掉', C.sell], ['引擎宕机', '重启后按订单状态对账，补齐反向单', C.warn]];
+      cards.forEach(([t, s, c], i) => h += R(40 + (i % 2) * 800, 40 + Math.floor(i / 2) * 270, 760, 230, { fill: C.panel, stroke: c }) + T(80 + (i % 2) * 800, 120 + Math.floor(i / 2) * 270, t, { size: 40, bold: true, fill: c, plain: true }) + T(80 + (i % 2) * 800, 190 + Math.floor(i / 2) * 270, s, { size: 27, plain: true }));
+    }
+    svgEl(el.querySelector('#drop'), h);
+  }
+
+  // 8. DCA
+  function dcaStep(el, st) {
+    el.querySelector('#dca-h').textContent = st === 3 ? '定投的系统侧：不补执行，打散执行' : '定投：固定金额，定期买入';
+    let h = '';
+    if (st <= 2) {
+      if (st === 0) {
+        h += Box(40, 80, 360, 130, '用户现货 USDT', '每期扣款 100 · 示例', { stroke: C.info, ss: 24 });
+        h += Box(560, 80, 360, 130, '定投计划', '每小时 … 每月', { stroke: C.gold, ss: 24 });
+        h += Box(1080, 80, 360, 130, '撮合引擎', '每期一笔普通订单', { stroke: C.line, ss: 24 });
+        h += A(400, 145, 560, 145) + A(920, 145, 1080, 145);
+        h += Box(1080, 330, 360, 130, '用户持仓', '可自动转入理财', { stroke: C.buy, ss: 24 }) + A(1260, 210, 1260, 330);
+        h += T(40, 330, '公开报道：', { size: 28, fill: C.t2 }) + T(40, 380, '定投 Auto-Invest → 2025 年起', { size: 32, bold: true }) + T(40, 430, '迁移到闪兑「定期买入」', { size: 32, bold: true, fill: C.gold });
+        h += T(40, 520, '余额不足：本期失败，下期照常', { size: 28, fill: C.warn });
+      } else {
+        const P = [10, 5, 10], Q = [10, 20, 10];
+        const X = i => 260 + i * 380, base = 520, sq = 12;
+        h += Ln(160, base, 1300, base, { c: C.t2 });
+        P.forEach((p, i) => {
+          h += T(X(i) + 90, base + 40, '第 ' + (i + 1) + ' 期 · 100 USDT', { anchor: 'middle', size: 26, fill: C.t2 });
+          h += `<rect x="${X(i)}" y="${base - Q[i] * sq}" width="180" height="${Q[i] * sq}" rx="6" fill="${C.info}" opacity=".8"/>` + T(X(i) + 90, base - Q[i] * sq - 14, Q[i] + ' 个', { anchor: 'middle', size: 30, bold: true, fill: C.info });
+          h += `<circle cx="${X(i) + 90}" cy="${120 + (10 - p) * 22}" r="14" fill="${C.gold}"/>` + T(X(i) + 120, 128 + (10 - p) * 22, '价格 ' + p, { size: 28, fill: C.gold, bold: true });
+        });
+        h += `<polyline fill="none" stroke="${C.gold}" stroke-width="3" stroke-dasharray="8 6" points="${P.map((p, i) => (X(i) + 90) + ',' + (120 + (10 - p) * 22)).join(' ')}"/>`;
+        if (st === 2) {
+          h += R(1340, 80, 290, 300, { fill: C.panel, stroke: C.gold });
+          h += T(1485, 140, '平均成本', { anchor: 'middle', size: 28, fill: C.t2, plain: true }) + T(1485, 200, '7.5', { anchor: 'middle', size: 60, bold: true, fill: C.gold, plain: true, mono: true });
+          h += T(1485, 250, '300 ÷ 40', { anchor: 'middle', size: 24, fill: C.t2, plain: true, mono: true });
+          h += T(1485, 310, '算术平均 8.33', { anchor: 'middle', size: 26, fill: C.text, plain: true });
+          h += T(1485, 350, '低价时买得多', { anchor: 'middle', size: 24, fill: C.buy, plain: true });
+          h += T(1485, 450, '不消除下跌风险', { anchor: 'middle', size: 28, fill: C.sell, bold: true });
+        } else h += T(1480, 300, '共 40 个', { anchor: 'middle', size: 40, bold: true, fill: C.info });
+      }
+    } else {
+      h += T(40, 50, '一期失败 → 不补执行', { size: 34, bold: true, fill: C.sell });
+      ['成功', '成功', '失败', '成功'].forEach((s, i) => h += R(40 + i * 200, 80, 180, 90, { fill: s === '失败' ? 'rgba(246,70,93,.15)' : 'rgba(46,189,133,.12)', stroke: s === '失败' ? C.sell : C.buy }) + T(130 + i * 200, 135, '第 ' + (i + 1) + ' 期 ' + s, { anchor: 'middle', size: 24, plain: true }));
+      h += T(880, 135, '补执行 = 用户不知情时买入两倍金额', { size: 28, fill: C.t2 });
+      h += T(40, 270, '到点集中触发 → 打散执行', { size: 34, bold: true, fill: C.gold });
+      h += T(40, 320, '08:00 取出本批 10 万个计划 · 示例', { size: 26, fill: C.t2 });
+      const X = m => 120 + m * 140;
+      h += Ln(X(0), 520, X(10), 520, { c: C.t2 });
+      for (let m = 0; m <= 10; m += 2) h += T(X(m), 556, '08:' + String(m).padStart(2, '0'), { anchor: 'middle', size: 22, fill: C.t2, mono: true });
+      h += `<rect x="${X(0) - 10}" y="360" width="20" height="160" fill="${C.sell}" opacity=".5"/>` + T(X(0) + 20, 380, '集中：打穿小币种盘口', { size: 24, fill: C.sell });
+      for (let i = 0; i < 50; i++) h += `<rect x="${X(i / 5)}" y="${490 - (i % 3) * 6}" width="16" height="${30 + (i % 3) * 6}" fill="${C.buy}" opacity=".8"/>`;
+      h += T(X(10), 460, '分批：clientOrderId = 计划 ID + 期号', { anchor: 'end', size: 24, fill: C.buy });
+    }
+    svgEl(el.querySelector('#dca'), h);
+  }
+
+  // 9. TWAP
+  function twapStep(el, st) {
+    el.querySelector('#twap-h').textContent = ['TWAP：把大单在时间上摊开', '母单 100 BTC → 240 个子单', '一次性吃单 vs 拆单', '母单状态与延迟风险'][st];
+    let h = '';
+    if (st <= 1) {
+      h += Box(40, 60, 420, 150, '母单', '买 100 BTC · 2 小时 · 示例', { stroke: C.gold, size: 40, ss: 24 });
+      h += A(460, 135, 600, 135, { c: C.gold });
+      const X0 = 620, W = 960;
+      const n = st === 0 ? 24 : 240;
+      for (let i = 0; i < n; i++) { const w = W / n; const hh = 70 + ((i * 37) % 11) * 3; h += `<rect x="${X0 + i * w}" y="${210 - hh}" width="${Math.max(w - (n > 100 ? 1 : 4), 1.5)}" height="${hh}" fill="${C.info}" opacity=".85"/>`; }
+      h += Ln(X0, 210, X0 + W, 210, { c: C.t2 }) + T(X0, 246, '0', { size: 22, fill: C.t2 }) + T(X0 + W, 246, '2 小时', { anchor: 'end', size: 22, fill: C.t2 });
+      h += T(X0 + W / 2, 40, st === 0 ? '均匀拆成很多小单' : '每 30 秒一片 · 240 片 · 每片 ≈ 0.4167 BTC', { anchor: 'middle', size: 30, bold: true, fill: C.info });
+      h += R(40, 300, 1560, 260, { fill: C.panel, stroke: C.line });
+      h += T(80, 360, '子单量 = 剩余数量 ÷ 剩余切片数 · 再加随机扰动', { size: 32, bold: true, plain: true });
+      h += T(80, 420, '执行质量 = 实际成交均价 − 同时段 TWAP 基准价', { size: 30, plain: true, fill: C.t2 });
+      h += T(80, 490, st === 1 ? '母单冻结全部资金 → 子单成交后按成交额逐步消耗' : '公开资料：币安向部分用户提供 TWAP、成交量参与等算法单', { size: 28, plain: true, fill: C.gold });
+    } else if (st === 2) {
+      const lv = [[100.0, 20], [100.1, 20], [100.2, 25], [100.35, 20], [100.6, 30]];
+      const panel = (x, title, eat) => {
+        let s = T(x + 340, 40, title, { anchor: 'middle', size: 30, bold: true, fill: eat ? C.sell : C.buy });
+        lv.forEach(([p, q], i) => {
+          const y = 470 - i * 80, taken = eat ? 1 : (i === 0 ? 0.02 : 0);
+          s += T(x + 120, y + 30, p.toFixed(2), { anchor: 'end', size: 26, fill: C.sell, mono: true });
+          s += `<rect x="${x + 140}" y="${y}" width="${q * 14}" height="44" rx="5" fill="${C.sell}" opacity=".25"/>`;
+          if (taken) s += `<rect x="${x + 140}" y="${y}" width="${Math.max(q * 14 * taken, 6)}" height="44" rx="5" fill="${eat ? C.sell : C.gold}"/>`;
+        });
+        s += T(x + 340, 560, eat ? '一次性 100 BTC：滑点 0.5% · 示例' : '每片 0.4167 BTC：冲击接近 0', { anchor: 'middle', size: 28, bold: true, fill: eat ? C.sell : C.buy });
+        return s;
+      };
+      h += panel(60, '一次性市价买入', true) + panel(880, 'TWAP 单片', false);
+      h += Ln(820, 60, 820, 560, { c: C.line });
+    } else {
+      const n = (x, y, t, s, c) => Box(x, y, 300, 100, t, s, { stroke: c, ss: 22 });
+      h += n(60, 200, '运行中', 'Working', C.gold) + n(520, 40, '暂停', 'Paused · 超出限价', C.warn) + n(520, 360, '全部成交', 'Completed', C.buy) + n(980, 200, '已撤销', 'Cancelled · 撤销或到期', C.t2);
+      h += A(360, 230, 520, 110, { c: C.warn }) + A(520, 80, 360, 210, { c: C.dim, dash: '6 6' }) + A(360, 270, 520, 400, { c: C.buy }) + A(360, 250, 980, 250, { c: C.t2 });
+      h += `<path d="M 140 200 C 140 120, 280 120, 280 200" fill="none" stroke="${C.gold}" stroke-width="4"/><polygon points="280,202 270,182 290,182" fill="${C.gold}"/>` + T(210, 106, '发子单并成交', { anchor: 'middle', size: 22, fill: C.gold });
+      h += R(60, 500, 1500, 90, { fill: 'rgba(246,70,93,.1)', stroke: C.sell }) + T(810, 556, '行情延迟 → 按旧价下单 · 防线：行情时间戳过期就暂停发单', { anchor: 'middle', size: 30, bold: true, fill: C.sell, plain: true });
+      h += T(1300, 120, '撤销母单 =', { size: 26, fill: C.t2 }) + T(1300, 160, '撤未成交子单', { size: 26 }) + T(1300, 200, '+ 停发新子单', { size: 26 });
+    }
+    svgEl(el.querySelector('#twap'), h);
+  }
+
+  // 10. tiers & mapping
+  function tierStep(el, st) {
+    el.querySelector('#tier-h').textContent = ['带单员与跟随者', '分成比例：按等级设上限', '分成比例：带单员自选', '仓位映射：按比例 vs 固定金额'][st];
+    el.querySelectorAll('#tier-t tr').forEach((r, i) => r.classList.toggle('cur', st === 1 && (i === 1 || i === 4 || i === 5)));
+    const note = el.querySelector('#tier-note');
+    note.innerHTML = st === 2 ? '在本等级上限内自选 · 每周最多调整 2 次 · 等级至少保持 7 天<br>另获跟随者手续费 10% 佣金 · 每周上限 = 组合保证金余额 × 3% × 10%'
+      : '上线时报道：固定 10% → 现为按等级设上限、带单员自选 · 等级另有其他考核，以官网为准';
+    note.className = 'card ' + (st === 2 ? 'gold' : 'info');
+    if (st === 3) {
+      let h = '';
+      h += T(40, 40, '按比例 Ratio', { size: 36, bold: true, fill: C.gold });
+      h += Box(40, 80, 440, 140, '带单员组合 10,000', '开仓 2,000', { stroke: C.gold, ss: 28 });
+      h += Box(40, 300, 440, 140, '跟随者 1,000', '开仓 200', { stroke: C.info, ss: 28 });
+      h += A(260, 220, 260, 300, { c: C.gold });
+      h += T(40, 500, '2,000 × (1,000 ÷ 10,000) = 200', { size: 30, mono: true, fill: C.text });
+      h += Ln(820, 20, 820, 560, { c: C.line });
+      h += T(880, 40, '固定金额 Fixed', { size: 36, bold: true, fill: C.gold });
+      [['开 3,000', 120], ['开 500', 260], ['开 8,000', 400]].forEach(([t, y], i) => h += Box(880, y - 40, 300, 100, '带单员 ' + t, '', { stroke: C.line, size: 26 }) + A(1180, y + 10, 1300, y + 10) + Box(1300, y - 40, 280, 100, '跟随者 50', '', { stroke: C.info, size: 26 }));
+      h += T(880, 540, '每单固定 50 USDT · 示例', { size: 30, fill: C.text });
+      svgEl(el.querySelector('#map'), h);
+    }
+  }
+
+  // 11. copy chain + slippage
+  function copyStep(el, st) {
+    el.querySelector('#copy-h').textContent = st <= 1 ? '跟随者一定晚于带单员' : '500 个子订单同向进场：滑点';
+    let h = '';
+    const L = [['带单员', ''], ['订单服务', 'order-service'], ['撮合引擎', 'matching-engine'], ['成交流', 'Kafka'], ['跟单服务', 'copy-trading-service'], ['风控', 'risk-service']];
+    const X = i => 120 + i * 200;
+    L.forEach(([c, e], i) => { h += Ln(X(i), 80, X(i), 600, { c: C.line, dash: '6 6' }) + R(X(i) - 92, 0, 184, 80, { fill: C.panel2 }) + T(X(i), 38, c, { anchor: 'middle', size: 26, bold: true, plain: true }) + (e ? T(X(i), 66, e, { anchor: 'middle', size: 15, fill: C.t2, plain: true, mono: true }) : ''); });
+    const M = [[0, 1, '开多 2,000', 0], [1, 2, '撮合', 0], [2, 3, '成交 @ 100.00', 0], [3, 4, '消费事件', 0], [4, 4, '为 500 人算子订单', 0],
+      [4, 5, '保证金、杠杆上限', 1], [4, 1, '分批下子订单', 1], [1, 2, '子订单成交 @ 100.03 ~ 100.12', 2]];
+    M.forEach(([a, b, t, s], i) => {
+      if (s > st) return;
+      const y = 120 + i * 58, cur = s === st || (st === 3 && s === 2), c = cur ? C.gold : C.t2;
+      if (a === b) h += `<path d="M ${X(a) + 6} ${y - 14} h 50 v 28 h -44" fill="none" stroke="${c}" stroke-width="3"/>` + T(X(a) + 64, y + 8, t, { size: 22, fill: cur ? C.gold : C.text });
+      else { h += A(X(a) + (b > a ? 8 : -8), y, X(b) + (b > a ? -8 : 8), y, { c, w: 3 }); h += T(Math.min(X(a), X(b)) + 14, y - 9, t, { size: 22, fill: cur ? C.gold : C.text }); }
+    });
+    // price strip
+    const px = 1260, Y = p => 520 - (p - 99.98) / 0.16 * 400;
+    h += T(px + 180, 120, '成交价 · 示例', { anchor: 'middle', size: 26, fill: C.t2 });
+    [100.0, 100.04, 100.08, 100.12].forEach(p => h += Ln(px, Y(p), px + 360, Y(p), { c: C.line, w: 1 }) + T(px - 6, Y(p) + 8, p.toFixed(2), { anchor: 'end', size: 20, fill: C.t2, mono: true }));
+    if (st >= 0) h += `<circle cx="${px + 40}" cy="${Y(100)}" r="14" fill="${C.gold}"/>` + T(px + 62, Y(100) + 9, '带单员', { size: 24, fill: C.gold, bold: true });
+    if (st >= 2) for (let i = 0; i < 40; i++) { const p = 100.03 + (i / 39) * 0.09; h += `<circle cx="${px + 150 + (i % 8) * 26}" cy="${Y(p)}" r="7" fill="${C.sell}" opacity=".8"/>`; }
+    if (st >= 3) h += Ln(px + 130, Y(100.06), px + 360, Y(100.06), { c: C.sell, w: 4 }) + T(px + 360, Y(100.06) - 12, '均价 100.06', { anchor: 'end', size: 26, bold: true, fill: C.sell });
+    if (st === 3) h += R(px - 60, 540, 440, 66, { fill: 'rgba(246,70,93,.12)', stroke: C.sell }) + T(px + 160, 584, '0.06% × 100 万 = 600', { anchor: 'middle', size: 28, bold: true, fill: C.sell, plain: true });
+    svgEl(el.querySelector('#copy'), h);
+  }
+
+  // 12. high-water mark
+  function hwmStep(el, st) {
+    el.querySelector('#hwm-h').textContent = st === 4 ? '跟单的风险：业绩可以“做”出来' : '每周结算：总盈亏 × 比例 − 已分成';
+    let h = '';
+    if (st === 4) {
+      const cards = [['刷业绩', '小资金高杠杆赌收益率 · 多账户只展示赢家', '展示最大回撤、资金规模、带单天数'], ['幸存者偏差', '排行榜只显示活下来的人', '展示历史跟随者实际盈亏'], ['抢跑', '先自己建仓，再用跟随者订单推价', '监控个人账户与带单组合时序'], ['爆仓', '带单员一次爆仓，跟随者同时被强平', '跟随者设最大滑点、止损']];
+      cards.forEach(([t, a, b], i) => { const x = 20 + (i % 2) * 810, y = 10 + Math.floor(i / 2) * 220; h += R(x, y, 790, 200, { fill: 'rgba(246,70,93,.07)', stroke: C.sell }) + T(x + 30, y + 56, t, { size: 34, bold: true, fill: C.sell, plain: true }) + T(x + 30, y + 110, a, { size: 26, plain: true }) + T(x + 30, y + 160, '防线 · 业界：' + b, { size: 24, fill: C.t2, plain: true }); });
+      svgEl(el.querySelector('#hwm'), h); return;
+    }
+    const W = [0, 200, 150, 300], shared = [0, 20, 20, 30];
+    const pay = [0, 20, 0, 10];
+    const X = i => 200 + i * 320, Y = v => 400 - v * 0.95;
+    h += Ln(140, Y(0), 1200, Y(0), { c: C.t2 }) + T(130, Y(0) + 8, '0', { anchor: 'end', size: 22, fill: C.t2 });
+    [100, 200, 300].forEach(v => h += Ln(140, Y(v), 1200, Y(v), { c: C.line, w: 1 }) + T(130, Y(v) + 8, v, { anchor: 'end', size: 22, fill: C.t2, mono: true }));
+    const n = st === 0 ? 1 : st + 1;
+    const pts = W.slice(0, n).map((v, i) => X(i) + ',' + Y(v));
+    h += `<polyline fill="none" stroke="${C.info}" stroke-width="5" points="${pts.join(' ')}"/>`;
+    W.slice(0, n).forEach((v, i) => { h += `<circle cx="${X(i)}" cy="${Y(v)}" r="10" fill="${C.info}"/>` + T(X(i), Y(v) - 20, v, { anchor: 'middle', size: 28, bold: true, fill: C.info, mono: true }) + T(X(i), Y(0) + 40, i ? '第 ' + i + ' 周一' : '起点', { anchor: 'middle', size: 24, fill: C.t2 }); });
+    if (st >= 1) {
+      for (let i = 1; i < n; i++) {
+        const hw = Math.max(...W.slice(0, i + 1));
+        h += Ln(X(i) - 60, Y(hw), X(i) + 60, Y(hw), { c: C.gold, w: 4, dash: '8 5' });
+        h += R(X(i) - 110, 2, 220, 58, { fill: pay[i] ? 'rgba(46,189,133,.14)' : 'rgba(158,163,173,.1)', stroke: pay[i] ? C.buy : C.dim, rx: 10 }) + T(X(i), 42, pay[i] ? '分成 ' + pay[i] : '不分成', { anchor: 'middle', size: 30, bold: true, fill: pay[i] ? C.buy : C.t2, plain: true });
+      }
+    }
+    const lines = [['周一 00:00 UTC', '快照总盈亏', '2024-09-23 起', '已实现 → 总盈亏'], ['示例 · 比例 10%', 'max(200×10%−0, 0)', '= 20', '跟随者净得 180'], ['max(150×10%−20, 0)', '= 0 · 不分成', '高水位线：', '先赚回，再分成'], ['max(300×10%−20, 0)', '= 10', '已分成累计 30', '示例延伸']][st];
+    h += R(1250, 100, 380, 300, { fill: C.panel, stroke: C.gold });
+    lines.forEach((s, k) => h += T(1274, 160 + k * 64, s, { size: 28, fill: k % 2 ? C.text : C.gold, bold: k === 0, plain: true, mono: /max|=/.test(s) }));
+    svgEl(el.querySelector('#hwm'), h);
+  }
+
+  // 13. architecture
+  function archStep(el, st) {
+    let h = '';
+    const on = k => st >= k, cur = k => st === k;
+    const sty = (k, col) => ({ stroke: cur(k) ? C.gold : on(k) ? (col || C.dim) : C.line, fill: cur(k) ? 'rgba(240,185,11,.12)' : C.panel, op: on(k) ? 1 : .35, ss: 20, size: 26 });
+    h += R(20, 20, 300, 480, { fill: 'transparent', stroke: C.line, dash: '6 6' }) + T(170, 56, '输入', { anchor: 'middle', size: 26, fill: C.t2 });
+    h += Box(40, 80, 260, 100, '行情', 'market-data', sty(0, C.info));
+    h += Box(40, 220, 260, 100, '成交流', 'Kafka', sty(0, C.info));
+    h += Box(40, 360, 260, 100, '调度器', '定时触发', sty(0, C.info));
+    h += R(370, 20, 640, 480, { fill: 'transparent', stroke: on(2) ? C.gold : C.line, dash: '6 6' }) + T(690, 56, 'strategy-engine · 示例服务名', { anchor: 'middle', size: 24, fill: on(2) ? C.gold : C.t2 });
+    h += Box(400, 80, 280, 100, '触发器', '价格 · 成交 · 时间', sty(0));
+    h += Box(400, 220, 280, 100, '策略状态存储', '参数 · 格号 · 轮次', sty(1));
+    h += Box(710, 80, 280, 100, '策略风控', '资金上限 · 止损', sty(1));
+    h += Box(710, 220, 280, 100, '限频', '单策略 + 全局令牌桶', sty(1));
+    [[300, 130, 400, 130], [300, 270, 400, 150], [300, 410, 400, 170]].forEach(([a, b, c, d]) => h += A(a, b, c, d, { c: on(0) ? C.t2 : C.line }));
+    h += A(540, 180, 540, 220, { c: on(1) ? C.t2 : C.line }) + A(680, 130, 710, 130, { c: on(1) ? C.t2 : C.line }) + A(850, 180, 850, 220, { c: on(1) ? C.t2 : C.line });
+    h += R(1080, 20, 540, 480, { fill: 'transparent', stroke: on(2) ? C.buy : C.line, dash: '6 6' }) + T(1350, 56, '交易核心 · 与普通用户同路径', { anchor: 'middle', size: 24, fill: on(2) ? C.buy : C.t2 });
+    h += Box(1110, 80, 480, 100, '订单服务', 'order-service', sty(2, C.buy));
+    h += Box(1110, 220, 480, 100, '风控', 'risk-service', sty(2, C.buy));
+    h += Box(1110, 360, 480, 100, '撮合引擎', '单线程 · 确定性', sty(2, C.buy));
+    h += A(990, 270, 1110, 140, { c: on(2) ? C.gold : C.line, w: 5 }) + A(1350, 180, 1350, 220, { c: on(2) ? C.t2 : C.line }) + A(1350, 320, 1350, 360, { c: on(2) ? C.t2 : C.line });
+    h += `<path d="M 1110 430 C 700 560, 400 560, 300 280" fill="none" stroke="${on(2) ? C.info : C.line}" stroke-width="3" stroke-dasharray="8 6"/>` + T(700, 528, '成交回流', { anchor: 'middle', size: 22, fill: on(2) ? C.info : C.t2 });
+    const notes = ['三种输入 → 触发器', '状态 → 策略风控 → 限频', '策略引擎在撮合之外，是它的客户端', 'clientOrderId 去重 · 触发风暴分批 · 重启对账'];
+    h += T(820, 574, notes[st], { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+    svgEl(el.querySelector('#arch'), h);
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

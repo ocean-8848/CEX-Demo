@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>事故案例浏览器</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .filters { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); margin: 0;
+          border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; background: var(--surface-2); cursor: pointer; }
+  .chip input { margin: 0; }
+  .chip svg { width: 12px; height: 12px; flex: none; }
+  .yr { display: flex; gap: 8px; align-items: center; }
+  .yr input { width: 100%; min-width: 0; }
+  .chart-wrap { width: 100%; }
+  .chart-wrap svg { width: 100%; height: auto; display: block; }
+  .axis line, .axis path { stroke: var(--border); }
+  .gridline { stroke: var(--border); stroke-dasharray: 3 3; }
+  .tick { font-size: 11px; fill: var(--text-2); }
+  .pt { cursor: pointer; stroke: var(--surface); stroke-width: 1.5; }
+  .pt.sel { stroke: var(--text); stroke-width: 2.5; }
+  .pt.dim { opacity: .12; pointer-events: none; }
+  .pt-label { font-size: 10px; fill: var(--text-2); pointer-events: none; }
+  .c-P1 { fill: var(--sell); color: var(--sell); }
+  .c-P2 { fill: var(--warn); color: var(--warn); }
+  .c-P3 { fill: var(--info); color: var(--info); }
+  .c-P4 { fill: var(--info); color: var(--info); }
+  .c-P5 { fill: var(--buy); color: var(--buy); }
+  .c-P6 { fill: var(--text-2); color: var(--text-2); }
+  .c-P7 { fill: var(--buy); color: var(--buy); }
+  .c-P8 { fill: var(--accent); color: var(--accent); }
+  .c-P9 { fill: var(--warn); color: var(--warn); }
+  .c-P10 { fill: var(--text-2); color: var(--text-2); }
+  .detail dl { display: grid; grid-template-columns: minmax(0, 88px) minmax(0, 1fr); gap: 4px 10px; margin: 8px 0 0; font-size: 13px; }
+  .detail dt { color: var(--text-2); }
+  .detail dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .layers { display: flex; flex-direction: column; gap: 8px; }
+  .layer { border: 2px solid var(--border); border-radius: 8px; padding: 8px 12px; background: var(--surface); }
+  .layer .ln { font-weight: 600; font-size: 14px; }
+  .layer .ld { font-size: 12px; color: var(--text-2); }
+  .layer .tags { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .layer.failed { border-color: var(--sell); background: var(--sell-soft); }
+  .layer.stop { border-color: var(--buy); }
+  .layer.limit { border-color: var(--warn); }
+  .layer.failed.stop { box-shadow: inset 0 0 0 2px var(--buy); }
+  .arrow { text-align: center; color: var(--text-2); font-size: 12px; line-height: 1; }
+  .legend-row { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--text-2); margin: 8px 0; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 2px solid; vertical-align: -2px; margin-right: 4px; }
+  .sw.f { border-color: var(--sell); background: var(--sell-soft); }
+  .sw.s { border-color: var(--buy); background: var(--surface); }
+  .sw.l { border-color: var(--warn); background: var(--surface); }
+  .quiz-facts { background: var(--surface-2); border-radius: 8px; padding: 12px; font-size: 14px; }
+  .opts { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-top: 10px; }
+  .opts button { text-align: left; }
+  .opts button.right { background: var(--buy-soft); border-color: var(--buy); }
+  .opts button.part { background: var(--warn-soft); border-color: var(--warn); }
+  .opts button.wrong { background: var(--sell-soft); border-color: var(--sell); }
+  .caselist td { vertical-align: top; }
+  .caselist tr { cursor: pointer; }
+  .caselist tr.sel td { background: var(--accent-soft); }
+  .two { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 760px) { .two { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../backstage/B12-incident-casebook.md">📖 对应章节：B12 交易所安全事故案例库</a>
+  </header>
+  <h1>事故案例浏览器</h1>
+  <p class="lead">把 2014–2025 年 21 起交易所及相关平台的安全事故放在一张图上。按攻击路径、赔付结局和年份筛选；选中一起事故，看它突破了哪几层防线、哪一层本可以拦住它；最后用测验模式检验你能否只凭事实判断根因类别。</p>
+
+  <div class="callout info small">
+    <b>怎么玩：</b>
+    1. 在"时间线"上悬停或点按一个点，下方显示案例卡。纵轴是对数刻度，每格相差 10 倍。
+    2. 用筛选器勾选攻击路径、赔付结局和年份范围。图、列表和测验题库同步变化。
+    3. 选中案例后，看"防线映射"：红色 = 被突破，绿色框 = 本可拦住，橙色框 = 限制了损失。
+    4. 在"测验"里读事实描述，选出主攻击路径，再看答案和解释。
+  </div>
+
+  <h2>1. 筛选</h2>
+  <div class="card filters">
+    <div>
+      <label>攻击路径（主路径）</label>
+      <div class="chips" id="pathChips"></div>
+      <div class="btn-row"><button type="button" id="allPaths" class="small">全选</button><button type="button" id="noPaths" class="small">全不选</button></div>
+    </div>
+    <div>
+      <label for="reimbSel">用户结局</label>
+      <select id="reimbSel">
+        <option value="all">全部</option>
+        <option value="full">全额（含延迟、法币、DAO 方案）</option>
+        <option value="partial">部分（重组或破产程序）</option>
+        <option value="pending">承诺赔付，结果未核实</option>
+        <option value="na">无用户资产损失</option>
+      </select>
+      <label>年份范围</label>
+      <div class="yr">
+        <input type="number" id="yFrom" min="2014" max="2025" value="2014" aria-label="起始年份">
+        <span class="muted">—</span>
+        <input type="number" id="yTo" min="2014" max="2025" value="2025" aria-label="结束年份">
+      </div>
+      <p class="small muted" id="countTxt" style="margin:8px 0 0"></p>
+    </div>
+  </div>
+
+  <h2>2. 时间线（x = 年份，y = 公开报道损失，对数刻度）</h2>
+  <div class="card">
+    <div class="chart-wrap"><svg id="chart" viewBox="0 0 760 360" role="img" aria-label="事故时间线散点图"></svg></div>
+    <p class="small muted" style="margin:6px 0 0">形状和颜色共同表示攻击路径。窄屏只标注选中的点。Coinbase 2025 为数据泄露，纵轴取其成本估计下限 1.8 亿美元；FTX 取约 80 亿美元缺口。</p>
+  </div>
+
+  <div class="two" style="margin-top:16px">
+    <div class="card detail" id="detail"><p class="muted">悬停或点按图上的点，查看案例卡。</p></div>
+    <div class="card">
+      <h3>防线映射</h3>
+      <label for="caseSel">选择案例</label>
+      <select id="caseSel"></select>
+      <div class="legend-row"><span><i class="sw f"></i>被突破</span><span><i class="sw s"></i>本可拦住</span><span><i class="sw l"></i>限制了损失</span></div>
+      <div class="layers" id="layers"></div>
+      <p class="small" id="layerNote"></p>
+    </div>
+  </div>
+
+  <h2>3. 案例列表</h2>
+  <div class="card">
+    <div class="table-wrap">
+      <table class="caselist">
+        <thead><tr><th>年份</th><th>平台</th><th class="num">损失（百万美元）</th><th>主路径</th><th>结局</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <h2>4. 测验：根因是哪一类？</h2>
+  <div class="card">
+    <div class="btn-row">
+      <button type="button" class="primary" id="qNext">下一题</button>
+      <span class="small muted" id="qScore" style="align-self:center">得分 0 / 0</span>
+    </div>
+    <div class="quiz-facts" id="qFacts">点"下一题"开始。题目从当前筛选结果中随机抽取。</div>
+    <div class="opts" id="qOpts"></div>
+    <div id="qResult" class="small" style="margin-top:10px"></div>
+  </div>
+
+  <h2>5. 试一试</h2>
+  <div class="grid cols-3">
+    <div class="card small">
+      <h3>试一试 A：趋势</h3>
+      <p>只勾选 P1（热钱包）和 P2（签名操纵）。2020 年以前和 2024 年以后，两类点的分布有什么变化？再把 P9（供应商）加进来。对照 <a href="../backstage/B12-incident-casebook.md">B12 第 6.4 节</a>的趋势图。</p>
+    </div>
+    <div class="card small">
+      <h3>试一试 B：同类不同命</h3>
+      <p>在防线映射中依次选 Coincheck 2018、BingX 2024、WazirX 2024。三者都在 L3 被突破。为什么前两者用户全额获赔，WazirX 只能重组？比较三者第 5 层的颜色。</p>
+    </div>
+    <div class="card small">
+      <h3>试一试 C：容易混淆的题</h3>
+      <p>筛选年份 2024–2025，做 5 道测验题。DMM 的主路径是 P9 而不是 P4 或 P2，Coinbase 是 P3 而不是 P4。你能用"最终突破点"规则说清楚区别吗？</p>
+    </div>
+  </div>
+
+  <footer class="note">
+    全部金额、日期与归因均为<b>据公开报道</b>，按事发时市值估算，不同来源可能相差 10% 以上；归因来自执法机构公告或链上分析公司，后者不等于司法结论。
+    防线映射与"本可拦住"的判断是教学归纳，不是事故调查结论。Mango Markets 是 DeFi 平台、BNB Chain 跨链桥是链层事件，二者作为对照收录。
+    来源列表见 <a href="../backstage/B12-incident-casebook.md">B12-incident-casebook.md</a> 末尾"参考来源"。
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  /* ---------- 攻击路径与防线 ---------- */
+  var PATHS = {
+    P1: { name: 'P1 热钱包密钥泄露', shape: 'circle' },
+    P2: { name: 'P2 多签 / 签名界面操纵', shape: 'diamond' },
+    P3: { name: 'P3 内部人员 / 被收买员工', shape: 'square' },
+    P4: { name: 'P4 员工社会工程', shape: 'triangle' },
+    P5: { name: 'P5 API 密钥 / 账户批量接管', shape: 'square' },
+    P6: { name: 'P6 智能合约 / 跨链桥漏洞', shape: 'square' },
+    P7: { name: 'P7 预言机 / 价格操纵', shape: 'diamond' },
+    P8: { name: 'P8 内部欺诈与挪用', shape: 'square' },
+    P9: { name: 'P9 第三方 / 供应商被入侵', shape: 'triangle' },
+    P10: { name: 'P10 DNS / BGP / 前端劫持', shape: 'triangle' }
+  };
+  var PATH_KEYS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'];
+  var LAYERS = [
+    { id: 'L0', name: '第 0 层 · 人员与供应商', d: '员工认证与终端、反社工、内部威胁监控、供应商准入', doc: 'B11 / B02' },
+    { id: 'L1', name: '第 1 层 · 账户安全', d: '2FA、Passkey、新地址冷却、白名单', doc: 'B03' },
+    { id: 'L2', name: '第 2 层 · 提币风控', d: '行为评分、批量与速率异常、抵押品估值保护', doc: 'B05 / B08' },
+    { id: 'L3', name: '第 3 层 · 密钥与签名', d: '热钱包限额、签名策略引擎、意图校验、MPC/HSM', doc: 'B02' },
+    { id: 'L4', name: '第 4 层 · 对账与储备证明', d: '链上余额 vs 账本、PoR、资产隔离', doc: 'B04' },
+    { id: 'L5', name: '第 5 层 · 承受与恢复', d: '止血开关、联合冻结、储备与赔付', doc: 'B06 / B07' }
+  ];
+  var REIMB = { full: '全额', partial: '部分', pending: '承诺，未核实', na: '无用户资产损失' };
+  var REIMB_PILL = { full: 'buy', partial: 'warn', pending: 'info', na: 'accent' };
+
+  /* ---------- 数据集（据公开报道） ----------
+     loss：百万美元，事发时市值；failed：被突破层；stop：本可拦住层；limit：限制损失层 */
+  var CASES = [
+    { id: 'mtgox', y: 2014, date: '2014-02', ex: 'Mt.Gox', loss: 450, lossT: '约 85 万 BTC 下落不明（当时约 4.5 亿美元），后找回约 20 万枚', path: 'P1', sub: [], attr: '未公开定论',
+      root: '热钱包被长期持续盗取，账本与链上余额多年未对账', reimbT: '破产后转民事再生，2024 年起返还 BTC/BCH', reimb: 'partial',
+      lesson: '每日账实对账能在第一天发现异常', failed: ['L3', 'L4'], stop: ['L4'], limit: [], ref: '13 章 4.4',
+      facts: '一家曾经全球最大的比特币交易所突然暂停提币。调查发现，链上地址中的 BTC 远少于账本记录的用户余额，差额是多年间逐步流失的。' },
+    { id: 'bitfinex', y: 2016, date: '2016-08-02', ex: 'Bitfinex', loss: 72, lossT: '119,756 BTC（当时约 7,200 万美元）', path: 'P2', sub: ['P9'], attr: 'Ilya Lichtenstein 认罪（2023），2024 年被判 5 年',
+      root: '与 BitGo 联署的多签可被交易所 API 自动触发联署，多签退化为形式（公开分析）', reimbT: '损失按约 36% 分摊，发行 BFX 代币，2017 年 4 月前全部赎回或转股', reimb: 'full',
+      lesson: '联署方必须独立判断，不能被调用方自动触发', failed: ['L3'], stop: ['L3'], limit: ['L5'], ref: 'B12 C01',
+      facts: '资金存放在"交易所 + 外部联署方"的多签钱包中。攻击者进入交易所网络后，批准了 2,000 多笔转账，外部联署方没有拦住任何一笔。' },
+    { id: 'coincheck', y: 2018, date: '2018-01-26', ex: 'Coincheck', loss: 530, lossT: '5.23 亿 XEM（约 5.3 亿美元）', path: 'P1', sub: ['P4'], attr: '未公开定论',
+      root: 'NEM 全部放在联网热钱包且无多签；员工电脑经恶意邮件被植入远控木马', reimbT: '按 88.549 日元/XEM 以自有资金向约 26 万用户赔付', reimb: 'full',
+      lesson: '大额资产不能放热钱包；告警要分钟级', failed: ['L0', 'L3', 'L2'], stop: ['L3'], limit: ['L5'], ref: 'B12 C02',
+      facts: '一家日本交易所的某个币种几乎全部被转走，从首笔转出到发现间隔约 8.5 小时。该币种全部存放在联网钱包，没有使用多签。' },
+    { id: 'zaif', y: 2018, date: '2018-09-14', ex: 'Zaif', loss: 60, lossT: '约 67 亿日元（约 6,000 万美元），含 5,966 BTC', path: 'P1', sub: [], attr: '未公开定论',
+      root: '管理热钱包的服务器被入侵', reimbT: 'Fisco 注资 50 亿日元并控股，用户获赔', reimb: 'full',
+      lesson: '3 天发现期说明缺少热钱包实时对账', failed: ['L3', 'L4'], stop: ['L3', 'L4'], limit: ['L5'], ref: 'B12 C03',
+      facts: '一家日本交易所的 BTC、BCH、MONA 在约 2 小时内被转出，交易所 3 天后才发现。被转出的资产都来自同一台在线服务器管理的钱包。' },
+    { id: 'binance19', y: 2019, date: '2019-05-07', ex: '币安', loss: 40, lossT: '约 7,000 BTC（约 4,000 万美元）', path: 'P5', sub: [], attr: '未公开',
+      root: '大量用户 API 密钥和 2FA 被钓鱼收集，攻击者一次性批量提币', reimbT: 'SAFU 基金全额覆盖', reimb: 'full',
+      lesson: '批量提币模式识别 + 热钱包限额', failed: ['L1', 'L2'], stop: ['L2'], limit: ['L3', 'L5'], ref: '13 章 4.1',
+      facts: '攻击者长期收集了大量用户的 API 密钥和二次验证码，然后在一笔交易中从多个用户账户提走约 7,000 BTC。平台私钥没有泄露。' },
+    { id: 'upbit19', y: 2019, date: '2019-11-27', ex: 'Upbit', loss: 50, lossT: '342,000 ETH（约 5,000 万美元）', path: 'P1', sub: [], attr: '韩国警方 2024 年确认：朝鲜 Lazarus 与 Andariel',
+      root: 'ETH 热钱包被转空，入侵细节未公开', reimbT: '公司资产补足', reimb: 'full',
+      lesson: '事后全部资产转冷钱包；同类风险会复发（2025 年再次被盗）', failed: ['L3'], stop: ['L3'], limit: ['L5'], ref: 'B12 C04',
+      facts: '一家韩国交易所的以太坊在线钱包中，34.2 万 ETH 被一次性转到未知地址。交易所随后把剩余资产全部转入离线钱包。' },
+    { id: 'kucoin', y: 2020, date: '2020-09-26', ex: 'KuCoin', loss: 281, lossT: '约 2.81 亿美元', path: 'P1', sub: [], attr: '据报道，联合国专家组报告指向朝鲜',
+      root: 'APT 长期潜伏，拿到若干热钱包私钥', reimbT: '约 84% 追回或冻结，余下由保险基金覆盖', reimb: 'full',
+      lesson: '行业联合冻结能追回大部分资产', failed: ['L0', 'L3'], stop: ['L0', 'L3'], limit: ['L5'], ref: 'B12 C05',
+      facts: '攻击者在系统中长期潜伏，最终拿到几个在线钱包的私钥，转走多条链上约 2.8 亿美元。稳定币发行方和多个项目方随后冻结或升级代币合约。' },
+    { id: 'liquid', y: 2021, date: '2021-08-19', ex: 'Liquid', loss: 97, lossT: '约 9,700 万美元（Elliptic 估算）', path: 'P1', sub: [], attr: '据 Chainalysis 报告，列入 2021 年朝鲜相关攻击',
+      root: '温钱包被入侵；攻击者快速把可冻结代币换成 ETH', reimbT: '获 FTX 1.2 亿美元债务融资兜底', reimb: 'full',
+      lesson: '攻击者优先兑换可冻结资产，冻结窗口只有几分钟', failed: ['L3'], stop: ['L3'], limit: ['L5'], ref: 'B12 C06',
+      facts: '一家日本交易所的半在线钱包被入侵。攻击者拿到资产后，第一件事是在去中心化交易所把可被发行方冻结的代币换成 ETH。' },
+    { id: 'bitmart', y: 2021, date: '2021-12-04', ex: 'BitMart', loss: 196, lossT: '约 1.96 亿美元（ETH 链约 1 亿，BSC 约 0.96 亿）', path: 'P1', sub: [], attr: '未公开定论',
+      root: '一把私钥被盗，两个热钱包被控制', reimbT: 'CEO 宣布以自有资金赔付', reimb: 'full',
+      lesson: '外部安全公司先发现，平台先否认后承认', failed: ['L3', 'L2'], stop: ['L3'], limit: ['L5'], ref: 'B12 C07',
+      facts: '安全公司在社交媒体上预警某交易所两个在线钱包异常流出。交易所先称是例行转账，数小时后确认被盗，原因是一把私钥泄露。' },
+    { id: 'cryptocom', y: 2022, date: '2022-01-17', ex: 'Crypto.com', loss: 34, lossT: '约 3,400 万美元，483 个账户', path: 'P5', sub: [], attr: '未公开',
+      root: '部分提币在用户未输入 2FA 的情况下被批准', reimbT: '多数被拦下，其余全额赔付', reimb: 'full',
+      lesson: '认证流程要做回归测试；新地址冷却是低成本限损', failed: ['L1'], stop: ['L1'], limit: ['L2', 'L5'], ref: 'B12 C08',
+      facts: '平台风控发现 483 个用户账户出现提币，但这些提币没有经过用户输入二次验证码。平台随后吊销了所有用户的 2FA 令牌。' },
+    { id: 'bnbbridge', y: 2022, date: '2022-10-06', ex: 'BNB Chain 跨链桥（链层，对照）', short: 'BNB 桥', lp: 'l', loss: 105, lossT: '伪造铸造 200 万 BNB，实际转出约 1–1.1 亿美元', path: 'P6', sub: [], attr: '未公开',
+      root: '跨链桥证明验证库存在漏洞，攻击者伪造证明', reimbT: '用户余额未变；验证者暂停链并冻结地址', reimb: 'na',
+      lesson: '交易所对异常大额充值和刚升级的链要提高确认数和人工审核', failed: [], stop: ['L2'], limit: ['L5'], ref: '13 章 4.2',
+      facts: '攻击者向一条公链的跨链合约提交了伪造的证明，凭空获得 200 万枚原生代币，并试图跨链转出。交易所账本本身没有被修改。' },
+    { id: 'mango', y: 2022, date: '2022-10-11', ex: 'Mango Markets（DeFi，对照）', short: 'Mango', loss: 114, lossT: '约 1.14 亿美元', path: 'P7', sub: [], attr: 'Avraham Eisenberg 公开承认；2025 年 5 月定罪被撤销',
+      root: '数分钟内把 MNGO 价格拉高超过 1,300%，用虚高持仓作抵押借空平台', reimbT: '返还约 6,700 万美元，DAO 拨约 4,200 万 USDC 赔付存款人', reimb: 'full',
+      lesson: '低流动性抵押品需要估值上限和价格偏离熔断', failed: ['L2'], stop: ['L2'], limit: ['L5'], ref: 'B12 C09',
+      facts: '一名交易者在几分钟内把一个低流动性代币的价格拉高十几倍，然后用账面浮盈作抵押，借走了平台上几乎所有可借资产。他没有入侵任何系统。' },
+    { id: 'ftx', y: 2022, date: '2022-11-11', ex: 'FTX', loss: 8000, lossT: '约 80 亿美元客户资产缺口', path: 'P8', sub: [], attr: '创始人 2023 年被判欺诈罪成立，2024 年被判 25 年',
+      root: '客户资产被转给关联公司使用，账本中存在可无限透支的特殊账户', reimbT: '破产程序处理，见 13 章', reimb: 'partial',
+      lesson: '客户资产隔离 + 储备金证明 + 独立审计', failed: ['L0', 'L4'], stop: ['L4'], limit: [], ref: '13 章 4.3',
+      facts: '媒体披露关联公司的资产负债表依赖平台自发代币。用户集中提币，平台无法兑付。调查显示客户资产被挪给关联公司。没有任何外部攻击。' },
+    { id: 'dmm', y: 2024, date: '2024-05-31', ex: 'DMM Bitcoin', loss: 308, lossT: '4,502.9 BTC（约 482 亿日元，约 3.08 亿美元）', path: 'P9', sub: ['P4', 'P2'], attr: 'FBI、DC3、日本警察厅：朝鲜 TraderTraitor',
+      root: '钱包软件商 Ginco 员工被假招聘者诱导运行恶意脚本；攻击者用其会话篡改 DMM 员工的合法交易请求', reimbT: '集团筹资约 550 亿日元足额保障；交易所停业，2025 年 3 月前后移交 SBI VC Trade', reimb: 'full',
+      lesson: '供应商员工的电脑等于你的签名链路', failed: ['L0', 'L3'], stop: ['L0', 'L3'], limit: ['L5'], ref: 'B12 C10',
+      facts: '一名钱包软件公司的员工在 LinkedIn 上收到"招聘笔试"，运行了一段 Python 代码。两个月后，使用该公司软件的交易所发起一笔正常交易，结果 4,502.9 BTC 被转走。' },
+    { id: 'wazirx', y: 2024, date: '2024-07-18', ex: 'WazirX', loss: 230, lossT: '约 2.3 亿美元', path: 'P2', sub: ['P9'], attr: '据 Elliptic 等：朝鲜 Lazarus',
+      root: '4-of-6 多签；托管服务界面显示内容与实际签名数据不一致，载荷被替换为转移控制权（双方说法不一）', reimbT: '2025 年 10 月新加坡法院批准重组，约 85.5% 先行分配', reimb: 'partial',
+      lesson: '多签人数不能代替所见即所签；没有储备时用户承担损失', failed: ['L3', 'L5'], stop: ['L3'], limit: [], ref: 'B12 C11',
+      facts: '一个需要 6 人中 4 人签名的钱包，4 名签名人都确认了一笔"正常"交易。交易实际修改了钱包合约，把控制权交给了外部地址。交易所没有足够储备填补缺口。' },
+    { id: 'bingx', y: 2024, date: '2024-09-20', ex: 'BingX', loss: 44, lossT: '约 4,300–4,470 万美元', path: 'P1', sub: [], attr: '未公开定论',
+      root: '热钱包遭异常网络访问，细节未公开', reimbT: '平台承诺以自有储备全额覆盖', reimb: 'full',
+      lesson: '损失被热钱包余额封顶；快速恢复依赖储备', failed: ['L3'], stop: ['L3'], limit: ['L3', 'L5'], ref: 'B12 C12',
+      facts: '凌晨约 4 点，技术团队发现在线钱包出现异常网络访问。团队立即迁移资产、暂停提币，承诺 24 小时内恢复，并用自有储备覆盖。' },
+    { id: 'phemex', y: 2025, date: '2025-01-23', ex: 'Phemex', loss: 70, lossT: '初报约 3,700 万美元，链上分析估算超过 7,000 万美元', path: 'P1', sub: [], attr: '分析人士推测可能与朝鲜 Lazarus 有关（未经官方确认）',
+      root: '十余条链的热钱包几乎同时被清空，细节未公开', reimbT: '承诺公布赔付方案；最终结果未核实', reimb: 'pending',
+      lesson: '多链热钱包需要跨链联动熔断', failed: ['L3', 'L2'], stop: ['L2', 'L3'], limit: ['L5'], ref: 'B12 C13',
+      facts: '一家交易所在 10 多条公链上的在线钱包几乎同时出现大额流出，攻击者先转走价值最高的代币，再把可冻结的稳定币换掉。冷钱包未受影响。' },
+    { id: 'bybit', y: 2025, date: '2025-02-21', ex: 'Bybit', loss: 1460, lossT: '约 40.1 万 ETH + 约 11.3 万 stETH/cmETH/mETH（约 14.6 亿美元）', path: 'P2', sub: ['P9'], attr: 'FBI：朝鲜 TraderTraitor',
+      root: '多签服务商开发者电脑被入侵，前端 JS 被篡改；签名人盲签', reimbT: '未暂停提币，借款补足缺口', reimb: 'full',
+      lesson: '冷钱包也需要独立意图校验', failed: ['L0', 'L3'], stop: ['L3'], limit: ['L5'], ref: 'B02 4.4、B07 6',
+      facts: '冷钱包签名人在网页上看到一笔正常转账，硬件钱包只显示一串哈希。签名后，多签合约逻辑被替换。入口是第三方多签网页服务的开发者电脑。' },
+    { id: 'coinbase', y: 2025, date: '2025-05-15', ex: 'Coinbase', loss: 180, lossT: '69,461 名客户数据泄露；成本估计 1.8–4 亿美元（图中取下限）', path: 'P3', sub: [], attr: '未公开',
+      root: '攻击者付钱给境外客服外包人员复制客户数据；随后冒充平台诈骗用户并勒索 2,000 万美元', reimbT: '拒付赎金；自愿赔付被冒充诈骗的客户', reimb: 'full',
+      lesson: '客服权限最小化 + 访问量基线；数据泄露会转化为社工诈骗', failed: ['L0'], stop: ['L0'], limit: ['L5'], ref: 'B12 C15',
+      facts: '几名海外客服人员收了钱，在数月内把客户的姓名、地址、证件照片和余额截图交给外部团伙。平台没有丢失一枚币，但收到了 2,000 万美元的勒索要求。' },
+    { id: 'coindcx', y: 2025, date: '2025-07-18', ex: 'CoinDCX', loss: 44.2, lossT: '约 4,420 万美元', path: 'P4', sub: [], attr: '未公开定论',
+      root: '在合作交易所做流动性的内部运营账户被入侵；工程师工作电脑据报道被植入恶意软件', reimbT: '金库资金覆盖，客户钱包未受影响', reimb: 'na',
+      lesson: '运营账户也按热钱包管理；员工终端是入口', failed: ['L0', 'L3'], stop: ['L0', 'L3'], limit: ['L5'], ref: 'B12 C16',
+      facts: '一名工程师在职期间接了外部兼职，工作笔记本被植入恶意软件。攻击者用他的凭证进入服务器，转走一个只用于在合作交易所做市的内部账户中的资金。' },
+    { id: 'upbit25', y: 2025, date: '2025-11-27', ex: 'Upbit', loss: 30.4, lossT: '约 445 亿韩元（约 3,040 万美元），Solana 热钱包', path: 'P1', sub: [], attr: '据报道，Lazarus 被怀疑',
+      root: 'Solana 热钱包异常流出，细节未公开', reimbT: '公司储备覆盖', reimb: 'full',
+      lesson: '同一交易所 6 年后热钱包再次被盗', failed: ['L3'], stop: ['L3'], limit: ['L5'], ref: 'B12 6.1',
+      facts: '韩国最大交易所的一个 Solana 生态在线钱包在凌晨出现异常流出，涉及 SOL 和多种生态代币。交易所把剩余资产转入离线钱包，并承诺用公司储备覆盖。' }
+  ];
+  CASES.sort(function (a, b) { return a.y - b.y || a.date.localeCompare(b.date); });
+  var byId = {}; CASES.forEach(function (c) { byId[c.id] = c; });
+
+  /* ---------- 状态 ---------- */
+  var state = { paths: {}, reimb: 'all', yFrom: 2014, yTo: 2025, sel: 'coincheck' };
+  PATH_KEYS.forEach(function (k) { state.paths[k] = true; });
+
+  function visible(c) {
+    return state.paths[c.path] && (state.reimb === 'all' || state.reimb === c.reimb) && c.y >= state.yFrom && c.y <= state.yTo;
+  }
+
+  /* ---------- 形状 ---------- */
+  var NS = 'http://www.w3.org/2000/svg';
+  function shapeEl(shape, cx, cy, r) {
+    var el;
+    if (shape === 'circle') { el = document.createElementNS(NS, 'circle'); el.setAttribute('cx', cx); el.setAttribute('cy', cy); el.setAttribute('r', r); return el; }
+    el = document.createElementNS(NS, 'path');
+    var d;
+    if (shape === 'square') d = 'M' + (cx - r) + ' ' + (cy - r) + 'h' + 2 * r + 'v' + 2 * r + 'h' + (-2 * r) + 'z';
+    else if (shape === 'diamond') d = 'M' + cx + ' ' + (cy - r * 1.3) + 'L' + (cx + r * 1.3) + ' ' + cy + 'L' + cx + ' ' + (cy + r * 1.3) + 'L' + (cx - r * 1.3) + ' ' + cy + 'z';
+    else d = 'M' + cx + ' ' + (cy - r * 1.3) + 'L' + (cx + r * 1.2) + ' ' + (cy + r) + 'L' + (cx - r * 1.2) + ' ' + (cy + r) + 'z';
+    el.setAttribute('d', d);
+    return el;
+  }
+  function legendIcon(k) {
+    var s = document.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 12 12');
+    var e = shapeEl(PATHS[k].shape, 6, 6, 4.2); e.setAttribute('class', 'c-' + k); s.appendChild(e); return s;
+  }
+
+  /* ---------- 筛选器 ---------- */
+  var chipBox = $('pathChips');
+  PATH_KEYS.forEach(function (k) {
+    var n = CASES.filter(function (c) { return c.path === k; }).length;
+    var lab = document.createElement('label'); lab.className = 'chip';
+    var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true; cb.value = k;
+    cb.addEventListener('change', function () { state.paths[k] = cb.checked; render(); });
+    lab.appendChild(cb); lab.appendChild(legendIcon(k));
+    lab.appendChild(document.createTextNode(PATHS[k].name + '（' + n + '）'));
+    chipBox.appendChild(lab);
+  });
+  function setAll(v) {
+    chipBox.querySelectorAll('input').forEach(function (cb) { cb.checked = v; state.paths[cb.value] = v; });
+    render();
+  }
+  $('allPaths').addEventListener('click', function () { setAll(true); });
+  $('noPaths').addEventListener('click', function () { setAll(false); });
+  $('reimbSel').addEventListener('change', function (e) { state.reimb = e.target.value; render(); });
+  function yrChange() {
+    var a = parseInt($('yFrom').value, 10), b = parseInt($('yTo').value, 10);
+    if (isNaN(a)) a = 2014; if (isNaN(b)) b = 2025;
+    a = Math.max(2014, Math.min(2025, a)); b = Math.max(2014, Math.min(2025, b));
+    if (a > b) { var t = a; a = b; b = t; }
+    state.yFrom = a; state.yTo = b; render();
+  }
+  $('yFrom').addEventListener('change', yrChange);
+  $('yTo').addEventListener('change', yrChange);
+
+  /* ---------- 散点图 ---------- */
+  var W = 760, H = 360, M = { l: 56, r: 16, t: 14, b: 34 }, NARROW = false;
+  var X0 = 2013.5, X1 = 2025.8, LOG0 = 1, LOG1 = 4; // 10M .. 10B（单位：百万美元）
+  function sx(y) { return M.l + (y - X0) / (X1 - X0) * (W - M.l - M.r); }
+  function sy(v) { var l = Math.log10(Math.max(v, 10)); return H - M.b - (l - LOG0) / (LOG1 - LOG0) * (H - M.t - M.b); }
+  function fmtLoss(v) { return v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'B' : Math.round(v) + 'M'; }
+
+  // 同一年多起事件横向错开
+  var jitter = {};
+  (function () {
+    var byYear = {};
+    CASES.forEach(function (c) { (byYear[c.y] = byYear[c.y] || []).push(c); });
+    Object.keys(byYear).forEach(function (y) {
+      var arr = byYear[y], n = arr.length;
+      arr.forEach(function (c, i) { jitter[c.id] = n === 1 ? 0 : (i - (n - 1) / 2) * 0.2; });
+    });
+  })();
+
+  function drawChart() {
+    var svg = $('chart');
+    var cw = svg.parentNode.clientWidth || 760;
+    W = Math.max(320, Math.min(760, Math.round(cw))); NARROW = W < 560;
+    H = NARROW ? 300 : 360; M.l = NARROW ? 44 : 56;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var g = document.createElementNS(NS, 'g');
+    // 网格与刻度
+    [10, 100, 1000, 10000].forEach(function (v) {
+      var y = sy(v);
+      var ln = document.createElementNS(NS, 'line'); ln.setAttribute('x1', M.l); ln.setAttribute('x2', W - M.r); ln.setAttribute('y1', y); ln.setAttribute('y2', y); ln.setAttribute('class', 'gridline'); g.appendChild(ln);
+      var tx = document.createElementNS(NS, 'text'); tx.setAttribute('x', M.l - 6); tx.setAttribute('y', y + 4); tx.setAttribute('text-anchor', 'end'); tx.setAttribute('class', 'tick');
+      tx.textContent = '$' + fmtLoss(v); g.appendChild(tx);
+    });
+    for (var yr = 2014; yr <= 2025; yr++) {
+      var t = document.createElementNS(NS, 'text'); t.setAttribute('x', sx(yr)); t.setAttribute('y', H - M.b + 18); t.setAttribute('text-anchor', 'middle'); t.setAttribute('class', 'tick');
+      t.textContent = NARROW ? ((yr % 3 === 2 || yr === 2025) ? "'" + String(yr).slice(2) : '') : ((yr % 2 === 0 || yr === 2025) ? String(yr) : ''); g.appendChild(t);
+      var tk = document.createElementNS(NS, 'line'); tk.setAttribute('x1', sx(yr)); tk.setAttribute('x2', sx(yr)); tk.setAttribute('y1', H - M.b); tk.setAttribute('y2', H - M.b + 4); tk.setAttribute('class', 'gridline'); g.appendChild(tk);
+    }
+    var ax = document.createElementNS(NS, 'line'); ax.setAttribute('x1', M.l); ax.setAttribute('x2', W - M.r); ax.setAttribute('y1', H - M.b); ax.setAttribute('y2', H - M.b); ax.setAttribute('class', 'gridline'); ax.setAttribute('stroke-dasharray', '0'); g.appendChild(ax);
+    svg.appendChild(g);
+    // 点：先画暗的，再画亮的
+    var ordered = CASES.slice().sort(function (a, b) { return (visible(a) ? 1 : 0) - (visible(b) ? 1 : 0); });
+    ordered.forEach(function (c) {
+      var cx = sx(c.y + jitter[c.id]), cy = sy(c.loss), vis = visible(c);
+      var el = shapeEl(PATHS[c.path].shape, cx, cy, NARROW ? 6 : 7);
+      el.setAttribute('class', 'pt c-' + c.path + (vis ? '' : ' dim') + (state.sel === c.id ? ' sel' : ''));
+      el.setAttribute('tabindex', vis ? '0' : '-1');
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', c.y + ' ' + c.ex + ' ' + c.lossT);
+      el.addEventListener('mouseenter', function () { showDetail(c); });
+      el.addEventListener('click', function () { select(c.id); });
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(c.id); } });
+      svg.appendChild(el);
+      if (vis && (!NARROW || state.sel === c.id)) {
+        var lb = document.createElementNS(NS, 'text'); lb.setAttribute('y', cy + 3); lb.setAttribute('class', 'pt-label');
+        if (c.lp === 'l') { lb.setAttribute('x', cx - 10); lb.setAttribute('text-anchor', 'end'); } else lb.setAttribute('x', cx + 9);
+        lb.textContent = c.short || c.ex.replace(/（.*）/, ''); svg.appendChild(lb);
+      }
+    });
+  }
+
+  /* ---------- 案例卡 ---------- */
+  function showDetail(c) {
+    var subs = c.sub.length ? '；次路径：' + c.sub.map(function (k) { return PATHS[k].name; }).join('、') : '';
+    $('detail').innerHTML =
+      '<h3>' + esc(c.y + ' · ' + c.ex) + '</h3>' +
+      '<span class="pill ' + REIMB_PILL[c.reimb] + '">' + esc(REIMB[c.reimb]) + '</span> <span class="small muted">' + esc(c.date) + ' · 来源见 ' + esc(c.ref) + '</span>' +
+      '<dl>' +
+      '<dt>损失</dt><dd>' + esc(c.lossT) + '</dd>' +
+      '<dt>攻击路径</dt><dd>' + esc(PATHS[c.path].name + subs) + '</dd>' +
+      '<dt>根因</dt><dd>' + esc(c.root) + '</dd>' +
+      '<dt>归因</dt><dd>' + esc(c.attr) + '</dd>' +
+      '<dt>用户结局</dt><dd>' + esc(c.reimbT) + '</dd>' +
+      '<dt>教训</dt><dd>' + esc(c.lesson) + '</dd>' +
+      '</dl><p class="small muted" style="margin:8px 0 0">据公开报道。</p>';
+  }
+
+  /* ---------- 防线映射 ---------- */
+  var caseSel = $('caseSel');
+  CASES.forEach(function (c) {
+    var o = document.createElement('option'); o.value = c.id; o.textContent = c.y + ' · ' + c.ex; caseSel.appendChild(o);
+  });
+  caseSel.addEventListener('change', function () { select(caseSel.value); });
+
+  function drawLayers() {
+    var c = byId[state.sel];
+    var box = $('layers'); box.innerHTML = '';
+    LAYERS.forEach(function (L, i) {
+      var f = c.failed.indexOf(L.id) >= 0, s = c.stop.indexOf(L.id) >= 0, l = c.limit.indexOf(L.id) >= 0;
+      var div = document.createElement('div');
+      div.className = 'layer' + (f ? ' failed' : '') + (s ? ' stop' : '') + (l && !s ? ' limit' : '');
+      var tags = '';
+      if (f) tags += '<span class="pill sell">被突破</span>';
+      if (s) tags += '<span class="pill buy">本可拦住</span>';
+      if (l) tags += '<span class="pill warn">限制损失</span>';
+      div.innerHTML = '<div class="ln">' + esc(L.name) + ' <span class="small muted">' + esc(L.doc) + '</span></div><div class="ld">' + esc(L.d) + '</div>' + (tags ? '<div class="tags">' + tags + '</div>' : '');
+      box.appendChild(div);
+      if (i < LAYERS.length - 1) { var a = document.createElement('div'); a.className = 'arrow'; a.textContent = '▼'; box.appendChild(a); }
+    });
+    var note;
+    if (!c.failed.length) note = '该事件发生在交易所防线之外（链层或协议层），交易所的价值在于不被波及。';
+    else if (!c.limit.length) note = '没有任何一层限制住损失：最终由用户通过重组或破产程序承担。';
+    else note = '被突破 ' + c.failed.length + ' 层；本可拦住的层：' + c.stop.map(function (id) { return LAYERS.filter(function (L) { return L.id === id; })[0].name.split(' · ')[1]; }).join('、') + '。';
+    $('layerNote').textContent = note;
+  }
+
+  /* ---------- 列表 ---------- */
+  function drawTable() {
+    var rows = CASES.filter(visible);
+    $('countTxt').textContent = '当前显示 ' + rows.length + ' / ' + CASES.length + ' 起。';
+    if (!rows.length) { $('tbody').innerHTML = '<tr><td colspan="5" class="muted">没有符合条件的案例。</td></tr>'; return; }
+    $('tbody').innerHTML = rows.map(function (c) {
+      return '<tr data-id="' + c.id + '"' + (c.id === state.sel ? ' class="sel"' : '') + '><td>' + c.y + '</td><td>' + esc(c.ex) + '</td><td class="num">' + (c.loss >= 100 ? Math.round(c.loss).toLocaleString('en-US') : c.loss) + '</td><td>' + esc(PATHS[c.path].name) + '</td><td><span class="pill ' + REIMB_PILL[c.reimb] + '">' + esc(REIMB[c.reimb]) + '</span></td></tr>';
+    }).join('');
+  }
+  $('tbody').addEventListener('click', function (e) {
+    var tr = e.target.closest('tr[data-id]'); if (tr) select(tr.getAttribute('data-id'));
+  });
+
+  function select(id) {
+    state.sel = id; caseSel.value = id;
+    showDetail(byId[id]); drawLayers(); drawChart(); drawTable();
+  }
+  function render() { drawChart(); drawTable(); drawLayers(); }
+
+  /* ---------- 测验 ---------- */
+  var quiz = { cur: null, answered: false, right: 0, total: 0, last: null };
+  function nextQ() {
+    var pool = CASES.filter(visible);
+    if (!pool.length) { $('qFacts').textContent = '当前筛选没有案例。请放宽筛选条件。'; $('qOpts').innerHTML = ''; $('qResult').textContent = ''; return; }
+    var c;
+    do { c = pool[Math.floor(Math.random() * pool.length)]; } while (pool.length > 1 && quiz.last && c.id === quiz.last);
+    quiz.cur = c; quiz.last = c.id; quiz.answered = false;
+    $('qFacts').innerHTML = '<b>事实（' + c.y + ' 年，平台名已隐去）：</b>' + esc(c.facts);
+    $('qResult').textContent = '';
+    var opts = $('qOpts'); opts.innerHTML = '';
+    PATH_KEYS.forEach(function (k) {
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = PATHS[k].name; b.setAttribute('data-k', k);
+      b.addEventListener('click', function () { answer(k); });
+      opts.appendChild(b);
+    });
+  }
+  function answer(k) {
+    if (quiz.answered) return;
+    quiz.answered = true; quiz.total++;
+    var c = quiz.cur, verdict;
+    if (k === c.path) { quiz.right++; verdict = '<span class="pill buy">正确</span>'; }
+    else if (c.sub.indexOf(k) >= 0) { quiz.right += 0.5; verdict = '<span class="pill warn">部分正确（这是次路径）</span>'; }
+    else verdict = '<span class="pill sell">不对</span>';
+    $('qOpts').querySelectorAll('button').forEach(function (b) {
+      var bk = b.getAttribute('data-k');
+      if (bk === c.path) b.classList.add('right');
+      else if (c.sub.indexOf(bk) >= 0) b.classList.add('part');
+      else if (bk === k) b.classList.add('wrong');
+      b.disabled = bk !== c.path && bk !== k && c.sub.indexOf(bk) < 0;
+    });
+    $('qScore').textContent = '得分 ' + quiz.right + ' / ' + quiz.total;
+    $('qResult').innerHTML = verdict + ' 这是 <b>' + esc(c.y + ' · ' + c.ex) + '</b>。主路径：' + esc(PATHS[c.path].name) +
+      (c.sub.length ? '；次路径：' + esc(c.sub.map(function (x) { return PATHS[x].name; }).join('、')) : '') +
+      '。<br>根因：' + esc(c.root) + '。<br>判断规则：按"最终突破点"定主路径——攻击者最终控制的是密钥、签名人看到的界面、员工权限、用户账户、协议规则，还是外部依赖？ <button type="button" class="small" id="qGo">在防线映射中查看</button>';
+    $('qGo').addEventListener('click', function () { select(c.id); $('caseSel').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  }
+  $('qNext').addEventListener('click', nextQ);
+
+  var rzT = null;
+  window.addEventListener('resize', function () { clearTimeout(rzT); rzT = setTimeout(drawChart, 150); });
+
+  /* ---------- 初始化 ---------- */
+  caseSel.value = state.sel;
+  showDetail(byId[state.sel]);
+  render();
+})();
+</script>
+</body>
+</html>

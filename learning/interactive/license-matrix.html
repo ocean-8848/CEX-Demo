@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>牌照监管矩阵</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+  .jgrid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .jcard { text-align: left; padding: 10px 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); min-width: 0; }
+  .jcard .flag { font-size: 20px; line-height: 1; }
+  .jcard .nm { display: block; font-weight: 600; margin-top: 4px; }
+  .jcard .rg { display: block; font-size: 12px; color: var(--text-2); }
+  .jcard.on { border-color: var(--accent); background: var(--accent-soft); }
+  .prow button.on { background: var(--info-soft); border-color: var(--info); color: var(--info); font-weight: 600; }
+  .verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .verdict .big { font-size: 20px; font-weight: 650; }
+  .kv { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr); gap: 6px 12px; font-size: 14px; }
+  .kv dt { color: var(--text-2); }
+  .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  @media (max-width: 520px) { .kv { grid-template-columns: minmax(0, 1fr); } .kv dd { margin-bottom: 6px; } }
+  .src { font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+  .mini td, .mini th { white-space: nowrap; text-align: center; }
+  .mini td:first-child, .mini th:first-child { text-align: left; }
+  .mini td.cell { cursor: pointer; }
+  .mini td.cell.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; margin-top: 8px; }
+  .checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .checks label { display: flex; align-items: center; gap: 6px; margin: 4px 0; color: var(--text); font-size: 14px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+  .conf li, .todo li { margin: 4px 0; }
+  .todo { list-style: none; padding-left: 0; }
+  .todo label { display: flex; gap: 8px; align-items: flex-start; color: var(--text); font-size: 14px; margin: 0; }
+  .todo input { margin-top: 4px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../backstage/B09-global-licensing.md">配套章节：B09 全球监管与牌照对照</a>
+  </header>
+  <h1>牌照与监管矩阵</h1>
+  <p class="lead">选一个司法辖区和一个产品，查看它在当地是"主牌照内可做""需额外牌照""零售受限"还是"零售禁止"。第二个页签让你设计一个全球交易所：勾选地区和产品，页面计算要申请的牌照、法人实体数量和冲突。</p>
+
+  <div class="callout warn"><strong>非法律意见，规则变化快，以监管机构原文为准。</strong> 本页数据核对至 2026 年 10 月公开资料。每一格都附来源说明；标"未核实"的格子只给方向，不给结论。币安状态一律以币安官网牌照页和监管机构登记册为准。</div>
+
+  <div class="card small">
+    <strong>怎么玩</strong>
+    <ol style="margin:6px 0 0; padding-left:20px;">
+      <li>在"查询矩阵"页签点一张辖区卡片，再点一个产品按钮。</li>
+      <li>右侧显示结论、关键要求（资本、冷存储、隔离、零售限制、Travel Rule 门槛）和币安在当地的状态。</li>
+      <li>下方总览表的每一格也可以直接点击。</li>
+      <li>切到"设计一个全球交易所"，勾选地区、产品和客户类别，看牌照清单、实体数和冲突，并逐项勾掉上线检查清单。</li>
+    </ol>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button type="button" class="primary" data-tab="q" role="tab">查询矩阵</button>
+    <button type="button" data-tab="d" role="tab">设计一个全球交易所</button>
+  </div>
+
+  <!-- ============ Tab 1 ============ -->
+  <section id="tab-q">
+    <h2>1. 选择司法辖区</h2>
+    <div class="jgrid" id="jgrid"></div>
+
+    <h2>2. 选择产品</h2>
+    <div class="btn-row prow" id="prow"></div>
+
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card">
+        <div class="verdict"><span class="big" id="vTitle">-</span><span id="vPill"></span></div>
+        <p id="vText" style="margin:6px 0 12px"></p>
+        <dl class="kv" id="vKv"></dl>
+        <p class="src" id="vSrc"></p>
+      </div>
+      <div class="card">
+        <h3>辖区概况</h3>
+        <dl class="kv" id="jKv"></dl>
+        <h3>币安在当地（截至 2026 年公开资料）</h3>
+        <p id="bnText" style="margin:0 0 6px"></p>
+        <p class="src" id="bnSrc"></p>
+      </div>
+    </div>
+
+    <h2>3. 总览：辖区 × 产品</h2>
+    <div class="card">
+      <div class="table-wrap">
+        <table class="mini" id="mini"></table>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+  </section>
+
+  <!-- ============ Tab 2 ============ -->
+  <section id="tab-d" class="hidden">
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card">
+        <h3>服务哪些地区</h3>
+        <div class="checks" id="dRegions"></div>
+        <h3>提供哪些产品</h3>
+        <div class="checks" id="dProducts"></div>
+        <h3>客户类别</h3>
+        <div class="checks">
+          <label><input type="radio" name="cat" value="retail" checked> 含零售客户</label>
+          <label><input type="radio" name="cat" value="pro"> 只服务专业 / 合格投资者</label>
+        </div>
+        <div class="btn-row">
+          <button type="button" id="presetA">预设：亚洲零售</button>
+          <button type="button" id="presetB">预设：全产品全地区</button>
+          <button type="button" id="presetC">清空</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="stats">
+          <div class="stat"><span class="k">法人实体（估算）</span><span class="v" id="sEnt">0</span></div>
+          <div class="stat"><span class="k">牌照 / 登记</span><span class="v" id="sLic">0</span></div>
+          <div class="stat"><span class="k">冲突</span><span class="v" id="sConf">0</span></div>
+          <div class="stat"><span class="k">未核实格</span><span class="v" id="sUnk">0</span></div>
+        </div>
+        <p class="small muted" style="margin:10px 0 0">实体数估算规则（示例）：每个地区 1 个运营实体；若该地区的稳定币发行需要独立持牌主体，再加 1 个。欧盟按护照机制只算 1 个实体。</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>需要申请的牌照 / 登记</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>地区</th><th>产品</th><th>牌照 / 登记</th><th>来源</th></tr></thead>
+          <tbody id="dLic"><tr><td colspan="4" class="muted">先勾选地区和产品。</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>冲突与警告</h3>
+      <ul class="conf small" id="dConf"><li class="muted">暂无。</li></ul>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>上线检查清单 <span class="small muted" id="dDone"></span></h3>
+      <ul class="todo" id="dTodo"></ul>
+    </div>
+  </section>
+
+  <div class="card" style="margin-top:20px">
+    <h3>试一试</h3>
+    <ol class="small" style="padding-left:20px;margin:0">
+      <li>在"查询矩阵"里比较"新加坡 × 合约/衍生品"和"迪拜 × 合约/衍生品"。为什么一个对零售禁止，另一个只对合格投资者开放？产品开关为什么必须细到"客户类别"？</li>
+      <li>切到"设计一个全球交易所"，点"预设：全产品全地区"。冲突列表里哪几条无法靠"再申请一张牌照"解决？再把客户类别改成"只服务专业投资者"，冲突减少了多少？</li>
+      <li>只勾欧盟和"现货"，看实体数和牌照；再加勾"稳定币发行"。为什么实体数会变？这与 MiCA 对 EMT 发行方的身份要求有什么关系？</li>
+    </ol>
+  </div>
+
+  <footer class="note">本页数据由公开资料整理，核对至 2026 年 10 月；不代表币安或任何交易所的真实产品配置。非法律意见，规则变化快，以监管机构原文为准。配套章节：<a href="../backstage/B09-global-licensing.md">B09 全球监管与牌照对照</a>。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  /* ---------- status vocabulary ---------- */
+  var STATUS = {
+    ok:   { label: '主牌照内可做', cls: 'buy',    sym: '✅' },
+    lic:  { label: '需额外 / 专门牌照', cls: 'info', sym: '🔑' },
+    pro:  { label: '零售受限（仅专业 / 合格投资者）', cls: 'warn', sym: '⚠️' },
+    no:   { label: '零售禁止', cls: 'sell', sym: '⛔' },
+    unk:  { label: '未核实 / 以官网为准', cls: 'accent', sym: '❔' }
+  };
+
+  var PRODUCTS = [
+    { id: 'spot', name: '现货' },
+    { id: 'deriv', name: '合约 / 衍生品' },
+    { id: 'margin', name: '杠杆 / 保证金' },
+    { id: 'earn', name: '理财 / 质押' },
+    { id: 'sc', name: '稳定币发行' },
+    { id: 'p2p', name: 'P2P' },
+    { id: 'card', name: '加密卡' }
+  ];
+
+  /* ---------- jurisdictions (each row carries a source note) ---------- */
+  var J = {
+    us: {
+      flag: '🇺🇸', name: '美国', reg: 'FinCEN · 各州 · SEC/CFTC · OFAC',
+      main: 'FinCEN MSB 注册 + 各州汇款牌照（纽约 BitLicense）',
+      capital: '各州净资产与担保金要求，州与州不同',
+      cold: '无统一冷存储比例',
+      seg: '州法与 BitLicense 要求客户资产保护',
+      retail: '零售杠杆商品交易须在 CFTC 注册场所进行',
+      travel: '3,000 美元',
+      euPassport: false,
+      scEntity: true,
+      binance: 'Binance.com 不向美国用户提供服务。Binance.US（BAM Trading）是独立实体，其州牌照清单未核实。SEC 诉讼于 2025 年 5 月 29 日撤诉；2023 年和解与监察见 B01。',
+      bnSrc: 'SEC 诉讼公告 LR-26316；B01 第 6.1 节；州牌照未核实',
+      src: 'BSA/FinCEN、23 NYCRR 200、GENIUS 法案（2025-07-18 签署）、SEC-CFTC 2025-09-02 联合声明'
+    },
+    eu: {
+      flag: '🇪🇺', name: '欧盟', reg: '各国主管机关 · ESMA · EBA',
+      main: 'MiCA CASP 授权（一国授权，护照通行全欧）',
+      capital: '5 万 / 12.5 万 / 15 万欧元（按服务类别），或固定开支 1/4，取高者',
+      cold: '无统一冷存储比例，须有保管政策',
+      seg: '客户资产与自有资产隔离',
+      retail: '衍生品不属 MiCA，归 MiFID II，须适当性评估',
+      travel: '无最低金额（TFR）；向自托管地址 > 1,000 欧元须核实归属',
+      euPassport: true,
+      scEntity: true,
+      binance: '未持有 MiCA 授权。2026 年 6 月撤回希腊申请；7 月 1 日过渡期结束后，限制新注册、充值和理财，保留提币。正寻求其他成员国授权。',
+      bnSrc: 'ESMA 2026 年 6 月声明；The Block、AML Intelligence 2026 年 6 月报道',
+      src: 'MiCA (EU) 2023/1114；TFR (EU) 2023/1113；ESMA75-113276571-1679'
+    },
+    uk: {
+      flag: '🇬🇧', name: '英国', reg: 'FCA',
+      main: '当前：MLR 反洗钱登记；2027-10-25 起：FSMA 加密授权',
+      capital: '按 FCA 新审慎规则（2026-06-30 最终规则）',
+      cold: '无统一冷存储比例',
+      seg: '新制度要求托管资产隔离',
+      retail: '2021 年起禁止向零售销售加密衍生品；推广须 24 小时冷静期 + 适当性测试',
+      travel: '无最低金额（低额字段可简化，未核实）',
+      euPassport: false,
+      scEntity: true,
+      binance: '未在 FCA 登记。据公开报道，2023 年金融推广制度生效后暂停英国新用户注册；最新状态未核实。',
+      bnSrc: '公开报道（未核实最新状态）',
+      src: 'FCA 新加密制度页；DLA Piper 2026-07 解读；FCA 金融推广制度 2023-10-08'
+    },
+    sg: {
+      flag: '🇸🇬', name: '新加坡', reg: 'MAS',
+      main: 'PSA 下 DPT 服务牌照；仅服务海外须 FSMA DTSP 牌照（极少发放）',
+      capital: '按 PSA 牌照类别（未核实具体数字）',
+      cold: '无统一冷存储比例',
+      seg: '客户资产须以法定信托隔离，每日对账',
+      retail: '禁止向零售提供杠杆、信贷、借贷与质押',
+      travel: '1,500 新元',
+      euPassport: false,
+      scEntity: true,
+      binance: '据公开报道，币安于 2021 年撤回新加坡牌照申请，不向新加坡用户提供服务。',
+      bnSrc: '公开报道（2021）',
+      src: 'MAS DPT 消费者保护措施（2023）；FSMA 第 9 部分 2025-06-30 生效'
+    },
+    hk: {
+      flag: '🇭🇰', name: '香港', reg: 'SFC（交易平台）· HKMA（稳定币）',
+      main: 'SFC VATP 牌照（SFO 第 1、7 类 + AMLO）',
+      capital: '按 SFC 要求，另须补偿安排',
+      cold: '≥ 98% 客户虚拟资产冷存储；补偿覆盖冷存储 50%、热存储 100%',
+      seg: '经关联信托实体持有客户资产',
+      retail: '零售限大市值代币，须知识评估；永续合约框架（2026-02）仅面向专业投资者',
+      travel: '8,000 港元',
+      euPassport: false,
+      scEntity: true,
+      binance: '未列入 SFC 持牌 VATP 名单。',
+      bnSrc: 'SFC 持牌 VATP 名单（以 SFC 网站为准）',
+      src: 'SFC VATP 指引（2023-06-01）；SFC 2025-11-03、2026-02-11 通函；稳定币条例 2025-08-01'
+    },
+    jp: {
+      flag: '🇯🇵', name: '日本', reg: 'FSA',
+      main: '资金结算法下"加密资产交换业者"登记',
+      capital: '按资金结算法（未核实具体数字）',
+      cold: '≥ 95% 冷钱包；热钱包部分须备等额自有资产',
+      seg: '客户资产与自有资产分离，须外部审计',
+      retail: '个人杠杆上限 2 倍（2020 年内阁府令）',
+      travel: '无最低金额',
+      euPassport: false,
+      scEntity: true,
+      binance: 'Binance Japan 已在 FSA 登记（经收购 Sakura Exchange BitCoin）。PayPay 于 2025 年 10 月宣布取得 40% 股权。',
+      bnSrc: 'PayPay 2025-10-09 新闻稿；FSA 登记名单',
+      src: 'Axios 2023（95% 冷钱包）；The Block 2020（2 倍杠杆）；2026-04-10 内阁批准 FIEA 修订'
+    },
+    ae: {
+      flag: '🇦🇪', name: '阿联酋', reg: '迪拜 VARA · 阿布扎比 ADGM FSRA',
+      main: 'VARA 按活动发牌；ADGM 按交易所 / 清算 / 经纪三类许可',
+      capital: 'VARA：10 万–150 万迪拉姆（按活动），流动资产 ≥ 1.2 倍月运营开支',
+      cold: '无统一冷存储比例（未核实）',
+      seg: 'VARA：储备资产 = 100% 客户负债',
+      retail: 'VARA：衍生品与保证金仅合格投资者（净资产 350 万迪拉姆等）',
+      travel: '3,500 迪拉姆',
+      euPassport: false,
+      scEntity: true,
+      binance: 'Binance FZE 持 VARA VASP 牌照（2024-04）。ADGM：Nest Exchange、Nest Clearing and Custody、Nest Trading 获 FSRA 授权（2025-12），Binance.com 服务 2026-01-05 起迁入。',
+      bnSrc: '币安官网牌照页；VARA 公开登记册；Gulf News 2025-12',
+      src: 'VARA 规则手册与登记册；ADGM FSRA 授权报道'
+    }
+  };
+
+  /* ---------- matrix: status + note + license + source per cell ---------- */
+  function C(s, note, lic, src, bn) { return { s: s, note: note, lic: lic, src: src, bn: bn || '未核实 / 以官网为准' }; }
+  var M = {
+    us: {
+      spot:  C('ok', '持 MSB 注册与各州汇款牌照后可提供。部分代币若被认定为证券，须走证券交易所或 ATS 路径。', 'FinCEN MSB + 州 MTL + NY BitLicense', 'BSA；23 NYCRR 200'),
+      deriv: C('lic', '须在 CFTC 注册为 DCM / FCM 等。离岸平台不得向美国人提供。', 'CFTC DCM / FCM 注册', 'CEA；2023 年 CFTC 和解'),
+      margin:C('lic', '零售杠杆、融资商品交易须在 DCM 或 SEC 注册交易所进行（2025-09 联合声明）。', 'CFTC DCM 或 SEC 注册交易所', 'SEC-CFTC 2025-09-02 联合声明'),
+      earn:  C('unk', '质押 / 借贷的证券属性按产品结构判断，SEC 2025 年起调整立场；具体以最新声明为准。', '视结构：可能涉及证券注册', '未核实'),
+      sc:    C('lic', 'GENIUS 法案：只有 PPSI 可发行支付稳定币，储备 1:1。最终规则未全部发布，最迟 2027-01-18 生效。', 'PPSI（OCC 联邦或州路径）', 'GENIUS 法案；Crowdfund Insider 2026-07'),
+      p2p:   C('lic', '撮合法币与加密兑换通常构成汇款业务。', 'FinCEN MSB + 州 MTL', 'BSA（业界通用解读）'),
+      card:  C('lic', '须与发卡银行和卡组织合作，平台自身受汇款牌照约束。', '发卡行合作 + 州 MTL', '业界通用做法（未核实）')
+    },
+    eu: {
+      spot:  C('ok', 'CASP 授权覆盖兑换、交易平台运营、托管等服务。', 'MiCA CASP 授权', 'MiCA 第 59–76 条', '无 MiCA 授权；2026-07-01 起限制新业务，保留提币'),
+      deriv: C('lic', 'MiCA 不涵盖衍生品。加密衍生品是 MiFID II 金融工具，须投资公司牌照并做适当性评估。', 'MiFID II 投资公司牌照', 'MiCA 第 2 条范围'),
+      margin:C('lic', '杠杆 / 差价合约类产品归 MiFID II；多国对零售 CFD 有杠杆上限。', 'MiFID II 投资公司牌照', 'MiFID II（业界通用解读，未核实细节）'),
+      earn:  C('unk', 'MiCA 未明确覆盖加密借贷；质押按"代表客户托管与操作"评估。各国解读不同。', 'CASP 托管授权（视结构）', '未核实', '2026-07-01 起暂停理财（据报道）'),
+      sc:    C('lic', 'EMT 只能由信贷机构或电子货币机构发行；ART 须单独授权；两者不得付息。', 'EMI / 信贷机构（EMT）或 ART 授权', 'MiCA 第三、四编'),
+      p2p:   C('unk', 'P2P 撮合可能构成 CASP 服务；法币端须支付牌照。', 'CASP + 支付合作（视结构）', '未核实'),
+      card:  C('lic', '发卡须电子货币机构或支付机构牌照，通常与持牌 EMI 合作。', 'EMI / PI 牌照或合作', 'PSD2 / EMD2（业界通用做法）')
+    },
+    uk: {
+      spot:  C('lic', '当前只需 MLR 登记；2027-10-25 起须 FSMA 授权"运营交易平台 / 交易"。', 'FCA MLR 登记 → FSMA 授权', 'FCA 新制度页'),
+      deriv: C('no', 'FCA 自 2021 年 1 月起禁止向零售销售加密衍生品。', '—（零售禁止）', 'FCA PS20/10', '未核实'),
+      margin:C('no', '零售杠杆加密交易受衍生品禁令与新规限制（细节未核实）。', '—', '未核实'),
+      earn:  C('lic', '"合格加密资产质押"是新制度下的受监管活动。', 'FSMA 授权（质押）', 'FCA 2026-06-30 最终规则'),
+      sc:    C('lic', '发行合格稳定币是新的受监管活动。', 'FSMA 授权（稳定币发行）', 'FCA 2026-06-30 最终规则'),
+      p2p:   C('unk', 'P2P 撮合的定性未核实。', '视结构', '未核实'),
+      card:  C('lic', '发卡须 EMI 牌照或合作；推广须遵守金融推广制度。', 'EMI 牌照或合作', '业界通用做法')
+    },
+    sg: {
+      spot:  C('ok', 'DPT 服务牌照覆盖买卖与撮合；客户资产须法定信托。', 'PSA DPT 牌照（MPI）', 'MAS 2023 措施'),
+      deriv: C('no', '禁止向零售客户进行或促成杠杆 DPT 交易。衍生品另受 SFA 约束。', 'SFA 资本市场服务牌照（机构）', 'MAS 2023 措施'),
+      margin:C('no', '禁止向零售客户提供信贷或杠杆以购买 DPT。', '—（零售禁止）', 'MAS 2023 措施'),
+      earn:  C('no', '禁止为零售客户促成 DPT 借贷与质押。', '—（零售禁止）', 'MAS 2023 措施'),
+      sc:    C('lic', '单一货币稳定币框架（2023-08）：流通量 ≥ 500 万新元的非银行发行方须 MPI 牌照，合规者可用"MAS 监管稳定币"标签。', 'MPI 牌照 + SCS 框架', 'MAS 2023-08-15 新闻稿'),
+      p2p:   C('unk', '未核实。', '视结构', '未核实'),
+      card:  C('lic', '属支付服务，须 PSA 相应牌照或合作。', 'PSA 牌照或合作', '业界通用做法（未核实）')
+    },
+    hk: {
+      spot:  C('ok', 'VATP 牌照下可向零售提供合格大市值代币，须知识评估与集中度限制。', 'SFC VATP 牌照', 'SFC VATP 指引'),
+      deriv: C('pro', '2026-02-11 通函：永续合约仅面向专业投资者，按高层框架报批。', 'SFC 事先批准', 'SFC 2026-02 通函'),
+      margin:C('pro', '2026-02 通函允许持牌 VA 经纪向证券保证金客户提供融资，附抵押与保护要求。', 'SFC 牌照条件', 'SFC 2026-02 通函'),
+      earn:  C('unk', '质押服务须事先获 SFC 批准（细节未核实）。', 'SFC 事先批准', '未核实'),
+      sc:    C('lic', '在港发行法币稳定币或在港外发行港元稳定币须 HKMA 牌照。首批牌照 2026-04-10 发出。', 'HKMA 稳定币发行人牌照', '稳定币条例；Charltons 2026-04'),
+      p2p:   C('unk', '未核实。', '视结构', '未核实'),
+      card:  C('unk', '未核实。', '视结构', '未核实')
+    },
+    jp: {
+      spot:  C('ok', '登记后可提供；新币上架须经行业协会流程（未核实细节）。', 'FSA 加密资产交换业者登记', '资金结算法', 'Binance Japan 已登记'),
+      deriv: C('lic', '加密衍生品须按金融商品交易法登记，个人杠杆上限 2 倍。', 'FIEA 第一类金融商品交易业', 'The Block 2020'),
+      margin:C('lic', '同衍生品，个人杠杆上限 2 倍。', 'FIEA 登记', 'The Block 2020'),
+      earn:  C('unk', '借贷类产品较常见，质押的定性未核实。', '视结构', '未核实'),
+      sc:    C('lic', '稳定币属"电子支付手段"，发行限于银行、资金转移业者、信托公司（2023 修法）。', '银行 / 资金转移业者 / 信托牌照', '2023 资金结算法修订（未逐条核实）'),
+      p2p:   C('unk', '未核实。', '视结构', '未核实'),
+      card:  C('unk', '未核实。', '视结构', '未核实')
+    },
+    ae: {
+      spot:  C('ok', 'VARA 交易所服务牌照覆盖现货。', 'VARA Exchange Services', 'VARA 登记册', 'Binance FZE 持 VARA 牌照（2024-04）'),
+      deriv: C('pro', 'VARA：衍生品仅合格投资者与机构。ADGM 按传统衍生品框架。', 'VARA Exchange Services（含衍生品）或 ADGM RIE', 'VARA 规则手册；The Block', 'Binance FZE：仅合格投资者；ADGM Nest Exchange 覆盖衍生品'),
+      margin:C('pro', 'VARA：保证金交易须牌照明确授权，且仅合格投资者。', 'VARA 授权', 'The Block（VARA 保证金规则）'),
+      earn:  C('lic', 'VARA 有借贷类活动牌照。', 'VARA Lending & Borrowing', 'VARA 登记册（Binance FZE 活动）', 'Binance FZE 含借贷服务'),
+      sc:    C('unk', '迪拉姆支付代币归阿联酋央行监管（细节未核实）。', '阿联酋央行（未核实）', '未核实'),
+      p2p:   C('unk', '未核实。', '视结构', '未核实'),
+      card:  C('unk', '未核实。', '视结构', '未核实')
+    }
+  };
+
+  var JIDS = Object.keys(J);
+  var state = { j: 'eu', p: 'spot' };
+
+  /* ---------- Tab switch ---------- */
+  document.querySelectorAll('.tabs button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.tabs button').forEach(function (x) { x.classList.toggle('primary', x === b); });
+      $('tab-q').classList.toggle('hidden', b.dataset.tab !== 'q');
+      $('tab-d').classList.toggle('hidden', b.dataset.tab !== 'd');
+    });
+  });
+
+  /* ---------- Tab 1 ---------- */
+  function pill(s) { var st = STATUS[s]; return '<span class="pill ' + st.cls + '">' + st.sym + ' ' + st.label + '</span>'; }
+
+  function buildQuery() {
+    $('jgrid').innerHTML = JIDS.map(function (id) {
+      var j = J[id];
+      return '<button type="button" class="jcard" data-j="' + id + '"><span class="flag">' + j.flag + '</span><span class="nm">' + j.name + '</span><span class="rg">' + esc(j.reg) + '</span></button>';
+    }).join('');
+    $('prow').innerHTML = PRODUCTS.map(function (p) { return '<button type="button" data-p="' + p.id + '">' + p.name + '</button>'; }).join('');
+    $('jgrid').addEventListener('click', function (e) { var b = e.target.closest('[data-j]'); if (b) { state.j = b.dataset.j; renderQuery(); } });
+    $('prow').addEventListener('click', function (e) { var b = e.target.closest('[data-p]'); if (b) { state.p = b.dataset.p; renderQuery(); } });
+
+    var h = '<thead><tr><th>辖区</th>' + PRODUCTS.map(function (p) { return '<th>' + p.name + '</th>'; }).join('') + '</tr></thead><tbody>';
+    JIDS.forEach(function (id) {
+      h += '<tr><td>' + J[id].flag + ' ' + J[id].name + '</td>';
+      PRODUCTS.forEach(function (p) {
+        var c = M[id][p.id];
+        h += '<td class="cell" data-j="' + id + '" data-p="' + p.id + '" title="' + esc(STATUS[c.s].label) + '"><span class="pill ' + STATUS[c.s].cls + '">' + STATUS[c.s].sym + '</span></td>';
+      });
+      h += '</tr>';
+    });
+    $('mini').innerHTML = h + '</tbody>';
+    $('mini').addEventListener('click', function (e) { var td = e.target.closest('td.cell'); if (td) { state.j = td.dataset.j; state.p = td.dataset.p; renderQuery(); } });
+    $('legend').innerHTML = Object.keys(STATUS).map(function (k) { return pill(k); }).join('');
+  }
+
+  function renderQuery() {
+    var j = J[state.j], c = M[state.j][state.p];
+    var pname = PRODUCTS.filter(function (p) { return p.id === state.p; })[0].name;
+    document.querySelectorAll('.jcard').forEach(function (b) { b.classList.toggle('on', b.dataset.j === state.j); });
+    document.querySelectorAll('#prow button').forEach(function (b) { b.classList.toggle('on', b.dataset.p === state.p); });
+    document.querySelectorAll('#mini td.cell').forEach(function (td) { td.classList.toggle('sel', td.dataset.j === state.j && td.dataset.p === state.p); });
+
+    $('vTitle').textContent = j.flag + ' ' + j.name + ' × ' + pname;
+    $('vPill').innerHTML = pill(c.s);
+    $('vText').textContent = c.note;
+    $('vKv').innerHTML = [
+      ['所需牌照 / 登记', c.lic],
+      ['资本要求', j.capital],
+      ['托管 / 冷存储', j.cold],
+      ['资产隔离', j.seg],
+      ['零售限制', j.retail],
+      ['Travel Rule 门槛', j.travel],
+      ['币安该产品状态', c.bn]
+    ].map(function (r) { return '<dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('');
+    $('vSrc').textContent = '来源说明：' + c.src;
+
+    $('jKv').innerHTML = [['主监管机构', j.reg], ['主牌照', j.main], ['欧盟护照', j.euPassport ? '是：一国授权，全欧通行' : '否']].map(function (r) {
+      return '<dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd>';
+    }).join('');
+    $('bnText').textContent = j.binance;
+    $('bnSrc').textContent = '来源说明：' + j.bnSrc + '。辖区数据来源：' + j.src;
+  }
+
+  /* ---------- Tab 2 ---------- */
+  var design = { regions: {}, products: {}, cat: 'retail', done: {} };
+
+  function buildDesign() {
+    $('dRegions').innerHTML = JIDS.map(function (id) { return '<label><input type="checkbox" data-r="' + id + '"> ' + J[id].flag + ' ' + J[id].name + '</label>'; }).join('');
+    $('dProducts').innerHTML = PRODUCTS.map(function (p) { return '<label><input type="checkbox" data-dp="' + p.id + '"> ' + p.name + '</label>'; }).join('');
+    $('dRegions').addEventListener('change', function (e) { if (e.target.dataset.r) { design.regions[e.target.dataset.r] = e.target.checked; renderDesign(); } });
+    $('dProducts').addEventListener('change', function (e) { if (e.target.dataset.dp) { design.products[e.target.dataset.dp] = e.target.checked; renderDesign(); } });
+    document.querySelectorAll('input[name="cat"]').forEach(function (r) { r.addEventListener('change', function () { design.cat = r.value; renderDesign(); }); });
+    $('presetA').addEventListener('click', function () { preset(['sg', 'hk', 'jp'], ['spot', 'deriv', 'earn'], 'retail'); });
+    $('presetB').addEventListener('click', function () { preset(JIDS, PRODUCTS.map(function (p) { return p.id; }), 'retail'); });
+    $('presetC').addEventListener('click', function () { preset([], [], 'retail'); });
+    $('dTodo').addEventListener('change', function (e) { if (e.target.dataset.k) { design.done[e.target.dataset.k] = e.target.checked; updDone(); } });
+  }
+
+  function preset(rs, ps, cat) {
+    design.regions = {}; design.products = {};
+    rs.forEach(function (r) { design.regions[r] = true; });
+    ps.forEach(function (p) { design.products[p] = true; });
+    design.cat = cat;
+    document.querySelectorAll('[data-r]').forEach(function (c) { c.checked = !!design.regions[c.dataset.r]; });
+    document.querySelectorAll('[data-dp]').forEach(function (c) { c.checked = !!design.products[c.dataset.dp]; });
+    document.querySelectorAll('input[name="cat"]').forEach(function (r) { r.checked = r.value === cat; });
+    renderDesign();
+  }
+
+  function sel(obj) { return Object.keys(obj).filter(function (k) { return obj[k]; }); }
+
+  function renderDesign() {
+    var rs = sel(design.regions).filter(function (r) { return J[r]; });
+    var ps = sel(design.products);
+    var licRows = [], licSet = {}, conf = [], unk = 0, ents = 0;
+
+    rs.forEach(function (r) {
+      ents += 1;
+      if (design.products.sc && M[r].sc.s === 'lic' && J[r].scEntity) ents += 1;
+      ps.forEach(function (p) {
+        var c = M[r][p], pname = PRODUCTS.filter(function (x) { return x.id === p; })[0].name;
+        if (c.s === 'unk') { unk += 1; conf.push('<span class="pill accent">❔ 未核实</span> ' + J[r].name + ' × ' + pname + '：' + esc(c.note) + ' 上线前须做本地法律意见。'); }
+        if (c.s === 'no' && design.cat === 'retail') conf.push('<span class="pill sell">⛔ 零售禁止</span> ' + J[r].name + ' × ' + pname + '：' + esc(c.note) + ' 再申请牌照也无法向零售提供，须对该地区零售关闭此产品。');
+        if (c.s === 'no' && design.cat === 'pro') conf.push('<span class="pill warn">⚠️ 仅机构路径</span> ' + J[r].name + ' × ' + pname + '：零售禁令不适用于专业客户，但仍须相应机构牌照（' + esc(c.lic) + '）。');
+        if (c.s === 'pro' && design.cat === 'retail') conf.push('<span class="pill warn">⚠️ 零售受限</span> ' + J[r].name + ' × ' + pname + '：只能对专业 / 合格投资者开放。产品矩阵须按客户类别分开。');
+        if (c.s === 'lic' || c.s === 'ok' || c.s === 'pro' || (c.s === 'no' && design.cat === 'pro')) {
+          if (c.lic && c.lic.charAt(0) !== '—') {
+            licRows.push('<tr><td>' + J[r].flag + ' ' + J[r].name + '</td><td>' + pname + '</td><td>' + esc(c.lic) + '</td><td class="small muted">' + esc(c.src) + '</td></tr>');
+            licSet[r + '|' + c.lic] = true;
+          }
+        }
+      });
+    });
+
+    if (rs.indexOf('eu') >= 0 && rs.length > 1) conf.push('<span class="pill info">💡 护照</span> 欧盟一张 CASP 授权可通行全部成员国，但不覆盖英国和其他非欧盟地区。');
+    if (rs.indexOf('sg') >= 0) conf.push('<span class="pill info">💡 新加坡</span> 新加坡实体不能作为"只服务海外"的离岸基地：自 2025-06-30 起须 DTSP 牌照，MAS 极少发放。');
+    if (rs.length > 1 && ps.indexOf('spot') >= 0) conf.push('<span class="pill info">💡 流动性</span> 多实体会分散订单簿。共享订单簿须逐地获批（例如香港 2025-11 通函要求预先充值、货银对付、每日结算）。');
+
+    $('sEnt').textContent = ents;
+    $('sLic').textContent = Object.keys(licSet).length;
+    $('sConf').textContent = conf.filter(function (x) { return x.indexOf('pill info') < 0; }).length;
+    $('sUnk').textContent = unk;
+    $('dLic').innerHTML = licRows.length ? licRows.join('') : '<tr><td colspan="4" class="muted">先勾选地区和产品。</td></tr>';
+    $('dConf').innerHTML = conf.length ? conf.map(function (x) { return '<li>' + x + '</li>'; }).join('') : '<li class="muted">暂无。</li>';
+
+    /* checklist */
+    var todo = [];
+    if (rs.length) {
+      todo.push(['g-sanc', '全局：制裁筛查与地理围栏覆盖全部实体（OFAC、联合国、欧盟、英国名单）']);
+      todo.push(['g-3lod', '全局：建立三道防线，CCO 与内审直通董事会']);
+      todo.push(['g-matrix', '全局：后端产品可用性矩阵（实体 × 产品 × 客户类别），API 与前端同一开关']);
+      todo.push(['g-list', '全局：上币委员会与按辖区上架流程，下架保留提币窗口']);
+    }
+    rs.forEach(function (r) {
+      var j = J[r];
+      todo.push([r + '-lic', j.name + '：取得主牌照 —— ' + j.main]);
+      todo.push([r + '-mlro', j.name + '：任命本地 MLRO / 合规负责人']);
+      todo.push([r + '-tr', j.name + '：Travel Rule 门槛配置为 ' + j.travel]);
+      todo.push([r + '-cust', j.name + '：托管与隔离 —— ' + j.cold + '；' + j.seg]);
+      todo.push([r + '-terms', j.name + '：本地条款、风险披露与营销规则，记录用户同意的条款版本']);
+    });
+    var prev = design.done;
+    $('dTodo').innerHTML = todo.length ? todo.map(function (t) {
+      return '<li><label><input type="checkbox" data-k="' + t[0] + '"' + (prev[t[0]] ? ' checked' : '') + '> <span>' + esc(t[1]) + '</span></label></li>';
+    }).join('') : '<li class="muted">先勾选地区。</li>';
+    design.todoKeys = todo.map(function (t) { return t[0]; });
+    updDone();
+  }
+
+  function updDone() {
+    var keys = design.todoKeys || [];
+    var n = keys.filter(function (k) { return design.done[k]; }).length;
+    $('dDone').textContent = keys.length ? '（已完成 ' + n + ' / ' + keys.length + '）' : '';
+  }
+
+  buildQuery();
+  renderQuery();
+  buildDesign();
+  preset(['eu', 'hk'], ['spot', 'deriv'], 'retail');
+})();
+</script>
+</body>
+</html>

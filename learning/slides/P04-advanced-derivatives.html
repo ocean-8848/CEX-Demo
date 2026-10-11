@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P04 合约进阶</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .lines { display: flex; flex-direction: column; gap: 14px; }
+  .lines .ln { font-family: var(--mono); font-size: 32px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 24px; }
+  .lines .ln.gold { border-color: var(--gold); background: var(--gold-soft); }
+  .lines .ln small { font-family: var(--sans); font-size: 26px; color: var(--text-2); margin-left: 16px; }
+  .hbar { position: relative; height: 64px; background: var(--panel-2); border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+  .hbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 10px; transition: width .5s ease, background .3s; }
+  .hbar span { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); font-family: var(--mono); font-size: 30px; font-weight: 700; color: #0d0e10; white-space: nowrap; }
+  .hbar span.out { color: var(--text); }
+  .blab { font-size: 28px; color: var(--text-2); margin-bottom: 8px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 26px 30px; font-size: 30px; line-height: 1.5; }
+  .panel.gold { border-color: var(--gold); background: var(--gold-soft); }
+  .panel.sell { border-color: var(--sell); background: var(--sell-soft); }
+  .panel.info { border-color: var(--info); background: var(--info-soft); }
+  .panel h3 { font-size: 36px; margin-bottom: 10px; }
+  .mini { display: flex; flex-direction: column; gap: 14px; }
+  .mini .nd { background: var(--panel-2); border: 2px solid var(--line); border-radius: 12px; padding: 12px 20px; font-size: 30px; }
+  .mini .nd.on { border-color: var(--gold); background: var(--gold-soft); }
+  .mini .nd.bad { border-color: var(--sell); background: var(--sell-soft); }
+  .mini .ar { text-align: center; color: var(--text-2); font-size: 26px; line-height: 1; }
+  table.t td, table.t th { padding: 12px 18px; }
+  table.t tr { transition: background .3s, opacity .3s; }
+  table.t tr.cur td { background: var(--gold-soft); }
+  .gauge { position: relative; height: 70px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; }
+  .gauge .z { position: absolute; top: 0; bottom: 0; border-radius: 12px; }
+  .gauge .mk { position: absolute; top: -12px; bottom: -12px; width: 4px; }
+  .gauge .lb { position: absolute; top: 84px; font-size: 26px; transform: translateX(-50%); white-space: nowrap; }
+  .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .facts .card { padding: 18px 28px; }
+  .facts .card h3 { font-size: 34px; margin-bottom: 4px; }
+  #s12 .ln { line-height: 1.5; padding: 10px 24px; }
+  #s12 .ln.col { display: block; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="P04" data-title="合约进阶：统一账户、组合保证金与期权">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 产品深潜 · P04</div>
+    <h1>合约进阶：<span class="hl">按整个组合</span>收保证金</h1>
+    <div class="row" style="max-width:1640px">
+      <div class="card col" data-step="0"><div class="stat"><div class="k">现货多 1 BTC + 永续空 1 BTC · 分开计算 · 示例</div><div class="v">12,000 USDT</div></div><span class="muted">两个账户各收一份保证金</span></div>
+      <div class="card gold col" data-step="1"><div class="stat"><div class="k">同样仓位 · 组合保证金 · 示例</div><div class="v hl">300 USDT</div></div><span>相差 40 倍</span></div>
+    </div>
+    <div class="card warn" data-step="2" style="max-width:1640px">本集内容不构成投资建议 · 期权卖方亏损可能远大于权利金 · 除标注公开资料外数字均为示例</div>
+    <ol class="say">
+      <li>假设你有1个 BTC 现货，同时在永续上空了1个 BTC。价格怎么走，两条腿的盈亏基本抵消。可是分开算保证金，示例里要占12000 USDT。</li>
+      <li>换成组合保证金，同样的仓位，示例里只要300 USDT，相差40倍。这40倍是怎么省出来的？省下的钱，又让平台多担了什么风险？</li>
+      <li>这一集接着 EP14 和 EP15 往前走。上两集讲一个仓位、一种保证金。这一集讲多个仓位、多种资产、多种产品，怎样放进同一个风险框架。先说明，本集内容不构成投资建议。期权卖方的亏损，可能远大于权利金。除标注的公开资料外，数字都是示例。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>本集路线图</h2>
+    <div class="grid2">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>多资产保证金<br><span class="muted">不卖 BTC 也能做 U 本位合约</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>统一账户与组合保证金<br><span class="muted">uniMMR · 情景压力测试</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">3</span><div>期权<br><span class="muted">收益曲线 · Greeks · 卖方保证金</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">4</span><div>风险限额与分层<br><span class="muted">单用户与全市场的上限</span></div></div>
+    </div>
+    <div class="row">
+      <div class="card info col" data-step="2">比喻：逐仓 = 每辆车单独买保险<br>组合保证金 = 给整个车队买保险</div>
+      <div class="card sell col" data-step="3">局限：真实市场里，"对冲"的两个资产可能同一天一起跌 → 还要设车队上限</div>
+    </div>
+    <ol class="say">
+      <li>本集分四段。第一，多资产保证金，不卖 BTC 也能做 U 本位合约。第二，统一账户和组合保证金，对冲仓位不再重复占用保证金。</li>
+      <li>第三，期权，买方和卖方的收益曲线完全不对称。第四，风险限额，平台为什么要给每个用户和每个市场设上限。</li>
+      <li>先打个比方。逐仓像给每辆车单独买保险。组合保证金像给整个车队买保险。一辆车往东开，一辆往西开，不会在同一场暴雨里同时出事，保费就便宜。</li>
+      <li>但比喻有局限。真实市场里，看似对冲的两个资产，可能同一天一起下跌。所以还要给车队设上限，这就是风险限额。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="多资产保证金" data-onstep="maStep">
+    <div class="kicker">Multi-Assets Mode</div>
+    <h2>多资产模式：BTC 不卖，按折算率计入保证金</h2>
+    <div class="row" style="gap:48px">
+      <div class="col" style="flex:0 0 760px;gap:26px" id="ma-left"></div>
+      <div class="col" id="ma-right"></div>
+    </div>
+    <ol class="say">
+      <li>先看多资产模式。根据币安公开资料，U 本位合约可以用多种资产作保证金。这个模式只支持全仓。2024年2月9日起，新开的合约账户默认开启。</li>
+      <li>资产按折算率计入。示例，1个 BTC，指数价100000，折算率97.5%。保证金价值就是97500 USDT，BTC 不用卖。</li>
+      <li>仓位亏损用 USDT 结算。USDT 不够，余额就变成负数。业界通常由平台把其他资产自动兑换成 USDT 补足，具体以官网为准。</li>
+      <li>注意一个局限。如果用 BTC 作保证金去做多 BTC 合约，BTC 一跌，抵押物和仓位同时亏。这就是 EP15 讲过的双重敞口。</li>
+      <li>和单资产相比，系统多了抵押物指数价和折算率两个依赖。根据公开报道，2025年10月10日，部分保证金资产短时偏离锚定，抵押账户被强平。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="统一账户与 uniMMR">
+    <div class="kicker">Portfolio Margin · 币安公开资料</div>
+    <h2>统一账户：一个账户，一个风险指标</h2>
+    <div class="row" style="gap:20px" data-step="0">
+      <div class="card info col" style="padding:18px 24px;text-align:center">现货杠杆</div>
+      <div class="card info col" style="padding:18px 24px;text-align:center">U 本位合约</div>
+      <div class="card info col" style="padding:18px 24px;text-align:center">币本位合约</div>
+      <div class="card gold col" style="padding:18px 24px;text-align:center">→ 统一计算风险</div>
+    </div>
+    <div class="lines">
+      <div class="ln gold" data-step="1">uniMMR = 账户调整后权益 ÷ 账户总维持保证金<small>简化示意</small></div>
+      <div class="ln" data-step="2" style="font-size:29px">调整后权益 = Σ(资产 × 指数价 × 折算率) − 负债 + 未实现盈亏</div>
+      <div class="ln" data-step="2" style="font-size:29px">总维持保证金 = 按组合风险计算，不是各仓位简单相加</div>
+    </div>
+    <div class="row" style="align-items:center">
+      <div class="col" data-step="3" style="flex:0 0 960px">
+        <div class="gauge"><div class="z" style="left:0;width:18%;background:rgba(246,70,93,.35)"></div><div class="mk" style="left:18%;background:#f6465d"></div><div class="lb down" style="left:18%">1.05 触发强平</div></div>
+      </div>
+      <div class="card sell col" data-step="4" style="padding:16px 24px">折算率下调 → uniMMR 立刻下降</div>
+    </div>
+    <ol class="say">
+      <li>第二段，统一账户。根据币安公开资料，组合保证金 PM 把现货杠杆和两种合约放进一个账户。风险统一计算，另有 PM Pro 版本。</li>
+      <li>核心指标叫统一维持保证金率 uniMMR，等于账户调整后权益除以总维持保证金。这是简化示意，以官网为准。</li>
+      <li>调整后权益，是各资产按指数价和折算率估值，减负债，加未实现盈亏。分母按组合风险算，不是简单相加。</li>
+      <li>根据币安公开资料，uniMMR 低于1.05，也就是105%，就触发强平。另据公开报道，PM Pro 的口径排除了未平仓位的未实现亏损。</li>
+      <li>还有一点。币安会定期调整折算率。折算率一下调，uniMMR 立刻下降，哪怕用户什么都没做。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="对冲为什么省保证金" data-onstep="pmStep">
+    <div class="kicker">Scenario Stress Test · 业界通用做法</div>
+    <h2>情景压力测试：两条腿的盈亏相互抵消</h2>
+    <svg id="pm" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>回到开场的例子。现货多1个 BTC，永续空1个 BTC，价格60000。分开算，各收10%示例保证金，合计12000。</li>
+      <li>分开算，现货跌了要追保，合约涨了也要追保。组合保证金改用情景压力测试，它是 CME 的 SPAN 等公开方法的简化。</li>
+      <li>先定义情景，示例从负15%到正15%，每5%一档。每一档重估整个组合。现货多头腿，负15%亏9000，正15%赚9000。有期权时，还要叠加波动率情景。</li>
+      <li>合约空头腿正好相反。负15%时赚9000，正15%时亏9000。</li>
+      <li>两条腿相加，每一档净盈亏都是0。取最差情景亏损作为风险保证金，这里是0。</li>
+      <li>但对冲不完美，有基差，还有资金费流出。所以平台加附加项，示例基差附加0.5%，就是300 USDT。保证金从12000降到300。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="uniMMR 状态机" data-onstep="stateStep">
+    <div class="kicker">State Machine · 1.05 公开阈值 · 1.2 示例</div>
+    <h2>统一账户的四个状态</h2>
+    <svg id="pmstate" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>再看统一账户的状态机。uniMMR 高于预警线时，账户处于正常状态。示例预警线是1.2。</li>
+      <li>uniMMR 降到1.2，进入预警。用户可以补充资产，或者减仓，回到正常。</li>
+      <li>继续降到1.05及以下，进入强平中。1.05是公开阈值。</li>
+      <li>注意这条特别的边，从正常直接跳到强平中。原因是跳空，或者折算率下调。用户没有交易，账户也可能突然接近强平线。</li>
+      <li>进入强平中，业界通常先处理风险贡献最大的仓位，不会一次清空。部分强平后 uniMMR 恢复，就回到正常。全部仓位和负债处理完，才进入已清算。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="组合风险引擎调用链" data-onstep="chainStep">
+    <div class="kicker">Call Chain · 组件名为示意</div>
+    <h2>每次价格变化，都要重跑全部情景</h2>
+    <svg id="chain" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>这套计算在系统里怎么跑？指数价服务推送指数价和标记价，送到组合风险引擎，组件名是示意。</li>
+      <li>风险引擎读取账户的全部仓位，再从账本读取全部资产和负债。</li>
+      <li>然后逐个情景重估盈亏，取最差值，算出 uniMMR。计算量是逐仓的数十倍，每次价格变化都要跑全部情景。</li>
+      <li>uniMMR 小于等于1.05，就把强平任务和风险贡献排序，交给强平引擎。强平引擎按顺序减仓，再到账本结算强平分录。</li>
+      <li>工程上两个要点。业界通常按风险给账户分组，高风险的高频重算。另外，价格源一延迟，uniMMR 就滞后，期间的跳空会直接变成穿仓。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="平台收益与组合风险">
+    <div class="kicker">Revenue · Risk · Cases</div>
+    <h2>平台赚什么，又多担了什么</h2>
+    <div style="position:relative;flex:1">
+      <div class="row" data-step="0" data-until="3">
+        <div class="col" style="flex:0 0 640px">
+          <div class="card gold" data-step="0"><h3>不单独收费</h3>保证金占用下降 → 同样资金开更大仓位 → 交易量和借贷利息</div>
+          <div class="card info" data-step="1"><h3>主要用户</h3>机构和做市商：双边报价天然对冲，用更少资金提供更深流动性</div>
+        </div>
+        <div class="col">
+          <table class="t" data-step="2">
+            <tr><th>风险</th><th>兜底</th></tr>
+            <tr><td>模型风险：情景小于真实行情</td><td>回测 · 扩大情景 · 集中度附加</td></tr>
+          </table>
+          <table class="t" data-step="3">
+            <tr><td>折算率风险</td><td>提前公告 · 分阶段下调</td></tr>
+            <tr><td>相关性失效</td><td>跨标的对冲不完全抵扣</td></tr>
+            <tr><td>连锁强平</td><td>部分强平 · 限额 · 保险基金</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="grid2" data-step="4" style="position:absolute;left:0;right:0;top:0">
+        <div class="card warn"><h3>折算率调整 · 公开报道</h3>2024–2026 年，币安多次公告下调 PM 抵押资产折算率。用户要在生效前补仓或减仓。</div>
+        <div class="card sell"><h3>2025-10-10 · 公开报道</h3>部分保证金资产短时偏离锚定 → 抵押账户被强平。统一账户放大影响面：一种抵押物出问题，整个组合受影响。</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>平台从组合保证金里赚什么？它不单独收费。保证金占用下降，同样的资金能开更大仓位，平台赚更多交易量和借贷利息。</li>
+      <li>主要用户是机构和做市商。做市商的双边报价天然对冲，组合保证金让他们用更少的资金，提供更深的流动性。</li>
+      <li>代价是新风险。首先是模型风险，情景可能小于真实行情，比如单日跌40%。兜底是回测、扩大情景、加集中度附加项。</li>
+      <li>其次是折算率风险和相关性失效。对冲资产可能同时下跌，所以业界通常不让跨标的对冲完全抵扣。还有连锁强平，大账户卖抵押物，又压低指数价。</li>
+      <li>看真实案例。根据公开报道，2024到2026年，币安多次公告下调抵押资产折算率。2025年10月10日那次，一种抵押物出问题，整个统一账户一起受影响。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="期权：用户看到什么">
+    <div class="kicker">Binance Options · 截至 2026 年公开资料</div>
+    <h2>欧式期权：只在到期日行权，USDT 结算</h2>
+    <div class="facts">
+      <div class="card" data-step="0"><h3>欧式</h3>只能在到期日行权<br><span class="muted">到期前可在市场卖出平仓</span></div>
+      <div class="card" data-step="1"><h3>USDT 现金结算</h3>日 · 周 · 月 · 季，UTC 08:00 到期<br><span class="muted">周期权周五，月季为最后一个周五</span></div>
+      <div class="card buy" data-step="2"><h3>买方</h3>最大亏损 = 已付权利金，无强平</div>
+      <div class="card sell" data-step="2"><h3>卖方</h3>缴保证金 · 2025 年 8 月起向全部用户开放，须先通过适当性测评</div>
+    </div>
+    <table class="t" data-step="3">
+      <tr><td><b>Call</b> 看涨</td><td>以行权价 K 买入的权利</td><td><b>Premium</b> 权利金</td><td>买方付给卖方</td></tr>
+      <tr><td><b>Put</b> 看跌</td><td>以行权价 K 卖出的权利</td><td><b>IV</b> 隐含波动率</td><td>由市价反推</td></tr>
+    </table>
+    <ol class="say">
+      <li>第三段，期权。根据币安公开资料，币安期权是欧式期权，只能在到期日行权。到期前可以在市场上卖出平仓。</li>
+      <li>它用 USDT 现金结算，不交割标的。到期周期有日、周、月、季，都在 UTC 8点到期。</li>
+      <li>买方最大亏损就是权利金，没有强平风险。卖方要缴保证金。2025年8月起，币安向全部用户开放期权卖出，但要先通过适当性测评。</li>
+      <li>几个术语。Call 是以行权价买入的权利，Put 是以行权价卖出的权利。权利金是买方付给卖方的价格。IV 是从期权市价反推的波动率。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="收益曲线与 Greeks" data-onstep="payoffStep">
+    <div class="kicker">Payoff · Black-Scholes · 示例</div>
+    <h2>买方亏损有限，卖方亏损无限</h2>
+    <div class="row" style="gap:36px">
+      <svg id="payoff" width="1000" height="600" viewBox="0 0 1000 600"></svg>
+      <div class="col" id="po-right"></div>
+    </div>
+    <ol class="say">
+      <li>把收益画出来。看涨买方的到期收益，等于结算价减行权价与0取大，再减权利金。示例行权价60000，权利金1662。</li>
+      <li>价格低于60000，买方亏掉全部权利金。价格越涨，收益越大，上不封顶。盈亏平衡点在61662。</li>
+      <li>卖方正好相反。最多赚1662，涨得越多亏得越多，下不封底。这就是不对称的尾部风险。</li>
+      <li>这个1662怎么来的？业界用 Black-Scholes 模型。示例输入：BTC 60000，平值看涨，7天到期，IV 50%，利率0。波动率不可观察，由报价反推的就是 IV。</li>
+      <li>标准差是0.5乘以根号下7除以365，约0.0692。平值近似，权利金约等于0.4乘以60000乘以0.0692，约1662。</li>
+      <li>这些敏感度叫 Greeks。示例 Delta 约0.51，标的涨100，权利金约涨51。Gamma 在临近到期的平值期权上最大。Theta 为负，买方每天都在付租金。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="期权的资金流与做市" data-onstep="optStep">
+    <div class="kicker">Money Flow · State · Market Making</div>
+    <h2 id="opt-h">期权的资金流</h2>
+    <svg id="opt" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>再看钱怎么走。成交时，权利金立即从买方转给卖方。卖方保证金被冻结，双方都付手续费。</li>
+      <li>到期如果是实值，就从卖方保证金里付行权收益给买方，剩余解冻。全是账本内划转，不上链。保证金不够付，业界通常由期权保险基金承担。</li>
+      <li>状态机很简单。欧式期权只有一个行权时点，实值自动行权，虚值作废。结算价通常取到期前一段时间的指数均价，防止被操纵。</li>
+      <li>期权合约很多，标的乘期限，再乘几十个行权价。单个合约流动性很薄，业界通常依赖指定做市商持续报价。</li>
+      <li>调用链上，波动率曲面拟合 IV，发布标记价。做市商双边报价，风控检查卖方保证金和价格带，再挂单撮合。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="卖方保证金与失败案例" id="s12">
+    <div class="kicker">Writer Margin · 示例公式 · 以官网为准</div>
+    <h2>收 300 权利金，冻结 6,300 保证金</h2>
+    <div class="lines">
+      <div class="ln" data-step="0" data-dim="2" style="font-size:30px">卖出看涨初始保证金 = 标记价 + max(15% × 指数价 − 虚值额, 10% × 指数价)</div>
+      <div class="ln" data-step="1" data-dim="2" style="font-size:30px">虚值额 = max(K − 指数价, 0)</div>
+      <div class="ln gold" data-step="2">示例：K = 66,000 · 指数价 60,000 · 标记价 300 → 虚值额 6,000</div>
+      <div class="row" style="gap:20px">
+        <div class="ln col" data-step="3" style="font-size:30px">15% × 60,000 − 6,000 = 3,000<br>10% × 60,000 = 6,000 → 取 6,000</div>
+        <div class="ln col gold" data-step="4" style="font-size:30px">初始保证金 = 300 + 6,000 = <b>6,300</b><br>BTC 涨到 80,000 → 卖方赔 14,000</div>
+      </div>
+      <div class="row" style="gap:20px">
+        <div class="ln col" data-step="5" style="font-family:var(--sans);font-size:28px">平台：手续费按名义价值比例，设权利金比例上限<br>做市商：赚价差，在永续或现货对冲 Delta</div>
+        <div class="ln col" data-step="6" style="font-family:var(--sans);font-size:28px;border-color:#f6465d;background:rgba(246,70,93,.14)">示例：低波动期卖虚值看涨 → 单日 +20% → 保证金吃光<br>2018 OptionSellers.com · 公开报道</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>卖方要冻结多少保证金？这是参考业界做法的示例公式，币安以官网为准。初始保证金等于标记价，加上两项中较大的一项。</li>
+      <li>第一项是15%的指数价减去虚值额，第二项是10%的指数价。看涨的虚值额，是行权价减指数价，与0取大。</li>
+      <li>代入示例。卖出1张 BTC 看涨，行权价66000，指数价60000，标记价300。虚值额是6000。</li>
+      <li>15%乘以60000，减6000，得3000。10%乘以60000，得6000。两者取大，是6000。</li>
+      <li>初始保证金等于300加6000，6300 USDT。只收300权利金，却要冻结6300。因为 BTC 涨到80000时，卖方要赔14000。</li>
+      <li>平台赚手续费，业界通常按名义价值比例收，并设权利金比例上限。做市商赚价差，再用永续或现货对冲 Delta。</li>
+      <li>失败场景，示例。低波动期大量卖虚值看涨，一次单日20%的上涨，保证金就被吃光。根据公开报道，2018年 OptionSellers.com 卖天然气裸看涨。气价急涨，客户亏光还欠了债。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="风险限额与分层" data-onstep="limitStep">
+    <div class="kicker">Risk Limits · 业界通用做法 · 数值以官网为准</div>
+    <h2>从源头控制强平单有多大</h2>
+    <div class="row" style="gap:40px">
+      <table class="t" id="limits" style="flex:0 0 820px;width:820px">
+        <tr><th>限额</th><th>目的</th></tr>
+        <tr><td>分层杠杆</td><td>大仓位多交保证金</td></tr>
+        <tr><td>单用户最大持仓</td><td>防一个账户砸穿订单簿</td></tr>
+        <tr><td>全市场持仓上限</td><td>新合约、浅市场先设低上限</td></tr>
+        <tr><td>单笔下单上限</td><td>防胖手指订单</td></tr>
+        <tr><td>价格保护带</td><td>价格不能偏离标记价太远</td></tr>
+      </table>
+      <div class="col" id="lim-right"></div>
+    </div>
+    <ol class="say">
+      <li>最后一段，风险限额。除了分层杠杆，业界通常还有四种限额。持仓上限分单用户和全市场，再加单笔下单上限和价格保护带。具体数值以官网为准。</li>
+      <li>分层和强平连在一起。大仓位层级高，MMR 高，强平更早，缓冲更大。部分强平降到低层级后，账户可能恢复安全。</li>
+      <li>看一笔开仓的校验。用户要开300万 USDT 名义价值。注意，分层按加上这笔订单之后的仓位算。它落在第4层，最大杠杆20倍。</li>
+      <li>杠杆高于20倍，或超过持仓上限，都拒绝。都通过才冻结初始保证金。限额可以热更新。太松，巨鲸强平会耗尽保险基金。太紧，机构会流走。</li>
+      <li>失败案例。根据公开报道，2022年 Mango Markets 被攻击。攻击者在很浅的 MNGO 永续上建巨大仓位，同时拉升现货。再用虚高的未实现盈利作抵押，借走协议资金。所以浅市场要有持仓上限。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与下集预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">组合保证金按<span class="hl">最差情景亏损</span>收保证金：示例 12,000 → 300。</li>
+      <li data-step="1">期权买方最多亏权利金，<span class="hl">卖方亏损无上限</span>：收 300，冻结 6,300。</li>
+      <li data-step="2">风险限额从源头控制<span class="hl">强平单规模</span>：分层、持仓上限、价格带。</li>
+    </ul>
+    <div class="grid3" data-step="0">
+      <div class="card stat"><div class="k">uniMMR 强平线 · 公开资料</div><div class="v hl" style="font-size:52px">1.05</div></div>
+      <div class="card stat"><div class="k">平值看涨权利金 · 示例</div><div class="v" style="font-size:52px">≈ 1,662</div></div>
+      <div class="card stat"><div class="k">300 万名义价值 · 示例</div><div class="v" style="font-size:52px">第 4 层 20x</div></div>
+    </div>
+    <div class="card gold" data-step="3" style="font-size:34px">下集 P05 · 存币生息：活期、定期与流动性质押</div>
+    <ol class="say">
+      <li>小结一下。第一，组合保证金按最差情景亏损收保证金，示例从12000降到300。代价是模型风险和折算率风险。</li>
+      <li>第二，期权买方最多亏掉权利金，卖方收益有限，亏损没有上限。所以卖方收300权利金，要冻结6300保证金。</li>
+      <li>第三，风险限额从源头控制强平单的规模。分层让大仓位更早强平，持仓上限防止一个账户砸穿订单簿。</li>
+      <li>下一集，我们离开合约，去看用户最常用的理财产品。活期、定期和流动性质押，利息到底是谁付的？我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const fmt = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 30}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.mono ? ' font-family="JetBrains Mono, SF Mono, Menlo, monospace"' : ''}${o.plain ? '' : ` stroke="${C.bg}" stroke-width="8" paint-order="stroke"`}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const L = (x1, y1, x2, y2, col, o = {}) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="${o.w || 4}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const ARW = (x1, y1, x2, y2, col, w = 4) => { const a = Math.atan2(y2 - y1, x2 - x1), s = 16; return L(x1, y1, x2 - Math.cos(a) * 8, y2 - Math.sin(a) * 8, col, { w }) + `<polygon points="${x2},${y2} ${x2 - s * Math.cos(a - .45)},${y2 - s * Math.sin(a - .45)} ${x2 - s * Math.cos(a + .45)},${y2 - s * Math.sin(a + .45)}" fill="${col}"/>`; };
+  const soft = { gold: 'rgba(240,185,11,.16)', buy: 'rgba(46,189,133,.16)', sell: 'rgba(246,70,93,.16)', info: 'rgba(91,156,255,.14)' };
+
+  // Scene 3: multi-asset collateral
+  function maStep(el, st) {
+    const bar = (lab, pct, col, txt, out) => `<div><div class="blab">${lab}</div><div class="hbar"><i style="width:${pct}%;background:${col}"></i><span class="${out ? 'out' : ''}">${txt}</span></div></div>`;
+    let l = '';
+    const drop = st === 3;
+    l += bar('1 BTC × 指数价 · 示例', drop ? 80 : 100, drop ? C.sell : C.info, drop ? 'BTC 下跌 ↓ 抵押物缩水' : '100,000 USDT');
+    if (st >= 1) l += bar('× 折算率 97.5% = 保证金价值', drop ? 78 : 97.5, drop ? C.sell : C.gold, drop ? '保证金价值同步下降' : '97,500 USDT');
+    if (st >= 2) l += `<div><div class="blab">USDT 余额</div><div class="hbar" style="background:${st === 2 ? 'rgba(246,70,93,.14)' : C.panel2}"><span class="out">${drop ? '多单仓位同时亏损 ↓' : '亏损以 USDT 结算 → 余额 &lt; 0'}</span></div></div>`;
+    if (st === 0) l += `<div class="panel" style="font-size:30px">BTC 留在合约账户<br><span class="muted">不卖出，直接计入保证金</span></div>`;
+    if (st === 4) l += `<div class="panel sell" style="padding:18px 26px">2025-10-10 · 公开报道<br>保证金资产短时偏离锚定 → 抵押账户被强平</div>`;
+    el.querySelector('#ma-left').innerHTML = l;
+    let r = '';
+    if (st === 0) r = `<div class="panel gold"><h3>用户看到什么 · 币安公开资料</h3>U 本位合约可用多种资产作保证金</div><div class="panel">只支持<b class="hl">全仓</b></div><div class="panel">2024-02-09 起，新开合约账户与子账户<b class="hl">默认开启</b></div>`;
+    if (st === 1) r = `<div class="panel gold" style="font-family:var(--mono);font-size:32px;line-height:1.7">保证金价值<br>= 数量 × 指数价 × 折算率<br>= 1 × 100,000 × 97.5%<br>= <b class="hl">97,500 USDT</b></div><div class="panel muted">折算率为示例，按资产配置</div>`;
+    if (st === 2 || st === 3) {
+      const nd = (t, c) => `<div class="nd ${c || ''}">${t}</div>`;
+      r = `<div class="mini">${nd('保证金价值 97,500', st === 2 ? 'on' : 'bad')}<div class="ar">▼</div>${nd('全仓 U 本位仓位', st === 3 ? 'bad' : 'on')}<div class="ar">▼ 已实现亏损</div>${nd('USDT 余额为负', 'bad')}<div class="ar">▼ 业界通用做法</div>${nd('自动兑换其他资产补足 USDT', 'on')}</div>`;
+      if (st === 3) r += `<div class="panel sell" style="padding:16px 24px">用 BTC 做多 BTC：<b>双重敞口</b></div>`;
+    }
+    if (st === 4) r = `<table class="t"><tr><th></th><th>单资产全仓</th><th>多资产模式</th></tr><tr><td>价格输入</td><td>标记价格</td><td class="hl">+ 抵押物指数价</td></tr><tr><td>新依赖</td><td>—</td><td class="hl">指数价服务<br>折算率配置</td></tr><tr><td>新故障</td><td>—</td><td class="down">抵押物价格被单一来源拉低</td></tr></table>`;
+    el.querySelector('#ma-right').innerHTML = r;
+  }
+
+  // Scene 5: scenario stress test
+  function pmStep(el, st) {
+    const svg = el.querySelector('#pm');
+    const sc = [-15, -10, -5, 0, 5, 10, 15];
+    const Y0 = 290, k = 200 / 9000, gx = i => 150 + i * 132;
+    let h = '';
+    h += T(40, 40, '组合盈亏 · 价格 60,000 · 示例', { size: 28, fill: C.t2 });
+    if (st >= 1) {
+      h += L(90, Y0, 1050, Y0, C.t2, { w: 3 });
+      sc.forEach((s, i) => h += T(gx(i), 560, (s > 0 ? '+' : s < 0 ? '−' : '') + Math.abs(s) + '%', { anchor: 'middle', size: 28, fill: C.t2, mono: true }));
+      h += T(570, 80, st === 1 ? '7 个价格情景 · 逐个重估整个组合' : '', { anchor: 'middle', size: 30, fill: C.gold, bold: true });
+    } else {
+      h += R(90, 120, 960, 340, { fill: C.panel });
+      h += T(570, 230, '现货杠杆账户：多 1 BTC → 收 10%', { anchor: 'middle', size: 34, plain: true });
+      h += T(570, 300, '合约账户：空 1 BTC → 收 10%', { anchor: 'middle', size: 34, plain: true });
+      h += T(570, 380, '各算各的，互不抵扣', { anchor: 'middle', size: 34, fill: C.sell, bold: true, plain: true });
+    }
+    sc.forEach((s, i) => {
+      const v = s / 100 * 60000;
+      if (st >= 2) { const hh = Math.abs(v) * k; h += `<rect x="${gx(i) - 44}" y="${v >= 0 ? Y0 - hh : Y0}" width="40" height="${Math.max(hh, 2)}" fill="${C.buy}" opacity="${st >= 4 ? .45 : 1}"/>`; }
+      if (st >= 3) { const hh = Math.abs(v) * k; h += `<rect x="${gx(i) + 4}" y="${-v >= 0 ? Y0 - hh : Y0}" width="40" height="${Math.max(hh, 2)}" fill="${C.sell}" opacity="${st >= 4 ? .45 : 1}"/>`; }
+    });
+    if (st >= 2) { h += T(gx(0) - 24, Y0 + 230, '−9,000', { anchor: 'middle', size: 26, fill: C.buy, mono: true }) + T(gx(6) - 24, Y0 - 210, '+9,000', { anchor: 'middle', size: 26, fill: C.buy, mono: true }); }
+    if (st >= 3) { h += T(gx(0) + 24, Y0 - 210, '+9,000', { anchor: 'middle', size: 26, fill: C.sell, mono: true }) + T(gx(6) + 24, Y0 + 230, '−9,000', { anchor: 'middle', size: 26, fill: C.sell, mono: true }); }
+    if (st >= 2) {
+      h += `<rect x="640" y="18" width="26" height="26" fill="${C.buy}"/>` + T(676, 42, '现货多 1 BTC', { size: 26, plain: true });
+      if (st >= 3) h += `<rect x="850" y="18" width="26" height="26" fill="${C.sell}"/>` + T(886, 42, '永续空 1 BTC', { size: 26, plain: true });
+    }
+    if (st >= 4) {
+      h += L(gx(0) - 50, Y0, gx(6) + 50, Y0, C.gold, { w: 8 });
+      sc.forEach((s, i) => h += `<circle cx="${gx(i)}" cy="${Y0}" r="10" fill="${C.gold}"/>`);
+      h += T(570, 140, '净盈亏 = 0 · 最差情景亏损 ≈ 0', { anchor: 'middle', size: 34, fill: C.gold, bold: true });
+    }
+    // right: margin comparison
+    const bx = 1180, base = 500, kk = 380 / 12000;
+    h += T(1410, 40, '保证金要求', { anchor: 'middle', size: 30, fill: C.t2 });
+    h += `<rect x="${bx}" y="${base - 6000 * kk}" width="160" height="${6000 * kk}" fill="${C.buy}" opacity=".8"/>`;
+    h += `<rect x="${bx}" y="${base - 12000 * kk}" width="160" height="${6000 * kk}" fill="${C.sell}" opacity=".8"/>`;
+    h += T(bx + 80, base - 6000 * kk / 2 + 10, '6,000', { anchor: 'middle', size: 28, mono: true, plain: true }) + T(bx + 80, base - 6000 * kk * 1.5 + 10, '6,000', { anchor: 'middle', size: 28, mono: true, plain: true });
+    h += T(bx + 80, base - 12000 * kk - 16, '12,000', { anchor: 'middle', size: 34, bold: true, mono: true });
+    h += T(bx + 80, base + 44, '分开', { anchor: 'middle', size: 30 });
+    if (st >= 5) {
+      h += `<rect x="${bx + 220}" y="${base - Math.max(300 * kk, 6)}" width="160" height="${Math.max(300 * kk, 6)}" fill="${C.gold}"/>`;
+      h += T(bx + 300, base - 24, '300', { anchor: 'middle', size: 40, bold: true, fill: C.gold, mono: true });
+      h += T(bx + 300, base + 44, '组合', { anchor: 'middle', size: 30, fill: C.gold });
+      h += T(bx + 300, base - 170, '基差附加', { anchor: 'middle', size: 26, fill: C.t2 }) + T(bx + 300, base - 136, '0.5% · 示例', { anchor: 'middle', size: 26, fill: C.t2 });
+      h += T(1410, 585, '≈ 1/40', { anchor: 'middle', size: 32, bold: true, fill: C.gold });
+    }
+    svgEl(svg, h);
+  }
+
+  // Scene 6: uniMMR state machine
+  function stateStep(el, st) {
+    const svg = el.querySelector('#pmstate');
+    const B = [[40, '正常'], [500, '预警'], [960, '强平中'], [1380, '已清算']];
+    const act = [[0], [1], [2], [0, 2], [2, 3]][st];
+    const col = i => i === 0 ? C.buy : i === 1 ? C.warn : i === 2 ? C.sell : C.t2;
+    let h = '';
+    const val = ['1.60', '1.20', '1.05', '1.60 → 1.03', '1.10'][st];
+    h += T(1620, 50, 'uniMMR · 示例 ' + val, { anchor: 'end', size: 34, bold: true, fill: st >= 2 ? C.sell : C.gold, mono: true });
+    const eOn = { e1: st === 1, e2: st === 1, e3: st === 2, e5: st === 3, e4: st === 4, e6: st === 4 };
+    const ec = k => eOn[k] ? (k === 'e5' ? C.sell : C.gold) : '#3a3f48';
+    // edges
+    h += ARW(280, 265, 500, 265, ec('e1'), 5) + T(390, 250, '≤ 1.2 示例', { anchor: 'middle', size: 26, fill: eOn.e1 ? C.gold : C.t2 });
+    h += ARW(500, 325, 280, 325, ec('e2'), 5) + T(390, 370, '补资产 · 减仓', { anchor: 'middle', size: 26, fill: eOn.e2 ? C.gold : C.t2 });
+    h += ARW(740, 290, 960, 290, ec('e3'), 5) + T(850, 275, '≤ 1.05', { anchor: 'middle', size: 28, fill: eOn.e3 ? C.gold : C.t2, bold: eOn.e3 });
+    h += `<path d="M160 230 C 200 110, 1040 110, 1080 222" fill="none" stroke="${ec('e5')}" stroke-width="${eOn.e5 ? 7 : 4}"${eOn.e5 ? '' : ' stroke-dasharray="10 8"'}/>` + `<polygon points="1080,230 1066,210 1090,212" fill="${ec('e5')}"/>`;
+    h += T(620, 128, '跳空 · 折算率下调', { anchor: 'middle', size: 30, fill: eOn.e5 ? C.sell : C.t2, bold: eOn.e5 });
+    h += `<path d="M1080 352 C 1040 470, 200 470, 160 360" fill="none" stroke="${ec('e4')}" stroke-width="5"/>` + `<polygon points="160,352 150,376 174,372" fill="${ec('e4')}"/>`;
+    h += T(620, 470, '部分强平后 uniMMR 恢复', { anchor: 'middle', size: 28, fill: eOn.e4 ? C.gold : C.t2 });
+    h += ARW(1200, 290, 1380, 290, ec('e6'), 5) + T(1290, 340, '处理完毕', { anchor: 'middle', size: 26, fill: eOn.e6 ? C.gold : C.t2 });
+    B.forEach(([x, t], i) => {
+      const a = act.includes(i);
+      h += R(x, 230, i === 3 ? 220 : 240, 120, { fill: a ? soft[i === 0 ? 'buy' : i === 2 ? 'sell' : 'gold'] : C.panel, stroke: a ? col(i) : C.line, sw: a ? 4 : 3 });
+      h += T(x + (i === 3 ? 110 : 120), 302, t, { anchor: 'middle', size: 36, bold: true, fill: a ? C.text : C.t2, plain: true });
+    });
+    const note = ['正常：uniMMR 高于预警线', '预警：补充资产或减仓即可回到正常', '1.05 为币安公开阈值', '用户没有交易，也可能直接跳到强平', '先减风险贡献最大的仓位 · 业界通用做法'][st];
+    h += R(40, 520, 1560, 72, { fill: st === 3 ? soft.sell : C.panel2, stroke: st === 3 ? C.sell : C.line });
+    h += T(820, 568, note, { anchor: 'middle', size: 32, plain: true, fill: st === 3 ? C.sell : C.text });
+    svgEl(svg, h);
+  }
+
+  // Scene 7: call chain
+  function chainStep(el, st) {
+    const svg = el.querySelector('#chain');
+    const lanes = [['指数价服务', 'index-price'], ['组合风险引擎', 'portfolio-risk-engine'], ['仓位服务', 'position-service'], ['账本服务', 'ledger-service'], ['强平引擎', 'liquidation-engine']];
+    const X = i => 170 + i * 325;
+    let h = '';
+    lanes.forEach(([n, en], i) => {
+      const hot = (i === 1) || (st === 0 && i === 0) || (st === 1 && (i === 2 || i === 3)) || (st === 3 && i === 4);
+      h += R(X(i) - 150, 0, 300, 96, { fill: hot ? soft.gold : C.panel, stroke: hot ? C.gold : C.line });
+      h += T(X(i), 42, n, { anchor: 'middle', size: 30, bold: true, plain: true });
+      h += T(X(i), 78, en, { anchor: 'middle', size: 22, fill: C.t2, plain: true, mono: true });
+      h += L(X(i), 96, X(i), 590, '#3a3f48', { w: 3, dash: '6 8' });
+    });
+    const msgs = [
+      [0, 0, 1, 150, '推送指数价与标记价'],
+      [1, 1, 2, 210, '读取全部仓位'],
+      [1, 1, 3, 268, '读取全部资产与负债'],
+      [2, 1, 1, 330, '逐情景重估，取最差值'],
+      [2, 1, 1, 382, '计算 uniMMR'],
+      [3, 1, 4, 446, 'uniMMR ≤ 1.05：强平任务 + 风险排序'],
+      [3, 4, 2, 504, '按顺序减仓'],
+      [3, 4, 3, 562, '结算强平分录'],
+    ];
+    msgs.forEach(([s, a, b, y, t]) => {
+      if (s > st) return;
+      const cur = s === st, c = cur ? C.gold : '#6a707c';
+      if (a === b) {
+        h += `<path d="M${X(a)} ${y - 22} h 50 v 30 h -42" fill="none" stroke="${c}" stroke-width="4"/>` + `<polygon points="${X(a)},${y + 8} ${X(a) + 14},${y} ${X(a) + 14},${y + 16}" fill="${c}"/>`;
+        h += T(X(a) + 66, y, t, { size: 28, fill: cur ? C.text : C.t2 });
+      } else {
+        h += ARW(X(a), y, X(b), y, c, 4);
+        h += T((X(a) + X(b)) / 2, y - 12, t, { anchor: 'middle', size: 28, fill: cur ? C.text : C.t2 });
+      }
+    });
+    if (st === 2) h += R(1000, 300, 600, 110, { fill: soft.sell, stroke: C.sell }) + T(1300, 345, '计算量 ≈ 逐仓的数十倍', { anchor: 'middle', size: 30, bold: true, plain: true }) + T(1300, 390, '全部仓位 × 全部情景', { anchor: 'middle', size: 28, fill: C.t2, plain: true });
+    if (st === 4) {
+      h += R(160, 150, 1320, 440, { fill: '#16181c', stroke: C.gold });
+      h += T(220, 260, '① 按风险分组：高风险账户高频重算，低风险低频', { size: 34, plain: true });
+      h += T(220, 370, '② 价格源延迟 → uniMMR 滞后', { size: 34, plain: true });
+      h += T(220, 480, '③ 滞后期间的跳空 → 直接变成穿仓', { size: 34, fill: C.sell, bold: true, plain: true });
+    }
+    svgEl(svg, h);
+  }
+
+  // Scene 10: payoff diagram
+  function payoffStep(el, st) {
+    const svg = el.querySelector('#payoff');
+    const K = 60000, prem = 1662;
+    const X = p => 110 + (p - 52000) / 18000 * 860, Y = v => 300 - v / 9500 * 260;
+    let h = '';
+    h += L(110, Y(0), 980, Y(0), C.t2, { w: 3 });
+    h += L(110, 30, 110, 570, C.t2, { w: 3 });
+    [52000, 56000, 60000, 64000, 68000].forEach(p => h += L(X(p), Y(0) - 8, X(p), Y(0) + 8, C.t2, { w: 3 }) + T(X(p), Y(0) + 40, fmt(p / 1000) + 'k', { anchor: 'middle', size: 24, fill: C.t2, mono: true }));
+    [-8000, -4000, 4000, 8000].forEach(v => h += T(100, Y(v) + 8, (v > 0 ? '+' : '−') + fmt(Math.abs(v)), { anchor: 'end', size: 22, fill: C.t2, mono: true }));
+    h += T(980, Y(0) - 14, '结算价', { anchor: 'end', size: 26, fill: C.t2 });
+    h += T(124, 46, '到期收益 USDT · K = 60,000 · 示例', { size: 26, fill: C.t2 });
+    const pts = f => [52000, K, 70000].map(p => `${X(p)},${Y(f(p))}`).join(' ');
+    const buyer = p => Math.max(p - K, 0) - prem;
+    h += `<polyline points="${pts(buyer)}" fill="none" stroke="${C.buy}" stroke-width="${st === 2 ? 4 : 7}" opacity="${st === 2 ? .5 : 1}"/>`;
+    h += T(X(69500), Y(buyer(69500)) - 18, '买方', { anchor: 'end', size: 32, bold: true, fill: C.buy });
+    if (st >= 1) {
+      h += T(X(54000), Y(-prem) + 44, '最多亏 1,662', { anchor: 'middle', size: 28, fill: C.buy, bold: true });
+      h += `<circle cx="${X(61662)}" cy="${Y(0)}" r="10" fill="${C.gold}"/>` + T(X(61662) + 14, Y(0) - 16, '平衡点 61,662', { size: 26, fill: C.gold });
+      if (st === 1) h += T(X(65500), Y(6500), '上不封顶 ↗', { anchor: 'middle', size: 30, fill: C.buy, bold: true });
+    }
+    if (st >= 2) {
+      const seller = p => -buyer(p);
+      h += `<polyline points="${pts(seller)}" fill="none" stroke="${C.sell}" stroke-width="7"/>`;
+      h += T(X(69500), Y(seller(69500)) + 40, '卖方', { anchor: 'end', size: 32, bold: true, fill: C.sell });
+      h += T(X(54000), Y(prem) - 22, '最多赚 1,662', { anchor: 'middle', size: 28, fill: C.sell, bold: true });
+      if (st === 2) h += T(X(65000), Y(-6200), '下不封底 ↘', { anchor: 'middle', size: 30, fill: C.sell, bold: true });
+    }
+    svgEl(svg, h);
+    const r = [
+      `<div class="panel gold" style="font-family:var(--mono);font-size:28px;line-height:1.7">看涨买方收益<br>= max(结算价 − K, 0)<br>&nbsp;&nbsp;− 权利金</div><div class="panel">看跌买方：max(K − 结算价, 0) − 权利金</div><div class="panel">K 60,000 · 权利金 1,662<br><span class="muted">示例</span></div>`,
+      `<div class="panel buy" style="border-color:#2ebd85;background:rgba(46,189,133,.14)"><h3>买方</h3>最大亏损 = 权利金<br>上涨收益不封顶<br>没有强平</div>`,
+      `<div class="panel sell"><h3>卖方 = −买方</h3>收益封顶 1,662<br>亏损不封底<br><b>尾部风险不对称</b></div>`,
+      `<div class="panel"><h3>Black-Scholes 输入</h3>标的 60,000 · 行权价 60,000<br>期限 7 天 · 利率 0<br><span class="hl">波动率 → 不可观察 = IV 50%</span></div>`,
+      `<div class="panel gold" style="font-family:var(--mono);font-size:29px;line-height:1.7">σ√t = 0.5 × √(7/365)<br>&nbsp;&nbsp;&nbsp;&nbsp;≈ 0.0692<br>权利金 ≈ 0.4 × 60,000<br>&nbsp;&nbsp;&nbsp;&nbsp;× 0.0692 ≈ <b>1,662</b></div><div class="panel muted">平值近似 · 示例</div>`,
+      `<table class="t" style="font-size:28px"><tr><th>Greek</th><th>含义</th></tr><tr><td>Delta ≈ 0.51</td><td>涨 100 → +51</td></tr><tr><td>Gamma</td><td>临近到期平值最大</td></tr><tr><td>Vega</td><td>期限越长越大</td></tr><tr><td>Theta &lt; 0</td><td>买方每天付租金</td></tr></table>`,
+    ][st];
+    el.querySelector('#po-right').innerHTML = r;
+  }
+
+  // Scene 11: option money flow / state / market making
+  function optStep(el, st) {
+    const svg = el.querySelector('#opt');
+    el.querySelector('#opt-h').textContent = st <= 1 ? '期权的资金流：全部是账本内划转' : st === 2 ? '欧式期权的状态机：只有一个行权时点' : '流动性靠做市商';
+    let h = '';
+    const box = (x, y, w, hh, t, s, on, col) => R(x, y, w, hh, { fill: on ? soft[col || 'gold'] : C.panel, stroke: on ? C[col || 'gold'] : C.line, sw: on ? 4 : 3 }) + T(x + w / 2, y + (s ? hh / 2 - 4 : hh / 2 + 11), t, { anchor: 'middle', size: 32, bold: true, plain: true }) + (s ? T(x + w / 2, y + hh / 2 + 34, s, { anchor: 'middle', size: 24, fill: C.t2, plain: true }) : '');
+    if (st <= 1) {
+      h += box(60, 60, 380, 130, '买方期权账户', '付手续费 → 平台', true, 'buy');
+      h += box(1200, 60, 380, 130, '卖方期权账户', '付手续费 → 平台', true, 'sell');
+      h += box(1200, 400, 380, 130, '卖方保证金冻结', '', true, 'gold');
+      h += ARW(440, 125, 1200, 125, st === 0 ? C.gold : '#6a707c', 6) + T(820, 108, '① 成交时支付权利金', { anchor: 'middle', size: 32, bold: st === 0, fill: st === 0 ? C.gold : C.t2 });
+      h += ARW(1270, 190, 1270, 400, st === 0 ? C.gold : '#6a707c', 5) + T(1255, 300, '② 冻结', { anchor: 'end', size: 30, fill: st === 0 ? C.gold : C.t2 });
+      if (st === 1) {
+        h += `<path d="M1200 470 H 250 V 196" fill="none" stroke="${C.gold}" stroke-width="6"/><polygon points="250,190 238,214 262,214" fill="${C.gold}"/>`;
+        h += T(720, 514, '③ 到期实值：支付行权收益', { anchor: 'middle', size: 32, bold: true, fill: C.gold });
+        h += ARW(1510, 400, 1510, 190, C.gold, 5) + T(1495, 300, '④ 解冻剩余', { anchor: 'end', size: 30, fill: C.gold });
+        h += R(470, 250, 640, 130, { fill: soft.sell, stroke: C.sell }) + T(790, 302, '保证金不足 → 期权保险基金', { anchor: 'middle', size: 30, bold: true, plain: true }) + T(790, 346, '业界通用做法', { anchor: 'middle', size: 26, fill: C.t2, plain: true });
+        h += T(820, 590, '全部是账本内 USDT 划转，不上链', { anchor: 'middle', size: 30, fill: C.text });
+      } else {
+        h += T(820, 590, '权利金在成交时立即转给卖方，通常也计入卖方保证金', { anchor: 'middle', size: 30, fill: C.text });
+      }
+    } else if (st === 2) {
+      const S = [[20, 140, '已上市'], [290, 140, '交易中'], [560, 140, '停止交易'], [830, 140, '结算中']];
+      S.forEach(([x, y, t], i) => { h += box(x, y, 220, 110, t, '', i === 3, 'gold'); if (i < 3) h += ARW(x + 220, y + 55, x + 270, y + 55, C.t2, 4); });
+      h += box(1130, 40, 240, 110, '实值行权', '自动行权', true, 'buy') + box(1130, 240, 240, 110, '虚值作废', '', true, 'sell');
+      h += box(1420, 140, 200, 110, '已结算', '', false);
+      h += ARW(1050, 175, 1130, 105, C.gold, 4) + ARW(1050, 215, 1130, 290, C.gold, 4) + ARW(1370, 95, 1420, 170, C.t2, 4) + ARW(1370, 295, 1420, 220, C.t2, 4);
+      h += R(20, 420, 1600, 150, { fill: C.panel2 });
+      h += T(60, 480, 'UTC 08:00 结算 · 结算价 = 到期前一段时间的指数均价', { size: 32, plain: true });
+      h += T(60, 536, '防止到期瞬间被操纵 · 欧式没有提前行权 · 业界通用做法', { size: 30, fill: C.t2, plain: true });
+    } else if (st === 3) {
+      const ex = ['日', '周', '月', '季'];
+      h += T(40, 40, '一个标的 · 4 种期限 × 若干行权价 · 示意', { size: 28, fill: C.t2 });
+      ex.forEach((e, r) => {
+        h += T(80, 120 + r * 100, e, { anchor: 'middle', size: 32, bold: true });
+        for (let c = 0; c < 14; c++) { const lit = (c === 6 || c === 7) && r < 2; h += R(130 + c * 72, 78 + r * 100, 62, 62, { rx: 8, fill: lit ? soft.buy : C.panel, stroke: lit ? C.buy : C.line }); }
+      });
+      h += T(640, 520, '只有少数平值合约有自然成交 · 其余流动性很薄', { anchor: 'middle', size: 30 });
+      h += R(1170, 120, 440, 300, { fill: soft.gold, stroke: C.gold }) + T(1390, 200, '指定做市商', { anchor: 'middle', size: 36, bold: true, plain: true }) + T(1390, 260, '持续双边报价', { anchor: 'middle', size: 30, plain: true }) + T(1390, 310, '最小报价量', { anchor: 'middle', size: 28, fill: C.t2, plain: true }) + T(1390, 352, '最大价差', { anchor: 'middle', size: 28, fill: C.t2, plain: true });
+    } else {
+      const N = [[20, '指数价', 'index-price'], [345, '波动率曲面', 'vol-surface'], [670, '做市商', '双边报价'], [995, '期权风控', 'option-risk'], [1320, '撮合引擎', 'matching']];
+      N.forEach(([x, t, s], i) => { h += box(x, 80, 280, 130, t, s, i === 1 || i === 3, 'gold'); if (i < 4) h += ARW(x + 280, 145, x + 325, 145, C.gold, 4); });
+      h += T(485, 270, '拟合各行权价、期限的 IV', { anchor: 'middle', size: 28, fill: C.t2 }) + T(485, 310, '发布标记价与标记 IV', { anchor: 'middle', size: 28, fill: C.t2 });
+      h += T(1135, 270, '卖方保证金', { anchor: 'middle', size: 28, fill: C.t2 }) + T(1135, 310, '价格带检查', { anchor: 'middle', size: 28, fill: C.t2 });
+      h += R(20, 390, 1600, 170, { fill: C.panel2 });
+      h += T(60, 450, '价格带：订单价格必须在标记价附近，防止误下极端价格单', { size: 32, plain: true });
+      h += T(60, 510, '成交后，风控重算卖方保证金 · 组件名为示意', { size: 30, fill: C.t2, plain: true });
+    }
+    svgEl(svg, h);
+  }
+
+  // Scene 13: limits
+  function limitStep(el, st) {
+    const rows = el.querySelectorAll('#limits tr');
+    const cur = [[2, 3, 4, 5], [1], [1, 2], [1, 2], []][st];
+    rows.forEach((r, i) => { if (i) { r.classList.toggle('cur', cur.includes(i)); r.style.opacity = st === 4 ? .35 : 1; } });
+    const nd = (t, c) => `<div class="nd ${c || ''}">${t}</div>`;
+    const r = [
+      `<div class="panel gold"><h3>分层之外</h3>再给用户和市场设上限</div><div class="panel">限额太松 → 巨鲸强平耗尽保险基金，触发 ADL</div><div class="panel">限额太紧 → 机构流向其他交易所</div>`,
+      `<div class="mini">${nd('大仓位 · 高层级', 'on')}<div class="ar">▼</div>${nd('MMR 更高 · 强平线更早', 'on')}<div class="ar">▼</div>${nd('部分强平 · 降到低层级')}<div class="ar">▼</div>${nd('释放保证金 · 可能恢复安全')}</div>`,
+      `<div class="mini">${nd('开仓 300 万 USDT 名义价值', 'on')}<div class="ar">▼ order-service → risk-service</div>${nd('读取分层与限额 · risk-limit-config')}<div class="ar">▼ 按加上这笔订单之后的仓位</div>${nd('落在第 4 层 · 最大杠杆 20x', 'on')}</div>`,
+      `<div class="mini">${nd('用户杠杆 &gt; 20x → 拒绝，提示降杠杆', 'bad')}${nd('超过单用户持仓上限 → 拒绝', 'bad')}${nd('通过 → 冻结初始保证金', 'on')}</div><div class="panel info" style="padding:16px 24px">限额配置可热更新：极端行情前临时调低</div>`,
+      `<div class="panel sell"><h3>2022 Mango Markets · 公开报道</h3>浅市场 MNGO 永续建巨大仓位<br>同时拉升现货价格<br>虚高的未实现盈利作抵押 → 借走协议资金</div><div class="panel gold">教训：浅市场要有持仓上限<br>未实现盈利不能全额作抵押</div>`,
+    ][st];
+    el.querySelector('#lim-right').innerHTML = r;
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

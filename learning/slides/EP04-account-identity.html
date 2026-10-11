@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP04 账户与身份</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .tag { font-size: 22px; font-weight: 600; padding: 2px 12px; border-radius: 999px; background: var(--panel-2); color: var(--text-2); vertical-align: middle; margin-left: 10px; }
+  .tag.gold { background: var(--gold-soft); color: var(--gold); }
+  .tag.info { background: var(--info-soft); color: var(--info); }
+  .flow.tight .node { min-width: 0; padding: 18px 20px; }
+  .flow.tight .arrow { width: 48px; }
+  .stack { position: relative; }
+  .stack > * { position: absolute; left: 0; right: 0; top: 0; }
+  .roadmap { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+  .roadmap .rm { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 20px 14px; text-align: center; font-size: 30px; line-height: 1.35; }
+  .roadmap .rm b { display: block; font-family: var(--mono); color: var(--gold); font-size: 26px; margin-bottom: 6px; }
+
+  /* TOTP */
+  .totp { display: grid; grid-template-columns: 380px 1fr 380px; gap: 28px; align-items: stretch; }
+  .dev { text-align: center; }
+  .dev .who { font-size: 34px; font-weight: 700; margin-bottom: 14px; }
+  .dev .sec { font-family: var(--mono); font-size: 28px; color: var(--gold); background: var(--gold-soft); border-radius: 10px; padding: 8px 10px; }
+  .dev .code { font-family: var(--mono); font-size: 64px; font-weight: 700; margin-top: 22px; letter-spacing: .08em; color: var(--text-2); }
+  .dev .code.on { color: var(--buy); }
+  .calc { font-family: var(--mono); font-size: 32px; line-height: 1.7; }
+  .calc .ln { opacity: .18; transition: opacity .4s; }
+  .calc .ln.on { opacity: 1; }
+  .wins { display: flex; gap: 16px; justify-content: center; margin-top: 12px; }
+  .wins span { font-family: var(--mono); font-size: 28px; padding: 6px 18px; border-radius: 10px; border: 2px solid var(--line); }
+  .wins span.ok { border-color: var(--buy); color: var(--buy); background: var(--buy-soft); }
+  .wire { text-align: center; font-size: 28px; color: var(--text-2); margin-top: 8px; }
+
+  /* fingerprint */
+  .chips { display: flex; flex-wrap: wrap; gap: 14px; }
+  .chips .chip { font-size: 28px; padding: 8px 20px; }
+  .fp { font-family: var(--mono); font-size: 40px; color: var(--gold); }
+
+  /* signature */
+  .sig .code { font-size: 28px; white-space: normal; }
+  .sig .p { transition: color .3s, background .3s; border-radius: 6px; }
+  .sig .p.new { color: var(--gold); background: var(--gold-soft); }
+  .sig .p.bad { color: var(--sell); background: var(--sell-soft); }
+  .sigrow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+  .verdict { font-size: 34px; font-weight: 700; }
+  .box { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 18px 22px; font-size: 30px; line-height: 1.45; }
+  .box .m { font-family: var(--mono); font-size: 26px; word-break: break-all; }
+  .box.sell { border-color: var(--sell); } .box.buy { border-color: var(--buy); } .box.gold { border-color: var(--gold); } .box.info { border-color: var(--info); }
+
+  /* replay & kyc svg */
+  svg .lbl { font-size: 28px; }
+  svg .sm { font-size: 24px; fill: var(--text-2); }
+  svg .mono { font-family: var(--mono); }
+  .kyc .nd rect { fill: var(--panel); stroke: var(--line); stroke-width: 2; transition: all .3s; }
+  .kyc .nd.on rect { stroke: var(--gold); fill: rgba(240,185,11,.16); stroke-width: 3; }
+  .kyc .nd.done rect { stroke: #555b66; }
+  .kyc .nd.bad rect { stroke: var(--sell); fill: var(--sell-soft); }
+  .kyc .nd.fut { opacity: .35; }
+  .kyc .eg { fill: none; stroke: #4a4f59; stroke-width: 3; opacity: .35; }
+  .kyc .eg.done { opacity: .9; }
+  .kyc .eg.on { stroke: var(--gold); stroke-width: 5; opacity: 1; }
+  .kyc .el { font-size: 24px; fill: var(--text-2); opacity: .35; }
+  .kyc .el.on { fill: var(--gold); opacity: 1; }
+  .kyc .el.done { opacity: .9; }
+
+  /* attack gates */
+  .gates { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+  .gate { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 12px; text-align: center; font-size: 30px; line-height: 1.3; min-height: 150px; transition: all .3s; }
+  .gate .n { font-family: var(--mono); font-size: 22px; color: var(--text-2); }
+  .gate .s { margin-top: 10px; font-size: 26px; font-weight: 700; color: var(--text-2); }
+  .gate.active { border-color: var(--gold); background: var(--gold-soft); }
+  .gate.active .s { color: var(--gold); }
+  .gate.pass { border-color: var(--sell); background: var(--sell-soft); }
+  .gate.pass .s { color: var(--sell); }
+  .gate.hold { border-color: var(--buy); background: var(--buy-soft); }
+  .gate.hold .s { color: var(--buy); }
+  .gate.weak { border-color: var(--warn); border-style: dashed; background: var(--warn-soft); }
+  .gate.weak .s { color: var(--warn); }
+  .mail { background: #f4f2ec; color: #222; border-radius: 12px; padding: 18px 24px; font-size: 28px; line-height: 1.5; }
+  .mail .h { font-weight: 700; border-bottom: 1px solid #ccc; padding-bottom: 8px; margin-bottom: 8px; }
+  .mail .code-ok { font-family: var(--mono); background: #fff3c4; padding: 2px 10px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP04" data-title="账户与身份：登录、2FA、API 签名、KYC">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解 · 第 4 集</div>
+    <h1>账户与身份：<span class="hl">谁</span>在动这笔钱</h1>
+    <p class="lead" data-step="1">账户 = 资产。账户被盗，就是钱被盗。</p>
+    <div class="row" data-step="2">
+      <div class="card sell" style="flex:1.3"><div class="muted" style="font-size:26px">2019 年 5 月 · 币安官方公告</div>攻击者收集大量用户的 <b>API Key + 2FA 码</b>，一次提币从热钱包转走</div>
+      <div class="stat card" style="flex:.7"><div class="k">被盗数量</div><div class="v down">≈7000 BTC</div></div>
+      <div class="stat card" style="flex:.7"><div class="k">损失由谁承担</div><div class="v hl">SAFU</div></div>
+    </div>
+    <ol class="say">
+      <li>大家好，欢迎回到交易所系统技术讲解。这一集我们讲账户与身份。先问一个问题。在交易所里，账户被盗意味着什么？</li>
+      <li>答案很直接。账户对应资产，账户被盗就是钱被盗。所以交易所的账户系统，比普通网站多了好几层锁。</li>
+      <li>根据币安公开资料，2019 年 5 月发生过一次被盗。攻击者通过钓鱼和病毒，收集了大量用户的 API Key 和 2FA 码。一次提币就从热钱包转走约 7000 BTC。单个账户的问题，规模化之后就是平台级风险。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="认证与授权">
+    <div class="kicker">本集路线图</div>
+    <h2>两个问题：<span class="hl">你是谁</span>，<span class="blue">你能做什么</span></h2>
+    <div class="grid2">
+      <div class="card gold"><h3>认证 Authentication</h3>确认“你是你”：密码、2FA、设备、签名</div>
+      <div class="card info" data-step="1"><h3>授权 Authorization</h3>确认“你能做什么”：只读 Key 验签通过，<b>仍不能下单</b></div>
+    </div>
+    <div class="roadmap" data-step="2">
+      <div class="rm"><b>01</b>登录与会话</div>
+      <div class="rm"><b>02</b>TOTP 2FA</div>
+      <div class="rm"><b>03</b>设备指纹</div>
+      <div class="rm"><b>04</b>API 签名<br>与防重放</div>
+      <div class="rm"><b>05</b>KYC 分级<br>与状态机</div>
+      <div class="rm"><b>06</b>反钓鱼码<br>与白名单</div>
+    </div>
+    <div class="card" data-step="3" style="font-size:30px">🔐 比喻：保险箱。密码 = 大门钥匙，2FA = 门禁卡，白名单 = 只能寄到固定地址。<span class="hl">但每把“锁”其实是一段校验逻辑，可以被绕过。</span></div>
+    <ol class="say">
+      <li>开始之前，先分清两个词。认证，回答你是谁。授权，回答你能做什么。</li>
+      <li>这两件事要分开检查。比如一个只读 API Key，签名完全正确，认证通过了。但它仍然不能下单，因为没有这个授权。</li>
+      <li>本集按这条路线走。先讲登录、2FA 和设备指纹。再讲 API 签名和 KYC，最后是反钓鱼码和白名单。</li>
+      <li>打个比方，账户像银行保险箱。密码是大门钥匙，2FA 是门禁卡，白名单规定东西只能寄到固定地址。但比喻有个不成立的地方。交易所的锁都是校验逻辑，可以被绕过，所以要叠很多层。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="注册与登录">
+    <div class="kicker">01 · 登录与会话 <span class="tag">业界通用做法</span></div>
+    <h2>密码只存<span class="hl">慢哈希</span>，登录要过多道检查</h2>
+    <div class="grid2">
+      <div class="card buy"><h3 class="up">✓ 慢哈希 + 加盐</h3><span class="mono">Argon2 · bcrypt · scrypt</span><br><span class="muted">每次计算故意很贵，暴力破解跑不动</span></div>
+      <div class="card sell" data-step="1"><h3 class="down">✗ 快哈希 / 明文</h3><span class="mono">MD5 · SHA-256 · 明文</span><br><span class="muted">计算成本太低，泄露后可被快速爆破</span></div>
+    </div>
+    <div class="flow tight" data-step="2">
+      <div class="node">提交密码</div><div class="arrow"></div>
+      <div class="node">校验哈希</div><div class="arrow"></div>
+      <div class="node info">设备与 IP</div><div class="arrow"></div>
+      <div class="node warn" style="border-color:var(--warn)">异常？<small>二次验证</small></div><div class="arrow" data-step="3"></div>
+      <div class="node gold" data-step="3">输入 2FA</div><div class="arrow gold" data-step="3"></div>
+      <div class="node buy" data-step="3">签发会话</div>
+    </div>
+    <ol class="say">
+      <li>先看注册。用户提交邮箱或手机号，用验证码确认，再设置密码。业界通常只保存密码的慢哈希，并且加盐。例如 Argon2 或 bcrypt。</li>
+      <li>绝不能存明文，也不能用 MD5 这类快哈希。快哈希算得太快，数据库一旦泄露，很快就被暴力破解。</li>
+      <li>再看登录。系统先校验密码哈希，然后检查设备指纹和登录 IP。如果设备或地点异常，就要求二次验证。</li>
+      <li>开启了 2FA 的用户，还要输入动态验证码。全部通过以后，系统才签发会话凭证。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="会话令牌">
+    <div class="kicker">01 · 登录与会话</div>
+    <h2>会话凭证：可吊销 vs 免查库</h2>
+    <table class="t">
+      <tr><th style="width:24%">形态</th><th>原理</th><th style="width:22%">优点</th><th style="width:24%">缺点</th></tr>
+      <tr data-step="1"><td>不透明令牌</td><td>随机字符串，服务端查库得知归属</td><td class="up">可立即吊销</td><td class="down">每次都查存储</td></tr>
+      <tr data-step="2"><td>JWT</td><td>带签名的 JSON，验签即读出用户 ID</td><td class="up">不查库，快</td><td class="down">签发后难作废</td></tr>
+    </table>
+    <div class="grid2" data-step="3">
+      <div class="card"><h3>访问令牌 <span class="tag gold">示例 15 分钟</span></h3>有效期短，泄露窗口小</div>
+      <div class="card"><h3>刷新令牌 <span class="tag">服务端可吊销</span></h3>改密码、退出所有设备 → 全部吊销</div>
+    </div>
+    <div class="card warn" data-step="4">JWT 只是 Base64 编码，<b>不是加密</b>：任何人都能解码读到内容。</div>
+    <ol class="say">
+      <li>登录以后，系统给浏览器一个会话凭证。之后的请求带上它，就不用再输密码。凭证常见有两种形态。</li>
+      <li>第一种是不透明令牌，一个随机字符串，服务端查库才知道它属于谁。好处是能立即吊销，代价是每次都要查存储。</li>
+      <li>第二种是 JWT，一段带签名的 JSON。服务端验签就能读出用户 ID，很快。缺点是签发以后，很难提前作废。</li>
+      <li>业界通常组合使用。访问令牌有效期短，示例是 15 分钟。刷新令牌存在服务端，改密码或退出所有设备时，全部吊销。</li>
+      <li>还有一个常见误区。JWT 的内容只是 Base64 编码，不是加密。任何人都能解码看到，所以不要在里面放敏感信息。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="TOTP 双因素认证" data-onstep="totpStep">
+    <div class="kicker">02 · 2FA</div>
+    <h2>TOTP：密钥只传一次，之后各算各的</h2>
+    <div class="totp">
+      <div class="card dev"><div class="who">📱 验证器 App</div><div class="sec">Secret: JBSWY3DP…</div><div class="code" id="codeA">— — —</div></div>
+      <div class="card calc">
+        <div class="ln" id="l0">绑定：二维码 → App 扫码保存 Secret</div>
+        <div class="ln" id="l1">时间 = <span class="hl">1700000017</span> 秒 <span class="tag gold">示例</span></div>
+        <div class="ln" id="l2">T = ⌊1700000017 ÷ 30⌋ = <span class="hl">56666667</span></div>
+        <div class="ln" id="l3">HMAC-SHA1(Secret, T) → 截取 6 位</div>
+        <div class="ln" id="l4">→ <span class="up">492039</span> <span class="tag gold">示例</span></div>
+      </div>
+      <div class="card dev"><div class="who">🖥 身份服务</div><div class="sec">Secret: JBSWY3DP…</div><div class="code" id="codeB">— — —</div></div>
+    </div>
+    <div class="stack" style="height:150px">
+      <div id="tp0" class="wire" data-step="0" data-until="0">⬅ Secret 仅在绑定时经二维码传输一次 ➡</div>
+      <div data-step="3" data-until="3"><div class="wire">网络上只传 6 位数：<span class="mono up">492039</span>　服务端比对前后各 1 个时间窗</div>
+        <div class="wins"><span id="w0">T−1</span><span id="w1">T</span><span id="w2">T+1</span></div></div>
+      <div class="grid2" data-step="4"><div class="card warn">库泄露 = Secret 泄露 → Secret 要<b>加密存储</b></div><div class="card sell">短信验证码更弱：<b>SIM 卡劫持</b>可截获</div></div>
+    </div>
+    <ol class="say">
+      <li>现在看 2FA。它在密码之外，再验证一个你拥有的东西，也就是验证器。最常见的是 TOTP。绑定时，服务端生成随机密钥，做成二维码，用户扫码保存。</li>
+      <li>之后双方各自计算。来算一个示例。当前时间是 1700000017 秒。除以 30 向下取整，得到 56666667。这就是时间窗编号，每 30 秒加 1。</li>
+      <li>双方用 HMAC-SHA1 处理密钥和窗口编号，截取 6 位数字。示例是 492039。输入相同，结果就相同。</li>
+      <li>注意，网络上只传这 6 位数，密钥从不传输。服务端通常还允许前后各 1 个时间窗，容忍手机时钟误差。</li>
+      <li>TOTP 也有弱点。数据库泄露，密钥也跟着泄露，所以要加密存储。短信验证码更弱，攻击者可以补办你的手机卡截获短信。这叫 SIM 卡劫持。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="设备指纹">
+    <div class="kicker">03 · 设备指纹</div>
+    <h2>把设备特征组合成一个<span class="hl">标识</span></h2>
+    <div class="row" style="align-items:center">
+      <div class="chips" style="flex:1.4">
+        <span class="chip">操作系统</span><span class="chip">浏览器版本</span><span class="chip">屏幕分辨率</span><span class="chip">时区</span><span class="chip">语言</span><span class="chip">字体列表</span><span class="chip">App 安装 ID</span>
+      </div>
+      <div class="flow"><div class="arrow gold"></div></div>
+      <div class="card gold" style="flex:.8;text-align:center"><div class="muted" style="font-size:26px">设备指纹 · 示例</div><div class="fp">fp_7c3a91e2</div></div>
+    </div>
+    <div class="grid3">
+      <div class="card info" data-step="1"><h3>① 识别新设备</h3>新设备登录 → 二次验证 + 通知</div>
+      <div class="card info" data-step="2"><h3>② 已授权设备</h3>用户可删除陌生设备</div>
+      <div class="card info" data-step="2"><h3>③ 风控信号</h3>一台设备登录大量账户 → 批量注册？</div>
+    </div>
+    <div class="card warn" data-step="3">设备指纹<b>可以伪造</b>：只是风险信号之一，不能单独作为放行依据。</div>
+    <ol class="say">
+      <li>登录流程里提到了设备指纹。它是把浏览器或 App 的一组特征，组合成一个标识。比如操作系统、浏览器版本、分辨率、时区、语言和字体列表。</li>
+      <li>第一个用途，识别新设备。新设备登录时，系统要求二次验证，并给用户发通知。</li>
+      <li>第二，管理已授权设备，用户可以删掉陌生设备。第三，给风控提供信号。一台设备登录大量账户，可能是批量注册。</li>
+      <li>但要注意，设备指纹可以被伪造。它只是风险信号之一，不能单独作为放行的依据。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene sig" data-title="API Key 与 HMAC 签名" data-onstep="sigStep">
+    <div class="kicker">04 · API 签名 <span class="tag info">币安公开资料</span></div>
+    <h2>签名 = HMAC-SHA256(<span class="down">secretKey</span>, 参数串)</h2>
+    <div class="code" data-step="1">symbol=BTCUSDT&amp;<wbr>side=BUY&amp;<wbr>type=LIMIT&amp;<wbr><span class="p" id="qty">quantity=0.01</span>&amp;<wbr>price=60000&amp;<wbr><span class="p" id="ts">timestamp=1700000000000</span>&amp;<wbr><span class="p" id="rw">recvWindow=5000</span></div>
+    <div class="sigrow">
+      <div class="box sell" data-step="0"><b>Secret Key</b><br><span class="muted">只在本地签名，<b class="down">永不发送</b></span><div class="m" style="margin-top:6px">NhqPtmdSJYdKjVHj…</div></div>
+      <div class="box gold" data-step="2"><b>signature</b> <span class="tag gold">示例</span><div class="m" id="sigv" style="margin-top:6px">c8db5682…38bd6b71</div></div>
+      <div class="box info" data-step="0"><b>API Key</b><br><span class="muted">公开标识，放在请求头</span><div class="m" style="margin-top:6px">X-MBX-APIKEY: vmPUZE6m…</div></div>
+    </div>
+    <div class="row" data-step="3">
+      <div class="box" style="flex:1"><b>POST /api/v3/order</b><br><span class="muted" style="font-size:26px">Header：API Key ✓　参数：…&amp;signature ✓　Secret：✗ 不在请求里</span></div>
+      <div class="box" id="gw" data-step="4" style="flex:1"><b>网关</b>：按 Key 查 Secret → 重算 → 常量时间比较<div class="verdict" id="verdict"></div></div>
+    </div>
+    <ol class="say">
+      <li>程序化交易要用 API Key。它分两部分。API Key 是公开标识，随请求明文发送。Secret Key 是签名密钥，永远不发送。</li>
+      <li>来看币安现货接口怎么签名。客户端先把参数拼成一个字符串。末尾加上 timestamp 和 recvWindow，单位是毫秒。</li>
+      <li>然后用 Secret Key 对这个字符串做 HMAC-SHA256。得到的摘要作为 signature 参数，附在请求后面。</li>
+      <li>请求头带着 API Key，参数里带着签名，Secret 不在网络上出现。币安还支持 RSA 和 Ed25519 密钥。它们是非对称签名，服务端不保存私钥。</li>
+      <li>网关按 API Key 查到 Secret，重算签名，再和请求里的比较。比较要用常量时间算法，否则攻击者能从响应耗时里逐位猜签名。</li>
+      <li>如果有人在路上把数量从 0.01 改成 10 呢？参数串变了，重算的签名对不上。没有 Secret，攻击者也算不出新签名。网关直接拒绝。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="timestamp 与 recvWindow 防重放" data-onstep="replayStep">
+    <div class="kicker">04 · 防重放 <span class="tag info">币安公开资料</span></div>
+    <h2>原样重发的请求，签名照样正确</h2>
+    <div class="formula" data-step="1" style="font-size:34px;padding:16px 30px">接受条件：<span class="hl">服务器时间 − timestamp ≤ recvWindow</span>　且　timestamp &lt; 服务器时间 + 1s</div>
+    <svg id="rp" viewBox="0 0 1640 400" width="1640" height="400"></svg>
+    <ol class="say">
+      <li>签名能防篡改，但防不了一件事。攻击者截获完整请求，原样再发一遍，签名完全正确。这就是重放攻击。</li>
+      <li>币安规定，服务器时间减 timestamp，不能超过 recvWindow。timestamp 也不能比服务器快 1 秒以上。recvWindow 默认 5000 毫秒，最大 60000。</li>
+      <li>来算一个示例。把 timestamp 记为 T。服务器在 T 减 1 秒到 T 加 5 秒之间收到，都接受。正常请求 T 加 0.2 秒到达，通过。</li>
+      <li>攻击者截获了请求，在 T 加 8 秒重放。服务器一算，差了 8000 毫秒，超过 5000，直接拒绝。</li>
+      <li>但如果攻击者在 T 加 3 秒就重放呢？时间窗没过，签名也对。所以 recvWindow 只能缩短重放窗口。下单接口通常再用 newClientOrderId 去重，同一个只接受一次。</li>
+      <li>再看两个边界。recvWindow 设成 60000，重放窗口就拉长到 1 分钟。所以网络稳定时用小值。另外，客户端时钟偏慢，正常请求也会被拒，要先调服务器时间接口校准。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="API Key 权限">
+    <div class="kicker">04 · API 授权 <span class="tag info">币安公开功能</span></div>
+    <h2>验签通过之后：这个 Key <span class="blue">能做什么</span></h2>
+    <table class="t">
+      <tr><th style="width:26%">配置</th><th>作用</th></tr>
+      <tr data-step="0"><td>权限开关</td><td>读取 · 现货交易 · 合约交易 · 提币，分开控制</td></tr>
+      <tr data-step="1"><td>IP 白名单</td><td>只允许指定 IP 使用；<span class="hl">开启提币权限时必须绑定</span></td></tr>
+      <tr data-step="2"><td>删除与重建</td><td>Secret 只在创建时展示一次，遗失只能重建</td></tr>
+    </table>
+    <div class="card sell" data-step="2">⚠ 提币权限风险极高：必须开时，同时绑定 <b>IP 白名单</b> + <b>提币白名单</b>。</div>
+    <div class="card gold" data-step="3">🧾 比喻：API Key = 支票账号，Secret = 签名笔迹，timestamp = 支票日期。<span class="muted">不成立处：有效期内，同一张“支票”仍可能兑现两次 → 订单号去重。</span></div>
+    <ol class="say">
+      <li>签名只解决认证。接下来是授权。币安的 API Key 有权限开关，读取、现货、合约和提币分开控制。</li>
+      <li>第二个配置是 IP 白名单，只允许指定 IP 使用这个 Key。根据币安公开资料，开启提币权限时，必须绑定 IP 白名单。</li>
+      <li>第三，Secret 只在创建时展示一次，遗失只能重建。提币权限风险极高，必须开时，同时绑定 IP 白名单和提币白名单。</li>
+      <li>打个比方。API Key 像支票账号，Secret 像签名笔迹。timestamp 像支票日期，过期就退回。但比喻不完全成立。有效期内，同一张支票仍可能兑现两次，所以要订单号去重。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="KYC 分级">
+    <div class="kicker">05 · KYC <span class="tag info">币安公开资料 · 按地区变化</span></div>
+    <h2>认证越充分，功能越多，额度越高</h2>
+    <table class="t">
+      <tr><th style="width:22%">级别</th><th style="width:40%">需要提交</th><th>典型权益</th></tr>
+      <tr data-step="1"><td>未认证</td><td>邮箱或手机号</td><td class="down">功能受限；自 2021 年起须认证才能交易和充提</td></tr>
+      <tr data-step="2"><td>已认证</td><td>个人信息 + 身份证件 + 人脸识别</td><td>加密货币充值、交易、提币</td></tr>
+      <tr data-step="2"><td>高级认证</td><td>再加地址证明</td><td class="up">更高的法币额度</td></tr>
+      <tr data-step="3"><td>企业认证</td><td>公司注册文件、股东与董事信息</td><td>机构账户功能</td></tr>
+    </table>
+    <div class="card info" data-step="0"><b>KYC</b> = Know Your Customer，了解你的客户　·　反洗钱 <b>AML</b> 合规的基础　·　另有制裁名单筛查</div>
+    <ol class="say">
+      <li>现在换到监管视角。监管要知道用户是谁，要阻止洗钱。这就是 KYC，了解你的客户。它是反洗钱合规的基础。</li>
+      <li>KYC 的思路是分级。认证越充分，可用功能越多，额度越高。根据币安公开资料，未认证用户功能受限。自 2021 年起，新用户要完成认证，才能交易和充提。</li>
+      <li>已认证需要个人信息、身份证件和人脸识别，可以充值、交易和提币。高级认证再加一份地址证明，法币额度更高。</li>
+      <li>企业认证面向机构，要提交公司注册文件，以及股东和董事信息。注意，具体要求按国家和地区变化，以官网为准。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene kyc" data-title="KYC 状态机" data-onstep="kycStep">
+    <div class="kicker">05 · KYC 状态机 <span class="tag">业界通用做法的抽象</span></div>
+    <h2>KYC 是一个会<span class="hl">回退</span>的状态机</h2>
+    <svg id="kyc" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>KYC 的处理流程是一个状态机。这张图是业界通用做法的抽象，不是币安内部的原样复刻。先看最顺的路径。注册完成是未开始，用户提交资料，进入自动审核。</li>
+      <li>自动审核会做证件识别、活体检测和名单筛查。证件和人脸比对通过，名单也没有命中，就直接批准。</li>
+      <li>如果置信度低，或者名单疑似命中，就转人工审核。人工可以批准，可以要求补充资料，也可以拒绝。用户补充资料以后，重新回到已提交。</li>
+      <li>命中制裁名单通常直接拒绝，还可能触发账户冻结。被拒绝的用户，可以在有限次数内重新提交。</li>
+      <li>最后注意，批准不是终点。证件过期或定期复审到期，状态会变成过期。用户要更新资料，重新提交。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="攻击路径与多层防护" data-onstep="attackStep">
+    <div class="kicker">06 · 反钓鱼码与提币白名单</div>
+    <h2>攻击者要连闯<span class="hl">六道关</span></h2>
+    <div class="gates" id="gates">
+      <div class="gate"><div class="n">01</div>反钓鱼码<div class="s">—</div></div>
+      <div class="gate"><div class="n">02</div>密码<div class="s">—</div></div>
+      <div class="gate"><div class="n">03</div>2FA<div class="s">—</div></div>
+      <div class="gate"><div class="n">04</div>新设备验证<div class="s">—</div></div>
+      <div class="gate"><div class="n">05</div>白名单<br>+冷静期<div class="s">—</div></div>
+      <div class="gate"><div class="n">06</div>风控<br>与冻结<div class="s">—</div></div>
+    </div>
+    <div class="stack" style="height:330px">
+      <div class="grid2" data-step="0" data-until="1">
+        <div class="mail"><div class="h">✅ 官方邮件</div>您的反钓鱼码：<span class="code-ok">K7BLUEFOX</span>（示例）<br>您正在从新设备登录……</div>
+        <div class="mail"><div class="h">❌ 钓鱼邮件</div><span style="color:#999">没有反钓鱼码</span><br>账户异常，请立即点击链接验证……</div>
+      </div>
+      <div class="card" data-step="2" data-until="2"><b>未开 2FA</b> → 拿到密码即登录<br><b>已开 2FA</b> → 还要动态码<br><b>新设备</b> → 二次验证 + 通知用户</div>
+      <div class="card gold" data-step="3" data-until="3">提币到攻击者地址：<span class="down">✗ 不在白名单</span><br>新增地址：2FA + 邮件确认 → 冷静期 <b>24 小时</b> <span class="tag gold">示例</span></div>
+      <div class="card buy" data-step="4" data-until="4">冷静期 = <b>争取时间</b><br>用户收到告警 → 自助冻结账户<br>风控：新设备 + 新地址 + 大额 → 人工审核</div>
+      <div class="card warn" data-step="5">局限：<b>邮箱也被攻破</b>时，邮件确认这一层失效。<br>每层都可能被绕过 → 靠多层叠加抬高攻击成本。</div>
+    </div>
+    <ol class="say">
+      <li>把这些锁串起来，看一次完整攻击。第一步通常是钓鱼邮件。反钓鱼码就是用来识破它的。用户自己设一段暗号，币安官方邮件都会带上。</li>
+      <li>钓鱼者不知道暗号，邮件里就没有。假设用户没注意，在钓鱼网站输入了密码。攻击者拿到了第一把钥匙。</li>
+      <li>下一道锁是 2FA。没有开 2FA，攻击者直接登录成功。开了 2FA，攻击者还得拿到动态码。新设备登录还会触发二次验证，并通知用户。</li>
+      <li>假设这些也被突破了。下一道锁是提币白名单，只能向预先登记的地址提币。新增地址需要 2FA 和邮件确认。业界常见还有冷静期，示例是 24 小时内新地址不能提币。</li>
+      <li>冷静期的价值是争取时间。用户收到告警，可以自助冻结账户。风控看到新设备、新地址加大额，也会转人工审核。</li>
+      <li>这套防线也有局限。如果用户的邮箱也被攻破，邮件确认这一层就失效了。每一层都可能被绕过，所以要靠多层叠加，抬高攻击成本。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="常见误区">
+    <div class="kicker">误区与边界</div>
+    <h2>三个常见误区</h2>
+    <div class="col">
+      <div class="card" data-step="0"><h3><span class="down">✗</span> 开了 2FA 就不怕钓鱼</h3>钓鱼网站可<b>实时转发</b>验证码<span data-step="0" class="up">　→ 通行密钥 / 硬件密钥绑定域名，防得住</span></div>
+      <div class="card" data-step="2"><h3><span class="down">✗</span> KYC 证明了谁在操作账户</h3>只证明<b>提交资料的人</b>是谁；账户被出售、出借时发现不了</div>
+      <div class="card" data-step="3"><h3><span class="down">✗</span> 不泄露 Secret 就万事大吉</h3>最常见的泄露：Secret 写进公开代码库 → 最小权限 + IP 白名单 + 关提币</div>
+    </div>
+    <ol class="say">
+      <li>最后看几个常见误区。第一个，开了 2FA 就不怕钓鱼。其实不然。用户在钓鱼网站上输入验证码，攻击者可以实时转发给真网站。</li>
+      <li>能防住这一类攻击的，是通行密钥和硬件安全密钥。它们和域名绑定，假域名拿不到有效签名。根据币安公开资料，这两种方式币安都支持。</li>
+      <li>第二个误区，以为 KYC 能证明谁在操作账户。KYC 只证明提交资料的人是谁。账户被出售或出借，KYC 发现不了。</li>
+      <li>第三个误区，觉得 Secret 保管好就够了。现实中常见的泄露，恰恰是把 Secret 写进了公开代码库。防护要靠最小权限、IP 白名单，以及关闭提币权限。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0"><span class="hl">认证 ≠ 授权</span>：登录成功只说明“你是你”，还要查“你能做什么”。</li>
+      <li data-step="0">API 签名：<span class="hl">HMAC</span> 防篡改，<span class="hl">timestamp + recvWindow</span> 缩短重放窗口，订单号去重补漏。</li>
+      <li data-step="2">账户安全靠<span class="hl">多层叠加</span>：2FA、设备、白名单、冷静期、风控，每层都在争取时间。</li>
+    </ul>
+    <div class="card info" data-step="3"><div class="muted" style="font-size:26px">下集 EP05</div><b style="font-size:40px">充值：地址、确认数与链重组</b><br>你的币打到哪？为什么要等确认？链重组怎样让一笔充值消失？</div>
+    <ol class="say">
+      <li>最后小结三点。第一，认证和授权要分开。登录成功只说明你是你，系统还要检查你能做什么。</li>
+      <li>第二，API 签名靠 HMAC 防篡改。timestamp 和 recvWindow 缩短重放窗口，订单号去重补上漏洞。</li>
+      <li>第三，账户安全靠多层叠加。2FA、设备指纹、白名单、冷静期和风控，每一层都在为用户争取时间。</li>
+      <li>下一集，我们讲充值。你的币打到哪个地址，交易所怎么知道是你的。为什么要等确认数，链重组又会怎样让一笔充值消失。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  function totpStep(el, st) {
+    const on = [[0], [0, 1, 2], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4]][st];
+    for (let i = 0; i < 5; i++) el.querySelector('#l' + i).classList.toggle('on', on.includes(i));
+    ['#codeA', '#codeB'].forEach(id => { const c = el.querySelector(id); c.textContent = st >= 2 ? '492039' : '— — —'; c.classList.toggle('on', st >= 2); });
+    ['#w0', '#w1', '#w2'].forEach((id, i) => el.querySelector(id).classList.toggle('ok', st >= 3 && i === 1));
+  }
+  function sigStep(el, st) {
+    el.querySelector('#ts').classList.toggle('new', st === 1);
+    el.querySelector('#rw').classList.toggle('new', st === 1);
+    const q = el.querySelector('#qty');
+    q.textContent = st >= 5 ? 'quantity=10' : 'quantity=0.01';
+    q.classList.toggle('bad', st >= 5);
+    const v = el.querySelector('#verdict'), gw = el.querySelector('#gw');
+    v.innerHTML = st >= 5 ? '<span class="down">重算 7f21a0… ≠ c8db56… → ✗ 签名无效</span>' : st === 4 ? '<span class="up">重算 c8db56… = c8db56… → ✓ 放行，再查权限</span>' : '';
+    gw.classList.toggle('sell', st >= 5); gw.classList.toggle('buy', st === 4);
+  }
+  function replayStep(el, st) {
+    const svg = el.querySelector('#rp');
+    const wide = st >= 5;
+    const lo = wide ? -5 : -2, hi = wide ? 65 : 10, rw = wide ? 60 : 5;
+    const X = s => 70 + (s - lo) / (hi - lo) * 1500;
+    const Y = 230;
+    let h = `<defs><marker id="ra" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#9ea3ad"/></marker></defs>`;
+    if (st >= 1) {
+      h += `<rect x="${X(-1)}" y="${Y - 60}" width="${X(rw) - X(-1)}" height="120" fill="rgba(240,185,11,.16)" stroke="#f0b90b" stroke-width="2" rx="8"/>`;
+      h += `<text x="${X(-1)}" y="${Y + 95}" text-anchor="start" class="lbl" style="fill:#f0b90b">可接受区间：T−1s ～ T+${rw}s（recvWindow=${rw * 1000}）</text>`;
+    }
+    h += `<line x1="60" y1="${Y}" x2="1590" y2="${Y}" stroke="#9ea3ad" stroke-width="3" marker-end="url(#ra)"/>`;
+    const stepT = wide ? 10 : 2;
+    for (let s = Math.ceil(lo / stepT) * stepT; s <= hi; s += stepT) {
+      h += `<line x1="${X(s)}" y1="${Y - 10}" x2="${X(s)}" y2="${Y + 10}" stroke="#9ea3ad" stroke-width="2"/>`;
+      h += `<text x="${X(s)}" y="${Y + 42}" text-anchor="middle" class="sm mono">${s === 0 ? 'T' : (s > 0 ? 'T+' + s : 'T' + s) + 's'}</text>`;
+    }
+    h += `<line x1="${X(0)}" y1="${Y - 90}" x2="${X(0)}" y2="${Y + 10}" stroke="#5b9cff" stroke-width="3" stroke-dasharray="6 6"/>`;
+    h += `<text x="${X(0) - 14}" y="${Y - 100}" text-anchor="start" class="lbl" style="fill:#5b9cff">timestamp = T（客户端签名时刻）</text>`;
+    const ev = (t, color, mark, label, ly, inline) => {
+      h += `<circle cx="${X(t)}" cy="${Y}" r="16" fill="${color}"/>`;
+      h += `<text x="${X(t)}" y="${Y + 9}" text-anchor="middle" style="font-size:22px;fill:#000;font-weight:700">${mark}</text>`;
+      if (inline) { h += `<text x="${X(t) + 26}" y="${Y - 30}" text-anchor="start" class="lbl" style="fill:${color}">${label}</text>`; return; }
+      h += `<line x1="${X(t)}" y1="${Y - 18}" x2="${X(t)}" y2="${ly + 10}" stroke="${color}" stroke-width="2"/>`;
+      h += `<text x="${X(t)}" y="${ly}" text-anchor="middle" class="lbl" style="fill:${color}">${label}</text>`;
+    };
+    if (!wide) {
+      if (st >= 2) ev(0.2, '#2ebd85', '✓', '原请求 T+0.2s：通过', 0, true);
+      if (st >= 3) ev(8, '#f6465d', '✗', '重放 T+8s：8000 &gt; 5000 拒绝', 50);
+      if (st >= 4) ev(3, '#f0a340', '!', '重放 T+3s：窗口内 → 订单号重复，拒绝', 0, true);
+    } else {
+      ev(30, '#f0a340', '!', '重放 T+30s：仍在窗口内', 50);
+    }
+    if (wide) h += `<text x="820" y="385" text-anchor="middle" class="lbl" style="fill:#9ea3ad">客户端时钟偏慢 → 正常请求也被拒 → 先调服务器时间接口校准</text>`;
+    svg.innerHTML = h;
+  }
+  const KN = {
+    NS: [0, 30, '未开始', 'NOT_STARTED'], SUB: [440, 30, '已提交', 'SUBMITTED'], AUTO: [880, 30, '自动审核', 'AUTO_REVIEW'], APP: [1320, 30, '已批准', 'APPROVED'],
+    NMI: [0, 250, '待补充', 'NEED_MORE_INFO'], MAN: [880, 250, '人工审核', 'MANUAL_REVIEW'], EXP: [1320, 250, '已过期', 'EXPIRED'], REJ: [880, 450, '已拒绝', 'REJECTED'],
+  };
+  const KE = [
+    ['e1', 'M300,80 L440,80', 0, '', 0, 0], ['e2', 'M740,80 L880,80', 0, '', 0, 0],
+    ['e3', 'M1180,80 L1320,80', 1, '通过', 1250, 66], ['e4', 'M1030,130 L1030,250', 2, '置信度低', 1045, 200],
+    ['e5', 'M1180,265 L1350,130', 2, '人工通过', 1210, 175], ['e6', 'M880,300 L300,300', 2, '资料不清', 330, 286],
+    ['e7', 'M190,250 L520,130', 2, '补充资料', 250, 190], ['e8', 'M1030,350 L1030,450', 3, '命中制裁名单', 1045, 410],
+    ['e9', 'M880,500 L590,500 L590,130', 3, '重新提交', 700, 485], ['e10', 'M1470,130 L1470,250', 4, '证件过期', 1350, 200],
+    ['e11', 'M1470,350 L1470,580 L660,580 L660,130', 4, '更新资料', 1250, 566],
+  ];
+  const KS = [['NS', 'SUB', 'AUTO'], ['AUTO', 'APP'], ['AUTO', 'MAN', 'APP', 'NMI', 'SUB'], ['MAN', 'REJ', 'SUB'], ['APP', 'EXP', 'SUB']];
+  function kycStep(el, st) {
+    const svg = el.querySelector('#kyc');
+    let h = `<defs><marker id="ka" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0L10,5L0,10z" fill="#4a4f59"/></marker><marker id="kg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0,0L10,5L0,10z" fill="#f0b90b"/></marker></defs>`;
+    for (const [id, d, s, lab, lx, ly] of KE) {
+      const c = s === st ? 'on' : s < st ? 'done' : '';
+      h += `<path class="eg ${c}" d="${d}" marker-end="url(#${s === st ? 'kg' : 'ka'})"/>`;
+      if (lab) h += `<text class="el ${c}" x="${lx}" y="${ly}">${lab}</text>`;
+    }
+    const seen = new Set(KS.slice(0, st + 1).flat());
+    for (const [k, [x, y, zh, en]] of Object.entries(KN)) {
+      let c = KS[st].includes(k) ? 'on' : seen.has(k) ? 'done' : 'fut';
+      if (k === 'REJ' && st === 3) c = 'bad';
+      h += `<g class="nd ${c}"><rect x="${x}" y="${y}" width="300" height="100" rx="14"/><text x="${x + 150}" y="${y + 46}" text-anchor="middle" style="font-size:32px;font-weight:700">${zh}</text><text x="${x + 150}" y="${y + 80}" text-anchor="middle" class="sm mono">${en}</text></g>`;
+    }
+    svg.innerHTML = h;
+  }
+  function attackStep(el, st) {
+    const S = [
+      ['active', '', '', '', '', ''],
+      ['pass', 'pass', '', '', '', ''],
+      ['pass', 'pass', 'active', 'active', '', ''],
+      ['pass', 'pass', 'pass', 'pass', 'hold', ''],
+      ['pass', 'pass', 'pass', 'pass', 'hold', 'hold'],
+      ['pass', 'pass', 'pass', 'pass', 'weak', 'hold'],
+    ][st];
+    const T = { active: '检查中', pass: '被突破', hold: '拦住', weak: '可能失效', '': '—' };
+    el.querySelectorAll('.gate').forEach((g, i) => { g.className = 'gate ' + S[i]; g.querySelector('.s').textContent = T[S[i]]; });
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

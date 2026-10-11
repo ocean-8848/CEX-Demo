@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B04 系统对账：全链路对账与提币熔断</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .stack { position: relative; flex: 1; min-height: 0; }
+  .stack > .layer { position: absolute; left: 0; right: 0; top: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 16px; }
+  .chips .chip { font-size: 30px; padding: 8px 22px; }
+  table.t td, table.t th { padding: 12px 18px; }
+  .jr { display: grid; grid-template-columns: 1fr 360px; gap: 28px; align-items: stretch; }
+  .jr table { font-size: 32px; }
+  .verdict { font-size: 32px; font-weight: 700; padding: 14px 20px; border-radius: 12px; text-align: center; }
+  .verdict.ok { background: var(--buy-soft); color: var(--buy); } .verdict.bad { background: var(--sell-soft); color: var(--sell); } .verdict.warn { background: var(--warn-soft); color: var(--warn); }
+  /* supermarket */
+  .sm3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; }
+  .sm3 .card { font-size: 30px; display: flex; flex-direction: column; gap: 8px; }
+  .sm3 .card h3 { margin: 0; }
+  .sm3 .tag { font-size: 28px; padding: 6px 14px; border-radius: 10px; background: var(--panel-2); }
+  .cost { display: grid; grid-template-columns: 200px 1fr; align-items: center; gap: 20px; font-size: 30px; }
+  .cost .bar { height: 40px; border-radius: 10px; background: linear-gradient(90deg, var(--buy), var(--warn), var(--sell)); }
+  /* matrix svg */
+  svg .box { fill: #16181c; stroke: #2c3038; stroke-width: 2; }
+  svg .box.lg { stroke: #f0b90b; stroke-width: 3; }
+  svg .box.on { fill: rgba(240,185,11,.16); stroke: #f0b90b; stroke-width: 4; }
+  svg .box.red { fill: rgba(246,70,93,.16); stroke: #f6465d; stroke-width: 4; }
+  svg .box.grn { fill: rgba(46,189,133,.14); stroke: #2ebd85; stroke-width: 4; }
+  svg .box.blu { fill: rgba(91,156,255,.14); stroke: #5b9cff; stroke-width: 4; }
+  svg .ed { stroke: #2c3038; stroke-width: 4; fill: none; }
+  svg .ed.int { stroke: #5b9cff; } svg .ed.ext { stroke: #f0a340; } svg .ed.hi { stroke: #f0b90b; stroke-width: 8; }
+  svg .ed.plain { stroke: #9ea3ad; stroke-dasharray: 8 8; stroke-width: 3; }
+  svg .ln { stroke: #9ea3ad; stroke-width: 3; fill: none; }
+  svg .ln.dim { opacity: .18; } svg .ln.hi { stroke: #f0b90b; stroke-width: 5; opacity: 1; }
+  svg text.t { font-size: 30px; } svg text.s { font-size: 26px; fill: #9ea3ad; }
+  svg text.rl { font-size: 28px; font-weight: 700; font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; }
+  .det { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .det .card { padding: 14px 22px; font-size: 30px; }
+  .det .card .k { color: var(--text-2); display: inline-block; width: 110px; }
+  .det .card h3 { font-size: 32px; margin-bottom: 4px; }
+  /* injection grid */
+  .ig { display: grid; grid-template-columns: 340px repeat(7, 1fr); gap: 8px; font-size: 30px; }
+  .ig > div { background: var(--panel); border-radius: 10px; padding: 10px 8px; text-align: center; min-height: 58px; display: flex; align-items: center; justify-content: center; transition: all .3s; }
+  .ig .hd { background: transparent; color: var(--text-2); font-family: var(--mono); font-size: 28px; }
+  .ig .hd.off { text-decoration: line-through; color: var(--sell); }
+  .ig .rn { justify-content: flex-start; padding-left: 18px; }
+  .ig .rn.on { background: var(--gold-soft); color: var(--gold); }
+  .ig .ok { background: var(--buy-soft); } .ig .bad { background: var(--sell-soft); } .ig .wrn { background: var(--warn-soft); }
+  .ig .gr { color: var(--text-2); font-size: 26px; }
+  /* classes */
+  .cls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .cls .card { font-size: 30px; padding: 18px 24px; }
+  .cls .card h3 { font-size: 34px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+  .cls .card .k { color: var(--text-2); }
+  /* adjust flow */
+  .af { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .af .card { font-size: 30px; padding: 16px 20px; }
+  .af .card b { color: var(--gold); font-family: var(--mono); }
+  /* equation */
+  .eq { display: grid; grid-template-columns: 1fr 120px 1fr; gap: 16px; align-items: start; }
+  .side { display: flex; flex-direction: column; gap: 8px; }
+  .side .r { display: flex; justify-content: space-between; padding: 8px 18px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); font-size: 30px; transition: opacity .3s; }
+  .side .r span:last-child { font-family: var(--mono); }
+  .side .r.tot { border-color: var(--gold); background: var(--gold-soft); font-weight: 700; }
+  .side h3 { font-size: 34px; margin: 0 0 4px; }
+  .eqs { font-family: var(--mono); font-size: 90px; text-align: center; align-self: center; font-weight: 700; }
+  /* breaker */
+  .cb { display: grid; grid-template-columns: 430px 1fr; gap: 28px; }
+  .coins { display: flex; flex-direction: column; gap: 14px; }
+  .coin { display: grid; grid-template-columns: 110px 1fr; gap: 14px; align-items: center; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 14px 18px; font-size: 30px; transition: all .3s; }
+  .coin b { font-family: var(--mono); font-size: 34px; }
+  .coin .sw { text-align: center; border-radius: 10px; padding: 6px 0; font-weight: 700; }
+  .coin .sw.open { background: var(--buy-soft); color: var(--buy); } .coin .sw.halt { background: var(--sell); color: #0d0e10; } .coin .sw.warn { background: var(--warn-soft); color: var(--warn); }
+  .coin.halt { border-color: var(--sell); }
+  .rk { display: flex; flex-direction: column; gap: 10px; font-size: 30px; }
+  .rk .kv { display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); padding: 4px 0; }
+  .rk .kv span:last-child { font-family: var(--mono); }
+  .path { display: flex; align-items: center; gap: 0; }
+  .path .p { background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 10px 14px; font-size: 28px; text-align: center; opacity: .3; transition: all .3s; }
+  .path .p.on { opacity: 1; border-color: var(--gold); background: var(--gold-soft); }
+  .path .p.red { opacity: 1; border-color: var(--sell); background: var(--sell-soft); }
+  .path .p.grn { opacity: 1; border-color: var(--buy); background: var(--buy-soft); }
+  .path .a { width: 30px; height: 4px; background: var(--text-2); flex: 0 0 auto; margin: 0 4px; }
+  /* case */
+  .flowc { display: grid; grid-template-columns: 1fr 50px 1fr 50px 1fr; row-gap: 30px; align-items: center; }
+  .cn { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 16px; font-size: 30px; text-align: center; opacity: .25; transition: all .35s; position: relative; }
+  .cn.cause { opacity: 1; border-color: var(--warn); background: var(--warn-soft); }
+  .cn.hit { opacity: 1; border-color: var(--sell); background: var(--sell-soft); }
+  .cn .fix { display: none; position: absolute; left: 50%; transform: translateX(-50%); bottom: -24px; white-space: nowrap; font-size: 26px; padding: 2px 14px; border-radius: 999px; background: var(--buy); color: #0d0e10; font-weight: 700; }
+  .cn.fixed .fix { display: block; }
+  .ca { height: 4px; background: var(--text-2); position: relative; margin: 0 8px; }
+  .ca::after { content: ""; position: absolute; right: -2px; top: -8px; border: 10px solid transparent; border-left: 14px solid var(--text-2); border-right: 0; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="B04" data-title="系统对账：全链路对账与提币熔断">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 幕后核心</div>
+    <h1>系统对账：<span class="hl">全链路</span>对账与提币熔断</h1>
+    <div class="jr" data-step="0">
+      <table class="t">
+        <tr><th>分录 · 示例</th><th style="text-align:right">USDT</th></tr>
+        <tr><td>借　清算户</td><td class="num">100</td></tr>
+        <tr><td>贷　用户 <b class="down">B</b> 可用 <span class="muted">本该是 A</span></td><td class="num">100</td></tr>
+      </table>
+      <div class="col" style="gap:16px">
+        <div class="verdict ok">借贷平衡 ✓</div>
+        <div class="verdict bad">记错了人 ✗</div>
+      </div>
+    </div>
+    <div class="card gold" data-step="1" style="font-size:32px">对账 Reconciliation：用两个<b>独立</b>数据源记录同一批业务，逐笔或逐汇总比较，找出不一致</div>
+    <div class="chips" data-step="2">
+      <span class="chip gold">① 对账矩阵</span><span class="chip gold">② 差异分类与处置</span><span class="chip gold">③ 人工调账</span><span class="chip gold">④ 资产负债恒等式</span><span class="chip gold">⑤ 提币熔断</span>
+    </div>
+    <ol class="say">
+      <li>大家好。先看一笔分录，示例数字。100 USDT 本该记给用户 A，系统却记给了用户 B。这笔分录借贷完全平衡，双分录校验发现不了它。</li>
+      <li>能发现它的，只有对账。对账，就是用两个独立的数据源，记录同一批业务，再逐笔或逐汇总比较，找出不一致。</li>
+      <li>这一集分五段。对账矩阵，差异处置，人工调账，资产负债恒等式。最后是对账不平就停提币的熔断。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="超市三道清点">
+    <div class="kicker">比喻 · 超市的三道清点</div>
+    <h2>越靠近源头的对账，定位越便宜</h2>
+    <div class="sm3">
+      <div class="card info" data-step="0"><h3>收银员 · 下班前</h3>清点钱箱<span class="tag">订单 ↔ 成交</span><span class="up" data-step="2">“第 37 笔找错零钱”</span></div>
+      <div class="card gold" data-step="0"><h3>店长 · 晚上</h3>钱箱 ↔ 收银小票<span class="tag">成交 ↔ 结算 ↔ 账本</span><span class="warn" style="color:var(--warn)" data-step="2">“今晚某台少了 100 元”</span></div>
+      <div class="card sell" data-step="1"><h3>总部 · 月底</h3>门店报表 ↔ 银行存款<span class="tag">账本 ↔ 链上、托管、银行</span><span class="down" data-step="2">“这个月少了 100 元”</span></div>
+    </div>
+    <div class="cost" data-step="2"><b>定位成本</b><div class="bar"></div></div>
+    <div class="card info" data-step="3" style="font-size:30px">比喻不准之处：交易所很多对账是<b>实时流式</b>的，不必等到下班</div>
+    <ol class="say">
+      <li>打个比方。对账像超市的三道清点。收银员下班前清点钱箱，对应订单和成交。店长晚上核对钱箱和小票，对应成交、结算和账本。</li>
+      <li>总部月底核对门店报表和银行存款，对应账本和链上、托管、银行。</li>
+      <li>钱箱少了 100 元。收银员当场就能说出是哪一笔找错了零钱。拖到总部月底，只知道这个月少了 100 元。越靠近源头的对账，定位越便宜。</li>
+      <li>比喻也有不准的地方。交易所的很多对账是实时流式的，不用等到下班。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="错误从哪来">
+    <div class="kicker">威胁模型 · 对账防的是谁</div>
+    <h2>主要不是黑客，而是系统自己和内部人员</h2>
+    <table class="t" style="table-layout:fixed">
+      <tr><th style="width:260px">错误来源</th><th style="width:640px">典型例子</th><th>谁的对账能发现</th></tr>
+      <tr data-step="0"><td class="hl">消息系统</td><td>至少一次投递，成交被重复消费</td><td>成交 ↔ 结算</td></tr>
+      <tr data-step="0"><td class="hl">服务崩溃</td><td>一笔成交没有结算</td><td>成交 ↔ 结算</td></tr>
+      <tr data-step="1"><td class="hl">链上时序</td><td>提币已上链，账本还没扣款</td><td>账本 ↔ 链上</td></tr>
+      <tr data-step="1"><td class="hl">精度</td><td>手续费舍入方向不一致，日累计变大</td><td>结算 ↔ 账本</td></tr>
+      <tr data-step="2"><td class="hl">第三方</td><td>托管商报告延迟、银行入账延迟</td><td>账本 ↔ 托管、银行</td></tr>
+      <tr data-step="2"><td class="hl">内部人员</td><td>手工调账输错金额或账户</td><td>调账审批 + 流水 ↔ 快照</td></tr>
+      <tr data-step="2" style="background:var(--sell-soft)"><td class="down">挪用</td><td class="down">平台挪用用户资产，FTX 类</td><td class="down">恒等式、外部审计、PoR</td></tr>
+    </table>
+    <ol class="say">
+      <li>对账防的主要不是外部攻击者，而是系统自身的错误，和内部人员的错误或舞弊。消息系统至少一次投递，成交可能被重复消费。服务崩溃，一笔成交可能没有结算。</li>
+      <li>提币已经上链，账本还没扣款，这是时序问题。手续费舍入方向不一致，每笔差 1 个最小单位，日累计就变大了。</li>
+      <li>第三方也会出问题，托管商报告延迟，银行入账延迟。内部人员可能输错金额或账户。最严重的是挪用，像 FTX 那样，资产小于负债。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="对账矩阵" data-onstep="mxStep">
+    <div class="kicker">01 · 对账矩阵 R1–R8 · 业界通用做法，数值为示例</div>
+    <h2 id="mxH">8 对数据源，每对抓一类错</h2>
+    <svg viewBox="0 0 1640 280" width="1640" height="280">
+      <g id="mx"></g>
+    </svg>
+    <div class="det" id="det"></div>
+    <ol class="say">
+      <li>第一段，对账矩阵。数据从左往右流，订单、成交、结算、账本。每条连线是一对对账，一共 8 对。蓝色的 R1 到 R4 是内部对账。橙色的 R5 到 R7 是外部对账，一边来自区块链、托管商或银行。</li>
+      <li>R1 比较订单服务和撮合成交，订单已成交量要等于成交量之和。R2 比较成交和结算，按市场的执行序号必须连续。它能抓重复消费、漏结算和序号断档。</li>
+      <li>R3 比较结算记录和账本分录，金额精确到最小单位，抓精度舍入和漏记手续费。R4 比较账本流水和余额快照，流水净额要等于可用加冻结。</li>
+      <li>R5 比较账本热钱包和链上地址余额。每个区块或每 10 分钟一次，容差是在途金额。R6 比较账本托管科目和托管商报告，日终一次。</li>
+      <li>R7 比较法币账本和银行流水，用银行参考号配对，T 加 1 核对。R8 把理财、合约、杠杆的子账本，汇总到总账。子账本内部平，不代表总账平。</li>
+      <li>注意，容差为 0，不是说不能有差异，而是差异不能被忽略。时序造成的差异放进在途清单，带上超时时间。超时还不归零，就升级为错误。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="注入差异实验" data-onstep="injStep">
+    <div class="kicker">01 · 实验：注入差异，看哪一层先变红</div>
+    <h2 id="injH">每类错误，有一个最早能发现它的层</h2>
+    <div class="ig" id="ig"></div>
+    <div class="card" id="injNote" style="font-size:30px;padding:16px 26px"></div>
+    <ol class="say">
+      <li>来做个实验。左边是 6 种注入的差异，上面是各个对账层，最右边是资产负债恒等式。我们看每种差异，最早在哪一层被发现。</li>
+      <li>先注入消息重复消费和结算漏单。两个都在 R2 变红。同一个成交号出现两次，或者有成交没有结算，R2 能直接定位到单笔。</li>
+      <li>注入精度舍入。R3 变红，结算和账本差 1 个最小单位，而且大量记录同一个方向。</li>
+      <li>注入链上提币未入账和托管商延迟。R5 和 R6 显示黄色，归为在途。它们是时序差，下一轮会自动消失，不触发熔断。</li>
+      <li>注入人为错误调账。R1 到 R3 全是绿色。如果调账同时改了流水和快照，R4 也是平的。所以调账要靠审批和审计日志拦住，而不是靠事后对账。</li>
+      <li>最后关掉 R2，再注入重复消费。这次只有恒等式能发现，而且只看到总数不平，不知道是哪一笔。这时用户可能已经把多得的币提走了。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="差异分类">
+    <div class="kicker">02 · 差异分类 · 6 类</div>
+    <h2>哪些能自动修，哪些必须开工单？</h2>
+    <div class="cls">
+      <div class="card" data-step="0"><h3>时序差 / 在途 <span class="chip buy">自动</span></h3><span class="k">两边都会记，只是时间不同</span><br>标记在途，设超时，例 30 分钟</div>
+      <div class="card" data-step="0"><h3>重复 <span class="chip buy">自动</span></h3><span class="k">同一业务键出现两次</span><br>冲正第二条；挡不住时人工复核</div>
+      <div class="card" data-step="1"><h3>遗漏 <span class="chip buy">自动</span></h3><span class="k">一边有，另一边没有</span><br>重放该成交事件，补结算</div>
+      <div class="card" data-step="1"><h3>精度舍入 <span class="chip buy">自动</span></h3><span class="k">差 ≤ 1 最小单位，方向固定</span><br>记入舍入差额科目 + 缺陷单</div>
+      <div class="card sell" data-step="2"><h3>金额不符 <span class="chip sell">人工</span></h3><span class="k">两边都有，差额大于精度</span><br>人工工单</div>
+      <div class="card sell" data-step="2"><h3>人为调账 <span class="chip sell">人工</span></h3><span class="k">来源是一笔人工 journal</span><br>双人审批复核，必要时冲正</div>
+    </div>
+    <div class="card warn" data-step="3" style="font-size:31px">自动修复只做<b>可逆、有业务依据</b>的动作：重放、冲正重复、关闭超时在途。<b>不能</b>直接改快照，<b>不能</b>凭空补平</div>
+    <ol class="say">
+      <li>第二段，差异分类，一共 6 类。时序差，两边都会记，只是时间不同，自动标记在途，设超时，比如 30 分钟。重复，同一业务键出现两次，自动冲正第二条。</li>
+      <li>遗漏，一边有另一边没有，自动重放事件，触发补结算。精度舍入，差额在 1 个最小单位以内，方向固定。自动记入舍入差额科目，同时提缺陷单修规则。</li>
+      <li>金额不符和人为调账，必须走人工工单。</li>
+      <li>注意，自动修复只能做可逆、有业务依据的动作。重放事件，冲正重复分录，关闭超时在途。它不能直接改余额快照，也不能凭空补一笔分录让两边相等。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="差异处置状态机" data-onstep="dispStep">
+    <div class="kicker">02 · 差异处置状态机</div>
+    <h2 id="dispH">每条差异都要走到终态</h2>
+    <svg viewBox="0 0 1640 400" width="1640" height="400">
+      <defs>
+        <marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9ea3ad"/></marker>
+        <marker id="d2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f0b90b"/></marker>
+      </defs>
+      <g id="disp"></g>
+    </svg>
+    <div class="card" id="dispNote" style="font-size:31px"></div>
+    <ol class="say">
+      <li>差异发现以后怎么处置？看这个状态机。每条差异都必须走到已解决这个终态。没有终态的差异，是审计的重点。</li>
+      <li>第一条路，时序差。进入在途，下一轮对账自动消失，直接解决。如果超过在途超时还没消失，就转成工单。</li>
+      <li>第二条路，重复、遗漏、舍入，走自动修复。执行冲正或者重放之后，必须复跑对账。已平才算解决，仍不平就转工单。因为修复动作本身也可能出错。</li>
+      <li>第三条路，金额不符和人为调账，直接开工单。经办人提交调账方案，复核人批准后写入调账分录，再回到复跑验证。复核人驳回，就退回工单。</li>
+      <li>这里有个权衡。在途超时设得太短，工单会被时序差淹没。设得太长，真实错误会被延迟发现。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="人工调账">
+    <div class="kicker">03 · 人工调账 Manual Adjustment</div>
+    <h2>账本里风险最高的操作</h2>
+    <div class="af">
+      <div class="card" data-step="0"><b>1</b> 经办人写明<br>差异、根因、证据</div>
+      <div class="card" data-step="1"><b>2</b> 提交方案<br>借、贷、金额</div>
+      <div class="card" data-step="1"><b>3</b> 系统校验<br>借贷平衡、金额阈值</div>
+      <div class="card gold" data-step="2"><b>4</b> 复核人审批<br>复核人 ≠ 经办人</div>
+      <div class="card" data-step="3"><b>5</b> postJournal<br>幂等键 adj:工单号</div>
+      <div class="card" data-step="3"><b>6</b> 审计日志<br>谁、何时、前后余额</div>
+      <div class="card" data-step="3"><b>7</b> 复跑对账<br>结果回写工单</div>
+      <div class="card sell" data-step="4"><b>!</b> 合谋 → 四眼失效<br>内审、外审抽查</div>
+    </div>
+    <div class="card info" data-step="0" style="font-size:30px">证据示例：链上交易哈希、银行参考号 · 审计日志与账本<b>分开存储</b>、只追加、运营无删除权</div>
+    <ol class="say">
+      <li>第三段，人工调账。调账是人发起的、不来自业务事件的分录，是账本里风险最高的操作。经办人先在工单里写明差异、根因和证据，比如链上哈希、银行参考号。</li>
+      <li>然后提交调账方案，借哪个科目、贷哪个科目、多少金额。系统先校验借贷平衡。金额超过阈值，就要求更高级别的复核人。</li>
+      <li>复核人在独立界面审批。系统拒绝经办人和复核人是同一个人，这就是四眼原则。</li>
+      <li>批准后，调账走和业务相同的 postJournal 接口，幂等键用工单号。同一工单重复提交，账本只记一次。审计日志单独存储，只追加。最后复跑对账，结果回写工单。</li>
+      <li>局限是，经办人和复核人合谋，四眼原则就失效了。所以调账报表还要进入内审和外部审计的抽查范围。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="资产负债恒等式" data-onstep="eqStep">
+    <div class="kicker">04 · 资产负债恒等式 · 按币种 · BTC 示例，单位：聪</div>
+    <h2 id="eqH">Σ 用户负债 + 平台权益 = Σ 平台资产</h2>
+    <div class="eq">
+      <div class="side" id="eqL"></div>
+      <div class="eqs" id="eqS">=</div>
+      <div class="side" id="eqR"></div>
+    </div>
+    <div class="card" id="eqNote" style="font-size:30px;padding:16px 26px"></div>
+    <ol class="say">
+      <li>第四段，资产负债恒等式。对每一个币种，用户负债加平台权益，必须等于平台资产。用户负债包括可用、冻结、理财本金、合约保证金。平台权益包括手续费收入、自有资金、保险基金。</li>
+      <li>来算一个 BTC 的示例，单位是聪。用户可用加冻结 12 亿，理财子账本 3 亿。合约保证金 1.5 亿，手续费收入 200 万。左边合计 16 亿 5200 万。</li>
+      <li>右边是资产。热钱包链上 1.5 亿，冷钱包 14.5 亿，托管商 5000 万。还有 200 万提币在途，账本已扣，链上未出。右边合计也是 16 亿 5200 万，成立。</li>
+      <li>注意，恒等式必须按币种核对，不能折算成 USDT。BTC 少 1 个，ETH 多 20 个，折算后可能恰好相等。可平台实际欠用户 1 个 BTC。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="总分账与 PoR">
+    <div class="kicker">04 · 总分账核对 · 对账与储备金证明</div>
+    <h2>PoR 可信的前提，是内部对账已平</h2>
+    <div class="card gold" data-step="0" style="font-size:31px">总分账核对：<b>总账科目余额 = Σ 明细账户</b>　例：“用户可用-BTC”总账 = Σ 每个用户的可用 BTC<br><span class="muted">发现：明细被单独改写；子账本汇总时丢了一批记录</span></div>
+    <table class="t" style="table-layout:fixed">
+      <tr data-step="1"><th style="width:220px">维度</th><th style="width:640px">内部对账</th><th>储备金证明 PoR</th></tr>
+      <tr data-step="1"><td class="hl">目的</td><td>平台自己发现错误</td><td>向公众证明资产 ≥ 负债</td></tr>
+      <tr data-step="2"><td class="hl">频率</td><td>实时到日终</td><td>币安按月：月初快照，数日后发布</td></tr>
+      <tr data-step="2"><td class="hl">粒度</td><td>逐笔、逐账户，能定位</td><td>每用户一个 Merkle 叶子，不能定位</td></tr>
+      <tr data-step="3" style="background:var(--gold-soft)"><td class="hl">依赖</td><td>PoR 的负债数据来自账本</td><td>内部不平 → 公布的负债就是错的</td></tr>
+    </table>
+    <ol class="say">
+      <li>恒等式之外，还有总分账核对。总账科目余额，要等于下面全部明细账户之和。它能发现明细被单独改写，也能发现子账本汇总时丢了一批记录。</li>
+      <li>再看对账和储备金证明的关系。内部对账是平台自己找错。储备金证明是向公众证明，资产不少于负债。</li>
+      <li>截至 2026 年公开资料，币安按月发布储备金证明，每月初快照，数日后发布。内部对账能定位到单笔。储备金证明只给某一时刻的总数，不能定位。</li>
+      <li>关键是依赖关系。储备金证明的负债数据来自账本。如果内部对账不平，它公布的负债总额本身就是错的。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="提币熔断" data-onstep="cbStep">
+    <div class="kicker">05 · 熔断 Circuit Breaker · 规则与数值均为示例</div>
+    <h2 id="cbH">对账不平，就停这个币的提币</h2>
+    <div class="cb">
+      <div class="coins" id="coins"></div>
+      <div class="card rk" id="rk"></div>
+    </div>
+    <div class="path" id="path">
+      <div class="p" data-k="rec">对账任务<br>按币种算差额</div><div class="a"></div>
+      <div class="p" data-k="q1">在途清单<br>能解释？</div><div class="a"></div>
+      <div class="p" data-k="q2">超阈值或<br>持续 30 分钟？</div><div class="a"></div>
+      <div class="p" data-k="halt">暂停该币提币<br>充值交易继续</div><div class="a"></div>
+      <div class="p" data-k="inv">排查、调账<br>复跑对账</div><div class="a"></div>
+      <div class="p" data-k="res">人工确认<br>恢复提币</div>
+    </div>
+    <ol class="say">
+      <li>第五段，熔断。对账超过阈值，系统自动暂停某个币种的提币。为什么停提币，不停交易？提币是资产离开平台的唯一出口，链上转账撤不回。交易只在平台内部移动负债，错了可以冲正。</li>
+      <li>示例。BTC 热钱包 1.5 亿聪，阈值是热钱包余额的 0.1%，也就是 15 万聪。这一轮差额 200 万聪，正好等于一笔提币在途。在途清单能解释，提币正常。</li>
+      <li>下一轮，出现 5 万聪的差额，在途清单解释不了。没超过 15 万聪，发 P2 告警，提币继续开放。</li>
+      <li>再下一轮，差额 40 万聪，超过阈值。系统自动暂停 BTC 提币，告警 P1。注意，只停 BTC，ETH 照常，充值和交易也继续。差额持续超过 30 分钟，同样会触发。</li>
+      <li>还有两种情况。链上热钱包在一个区块内下降，却没有对应的提币单，立即暂停，通知安全团队。对账任务本身失败或超时，没有结果，按不平处理。这叫失败即关闭。</li>
+      <li>恢复必须人工确认，并且至少一轮对账已平。自动恢复可能在攻击还在进行时，重新打开出口。代价是正常用户的提币也会被暂停，阈值太敏感会频繁误停。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="案例：FTX 2022" data-onstep="ftxStep">
+    <div class="kicker">真实案例 · 据公开报道与破产文件 · 简化因果</div>
+    <h2>FTX：没有独立对账的后果</h2>
+    <div class="flowc">
+      <div class="cn" data-i="1">客户法币存款<br>打入关联公司银行账户</div><div class="ca"></div>
+      <div class="cn" data-i="2">法币账本 ↔ 银行流水<br>没有独立核对<span class="fix">补：独立 R7</span></div><div class="ca"></div>
+      <div class="cn" data-i="3">系统允许关联账户<br>负余额交易<span class="fix">补：负余额告警无例外</span></div>
+      <div class="cn" data-i="4">按币种 资产 &lt; 负债<br>无人发现或上报<span class="fix">补：按币种恒等式</span></div><div class="ca"></div>
+      <div class="cn" data-i="5">2022 年 11 月挤兑<br>无法兑付提币</div><div class="ca"></div>
+      <div class="cn" data-i="6">破产</div>
+    </div>
+    <div class="card" id="ftxNote" style="font-size:30px;padding:16px 26px"></div>
+    <ol class="say">
+      <li>来看真实案例。依据公开报道和 FTX 破产文件，我们看一个简化的因果链。FTX 有一部分客户存款，被转入了关联公司 Alameda。</li>
+      <li>起点是客户法币存款，打进了关联公司的银行账户。法币账本和银行流水，没有独立核对，也就是 R7 缺失。内部系统还允许 Alameda 负余额交易。</li>
+      <li>于是按币种的资产早已小于负债，却无人发现，或者无人上报。2022 年 11 月挤兑，提币无法兑付，最后破产。挤兑是结果，不是原因。</li>
+      <li>对照今天的内容，缺的是三样东西。独立的 R7，没有例外的负余额告警，按币种的恒等式检查。对账规则的例外，本身就是风险。</li>
+      <li>再对比 2019 年币安热钱包被盗约 7000 BTC。账链对账能直接看到热钱包余额下降。用户负债不变，缺口由 SAFU 基金补足，恒等式重新成立。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="权衡与局限">
+    <div class="kicker">06 · 局限与权衡</div>
+    <h2>对账越快越严，就越贵越吵</h2>
+    <div class="stack">
+      <div class="layer" data-step="0" data-until="1">
+        <table class="t" style="table-layout:fixed">
+          <tr><th style="width:250px">权衡</th><th>一端</th><th>另一端</th></tr>
+          <tr><td class="hl">频率 vs 成本</td><td>实时流式：发现快，成本高</td><td>日终：便宜，错误可能已被利用 24 小时</td></tr>
+          <tr><td class="hl">容差 vs 噪声</td><td>容差 0、超时短：漏放少</td><td>工单被时序差淹没</td></tr>
+          <tr data-step="1"><td class="hl">熔断敏感度</td><td>一有差额就停：资金安全</td><td>正常用户频繁被停</td></tr>
+          <tr data-step="1"><td class="hl">自动修复</td><td>修得多：省人力</td><td>修复有 bug：批量制造新错</td></tr>
+          <tr data-step="1"><td class="hl">第三方依赖</td><td>等数据：结果准确</td><td>第三方延迟：长时间未知</td></tr>
+        </table>
+      </div>
+      <div class="layer grid3" data-step="2">
+        <div class="card sell"><h3>同源同错</h3>两个源被<b>同一个 bug</b> 同时写错，对账仍然平</div>
+        <div class="card warn"><h3>事后发现</h3>高频交易下，几秒延迟已足够让错误<b>扩散到多个账户</b></div>
+        <div class="card info"><h3>拥有权</h3>链上余额证明地址里有币，<b>不证明</b>没被抵押或借出</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>第六段，权衡。实时对账发现快，但成本高。日终对账便宜，错误可能已被利用 24 小时。容差为 0、在途超时短，漏放少，可工单会被时序差淹没。</li>
+      <li>熔断太敏感，正常用户频繁被停。自动修复多，省人力，可修复逻辑有 bug 时，会批量制造新错误。等第三方数据，结果准确，可第三方延迟时，结果长时间未知。</li>
+      <li>对账还有三个局限。两个源被同一个 bug 同时写错，对账仍然平。对账发现的是过去的错误。链上余额证明地址里有币，不证明这些币没被抵押或借出。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">全链路 <span class="hl">8 对</span>数据源，每对抓一类错；越靠近源头，定位越便宜。</li>
+      <li data-step="1">差异 6 类：自动修复只做<span class="hl">可逆</span>动作，修完必复跑；调账走四眼。</li>
+      <li data-step="2">恒等式<span class="hl">按币种</span>；不平就停该币提币，失败即关闭，人工恢复。</li>
+    </ul>
+    <div class="card info" data-step="3"><b>下集 B05 · 业务风控</b>：薅羊毛、市场操纵与信用风险</div>
+    <ol class="say">
+      <li>最后小结三点。第一，全链路 8 对数据源，每一对只能发现一类错误。越靠近源头的对账，定位越便宜。</li>
+      <li>第二，差异分 6 类。自动修复只做可逆、有业务依据的动作，修完必须复跑。人工调账走四眼原则，用工单号做幂等键。</li>
+      <li>第三，恒等式按币种核对。对账不平就停该币种提币，失败即关闭，恢复要人工确认。</li>
+      <li>对账防的是算错。可如果有人故意做坏事呢？下一集，我们讲业务风控，薅羊毛、市场操纵和信用风险。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  function mxStep(el, st) {
+    const N = {
+      ORD: [0, 0, '订单服务'], ME: [347, 0, '撮合引擎'], ST: [694, 0, '结算服务'], LG: [1041, 0, '账本'], SN: [1388, 0, '余额快照'],
+      SUB: [0, 190, '子账本'], CH: [347, 190, '链上余额'], CU: [694, 190, '托管商报告'], FI: [1041, 190, '法币账本'], BK: [1388, 190, '银行流水'],
+    };
+    const E = [
+      ['R1', 'int', 'M250 40 L347 40', 298, 28], ['R2', 'int', 'M597 40 L694 40', 645, 28], ['R3', 'int', 'M944 40 L1041 40', 992, 28], ['R4', 'int', 'M1291 40 L1388 40', 1339, 28],
+      ['R5', 'ext', 'M472 190 L1110 80', 640, 150], ['R6', 'ext', 'M819 190 L1140 80', 935, 150], ['R7', 'ext', 'M1291 230 L1388 230', 1339, 218], ['R8', 'int', 'M125 190 L1080 80', 330, 150],
+    ];
+    const hi = [[], ['R1', 'R2'], ['R3', 'R4'], ['R5', 'R6'], ['R7', 'R8'], []][st];
+    let g = '';
+    E.forEach(([r, c, d]) => { g += `<path class="ed ${c} ${hi.includes(r) ? 'hi' : ''}" d="${d}" style="${hi.length && !hi.includes(r) ? 'opacity:.3' : ''}"/>`; });
+    g += `<path class="ed plain" d="M1166 190 L1166 80"/>`;
+    for (const [k, [x, y, t]] of Object.entries(N)) g += `<rect class="box ${k === 'LG' ? 'lg' : ''}" x="${x}" y="${y}" width="250" height="80" rx="14"/><text class="t" x="${x + 125}" y="${y + 51}" text-anchor="middle">${t}</text>`;
+    E.forEach(([r, c, , lx, ly]) => { const on = hi.includes(r); g += `<text class="rl" x="${lx}" y="${ly}" text-anchor="middle" style="fill:${on ? '#f0b90b' : c === 'int' ? '#5b9cff' : '#f0a340'}">${r}</text>`; });
+    el.querySelector('#mx').innerHTML = g;
+    const D = {
+      R1: ['订单服务 ↔ 撮合成交', 'order_id；已成交量 = Σ成交', '实时流式 + 小时', '0', '状态不一致、孤儿订单'],
+      R2: ['撮合成交 ↔ 结算记录', 'trade_id；序号连续', '实时流式', '0；在途 ≤ 30 秒', '重复消费、漏结算、断档'],
+      R3: ['结算记录 ↔ 账本分录', 'trade_id → T:base / T:quote', '实时 + 小时', '0 · 最小单位', '金额不符、舍入、漏手续费'],
+      R4: ['账本流水 ↔ 余额快照', '(账户, 资产)；净额 = 可用 + 冻结', '小时 + 日终', '0', '快照被改写、并发 bug'],
+      R5: ['热钱包科目 ↔ 链上余额', '(链, 地址, 资产)；tx_hash', '每区块 / 10 分钟', '在途金额以内', '漏记、未入账、被盗'],
+      R6: ['托管科目 ↔ 托管商报告', '(托管商, 金库, 资产)', '日终', '在途金额以内', '托管延迟、未授权转出'],
+      R7: ['法币账本 ↔ 银行流水', '参考号 + 金额 + 日期', '日终 T+1', '0；跨日在途单列', '入金未上账、出金退回'],
+      R8: ['子账本 ↔ 总账', '(业务线, 资产) 汇总', '小时 + 日终', '0', '子系统调整未同步'],
+    };
+    const card = r => { const d = D[r]; return `<div class="card"><h3><span class="hl mono">${r}</span> ${d[0]}</h3><div><span class="k">对账键</span>${d[1]}</div><div><span class="k">频率</span>${d[2]}　<span class="k" style="width:auto">容差</span> ${d[3]}</div><div><span class="k">能发现</span>${d[4]}</div></div>`; };
+    el.querySelector('#det').innerHTML = st === 0
+      ? '<div class="card info"><h3>内部对账 R1–R4、R8</h3>两边都是平台自己的系统</div><div class="card warn"><h3>外部对账 R5–R7</h3>一边来自区块链、托管商或银行</div>'
+      : st === 5 ? '<div class="card gold" style="grid-column:1/3"><h3>容差 0 ≠ 不能有差异</h3>= 差异<b>不能被忽略</b>。时序差放进<b>在途清单</b>并带超时；超时仍不归零 → 升级为错误</div>'
+      : hi.map(card).join('');
+    el.querySelector('#mxH').textContent = st === 0 ? '8 对数据源，每对抓一类错' : st === 5 ? '容差为 0，是什么意思？' : hi.join('、') + '：对账键、频率、容差';
+  }
+  function injStep(el, st) {
+    const cols = ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', '恒等式'];
+    const rows = [
+      ['重复消费', 1, { R2: 'bad' }], ['结算漏单', 1, { R2: 'bad' }], ['精度舍入', 2, { R3: 'bad' }],
+      ['链上提币未入账', 3, { R5: 'wrn' }], ['托管商延迟', 3, { R6: 'wrn' }], ['人为错误调账', 4, { R1: 'ok', R2: 'ok', R3: 'ok', R4: 'ok' }],
+    ];
+    const off = st >= 5;
+    let h = '<div class="hd"></div>' + cols.map(c => `<div class="hd ${off && c === 'R2' ? 'off' : ''}">${c}</div>`).join('');
+    rows.forEach(([n, k, m], ri) => {
+      const on = st >= k;
+      const cur = st === k || (off && ri === 0);
+      h += `<div class="rn ${cur ? 'on' : ''}">${n}</div>`;
+      cols.forEach(c => {
+        let cls = '', txt = '';
+        if (on) {
+          if (off && ri === 0) { cls = c === '恒等式' ? 'bad' : (c === 'R2' ? '' : 'ok'); txt = c === '恒等式' ? '❌ 总数不平' : (c === 'R2' ? '<span class="gr">关闭</span>' : '✅'); }
+          else if (m[c]) { cls = m[c]; txt = { ok: '✅', bad: '❌', wrn: '⚠️ 在途' }[m[c]]; }
+          else if (k === 4) { txt = c === 'R4' ? '' : '<span class="gr">审批</span>'; if (c === '恒等式') txt = '<span class="gr">—</span>'; if (c === 'R5' || c === 'R6') txt = '<span class="gr">—</span>'; }
+          else if (c === '恒等式') txt = '<span class="gr">兜底</span>';
+          else txt = '<span class="gr">·</span>';
+        }
+        h += `<div class="${cls}">${txt}</div>`;
+      });
+    });
+    el.querySelector('#ig').innerHTML = h;
+    const n = el.querySelector('#injNote');
+    const N = [
+      ['', '6 种注入差异 × 6 个对账层 + 资产负债恒等式'],
+      ['sell', 'R2 变红：同一 trade_id 出现两次 / 有成交无结算 → <b>直接定位到单笔</b>'],
+      ['sell', 'R3 变红：结算 ↔ 账本差 <b>1 个最小单位</b>，大量记录同方向'],
+      ['warn', 'R5、R6 ⚠️：时序差归为<b>在途</b>，下一轮自动消失，<b>不触发熔断</b>'],
+      ['info', 'R1–R4 全绿：调账同时改了流水和快照 → 要靠<b>审批 + 审计日志</b>，不是事后对账'],
+      ['sell', '关掉 R2：只有恒等式看到<b>总数不平</b>，不知道哪一笔——用户可能已把多得的币<b>提走</b>'],
+    ][st];
+    n.className = 'card ' + n0(N[0]); n.innerHTML = N[1];
+    function n0(x) { return x; }
+  }
+  function dispStep(el, st) {
+    const B = {
+      D: [0, 150, '发现', 'Detected'], IT: [340, 10, '在途', 'InTransit'], AF: [340, 150, '自动修复', 'AutoFix'], T: [340, 290, '工单', 'Ticket'],
+      V: [720, 150, '复跑验证', 'Verify'], P: [720, 290, '待审批', 'PendingApproval'], A: [1080, 290, '已调账', 'Adjusted'], R: [1360, 150, '已解决', 'Resolved'],
+    };
+    const E = [
+      ['D-IT', 'M280 170 L338 60', '', 0, 0], ['D-AF', 'M280 190 L338 190', '', 0, 0], ['D-T', 'M280 210 L338 320', '', 0, 0],
+      ['IT-R', 'M620 50 L1490 50 L1490 146', '下一轮自动消失', 1060, 38], ['IT-T', 'M620 80 L670 80 L670 310 L624 310', '超时', 702, 124],
+      ['AF-V', 'M620 190 L716 190', '', 0, 0], ['V-R', 'M1000 190 L1356 190', '复跑已平', 1180, 178], ['V-T', 'M760 230 L624 300', '仍不平', 800, 268],
+      ['T-P', 'M620 330 L716 330', '', 0, 0], ['P-T', 'M720 370 L624 370', '驳回', 670, 396], ['P-A', 'M1000 330 L1076 330', '批准', 1038, 318], ['A-V', 'M1160 290 L1000 222', '写调账 journal', 1170, 262],
+    ];
+    const paths = [[], ['D-IT', 'IT-R', 'IT-T'], ['D-AF', 'AF-V', 'V-R', 'V-T'], ['D-T', 'T-P', 'P-A', 'A-V', 'V-R', 'P-T'], ['D-IT', 'IT-R', 'IT-T']][st];
+    const nodes = [['D', 'R'], ['D', 'IT', 'R', 'T'], ['D', 'AF', 'V', 'R'], ['D', 'T', 'P', 'A', 'V', 'R'], ['IT', 'T']][st];
+    let g = '';
+    E.forEach(([id, d, lab, lx, ly]) => {
+      const on = paths.includes(id);
+      g += `<path class="ln ${on ? 'hi' : 'dim'}" d="${d}" marker-end="url(#${on ? 'd2' : 'd1'})"/>`;
+      if (lab) g += `<text class="s" x="${lx}" y="${ly}" text-anchor="middle" style="${on ? 'fill:#f0b90b' : 'opacity:.3'}">${lab}</text>`;
+    });
+    for (const [k, [x, y, t, e]] of Object.entries(B)) {
+      const on = nodes.includes(k);
+      const cls = !on ? '' : k === 'R' ? 'grn' : k === 'T' || k === 'P' ? 'red' : 'on';
+      g += `<g style="opacity:${on || st === 0 ? 1 : .35}"><rect class="box ${cls}" x="${x}" y="${y}" width="280" height="80" rx="14"/><text class="t" x="${x + 140}" y="${y + 38}" text-anchor="middle">${t}</text><text class="s" x="${x + 140}" y="${y + 68}" text-anchor="middle">${e}</text></g>`;
+    }
+    el.querySelector('#disp').innerHTML = g;
+    const n = el.querySelector('#dispNote');
+    n.className = 'card ' + ['', 'warn', 'buy', 'sell', 'info'][st];
+    n.innerHTML = [
+      '终态只有一个：<b>已解决</b>。没有终态的差异，是审计重点',
+      '时序差 → 在途 → 下一轮自动消失；<b>超过在途超时</b> → 转工单',
+      '重复 / 遗漏 / 舍入 → 自动修复 → <b>必须复跑对账</b>；仍不平 → 工单',
+      '金额不符 / 人为调账 → 工单 → 经办人提交 → <b>复核人 ≠ 经办人</b> 批准 → 调账 → 复跑',
+      '在途超时：太短 → 工单被时序差淹没；太长 → 真实错误被延迟发现',
+    ][st];
+  }
+  function eqStep(el, st) {
+    const L = [['用户可用 + 冻结', '1,200,000,000'], ['理财子账本', '300,000,000'], ['合约保证金子账本', '150,000,000'], ['平台手续费收入', '2,000,000']];
+    const R = [['热钱包链上余额', '150,000,000'], ['冷钱包余额', '1,450,000,000'], ['托管商余额', '50,000,000'], ['提币在途 · 已扣未上链', '2,000,000']];
+    const side = (title, rows, show, tot) => `<h3>${title}</h3>` + rows.map(r => `<div class="r" style="opacity:${show ? 1 : .2}"><span>${r[0]}</span><span>${show ? r[1] : '…'}</span></div>`).join('') + `<div class="r tot" style="opacity:${show ? 1 : .2}"><span>合计</span><span>${show ? tot : '?'}</span></div>`;
+    if (st <= 2) {
+      el.querySelector('#eqL').innerHTML = side('负债 + 权益', L, st >= 1, '1,652,000,000');
+      el.querySelector('#eqR').innerHTML = side('资产', R, st >= 2, '1,652,000,000');
+      const s = el.querySelector('#eqS'); s.textContent = st >= 2 ? '=' : '?'; s.style.color = st >= 2 ? 'var(--buy)' : 'var(--text-2)';
+    } else {
+      el.querySelector('#eqL').innerHTML = '<h3>按币种核对</h3><div class="r"><span>BTC 资产 − 负债</span><span class="down">−1 BTC ❌</span></div><div class="r"><span>ETH 资产 − 负债</span><span class="up">+20 ETH</span></div><div class="r tot"><span>结论</span><span class="down">欠用户 1 BTC</span></div>';
+      el.querySelector('#eqR').innerHTML = '<h3>折算成 USDT 后 <span class="chip">示例价格</span></h3><div class="r"><span>BTC −1 × 60,000</span><span class="down">−60,000</span></div><div class="r"><span>ETH +20 × 3,000</span><span class="up">+60,000</span></div><div class="r tot"><span>合计</span><span>0 ✓ 假象</span></div>';
+      const s = el.querySelector('#eqS'); s.textContent = '≠'; s.style.color = 'var(--sell)';
+    }
+    el.querySelector('#eqH').textContent = st >= 3 ? '必须按币种核对，不能折算' : 'Σ 用户负债 + 平台权益 = Σ 平台资产';
+    const n = el.querySelector('#eqNote');
+    n.className = 'card ' + ['', '', 'buy', 'sell'][st];
+    n.innerHTML = [
+      '用户负债 = 可用 + 冻结 + 理财本金 + 合约保证金 + 其他子账本；平台权益 = 手续费收入 + 自有资金 + 保险基金',
+      '左边：1,200,000,000 + 300,000,000 + 150,000,000 + 2,000,000 = <b>1,652,000,000</b> 聪',
+      '右边：150,000,000 + 1,450,000,000 + 50,000,000 + 2,000,000 = <b>1,652,000,000</b> 聪 → 成立 ✓',
+      '折算后“恰好相等”，但平台实际<b>欠用户 1 BTC</b>',
+    ][st];
+  }
+  function cbStep(el, st) {
+    const S = [
+      { btc: ['open', '开放'], d: '—', ex: '—', thr: '—', v: ['', '提币是唯一出口：链上转账撤不回 → 停提币，不停交易'], p: { rec: 'on' } },
+      { btc: ['open', '开放'], d: '2,000,000', ex: '能 · 一笔提币在途', thr: '150,000', v: ['ok', '✓ 在途可解释 → 正常'], p: { rec: 'on', q1: 'grn' } },
+      { btc: ['warn', '开放 · P2'], d: '50,000', ex: '不能', thr: '150,000', v: ['warn', '⚠ 50,000 < 150,000 → 告警 P2'], p: { rec: 'on', q1: 'red', q2: 'grn' } },
+      { btc: ['halt', '暂停 · P1'], d: '400,000', ex: '不能', thr: '150,000', v: ['bad', '✗ 400,000 > 150,000 → 暂停 BTC 提币'], p: { rec: 'on', q1: 'red', q2: 'red', halt: 'red' } },
+      { btc: ['halt', '暂停 · P1'], d: '无结果', ex: '—', thr: '—', v: ['bad', '热钱包一区块内下降且无提币单 → 立即停；任务失败 = 未知 = 按不平处理'], p: { rec: 'red', halt: 'red' } },
+      { btc: ['open', '人工恢复'], d: '0', ex: '—', thr: '150,000', v: ['ok', '复跑已平 + 人工确认 → 恢复；自动恢复可能在攻击中重开出口'], p: { rec: 'on', halt: 'red', inv: 'on', res: 'grn' } },
+    ][st];
+    const coins = [['BTC', S.btc], ['ETH', ['open', '开放']], ['USDT', ['open', '开放']]];
+    el.querySelector('#coins').innerHTML = coins.map(([c, [k, t]]) => `<div class="coin ${k === 'halt' ? 'halt' : ''}"><b>${c}</b><span class="sw ${k}">提币 ${t}</span></div>`).join('') +
+      `<div class="card" style="font-size:28px;padding:12px 18px">${st >= 3 && st <= 4 ? '<span class="up">充值、交易继续</span>；只停 BTC' : '熔断<b>按币种</b>生效'}</div>`;
+    el.querySelector('#rk').innerHTML = `<h3 style="margin:0">BTC 对账 · 本轮 <span class="chip">示例 · 聪</span></h3>
+      <div class="kv"><span>热钱包余额</span><span>150,000,000</span></div>
+      <div class="kv"><span>阈值 = 0.1%</span><span>${S.thr}</span></div>
+      <div class="kv"><span>恒等式差额</span><span>${S.d}</span></div>
+      <div class="kv"><span>在途清单能解释？</span><span>${S.ex}</span></div>
+      <div class="verdict ${S.v[0]}" style="font-size:30px">${S.v[1]}</div>`;
+    el.querySelectorAll('#path .p').forEach(p => { p.className = 'p' + (S.p[p.dataset.k] ? ' ' + S.p[p.dataset.k] : ''); });
+    el.querySelector('#cbH').textContent = ['对账不平，就停这个币的提币', '差额能被在途解释：正常', '小差额：只告警，不停', '超阈值：熔断跳闸', '失败即关闭 Fail-Closed', '恢复：必须人工确认'][st];
+  }
+  function ftxStep(el, st) {
+    el.querySelectorAll('.cn').forEach(n => {
+      const i = +n.dataset.i;
+      n.className = 'cn' + (st >= 1 && i <= 3 ? ' cause' : '') + (st >= 2 && i >= 4 ? ' hit' : '') + (st >= 3 && st <= 3 && [2, 3, 4].includes(i) ? ' fixed' : '') + (st >= 4 && [2, 3, 4].includes(i) ? ' fixed' : '');
+      if (st === 0 && i === 1) n.className = 'cn cause';
+    });
+    const n = el.querySelector('#ftxNote');
+    n.className = 'card ' + ['', 'warn', 'sell', 'buy', 'info'][st];
+    n.innerHTML = [
+      '据公开报道：FTX 部分客户存款被转入关联公司 <b>Alameda Research</b>；新管理层表示公司<b>缺少基本财务控制</b>和可靠账目',
+      '<span style="color:var(--warn)">原因</span>：R7 缺失 + 负余额特权让 R4 的负余额告警失效',
+      '<span class="down">影响</span>：恒等式早已不成立；<b>挤兑是结果，不是原因</b>',
+      '<span class="up">修复</span>：独立 R7 · 负余额告警无例外 · 按币种恒等式。<b>对账规则的例外本身就是风险</b>',
+      '对比 2019 币安：约 7,000 BTC 被盗 → <b>R5</b> 直接看到热钱包下降；负债不变，<b>SAFU</b> 补足权益 → 恒等式重新成立',
+    ][st];
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      # Real PostgreSQL for the ledger concurrency integration test.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: web3_cex
+          POSTGRES_USER: web3
+          POSTGRES_PASSWORD: web3
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U web3"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      LEDGER_TEST_DATABASE_URL: postgres://web3:web3@127.0.0.1:5432/web3_cex
+      TRADER_WEB_SMOKE_CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engines/matching-engine
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm -r --if-present test
+      - run: cargo test --manifest-path engines/matching-engine/Cargo.toml
+      - run: pnpm check:structure

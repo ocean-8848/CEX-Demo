@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P05 存币生息</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 24px 30px; font-size: 30px; line-height: 1.5; }
+  .panel.gold { border-color: var(--gold); background: var(--gold-soft); }
+  .panel.sell { border-color: var(--sell); background: var(--sell-soft); }
+  .panel.info { border-color: var(--info); background: var(--info-soft); }
+  .panel.buy { border-color: var(--buy); background: var(--buy-soft); }
+  .panel h3 { font-size: 36px; margin-bottom: 8px; }
+  .calc { font-family: var(--mono); font-size: 30px; line-height: 1.7; }
+  table.t td, table.t th { padding: 12px 18px; }
+  table.t tr { transition: background .3s, opacity .3s; }
+  table.t tr.cur td { background: var(--gold-soft); }
+  .payer { text-align: center; }
+  .payer .big { font-size: 64px; margin-bottom: 10px; font-family: var(--sans); }
+  .chips { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .chips .c { padding: 10px 20px; border-radius: 12px; background: var(--panel); border: 2px solid var(--line); font-size: 28px; font-family: var(--mono); }
+  .chips .c.on { border-color: var(--gold); background: var(--gold-soft); }
+  .chips .a { color: var(--text-2); font-size: 28px; }
+  #s2 .card { padding: 20px 28px; }
+  #s2 .grid2 { gap: 24px; }
+  table.t tr[data-step]:not(.shown) td { border-color: transparent; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="P05" data-title="存币生息：活期、定期与流动性质押">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 产品深潜 · P05</div>
+    <h1>存币生息：<span class="hl">利息是谁付的</span></h1>
+    <div class="row" style="max-width:1640px">
+      <div class="card col payer" data-step="0"><div class="k muted" style="font-size:26px">活期 1,000 USDT · APR 5% · 示例</div><div class="big hl">谁付的？</div></div>
+      <div class="card info col payer" data-step="1"><div class="big">借款人</div><span class="muted">杠杆 · 合约 · 借币用户</span></div>
+      <div class="card buy col payer" data-step="1"><div class="big">区块链网络</div><span class="muted">质押奖励</span></div>
+      <div class="card gold col payer" data-step="1"><div class="big">营销预算</div><span class="muted">平台或项目方补贴</span></div>
+    </div>
+    <div class="card warn" data-step="2" style="max-width:1640px">本集内容不构成投资建议 · 理财收益率会变化 · 质押资产有价格风险和赎回等待期</div>
+    <ol class="say">
+      <li>你在交易所存了1000 USDT 活期，页面写着年化5%，这是示例。一年多出来的那笔钱，到底是谁付的？</li>
+      <li>答案是，理财产品本身不创造收益。它把你的闲置资产交给一个付费方，再把付费方的钱分给你。付费方只有三类：借款人、区块链网络、平台的营销预算。</li>
+      <li>这一集，我们按付费方拆开币安的理财产品。先说明，本集内容不构成投资建议。收益率会变化，质押资产有价格风险和赎回等待期。数字除公开资料外都是示例。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图" id="s2">
+    <div class="kicker">Roadmap</div>
+    <h2>四组产品，按付费方拆开</h2>
+    <div class="grid2">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>Simple Earn 活期与定期<br><span class="muted">借款人 + 平台补贴</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>ETH · SOL 质押：WBETH · BNSOL<br><span class="muted">区块链网络</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">3</span><div>定投 Auto-Invest<br><span class="muted">无付费方：买入工具</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">4</span><div>BNB Vault<br><span class="muted">多种来源的组合</span></div></div>
+    </div>
+    <div class="row">
+      <div class="card info col" data-step="2">比喻：代收房租的中介<br><span class="muted">租给租客 · 换政府补贴 · 首月返现</span></div>
+      <div class="card sell col" data-step="3">局限：理财账户里的币是你对平台的<b>债权</b><br><span class="muted">租客跑路、房东同时收房 → 中介出事</span></div>
+    </div>
+    <ol class="say">
+      <li>本集四组产品。第一，Simple Earn 活期和定期，付费方是借款人加平台补贴。第二，ETH 和 SOL 质押，付费方是区块链网络。</li>
+      <li>第三，定投，它其实不是收益产品，只是买入工具。第四，BNB Vault，是多种来源的组合。</li>
+      <li>打个比方。理财像代收房租的中介。你把空房交给中介，它租给租客，或者换政府补贴，扣一部分再给你。开业时还送首月返现。</li>
+      <li>比喻在哪里不成立？房子始终是你的，可理财账户里的币，是你对平台的债权。租客跑路，或者所有房东同时收房，中介就会出问题。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="活期与定期：用户看到什么" data-onstep="earnStep">
+    <div class="kicker">Simple Earn · 截至 2026 年公开资料</div>
+    <h2>活期随时取，定期锁期限</h2>
+    <div class="row" style="gap:36px">
+      <table class="t" id="earn-t" style="flex:0 0 1000px;width:1000px">
+        <tr><th></th><th>活期 Flexible</th><th>定期 Locked</th></tr>
+        <tr><td>赎回</td><td>随时，单日有额度上限</td><td>到期自动返还</td></tr>
+        <tr><td>收益</td><td>实时 APR + 阶梯 APR</td><td>固定 APR</td></tr>
+        <tr><td>发放</td><td>实时部分按分钟累计</td><td>按日发到现货账户</td></tr>
+        <tr><td>到期</td><td>无</td><td>可自动续期</td></tr>
+      </table>
+      <div class="col" id="earn-r"></div>
+    </div>
+    <ol class="say">
+      <li>先看 Simple Earn。根据币安公开资料，活期随时申购，随时赎回，但单日赎回有额度上限。定期要选期限，到期自动返还，可以自动续期。</li>
+      <li>活期收益分两层。实时 APR 是基础收益率，可以每分钟变化。阶梯 APR 是额外奖励，只对限额内的资产生效。定期是固定 APR。APR 都按单利折算。</li>
+      <li>阶梯 APR 有个陷阱。示例，前500 USDT 额外加5%。你存10000，只有500享受奖励，另外9500只拿实时 APR。整体收益率远低于宣传的最高值。</li>
+      <li>定期提前赎回也有代价。根据币安公开资料，平台没收期限内已发放的全部收益，从返还本金里扣除。剩余本金在72小时内回到现货账户。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="活期的资金流" data-onstep="flowStep">
+    <div class="kicker">Money Flow · 分配比例未公开</div>
+    <h2>申购只是记账，钱进了资金池</h2>
+    <svg id="flow" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>申购的时候发生了什么？只是账本内部划转，从现货账户到理财账户。链上没有任何转账，币还在平台的同一组钱包里。</li>
+      <li>账本记一笔对用户的负债，资产进入平台的理财资金池。资金池把钱分到三处：出借给杠杆和借贷用户，链上质押，再留一部分缓冲应对赎回。分配比例币安没有公开。</li>
+      <li>收入从两头回来，借款人付利息，链上质押发奖励。再加上营销预算付的补贴，一起进入每日计息批处理，发给用户。</li>
+      <li>所以用户收益，等于借款利息加质押奖励加营销补贴，再减平台利差。出错点在缓冲。赎回量超过缓冲，平台就要提前收回借款，或者动用自有资金。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="活期 APR 怎么定" data-onstep="aprStep">
+    <div class="kicker">Utilization Pricing · 业界通用做法 · 示例</div>
+    <h2>同一个资金池的两面：借款利率与理财 APR</h2>
+    <div class="row" style="gap:36px">
+      <svg id="apr" width="900" height="600" viewBox="0 0 900 600"></svg>
+      <div class="col" id="apr-r"></div>
+    </div>
+    <ol class="say">
+      <li>活期的实时 APR 由借贷需求决定。业界通常按资金使用率定价，和 P01 的借贷利率是同一个资金池的两面。使用率等于已借出除以资金池总额。</li>
+      <li>使用率越高，借款利率越高。理财基础 APR，等于借款利率乘以使用率，再乘以1减平台抽成。</li>
+      <li>代入示例。资金池1亿 USDT，借出7000万，使用率70%。借款年利率10%，平台抽成20%。理财基础 APR 等于10%乘70%乘80%，就是5.6%。</li>
+      <li>再加营销补贴。示例阶梯 APR 是前500 USDT 加4%。存500的用户看到9.6%，存10万的用户整体约5.6%。</li>
+      <li>平台每年的利差收入，是7000万乘以10%再乘20%，140万 USDT。使用率接近上限时，借款利率会陡升，逼借款人还款，给赎回腾出空间。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="调用链与账本分录" data-onstep="ledgerStep">
+    <div class="kicker">Call Chain · Ledger · 组件与科目名为示例</div>
+    <h2>申购、计息、赎回：三种分录</h2>
+    <div class="chips" id="chain"></div>
+    <div id="ledger-box"></div>
+    <ol class="say">
+      <li>系统里怎么实现？我们新增示例服务 earn-service。用户申购1000 USDT，先查额度和地区限制，再记账。借记现货可用，贷记理财持仓，平台总负债不变。</li>
+      <li>计息是异步批处理，示例在 UTC 0点。收益等于份额乘 APR 除以365。1000乘5%除以365，约0.137 USDT。借记平台利息支出，贷记用户理财持仓。</li>
+      <li>赎回400，是反方向的内部划转。注意一个竞态，检查额度和记账之间可能被并发打断。业界通常用数据库行锁，或者额度服务的原子扣减。</li>
+      <li>计息批处理有三条要求。第一，用快照计息。第二，每人每天一条分录，幂等键含用户、产品和日期，重跑不会重复发息。第三，利息总额和支出科目核对相等，才提交。</li>
+      <li>还有个细节。实时 APR 按分钟累计，如果每分钟记一笔账，分录会爆炸。业界做法是按分钟算应计利息，在汇总表累加，按日或赎回时一次记账。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="挤兑、兜底与故障" data-onstep="runStep">
+    <div class="kicker">Risk · Hedge · Failure</div>
+    <h2 id="run-h">活期负债随时可取，资产却有期限</h2>
+    <svg id="run" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>平台承担三种风险。期限错配，活期负债随时可取，资产却有期限。借款人违约，靠强平和保险基金兜底。还有挤兑。</li>
+      <li>示例。资金池留10%到20%做流动性缓冲。平常的赎回，缓冲足够应付。</li>
+      <li>赎回突然放大，超过当日额度，多出来的请求进入排队，等次日额度恢复。同时使用率逼近上限，借款利率陡升，逼借款人还款。最后一道防线是平台自有资金。</li>
+      <li>根据公开报道，2022年 Celsius 把存款投入高风险借贷和 DeFi。资产下跌后用户集中赎回，Celsius 暂停提款，随后破产。理财资产是对平台的债权，破产时要排队受偿。</li>
+      <li>再看一个工程故障，示例。计息批处理没有幂等键，重跑之后，每个用户收到两份利息。正确修复是记冲回分录，而不是修改历史流水。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="WBETH 汇率模型" data-onstep="rateStep">
+    <div class="kicker">Liquid Staking · Non-rebasing</div>
+    <h2>数量不变，汇率在涨</h2>
+    <svg id="rate" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>第二组，链上质押。根据币安公开资料，质押 ETH 收到 WBETH，质押 SOL 收到 BNSOL。它们叫流动性质押代币，代表质押中的币加累计奖励，可以交易和做抵押。</li>
+      <li>收益怎么体现？WBETH 数量不变，汇率在涨。根据币安公开说明，1个 WBETH 等于1个质押中的 ETH，加上累计奖励。奖励从2023年4月27日开始累计。</li>
+      <li>示例。汇率1.05时，质押10.5 ETH。除以1.05，收到10个 WBETH。</li>
+      <li>当日网络奖励率示例是3%除以365，服务费5%。新汇率等于旧汇率乘以1加净奖励率。按单利近似，一年后汇率约1.0799。</li>
+      <li>用户仍然持有10个 WBETH，但能换回约10.799个 ETH。这叫非变基设计。WBETH 放进合约或做抵押时，余额不会自己变，便于记账。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="质押调用链与赎回队列" data-onstep="queueStep">
+    <div class="kicker">Staking Flow · Unstaking Queue</div>
+    <h2 id="q-h">质押：32 ETH 一批，赎回要排队</h2>
+    <svg id="queue" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>质押的资金流是这样的。账本扣 ETH，发 WBETH。平台把零散的质押汇总，按32 ETH 一个验证者批量存入链上，这是以太坊的规则。</li>
+      <li>链上奖励由以太坊网络支付，不是平台付。平台抽5%服务费，其余通过汇率更新任务，每天上调汇率。汇率更新是单点，发错会影响所有持有人，业界通常双人复核。</li>
+      <li>赎回要排队。申请赎回10 WBETH，系统先冻结，再提交验证者退出。以太坊每个周期只允许有限的验证者退出，要等数天到数周。完成后才扣减 WBETH，按当时汇率记入 ETH。</li>
+      <li>不想等，可以在现货市场卖出 WBETH，立刻拿到钱。但价格由市场决定，可能低于汇率。这就是状态机的两条出路，排队赎回，或者市场卖出。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="质押收益与风险">
+    <div class="kicker">Pricing · Risk</div>
+    <h2>平台抽 5%，风险分四类</h2>
+    <div class="grid3">
+      <div class="card stat" data-step="0"><div class="k">用户净收益率 · 示例</div><div class="v" style="font-size:52px">3% × 95% = <span class="hl">2.85%</span></div></div>
+      <div class="card stat" data-step="1"><div class="k">平台收入 · 示例</div><div class="v" style="font-size:34px">100 万 ETH × 3% × 5%</div><div class="hl" style="font-size:36px;font-family:var(--mono)">= 1,500 ETH / 年</div></div>
+      <div class="card stat" data-step="1"><div class="k">BNSOL · 公开报道</div><div class="v" style="font-size:44px">按纪元更新</div><div class="muted" style="font-size:30px">纪元约 2 天</div></div>
+    </div>
+    <table class="t">
+      <tr data-step="2"><td>罚没</td><td>用户或平台承担</td><td>多节点、多客户端部署</td></tr>
+      <tr data-step="2"><td>赎回排队</td><td>用户</td><td>每日赎回额度 · 流动性池即时赎回 · 示例</td></tr>
+      <tr data-step="3"><td>市场价偏离汇率</td><td>用户和抵押系统</td><td>估价引用汇率，不只看订单簿</td></tr>
+      <tr data-step="3"><td>汇率更新错误</td><td>全体持有人</td><td>双人复核 · 单日涨幅上限</td></tr>
+    </table>
+    <ol class="say">
+      <li>算一下收益。用户收益率等于链上收益率乘以1减服务费率。示例，以太坊质押收益率3%，服务费5%，用户净收益2.85%。</li>
+      <li>平台收入是质押总量乘链上收益率，再乘服务费率。示例，100万 ETH 乘3%乘5%，每年1500 ETH。BNSOL 模型相同，只是按 Solana 的纪元更新汇率，约2天一次。</li>
+      <li>风险有四类。罚没，是验证者作恶或长期离线被扣本金，平台用多节点、多客户端降低概率。赎回排队，平台设每日额度，示例还可以用流动性池即时赎回。</li>
+      <li>第三是脱锚，市场价偏离汇率。所以保证金估价应该引用汇率，不能只看订单簿。第四是汇率更新错误，用双人复核和单日涨幅上限来防。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="2025-10-10 指数偏离" data-onstep="loopStep">
+    <div class="kicker">Failure Case · 公开报道</div>
+    <h2>订单簿价格不可信时，强平会自我加速</h2>
+    <svg id="loop" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>脱锚真的发生过。根据公开报道，2025年10月10日市场剧烈下跌。UTC 21点36分到22点16分，三种资产出现价格偏离。它们是币安的 USDe、WBETH 和 BNSOL。</li>
+      <li>链条是这样的。全市场暴跌，流动性枯竭，本所 WBETH 订单簿被大额卖单砸穿。</li>
+      <li>保证金估价主要引用本所现货价格。于是 WBETH 的抵押价值骤降，可它对 ETH 的汇率根本没变。</li>
+      <li>保证金率跌破维持线，系统强平卖出 WBETH，又进一步压低订单簿价格，形成循环。用这些资产做统一账户保证金的用户被强平，币安随后补偿了受影响用户。</li>
+      <li>改进方向是以汇率为基准，市场价为参考，引入多源价格，参数以官网为准。但纯用汇率也有风险，排队期内汇率无法立即兑现，所以还要加折扣率。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="定投 Auto-Invest" data-onstep="dcaStep">
+    <div class="kicker">Auto-Invest · DCA</div>
+    <h2 id="dca-h">定投不是收益产品，是定时下单工具</h2>
+    <svg id="dca" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>第三组，定投。按固定周期，用固定金额买入，到点自动扣款，买到的币可以转入活期。注意，定投不是收益产品，收益完全取决于价格走势。</li>
+      <li>据公开报道，币安在2025年把定投迁移到闪兑的定期买入。原计划2025年3月31日下线，指数定投11月27日退役。定期买入按闪兑报价成交，不另收兑换手续费。</li>
+      <li>系统里，调度器触发14点批次，用计划号加期号做幂等键，逐个冻结用户 USDT。示例汇总5000个计划，共200万 USDT，提交一笔聚合市价单。</li>
+      <li>成交均价100050，所有用户按同一个均价，按金额比例分配 BTC，保证公平。余额不足的计划跳过本期，下期也不补买。</li>
+      <li>平台赚手续费或价差。示例每周100 USDT，费率0.1%，一年52期，收入5.2 USDT。常见故障是整点拥堵。解决办法是打散触发时间，再加价格保护。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="BNB Vault" data-onstep="vaultStep">
+    <div class="kicker">BNB Vault · Simple Earn BNB</div>
+    <h2>一份 BNB，三种收益</h2>
+    <div class="row" style="gap:36px">
+      <svg id="vault" width="900" height="600" viewBox="0 0 900 600"></svg>
+      <div class="col" id="vault-r"></div>
+    </div>
+    <ol class="say">
+      <li>第四组，BNB Vault。根据公开报道，它在2020年11月上线。存入 BNB，同时拿活期利息、Launchpool 新币奖励和活动奖励。后来它整合进 Simple Earn BNB。持有它，就能参与 Launchpool 和 HODLer 空投。</li>
+      <li>新币奖励由项目方支付，换取曝光和用户。系统示例每小时快照一次 BNB 持仓，用户份额等于用户 BNB 除以全池 BNB。快照越密，快照前存入、快照后取走的套利空间越小。</li>
+      <li>示例。奖励100万个新币，用户份额0.01%，新币价格0.5 USDT。用户拿到50 USDT。宣传 APR 随全池规模和币价大幅波动，只是估算。</li>
+      <li>还有监管风险。根据公开法律文件，2023年美国 SEC 起诉币安。BNB Vault 和 Simple Earn 被列为未注册证券发行。这会迫使平台按地区下线产品。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与下集预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">理财不创造收益：付费方只有<span class="hl">借款人、区块链网络、营销预算</span>。</li>
+      <li data-step="1">申购、计息、赎回都是<span class="hl">账本内部划转</span>：快照 · 幂等键 · 冲回。</li>
+      <li data-step="2">WBETH <span class="hl">数量不变、汇率增长</span>；赎回排队，估价以汇率为基准再打折。</li>
+    </ul>
+    <div class="grid3" data-step="0">
+      <div class="card stat"><div class="k">活期基础 APR · 示例</div><div class="v hl" style="font-size:52px">5.6%</div></div>
+      <div class="card stat"><div class="k">ETH 质押服务费 · 公开资料</div><div class="v" style="font-size:52px">5%</div></div>
+      <div class="card stat"><div class="k">10 WBETH 一年后 · 示例</div><div class="v" style="font-size:52px">≈ 10.799 ETH</div></div>
+    </div>
+    <div class="card gold" data-step="3" style="font-size:34px">下集 P06 · 双币投资：高收益背后的期权</div>
+    <ol class="say">
+      <li>小结一下。第一，理财不创造收益。付费方只有借款人、区块链网络和营销预算。看到一个 APR，先问是谁付的。</li>
+      <li>第二，申购、计息、赎回都是账本内部划转。计息靠快照、幂等键和总额核对，修错要用冲回分录。</li>
+      <li>第三，WBETH 数量不变，汇率增长。赎回要排队，市场价可能偏离汇率，估价要以汇率为基准，再加折扣率。</li>
+      <li>下一集，我们看一个页面 APR 经常高达百分之三四十的产品，双币投资。它的高收益，其实来自你卖出的一份期权。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10', dim: '#3a3f48' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const fmt = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 30}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.mono ? ' font-family="JetBrains Mono, SF Mono, Menlo, monospace"' : ''}${o.plain ? '' : ` stroke="${C.bg}" stroke-width="8" paint-order="stroke"`}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const L = (x1, y1, x2, y2, col, o = {}) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="${o.w || 4}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  const ARW = (x1, y1, x2, y2, col, w = 4, dash) => { const a = Math.atan2(y2 - y1, x2 - x1), s = 16; return L(x1, y1, x2 - Math.cos(a) * 8, y2 - Math.sin(a) * 8, col, { w, dash }) + `<polygon points="${x2},${y2} ${x2 - s * Math.cos(a - .45)},${y2 - s * Math.sin(a - .45)} ${x2 - s * Math.cos(a + .45)},${y2 - s * Math.sin(a + .45)}" fill="${col}"/>`; };
+  const soft = { gold: 'rgba(240,185,11,.16)', buy: 'rgba(46,189,133,.16)', sell: 'rgba(246,70,93,.16)', info: 'rgba(91,156,255,.14)', warn: 'rgba(240,163,64,.16)' };
+  const BOX = (x, y, w, h, t, s, on, col = 'gold') => R(x, y, w, h, { fill: on ? soft[col] : C.panel, stroke: on ? C[col] : C.line, sw: on ? 4 : 3 }) + T(x + w / 2, y + (s ? h / 2 - 4 : h / 2 + 11), t, { anchor: 'middle', size: 30, bold: true, plain: true, fill: on ? C.text : C.t2 }) + (s ? T(x + w / 2, y + h / 2 + 32, s, { anchor: 'middle', size: 24, fill: C.t2, plain: true }) : '');
+
+  // Scene 3
+  function earnStep(el, st) {
+    const rows = el.querySelectorAll('#earn-t tr');
+    const cur = [[1, 4], [2, 3], [2], [1]][st];
+    rows.forEach((r, i) => { if (i) r.classList.toggle('cur', cur.includes(i)); });
+    const r = [
+      `<div class="panel"><h3>活期</h3>随时申购 · 随时赎回<br>资产立即回到钱包</div><div class="panel"><h3>定期</h3>选期限 · 到期返还<br>可自动续期</div>`,
+      `<div class="panel gold"><h3>实时 APR</h3>基础收益率，可每分钟变化</div><div class="panel info"><h3>阶梯 APR</h3>额外奖励，只对限额内生效</div><div class="panel muted">APR 按单利折算，不含复利</div>`,
+      `<div class="panel"><div class="muted" style="font-size:26px">存入 10,000 USDT · 示例</div><div style="display:flex;height:64px;margin-top:12px;border-radius:10px;overflow:hidden"><div style="width:5%;background:#f0b90b"></div><div style="flex:1;background:#2c3038"></div></div><div style="margin-top:10px"><span class="hl">500</span> 享 +5% 阶梯奖励<br><span class="muted">9,500 只拿实时 APR</span></div></div><div class="panel sell">整体收益率远低于宣传的最高 APR</div>`,
+      `<div class="panel sell"><h3>定期提前赎回 · 币安公开资料</h3>没收期限内已发放的全部收益<br>从返还本金中扣除</div><div class="panel">剩余本金 <span class="hl">72 小时内</span>回到现货账户</div>`,
+    ][st];
+    el.querySelector('#earn-r').innerHTML = r;
+  }
+
+  // Scene 4
+  function flowStep(el, st) {
+    const svg = el.querySelector('#flow');
+    const on = k => ({
+      spot: st === 0, earn: st <= 1 || st >= 2, pool: st >= 1, lend: st === 1 || st === 2, stake: st === 1 || st === 2, buf: st === 1 || st === 3,
+      inc: st >= 2, mkt: st >= 2, batch: st >= 2, profit: st === 3,
+    })[k];
+    let h = '';
+    h += BOX(20, 30, 270, 110, '用户现货账户', '', on('spot'), 'info');
+    h += BOX(380, 30, 300, 110, '用户理财账户', '账本记负债', on('earn'), 'info');
+    h += BOX(800, 30, 330, 110, '平台理财资金池', '', on('pool'), 'gold');
+    h += ARW(290, 85, 380, 85, st === 0 ? C.gold : C.dim, 5) + T(335, 70, '申购', { anchor: 'middle', size: 26, fill: st === 0 ? C.gold : C.t2 });
+    h += ARW(680, 85, 800, 85, st === 1 ? C.gold : C.dim, 4, '10 8');
+    if (st === 0) h += R(380, 180, 750, 110, { fill: soft.info, stroke: C.info }) + T(755, 235, '内部划转 · 链上没有任何转账', { anchor: 'middle', size: 34, bold: true, plain: true }) + T(755, 274, '币还在平台同一组钱包里', { anchor: 'middle', size: 26, fill: C.t2, plain: true });
+    if (st >= 1) {
+      h += BOX(560, 220, 280, 100, '出借', '杠杆 · 借贷用户', on('lend'), 'info');
+      h += BOX(880, 220, 280, 100, '链上质押', '验证者节点', on('stake'), 'buy');
+      h += BOX(1200, 220, 280, 100, '流动性缓冲', '应对赎回', on('buf'), st === 3 ? 'sell' : 'warn');
+      h += ARW(900, 140, 700, 220, C.gold, 4) + ARW(965, 140, 1020, 220, C.gold, 4) + ARW(1040, 140, 1340, 220, C.gold, 4);
+    }
+    if (st >= 2) {
+      h += BOX(40, 440, 280, 100, '营销预算', '补贴 APR', on('mkt'), 'warn');
+      h += BOX(380, 440, 300, 100, '每日计息批处理', '', on('batch'), 'gold');
+      h += BOX(760, 440, 340, 100, '平台理财收入', '', on('inc'), 'gold');
+      h += BOX(1200, 440, 280, 100, '平台利润', '利差', on('profit'), 'sell');
+      h += ARW(700, 320, 880, 440, C.buy, 4) + T(700, 400, '借款利息', { anchor: 'end', size: 26, fill: C.buy });
+      h += ARW(1020, 320, 980, 440, C.buy, 4) + T(1030, 400, '质押奖励', { size: 26, fill: C.buy });
+      h += ARW(760, 490, 680, 490, C.gold, 5) + ARW(320, 490, 380, 490, C.gold, 5);
+      h += `<path d="M530 440 V 160" stroke="${C.gold}" stroke-width="5" fill="none"/><polygon points="530,142 518,166 542,166" fill="${C.gold}"/>` + T(545, 400, '用户收益', { size: 26, fill: C.gold });
+      if (st === 3) h += ARW(1100, 490, 1200, 490, C.sell, 5);
+    }
+    if (st === 3) {
+      h += T(820, 590, '用户收益 = 借款利息 + 质押奖励 + 营销补贴 − 平台利差', { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+      h += T(1340, 370, '赎回 > 缓冲？', { anchor: 'middle', size: 28, fill: C.sell, bold: true });
+    }
+    svgEl(svg, h);
+  }
+
+  // Scene 5
+  function aprStep(el, st) {
+    const svg = el.querySelector('#apr');
+    const RB = u => u <= .8 ? .02 + .08 * u / .7 : .02 + .08 * .8 / .7 + (u - .8) * 1.0;
+    const X = u => 110 + u * 740, Y = r => 520 - r / .32 * 470;
+    let h = '';
+    h += L(110, 520, 860, 520, C.t2, { w: 3 }) + L(110, 40, 110, 520, C.t2, { w: 3 });
+    [0, .25, .5, .75, 1].forEach(u => h += T(X(u), 556, Math.round(u * 100) + '%', { anchor: 'middle', size: 24, fill: C.t2, mono: true }));
+    [0, .1, .2, .3].forEach(r => h += T(98, Y(r) + 8, Math.round(r * 100) + '%', { anchor: 'end', size: 24, fill: C.t2, mono: true }));
+    h += T(860, 590, '资金使用率 U', { anchor: 'end', size: 26, fill: C.t2 });
+    h += T(124, 44, '曲线形状为示意', { size: 24, fill: C.t2 });
+    const pts = f => Array.from({ length: 51 }, (_, i) => i / 50).map(u => `${X(u)},${Y(Math.min(f(u), .32))}`).join(' ');
+    h += `<polyline points="${pts(RB)}" fill="none" stroke="${C.sell}" stroke-width="6"/>` + T(X(.2), Y(RB(.2)) - 22, '借款利率', { anchor: 'middle', size: 30, bold: true, fill: C.sell });
+    if (st >= 1) h += `<polyline points="${pts(u => RB(u) * u * .8)}" fill="none" stroke="${C.buy}" stroke-width="6"/>` + T(X(.86) + 10, Y(RB(.86) * .86 * .8) + 44, '理财 APR', { anchor: 'start', size: 30, bold: true, fill: C.buy });
+    if (st >= 2) {
+      h += L(X(.7), 520, X(.7), Y(.1), C.gold, { w: 3, dash: '8 6' }) + L(110, Y(.1), X(.7), Y(.1), C.gold, { w: 3, dash: '8 6' });
+      h += `<circle cx="${X(.7)}" cy="${Y(.1)}" r="11" fill="${C.sell}"/><circle cx="${X(.7)}" cy="${Y(.056)}" r="11" fill="${C.buy}"/>`;
+      h += T(X(.7) - 16, Y(.1) - 18, '10%', { anchor: 'end', size: 30, bold: true, fill: C.sell, mono: true }) + T(X(.7) + 18, Y(.056) + 38, '5.6%', { size: 30, bold: true, fill: C.buy, mono: true });
+      h += T(X(.7), 500, 'U 70%', { anchor: 'middle', size: 26, fill: C.gold, mono: true });
+    }
+    if (st === 4) h += T(X(.8) - 20, Y(.27), '陡升 → 逼借款人还款', { anchor: 'end', size: 30, bold: true, fill: C.sell });
+    svgEl(svg, h);
+    const r = [
+      `<div class="panel gold calc">使用率 U<br>= 已借出 ÷ 资金池总额</div><div class="panel">与 P01 借贷利率曲线<br>是<span class="hl">同一个资金池</span></div>`,
+      `<div class="panel gold calc">R_borrow = f(U)<br>APR = R_borrow × U<br>&nbsp;&nbsp;&nbsp;&nbsp;× (1 − 抽成)</div>`,
+      `<div class="panel calc">资金池 1 亿 USDT<br>借出 7,000 万 → U 70%<br>借款利率 10% · 抽成 20%</div><div class="panel gold calc">10% × 70% × 80%<br>= <b>5.6%</b></div>`,
+      `<div class="panel calc">阶梯补贴：前 500 USDT +4%</div><div class="panel gold calc">存 500 → <b>9.6%</b><br>存 10 万 → ≈ 5.6%</div>`,
+      `<div class="panel gold calc">平台利差 / 年<br>= 7,000 万 × 10% × 20%<br>= <b>140 万 USDT</b></div><div class="panel sell">U 接近上限 → 借款利率陡升 → 借款人还款</div>`,
+    ][st];
+    el.querySelector('#apr-r').innerHTML = r;
+  }
+
+  // Scene 6
+  function ledgerStep(el, st) {
+    const chain = ['用户', 'api-gateway', 'earn-service', 'risk-service', 'ledger-service', 'Kafka'];
+    const onC = [[0, 2, 3, 4], ['interest-batch', 4], [0, 2, 4], ['interest-batch', 4], ['interest-batch']][st];
+    let c = '';
+    const nodes = st === 1 || st >= 3 ? ['interest-batch', 'earn-service', 'ledger-service'] : chain;
+    nodes.forEach((n, i) => { const lit = onC.includes(n) || onC.includes(chain.indexOf(n)); c += (i ? '<span class="a">→</span>' : '') + `<span class="c ${lit ? 'on' : ''}">${n}</span>`; });
+    el.querySelector('#chain').innerHTML = c;
+    const rows = [
+      ['申购 1,000', '用户-现货可用 1,000', '用户-理财持仓 1,000', '内部划转 · 总负债不变'],
+      ['计息 0.137', '平台-理财利息支出 0.137', '用户-理财持仓 0.137', '1,000 × 5% ÷ 365 · 示例'],
+      ['赎回 400', '用户-理财持仓 400', '用户-现货可用 400', '行锁或原子扣减防竞态'],
+    ];
+    let b = '';
+    if (st <= 2) {
+      b = `<table class="t" style="font-size:29px"><tr><th>动作</th><th>借</th><th>贷</th><th>说明</th></tr>` + rows.map((r, i) => `<tr class="${i === st ? 'cur' : ''}" style="opacity:${i <= st ? 1 : .25}"><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td class="muted">${r[3]}</td></tr>`).join('') + `</table>`;
+      if (st === 1) b += `<div class="panel gold calc" style="margin-top:24px">收益 = 份额 × APR ÷ 365 · 每日固定时点 · 示例 UTC 00:00</div>`;
+      if (st === 0) b += `<div class="panel" style="margin-top:24px">同步调用 · 用户几百毫秒内看到结果 · 幂等键 idemKey</div>`;
+      if (st === 2) b += `<div class="panel sell" style="margin-top:24px">检查额度 → 记账 之间有竞态</div>`;
+    } else if (st === 3) {
+      b = `<div class="grid3"><div class="panel gold"><h3>① 快照</h3>快照之后的申购<br>下个周期才计息</div><div class="panel gold"><h3>② 幂等键</h3><span class="mono" style="font-size:26px">interest:{userId}:<br>{productId}:{date}</span><br>重跑不重复发息</div><div class="panel gold"><h3>③ 先核对</h3>利息总额 = 支出科目<br>相等才提交批次</div></div>`;
+    } else {
+      let ticks = '';
+      for (let i = 0; i < 24; i++) ticks += `<i style="display:inline-block;width:38px;height:56px;margin:3px;border-radius:6px;background:rgba(240,185,11,${.2 + i / 40})"></i>`;
+      b = `<div class="panel"><div class="muted" style="font-size:26px">每分钟：只计算应计利息，在汇总表累加</div><div style="margin:10px 0">${ticks}</div><div style="font-size:30px">→ 按日或赎回时 <b class="hl">记一笔账</b></div></div><div class="panel info" style="margin-top:20px">第 05 章热点账户问题的一种解法 · 业界通用做法</div>`;
+    }
+    el.querySelector('#ledger-box').innerHTML = b;
+  }
+
+  // Scene 7
+  function runStep(el, st) {
+    const svg = el.querySelector('#run');
+    el.querySelector('#run-h').textContent = st <= 2 ? '活期负债随时可取，资产却有期限' : st === 3 ? '2022 Celsius：期限错配没有上限' : '批处理重跑：用冲回分录修复';
+    let h = '';
+    if (st <= 2) {
+      // pool bar
+      h += T(40, 40, '理财资金池 · 示例', { size: 28, fill: C.t2 });
+      const x0 = 40, w = 1000;
+      h += `<rect x="${x0}" y="60" width="${w * .6}" height="90" fill="${C.info}" opacity=".7"/>` + T(x0 + 300, 118, '出借', { anchor: 'middle', size: 32, bold: true, plain: true });
+      h += `<rect x="${x0 + w * .6}" y="60" width="${w * .25}" height="90" fill="${C.buy}" opacity=".7"/>` + T(x0 + w * .725, 118, '质押', { anchor: 'middle', size: 32, bold: true, plain: true });
+      const bufLeft = st === 2 ? 0 : 1;
+      h += `<rect x="${x0 + w * .85}" y="60" width="${w * .15}" height="90" fill="${C.warn}" opacity="${bufLeft ? .85 : .25}"/>` + T(x0 + w * .925, 118, '缓冲', { anchor: 'middle', size: 32, bold: true, plain: true });
+      h += T(x0 + w * .925, 186, '10%–20%', { anchor: 'middle', size: 26, fill: C.warn, mono: true });
+      h += T(x0 + w * .3, 186, '有期限：收回需要时间', { anchor: 'middle', size: 26, fill: C.t2 });
+      if (st === 0) {
+        [['期限错配', '负债随时可取 · 资产有期限'], ['借款人违约', '强平 · 保险基金兜底'], ['挤兑', '大量用户同时赎回']].forEach(([a, b], i) => h += BOX(40 + i * 520, 280, 480, 140, a, b, true, i === 2 ? 'sell' : 'warn'));
+      } else {
+        const n = st === 1 ? 3 : 12;
+        for (let i = 0; i < n; i++) { const ok = st === 1 || i < 4; h += R(1120 + (i % 4) * 120, 230 + Math.floor(i / 4) * 80, 100, 60, { fill: ok ? soft.buy : soft.sell, stroke: ok ? C.buy : C.sell, rx: 8 }) + T(1170 + (i % 4) * 120, 270 + Math.floor(i / 4) * 80, ok ? '赎回' : '排队', { anchor: 'middle', size: 24, plain: true }); }
+        h += T(1340, 210, st === 1 ? '日常赎回' : '赎回突然放大', { anchor: 'middle', size: 30, bold: true, fill: st === 1 ? C.buy : C.sell });
+        h += ARW(1120, 260, x0 + w * .95, 155, st === 1 ? C.buy : C.sell, 4);
+        if (st === 1) h += R(40, 300, 1000, 120, { fill: soft.buy, stroke: C.buy }) + T(540, 372, '缓冲足够应付日常赎回', { anchor: 'middle', size: 36, bold: true, plain: true });
+        if (st === 2) {
+          const steps = [['单日赎回额度', '超出部分排队，次日恢复'], ['借款利率陡升', '逼借款人还款'], ['平台自有资金', '最后一道防线']];
+          steps.forEach(([a, b], i) => h += BOX(40 + i * 340, 300, 310, 130, a, b, true, i === 2 ? 'sell' : 'gold') + (i < 2 ? ARW(350 + i * 340, 365, 380 + i * 340, 365, C.gold, 4) : ''));
+        }
+      }
+    } else if (st === 3) {
+      const N = [['存款投入', '高风险借贷 · DeFi'], ['资产价格下跌', ''], ['用户集中赎回', ''], ['暂停全部提款', '随后破产']];
+      N.forEach(([a, b], i) => { h += BOX(20 + i * 410, 80, 370, 130, a, b, true, i >= 2 ? 'sell' : 'warn'); if (i < 3) h += ARW(390 + i * 410, 145, 430 + i * 410, 145, C.sell, 5); });
+      h += R(20, 300, 1600, 200, { fill: C.panel2 });
+      h += T(60, 370, '理财资产 = 用户对平台的债权', { size: 36, bold: true, plain: true });
+      h += T(60, 440, '平台破产：与其他债权人一起排队受偿 · Celsius、BlockFi · 公开新闻与法院文件', { size: 30, fill: C.t2, plain: true });
+    } else {
+      const row = (y, t, a, b, col, op = 1) => R(40, y, 1560, 90, { fill: col === 'sell' ? soft.sell : col === 'buy' ? soft.buy : C.panel, stroke: col ? C[col] : C.line }) + T(70, y + 57, t, { size: 30, bold: true, plain: true }) + T(640, y + 57, a, { size: 30, plain: true, fill: C.t2 }) + T(1120, y + 57, b, { size: 30, plain: true, fill: C.t2 });
+      h += T(70, 40, '分录', { size: 26, fill: C.t2 }) + T(640, 40, '借', { size: 26, fill: C.t2 }) + T(1120, 40, '贷', { size: 26, fill: C.t2 });
+      h += row(60, '计息 · 第一次', '利息支出 0.137', '理财持仓 0.137', '');
+      h += row(170, '计息 · 重跑，无幂等键', '利息支出 0.137', '理财持仓 0.137', 'sell');
+      h += row(280, '冲回分录', '理财持仓 0.137', '利息支出 0.137', 'buy');
+      h += T(820, 450, '不修改历史流水 · 用反向分录抵消 · 第 05 章', { anchor: 'middle', size: 32, bold: true, fill: C.gold });
+      h += T(820, 510, '幂等键 interest:{userId}:{productId}:{date} 从源头防止', { anchor: 'middle', size: 28, fill: C.t2 });
+    }
+    svgEl(svg, h);
+  }
+
+  // Scene 8
+  function rateStep(el, st) {
+    const svg = el.querySelector('#rate');
+    let h = '';
+    if (st === 0) {
+      [['ETH', 'WBETH', 'Wrapped Beacon ETH'], ['SOL', 'BNSOL', 'Binance Staked SOL']].forEach(([a, b, c], i) => {
+        const y = 40 + i * 190;
+        h += BOX(40, y, 260, 130, a, '用户投入', true, 'info') + ARW(300, y + 65, 460, y + 65, C.gold, 5) + T(380, y + 50, '质押', { anchor: 'middle', size: 26, fill: C.gold });
+        h += BOX(460, y, 400, 130, b, c, true, 'gold');
+      });
+      h += R(960, 40, 640, 320, { fill: C.panel2 });
+      h += T(1000, 110, '流动性质押代币 LST', { size: 34, bold: true, plain: true });
+      h += T(1000, 170, '= 质押中的币 + 累计奖励', { size: 30, plain: true });
+      h += T(1000, 230, '可交易 · 可转账 · 可做抵押', { size: 30, fill: C.t2, plain: true });
+      h += T(1000, 300, '罚没：验证者违规被扣本金', { size: 28, fill: C.sell, plain: true });
+      h += T(40, 480, '收益不靠数量增加，而靠汇率增长', { size: 36, bold: true, fill: C.gold });
+      svgEl(svg, h); return;
+    }
+    const X = d => 140 + d / 365 * 1000;
+    const rate = d => 1.05 * (1 + 0.03 * 0.95 * d / 365);
+    const dEnd = st >= 3 ? 365 : 0;
+    const Yr = r => 380 - (r - 1.045) / 0.04 * 330;
+    h += L(140, 400, 1160, 400, C.t2, { w: 3 }) + L(140, 40, 140, 400, C.t2, { w: 3 });
+    [0, 90, 180, 270, 365].forEach(d => h += T(X(d), 590, d + ' 天', { anchor: 'middle', size: 24, fill: C.t2 }));
+    [1.05, 1.06, 1.07, 1.08].forEach(r => h += T(128, Yr(r) + 8, r.toFixed(2), { anchor: 'end', size: 24, fill: C.t2, mono: true }) + L(140, Yr(r), 1160, Yr(r), '#22262c', { w: 2 }));
+    h += T(150, 30, 'WBETH:ETH 汇率 · 示例', { size: 26, fill: C.gold });
+    // quantity lane
+    h += R(140, 440, 1020, 110, { fill: C.panel, rx: 10 });
+    h += T(160, 432, '持有数量', { size: 26, fill: C.info });
+    if (st >= 2) {
+      for (let d = 0; d <= dEnd; d += 45) h += `<rect x="${X(d) - 22}" y="460" width="44" height="70" rx="6" fill="${C.info}" opacity=".75"/>` + T(X(d), 506, '10', { anchor: 'middle', size: 26, bold: true, plain: true, mono: true });
+      h += T(1150, 432, '数量恒为 10 WBETH', { size: 30, bold: true, fill: C.info, anchor: 'end' });
+    } else h += T(650, 506, '质押后才持有 WBETH', { anchor: 'middle', size: 28, fill: C.t2, plain: true });
+    if (st >= 1) {
+      const pts = Array.from({ length: 21 }, (_, i) => i * (st >= 3 ? 365 : 120) / 20).map(d => `${X(d)},${Yr(rate(d))}`).join(' ');
+      h += `<polyline points="${pts}" fill="none" stroke="${C.gold}" stroke-width="7"/>`;
+      h += `<circle cx="${X(0)}" cy="${Yr(1.05)}" r="10" fill="${C.gold}"/>` + T(X(0) + 16, Yr(1.05) + 40, '1.0500', { size: 28, fill: C.gold, mono: true, bold: true });
+      if (st >= 3) h += `<circle cx="${X(365)}" cy="${Yr(rate(365))}" r="10" fill="${C.gold}"/>` + T(X(365) - 14, Yr(rate(365)) - 18, '≈ 1.0799', { anchor: 'end', size: 30, fill: C.gold, mono: true, bold: true });
+    }
+    // right panel
+    const px = 1210;
+    const pnl = [
+      null,
+      ['1 WBETH =', '1 个质押中的 ETH', '+ 2023-04-27 起累计奖励', '币安公开说明'],
+      ['质押 10.5 ETH', '÷ 汇率 1.05', '= 10 WBETH', '示例'],
+      ['新汇率 = 旧汇率 ×', '(1 + 当日奖励率 × 95%)', '当日奖励率 3% ÷ 365', '服务费 5% · 示例'],
+      ['10 WBETH × 1.0799', '≈ 10.799 ETH', '数量不变 · 非变基', '合约和抵押中余额不变'],
+    ][st];
+    h += R(px, 40, 410, 420, { fill: st === 4 ? soft.gold : C.panel, stroke: st === 4 ? C.gold : C.line });
+    pnl.forEach((t, i) => h += T(px + 24, 110 + i * 90, t, { size: i === 3 ? 24 : 28, bold: i === 2, fill: i === 3 ? C.t2 : i === 2 ? C.gold : C.text, plain: true, mono: i < 3 && st !== 1 }));
+    svgEl(svg, h);
+  }
+
+  // Scene 9
+  function queueStep(el, st) {
+    const svg = el.querySelector('#queue');
+    el.querySelector('#q-h').textContent = st <= 1 ? '质押：32 ETH 一批，奖励由网络支付' : '赎回：排队，或者在市场卖出';
+    let h = '';
+    if (st <= 1) {
+      h += BOX(20, 40, 260, 110, '用户 ETH', '', true, 'info') + ARW(280, 95, 350, 95, C.gold, 4);
+      h += BOX(350, 40, 330, 110, 'ledger-service', '扣 ETH · 发 WBETH', st === 0, 'gold') + ARW(680, 95, 750, 95, C.gold, 4);
+      h += BOX(750, 40, 330, 110, 'custody-adapter', '汇总 · 签名', st === 0, 'gold') + ARW(1080, 95, 1150, 95, C.gold, 4);
+      h += BOX(1150, 40, 460, 110, '以太坊验证者', '按 32 ETH 一批存入', st === 0, 'buy');
+      for (let i = 0; i < 12; i++) h += R(1170 + (i % 6) * 72, 180 + Math.floor(i / 6) * 60, 60, 46, { rx: 6, fill: i < 7 ? soft.buy : C.panel, stroke: i < 7 ? C.buy : C.line });
+      h += T(1380, 330, '零散质押 → 凑满 32 ETH', { anchor: 'middle', size: 26, fill: C.t2 });
+      if (st === 1) {
+        h += BOX(1150, 380, 460, 110, '质押奖励池', '以太坊网络支付', true, 'buy') + ARW(1380, 340, 1380, 380, C.buy, 4);
+        h += BOX(620, 380, 400, 110, '汇率更新任务', '95% → 每日上调汇率', true, 'gold') + ARW(1150, 435, 1020, 435, C.gold, 5);
+        h += BOX(120, 380, 380, 110, '平台收入', '5% 服务费', true, 'sell') + ARW(620, 470, 500, 470, C.sell, 4);
+        h += R(120, 520, 1490, 70, { fill: soft.warn, stroke: C.warn }) + T(865, 566, '汇率更新是单点：发错影响全部持有人 → 双人复核 · 业界通用做法', { anchor: 'middle', size: 28, plain: true });
+      } else {
+        h += T(40, 260, '账本先记账，链上批量执行', { size: 34, bold: true, fill: C.gold });
+        h += T(40, 320, '用户的零散质押由平台汇总', { size: 30, fill: C.t2 });
+      }
+    } else {
+      const S = [[40, 60, 'Staking', '质押中'], [340, 60, 'Holding', '汇率每日上调'], [700, 60, 'Unstaking', '等待链上退出'], [1100, 60, 'Settled', 'ETH 到账'], [700, 330, 'Sold', '现货市场卖出']];
+      const act = st === 2 ? [2, 3] : [4];
+      S.forEach(([x, y, t, s], i) => h += BOX(x, y, i === 2 ? 340 : 260, 120, t, s, i === 1 || act.includes(i), i === 4 ? 'sell' : i === 3 ? 'buy' : 'gold'));
+      h += ARW(300, 120, 340, 120, C.t2, 4) + ARW(600, 120, 700, 120, st === 2 ? C.gold : C.dim, 5) + ARW(1040, 120, 1100, 120, st === 2 ? C.gold : C.dim, 5);
+      h += `<path d="M470 180 V 390 H 700" fill="none" stroke="${st === 3 ? C.sell : C.dim}" stroke-width="5"/><polygon points="700,390 680,378 680,402" fill="${st === 3 ? C.sell : C.dim}"/>`;
+      if (st === 2) {
+        h += T(700, 230, '退出队列 · 数天到数周', { size: 28, fill: C.gold });
+        for (let i = 0; i < 9; i++) h += R(700 + i * 64, 250, 54, 54, { rx: 6, fill: i === 8 ? soft.gold : C.panel2, stroke: i === 8 ? C.gold : C.line });
+        h += T(1250, 287, '← 你的 10 WBETH', { size: 26, fill: C.gold });
+        h += R(1100, 330, 500, 220, { fill: C.panel2 });
+        h += T(1130, 380, '① 冻结 10 WBETH', { size: 28, plain: true }) + T(1130, 430, '② 提交验证者退出', { size: 28, plain: true }) + T(1130, 480, '③ 完成后扣减 WBETH', { size: 28, plain: true }) + T(1130, 530, '④ 按赎回时汇率记入 ETH', { size: 28, plain: true, fill: C.gold });
+      } else {
+        h += R(1100, 330, 500, 160, { fill: soft.sell, stroke: C.sell }) + T(1350, 395, '立即拿到钱', { anchor: 'middle', size: 32, bold: true, plain: true }) + T(1350, 450, '价格可能低于汇率', { anchor: 'middle', size: 30, fill: C.sell, plain: true });
+        h += ARW(1040, 390, 1100, 410, C.sell, 4);
+      }
+    }
+    svgEl(svg, h);
+  }
+
+  // Scene 11
+  function loopStep(el, st) {
+    const svg = el.querySelector('#loop');
+    let h = '';
+    if (st === 0) {
+      h += R(40, 40, 1560, 160, { fill: soft.sell, stroke: C.sell });
+      h += T(80, 110, '2025-10-10 · UTC 21:36–22:16', { size: 40, bold: true, plain: true, mono: true });
+      h += T(80, 165, '币安 USDe、WBETH、BNSOL 出现价格偏离 · 公开报道', { size: 32, plain: true });
+      const xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], p = [100, 99, 98, 96, 90, 72, 60, 66, 80, 90, 95, 97, 98];
+      h += `<polyline points="${xs.map(i => `${160 + i * 110},${300 + (100 - p[i]) * 5}`).join(' ')}" fill="none" stroke="${C.sell}" stroke-width="6"/>`;
+      h += L(160, 300, 1480, 300, C.gold, { w: 4, dash: '10 8' }) + T(1490, 290, '汇率', { size: 28, fill: C.gold });
+      h += T(160, 560, 'WBETH 本所价格 · 走势为示意', { size: 26, fill: C.t2 });
+      svgEl(svg, h); return;
+    }
+    const N = [[620, 20, '全市场暴跌', '流动性枯竭'], [1120, 150, 'WBETH 订单簿', '被大额卖单砸穿'], [1120, 380, '估价引用本所现货价', 'WBETH 抵押价值骤降'], [620, 470, '保证金率跌破维持线', ''], [120, 380, '强平卖出 WBETH', ''], [120, 150, '汇率并没有变', '底层价值仍在']];
+    const act = [[], [0, 1], [2, 5], [3, 4], [5]][st];
+    N.forEach(([x, y, t, s], i) => h += BOX(x, y, 400, 110, t, s, act.includes(i), i === 5 ? 'gold' : 'sell'));
+    const e = (a, b, on) => ARW(a[0], a[1], b[0], b[1], on ? C.sell : C.dim, on ? 6 : 4);
+    h += e([1020, 75], [1220, 150], st >= 1) + e([1320, 260], [1320, 380], st >= 2) + e([1120, 470], [1020, 510], st >= 3) + e([620, 525], [420, 460], st >= 3) + `<path d="M520 380 C 700 330, 950 250, 1120 220" fill="none" stroke="${st >= 3 ? C.sell : C.dim}" stroke-width="${st >= 3 ? 6 : 4}" stroke-dasharray="12 8"/><polygon points="1120,220 1098,214 1104,234" fill="${st >= 3 ? C.sell : C.dim}"/>`;
+    if (st >= 3) h += T(820, 300, '循环：强平再压低价格', { anchor: 'middle', size: 30, bold: true, fill: C.sell });
+    if (st === 2) h += T(820, 300, '价格骤降，汇率不变', { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+    if (st === 4) {
+      h += R(560, 200, 520, 170, { fill: '#16181c', stroke: C.gold }) + T(820, 250, '改进：汇率为基准', { anchor: 'middle', size: 32, bold: true, plain: true, fill: C.gold }) + T(820, 300, '市场价为参考 · 多源价格', { anchor: 'middle', size: 28, plain: true }) + T(820, 345, '+ 折扣率 Haircut', { anchor: 'middle', size: 28, plain: true, fill: C.warn });
+    }
+    svgEl(svg, h);
+  }
+
+  // Scene 12
+  function dcaStep(el, st) {
+    const svg = el.querySelector('#dca');
+    el.querySelector('#dca-h').textContent = st <= 1 ? '定投不是收益产品，是定时下单工具' : st <= 3 ? '批量聚合：5,000 个计划，一笔大单' : '平台赚手续费 · 防整点拥堵';
+    let h = '';
+    if (st <= 1) {
+      const S = [[40, 'Active', '计划生效'], [380, 'Executing', '到点扣款买入'], [720, 'Skipped', '余额不足 · 不补买'], [1060, 'Paused', '用户暂停'], [1360, 'Ended', '用户终止']];
+      S.forEach(([x, t, s], i) => h += BOX(x, 40, i === 4 ? 240 : 290, 120, t, s, i <= 1, i === 2 ? 'warn' : 'gold'));
+      h += ARW(330, 100, 380, 100, C.gold, 4) + ARW(670, 100, 720, 100, C.t2, 4);
+      if (st === 0) {
+        h += R(40, 230, 1560, 260, { fill: C.panel2 });
+        h += T(80, 300, '选：币种 · 每期金额 · 周期', { size: 34, plain: true });
+        h += T(80, 360, '日 · 周 · 两周 · 月 → 到点扣款 → 买入 → 可转入活期', { size: 30, fill: C.t2, plain: true });
+        h += T(80, 440, '收益完全取决于买入资产的价格走势', { size: 34, bold: true, plain: true, fill: C.sell });
+      } else {
+        h += R(40, 230, 1560, 300, { fill: soft.info, stroke: C.info });
+        h += T(80, 290, '2025 年迁移到闪兑「定期买入」 · 公开报道', { size: 34, bold: true, plain: true });
+        h += T(80, 360, '原 Auto-Invest 计划 → 2025-03-31 下线', { size: 30, plain: true, mono: true });
+        h += T(80, 420, '指数定投计划 → 2025-11-27 退役', { size: 30, plain: true, mono: true });
+        h += T(80, 490, '按闪兑报价成交 · 不另收兑换手续费 · 以官网为准', { size: 30, fill: C.t2, plain: true });
+      }
+    } else if (st <= 3) {
+      for (let i = 0; i < 40; i++) { const x = 40 + (i % 8) * 56, y = 90 + Math.floor(i / 8) * 70; h += R(x, y, 44, 50, { rx: 6, fill: st === 3 ? soft.gold : soft.info, stroke: st === 3 ? C.gold : C.info }); }
+      h += T(40, 60, st === 2 ? '逐个冻结 USDT · 幂等键 planId:期号' : '按金额比例分配 BTC', { size: 28, fill: C.t2 });
+      h += T(260, 500, '5,000 个计划 · 示例', { anchor: 'middle', size: 30 });
+      h += ARW(520, 270, 680, 270, C.gold, 6);
+      h += BOX(690, 190, 420, 160, '聚合市价买单', '200 万 USDT · 示例', true, 'gold');
+      h += ARW(1110, 270, 1210, 270, C.gold, 6);
+      h += BOX(1210, 190, 400, 160, st === 3 ? '成交均价 100,050' : 'order-service', st === 3 ? '所有人同一均价' : '→ matching-engine', st === 3, 'buy');
+      h += T(820, 450, st === 2 ? '调度器触发 14:00 批次 · 示例' : '同一均价 → 公平 · 聚合大单自身有滑点，可拆单', { anchor: 'middle', size: 30, fill: st === 3 ? C.gold : C.t2 });
+    } else {
+      h += R(40, 40, 760, 260, { fill: soft.gold, stroke: C.gold });
+      h += T(80, 110, '平台收入 · 示例', { size: 28, fill: C.t2, plain: true });
+      h += T(80, 180, '100 × 0.1% × 52 期', { size: 38, plain: true, mono: true });
+      h += T(80, 250, '= 5.2 USDT / 年', { size: 44, bold: true, plain: true, mono: true, fill: C.gold });
+      h += T(40, 360, '整点拥堵 · 业界常见', { size: 30, fill: C.sell, bold: true });
+      for (let i = 0; i < 24; i++) { const hh = i === 14 ? 200 : 14 + (i % 3) * 6; h += `<rect x="${60 + i * 30}" y="${560 - hh}" width="22" height="${hh}" fill="${i === 14 ? C.sell : C.t2}" opacity="${i === 14 ? 1 : .5}"/>`; }
+      h += T(60 + 14 * 30 + 11, 348, '14:00', { anchor: 'middle', size: 24, fill: C.sell, mono: true });
+      h += R(880, 40, 720, 520, { fill: C.panel2 });
+      h += T(920, 120, '解决办法', { size: 34, bold: true, plain: true });
+      h += T(920, 200, '① 触发时间打散到一个窗口内', { size: 30, plain: true });
+      h += T(920, 270, '② 价格保护：偏离超过阈值', { size: 30, plain: true }) + T(960, 315, '暂停本批 · 防插针', { size: 30, plain: true, fill: C.t2 });
+      h += T(920, 400, '③ 分批执行降低滑点', { size: 30, plain: true });
+      h += T(920, 500, '用户成本 = 手续费 + 滑点', { size: 30, plain: true, fill: C.gold });
+    }
+    svgEl(svg, h);
+  }
+
+  // Scene 13
+  function vaultStep(el, st) {
+    const svg = el.querySelector('#vault');
+    let h = '';
+    h += BOX(40, 220, 300, 150, 'BNB Vault', 'Simple Earn BNB', true, 'gold');
+    const outs = [['活期利息', '借款人'], ['Launchpool', '项目方 · 见 P07'], ['HODLer 空投', '项目方']];
+    outs.forEach(([a, b], i) => { const on = st === 0 || (st >= 1 && i >= 1); h += BOX(520, 60 + i * 180, 340, 130, a, b, on, i === 0 ? 'info' : 'buy') + ARW(340, 295, 520, 125 + i * 180, on ? C.gold : C.dim, 4); });
+    if (st === 1) { h += T(190, 450, '每小时快照 · 示例', { anchor: 'middle', size: 28, fill: C.gold }); for (let i = 0; i < 8; i++) h += L(60 + i * 36, 480, 60 + i * 36, 540, C.gold, { w: 4 }); }
+    if (st === 3) h += R(30, 20, 840, 560, { fill: 'rgba(13,14,16,.6)', stroke: 'none', sw: 0 });
+    svgEl(svg, h);
+    const r = [
+      `<div class="panel"><h3>2020 年 11 月上线</h3><span class="muted">公开报道</span></div><div class="panel gold">后来整合进 Simple Earn BNB<br>持有即可参与 Launchpool 与 HODLer 空投<br><span class="muted" style="font-size:26px">截至 2026 年公开资料 · 以官网为准</span></div>`,
+      `<div class="panel gold calc">用户份额<br>= 用户 BNB ÷ 全池 BNB</div><div class="panel">快照越密<br>临时存入、快照后取走的<br>套利空间越小</div>`,
+      `<div class="panel calc">100 万新币 × 0.01%<br>× 0.5 USDT</div><div class="panel gold calc">= <b>50 USDT</b></div><div class="panel sell">宣传 APR 只是估算<br>BNB 与新币价格都可能下跌</div>`,
+      `<div class="panel sell"><h3>2023 · 美国 SEC 起诉 · 公开法律文件</h3>BNB Vault 与 Simple Earn<br>被列为未注册证券发行</div><div class="panel">后果：平台按地区下线产品</div>`,
+    ][st];
+    el.querySelector('#vault-r').innerHTML = r;
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

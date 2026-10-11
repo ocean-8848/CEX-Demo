@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>风控流水线实验</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); margin-top: 16px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .ctl { border-bottom: 1px dashed var(--border); padding: 6px 0 12px; }
+  .ctl:last-child { border-bottom: 0; }
+  .ctl h3 { margin: 6px 0 4px; font-size: 15px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 4px; }
+  .seg button { padding: 4px 10px; font-size: 13px; flex: 1 1 auto; }
+  .seg button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); font-weight: 600; }
+  .switch { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text); margin: 4px 0; }
+  .fb { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 6px 8px; align-items: center; font-size: 13px; }
+  .fb select { padding: 4px 6px; font-size: 13px; }
+  .fb.off { opacity: .5; }
+  .range-row output { min-width: 64px; font-size: 13px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; }
+  .stats .stat .v { font-size: 20px; }
+  .stat.bad .v { color: var(--sell); } .stat.warnc .v { color: var(--warn); } .stat.good .v { color: var(--buy); }
+  .pipe .svg-wrap { overflow-x: auto; }
+  .pipe svg { width: 100%; min-width: 560px; height: auto; display: block; }
+  .range-row button, #btRun { white-space: nowrap; flex: 0 0 auto; }
+  .pipe .n rect { fill: var(--surface-2); stroke: var(--border); stroke-width: 1.5; }
+  .pipe .n.alert rect { stroke: var(--sell); stroke-width: 2.5; }
+  .pipe .n .t1 { font-size: 14px; font-weight: 650; }
+  .pipe .n .t2 { font-size: 12px; fill: var(--text-2); }
+  .pipe .n .t3 { font-size: 12px; font-family: var(--mono); }
+  .pipe .edge { stroke: var(--border); stroke-width: 2; fill: none; }
+  .pipe .o rect { stroke-width: 1.5; }
+  .pipe .o.allow rect { fill: var(--buy-soft); stroke: var(--buy); }
+  .pipe .o.challenge rect { fill: var(--info-soft); stroke: var(--info); }
+  .pipe .o.review rect { fill: var(--warn-soft); stroke: var(--warn); }
+  .pipe .o.reject rect { fill: var(--sell-soft); stroke: var(--sell); }
+  .pipe .o text { font-size: 13px; font-weight: 600; }
+  .pipe .dot.allow { fill: var(--buy); } .pipe .dot.challenge { fill: var(--info); }
+  .pipe .dot.review { fill: var(--warn); } .pipe .dot.reject { fill: var(--sell); }
+  .lat-row { display: grid; grid-template-columns: 70px minmax(0, 1fr) 120px; gap: 8px; align-items: center; font-size: 13px; margin: 6px 0; }
+  .lat-row .mono { text-align: right; font-size: 12px; }
+  .lat-bar { position: relative; height: 14px; background: var(--surface-2); border-radius: 6px; overflow: hidden; }
+  .lat-bar .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--buy); border-radius: 6px; transition: width .2s; }
+  .lat-bar .fill.over { background: var(--sell); }
+  .lat-bar .budget { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text); }
+  @media (max-width: 480px) { .lat-row { grid-template-columns: 56px minmax(0, 1fr); } .lat-row .mono { grid-column: 1 / -1; text-align: left; } }
+  .diff-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 8px 0; }
+  td .why { color: var(--text-2); font-size: 12px; }
+  .try { margin: 6px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../backstage/B08-risk-platform.md">配套章节：B08 实时风控平台工程</a>
+  </header>
+  <h1>风控决策流水线实验</h1>
+  <p class="lead">一串带种子的事件（登录、提币、下单）依次流过四个阶段：特征 → 规则 → 模型 → 决策。每条事件都带"真实身份"（好人或坏人），所以你能直接数出误杀和漏放。全部数值都是示例，不代表任何交易所的真实参数。</p>
+
+  <div class="card small">
+    <strong>怎么玩</strong>
+    <ol style="margin:6px 0 0; padding-left:20px;">
+      <li>点"▶ 播放"或"+200 条"。事件进入流水线，右侧计数实时更新。</li>
+      <li>左侧改任何控件，窗口内全部事件按新配置重新决策。同一种子总是得到同一批事件。</li>
+      <li>新规则有四种模式：关闭、影子、金丝雀、全量。影子只记录"本来会拦"，不执行。</li>
+      <li>打开"特征库故障"，再为每类动作选择降级动作，观察误杀、漏放和审核队列。</li>
+      <li>拖动各阶段的延迟预算。p99 超过预算的事件也会走降级动作。</li>
+      <li>点"回测"，用最近 N 条事件的特征快照重放新规则，看它会改变哪些决策。</li>
+    </ol>
+  </div>
+
+  <div class="grid cols-3" style="margin-top:12px">
+    <div class="callout try small"><strong>试一试 1：</strong>把新规则设为"影子"，播放 500 条。记下"影子会拦"中的好人数。再点"回测"，两者一样吗？打开特征库故障后再比一次。</div>
+    <div class="callout try warn small"><strong>试一试 2：</strong>打开特征库故障。把提币降级从"暂扣"改成"放行"，看漏放；把下单降级改成"全部拒绝"，看误杀。</div>
+    <div class="callout try info small"><strong>试一试 3：</strong>点"注入行情剧变"。审核队列会怎样？分别试"调高模型阈值"和"增加审核产能"，比较漏放和队列。</div>
+  </div>
+
+  <div class="layout">
+    <!-- ============ Controls ============ -->
+    <aside class="card">
+      <div class="ctl">
+        <h3>事件流</h3>
+        <label for="seed">随机种子</label>
+        <div class="range-row"><input type="number" id="seed" value="42" min="1" step="1"><button id="reset">重置</button></div>
+        <div class="btn-row">
+          <button class="primary" id="play">▶ 播放</button>
+          <button id="add200">+200 条</button>
+          <button id="panic">注入行情剧变</button>
+        </div>
+        <label for="speed">播放速度（条/秒）</label>
+        <select id="speed"><option value="5">5</option><option value="20" selected>20</option><option value="60">60</option></select>
+      </div>
+
+      <div class="ctl">
+        <h3>新规则：新地址 + 大额提币 → 拒绝</h3>
+        <div class="seg" id="ruleMode">
+          <button data-m="off">关闭</button><button data-m="shadow" class="on">影子</button><button data-m="canary">金丝雀</button><button data-m="full">全量</button>
+        </div>
+        <label for="ruleAmt">金额阈值（USDT）</label>
+        <div class="range-row"><input type="range" id="ruleAmt" min="500" max="20000" step="500" value="2000"><output id="ruleAmtO"></output></div>
+        <label for="canary">金丝雀比例（按用户 ID 哈希）</label>
+        <div class="range-row"><input type="range" id="canary" min="1" max="100" step="1" value="5"><output id="canaryO"></output></div>
+      </div>
+
+      <div class="ctl">
+        <h3>模型阈值</h3>
+        <p class="small muted" style="margin:0">分数 ≥ 阈值：提币转审核，登录要求挑战，下单生成异步告警。</p>
+        <div class="range-row"><input type="range" id="thr" min="0.30" max="0.95" step="0.01" value="0.70"><output id="thrO"></output></div>
+      </div>
+
+      <div class="ctl">
+        <h3>特征库故障</h3>
+        <label class="switch"><input type="checkbox" id="outage"> 在线特征库不可用</label>
+        <p class="small muted" style="margin:2px 0 6px">降级动作也用于"某阶段超出延迟预算"。</p>
+        <div class="fb" id="fbBox">
+          <span>登录</span>
+          <select id="fbLogin"><option value="allow">放行（Fail-Open）</option><option value="challenge" selected>挑战升级</option><option value="reject">拒绝（Fail-Closed）</option></select>
+          <span>提币</span>
+          <select id="fbWd"><option value="allow">放行（Fail-Open）</option><option value="review" selected>暂扣转审核（Fail-Closed）</option><option value="reject">拒绝</option></select>
+          <span>下单</span>
+          <select id="fbOrder"><option value="local" selected>只跑本地检查</option><option value="reject">全部拒绝（Fail-Closed）</option></select>
+        </div>
+      </div>
+
+      <div class="ctl">
+        <h3>延迟预算（登录、提币路径）</h3>
+        <label for="bFeat">特征读取</label>
+        <div class="range-row"><input type="range" id="bFeat" min="2" max="60" step="1" value="25"><output id="bFeatO"></output></div>
+        <label for="bRule">规则引擎</label>
+        <div class="range-row"><input type="range" id="bRule" min="1" max="10" step="0.5" value="4"><output id="bRuleO"></output></div>
+        <label for="bModel">模型打分</label>
+        <div class="range-row"><input type="range" id="bModel" min="5" max="80" step="1" value="30"><output id="bModelO"></output></div>
+      </div>
+
+      <div class="ctl">
+        <h3>审核产能</h3>
+        <p class="small muted" style="margin:0">每 100 条事件，审核员能处理多少个案件。</p>
+        <div class="range-row"><input type="range" id="cap" min="1" max="20" step="1" value="5"><output id="capO"></output></div>
+      </div>
+    </aside>
+
+    <!-- ============ Outputs ============ -->
+    <main style="min-width:0">
+      <div class="card pipe">
+        <h3>流水线</h3>
+        <div class="svg-wrap"><svg id="pipe" viewBox="0 0 800 250" role="img" aria-label="风控决策流水线：事件、特征、规则、模型、决策和四种结果">
+          <g id="edges"></g>
+          <g id="nodes"></g>
+          <g id="dots"></g>
+        </svg></div>
+        <p class="small muted" style="margin:4px 0 0">窄屏可左右滑动此图。圆点颜色表示最终动作。红框表示该阶段有降级。下单只跑本地检查（p99 约 0.3 ms，预算 1 ms，示例），模型对下单是异步运行。</p>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>结果（对照真实身份）</h3>
+        <div class="stats">
+          <div class="stat"><span class="k">窗口事件</span><span class="v" id="sN">0</span></div>
+          <div class="stat bad"><span class="k">误杀（好人被拒）</span><span class="v" id="sFP">0</span></div>
+          <div class="stat warnc"><span class="k">打扰（好人被挑战或暂扣）</span><span class="v" id="sFr">0</span></div>
+          <div class="stat bad"><span class="k">漏放（坏人通过）</span><span class="v" id="sFN">0</span></div>
+          <div class="stat good"><span class="k">拦截（坏人被拦）</span><span class="v" id="sTP">0</span></div>
+          <div class="stat"><span class="k">精确率 / 召回率</span><span class="v" id="sPR">–</span></div>
+          <div class="stat warnc"><span class="k">审核队列（当前 / 峰值）</span><span class="v" id="sQ">0</span></div>
+          <div class="stat"><span class="k">降级决策</span><span class="v" id="sFB">0</span></div>
+          <div class="stat"><span class="k">影子会拦（好 / 坏）</span><span class="v" id="sSh">0</span></div>
+        </div>
+        <div class="table-wrap" style="margin-top:12px">
+          <table>
+            <thead><tr><th>动作类型</th><th class="num">放行</th><th class="num">挑战</th><th class="num">审核 / 告警</th><th class="num">拒绝</th><th class="num">坏人数</th></tr></thead>
+            <tbody id="dTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>延迟：各阶段 p99 vs 预算</h3>
+        <div id="latBox"></div>
+        <p class="small muted" style="margin:6px 0 0">绿色条是 p99，竖线是预算。条变红表示 p99 超预算：超过预算的那部分事件走降级动作。行情剧变时，系统负载升高，特征读取变慢（示例）。</p>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>回测：用特征快照重放新规则</h3>
+        <div class="range-row">
+          <label for="btN" style="margin:0; white-space:nowrap">最近 N 条</label>
+          <select id="btN"><option value="200">200</option><option value="500" selected>500</option><option value="1000">1000</option><option value="3000">全部</option></select>
+          <button class="primary" id="btRun">回测</button>
+        </div>
+        <div id="btOut" class="small muted" style="margin-top:8px">点"回测"。系统比较"新规则关闭"和"新规则全量"两种配置下的决策差异。回测读取决策日志里的特征快照，所以不受特征库故障和超时影响。</div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>最近事件</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th class="num">#</th><th>类型</th><th>真实</th><th class="num">分数</th><th>决策与原因</th></tr></thead>
+            <tbody id="evBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="note">本页是教学模拟。事件、特征、模型和延迟都由带种子的伪随机数生成，并非真实数据。架构对应 <a href="../backstage/B08-risk-platform.md">B08 实时风控平台工程</a>，规则与阈值的基础见 <a href="risk-rules-lab.html">风控规则实验室</a>。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var MAXN = 3000;
+
+  /* ---------- seeded PRNG ---------- */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  var rng = mulberry32(42);
+  function gauss() { var u = rng() || 1e-9, v = rng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+  function logn(median, sigma) { return median * Math.exp(sigma * gauss()); }
+  function lat(median, sigma, spikeP, spikeX) { var x = logn(median, sigma); if (rng() < spikeP) x *= spikeX; return x; }
+
+  /* ---------- state ---------- */
+  var events = [], seq = 0;
+  var cfg = {
+    mode: 'shadow', amt: 2000, canary: 5, thr: 0.70, outage: false,
+    fb: { login: 'challenge', withdrawal: 'review', order: 'local' },
+    budget: { feat: 25, rule: 4, model: 30 }, cap: 5
+  };
+
+  /* ---------- event generation ---------- */
+  function makeEvent(panic) {
+    var r = rng();
+    var type = panic ? (r < 0.25 ? 'order' : r < 0.45 ? 'login' : 'withdrawal') : (r < 0.4 ? 'order' : r < 0.7 ? 'login' : 'withdrawal');
+    var bad = rng() < (panic ? 0.04 : 0.07);
+    var kind = 'normal';
+    if (bad) kind = type === 'order' ? 'apikey' : (rng() < 0.6 ? 'ato' : 'launder');
+    var e = { id: ++seq, type: type, bad: bad, kind: kind, panic: !!panic };
+    e.user = bad ? 1000 + Math.floor(rng() * 80) : 1 + Math.floor(rng() * 600);
+    e.bucket = (Math.imul(e.user, 2654435761) >>> 0) % 100;
+    var ato = kind === 'ato', lau = kind === 'launder';
+    e.newDevice = rng() < (ato ? 0.75 : lau ? 0.35 : panic ? 0.16 : 0.07);
+    e.ipRisk = bad ? 0.25 + 0.75 * rng() : Math.pow(rng(), 3) * 0.6;
+    e.addrNew = type === 'withdrawal' && rng() < (bad ? 0.8 : panic ? 0.3 : 0.12);
+    e.amount = type === 'withdrawal' ? Math.round(bad ? logn(5000, 0.8) : logn(panic ? 4000 : 700, 0.9)) : Math.round(logn(300, 1));
+    e.velocity = Math.floor(bad ? 2 + rng() * 7 : (panic ? 5 + rng() * 5 : rng() * 2.6));
+    e.graph = lau || (bad && rng() < 0.4) ? 3 + Math.floor(rng() * 25) : 1 + Math.floor(rng() * rng() * 3);
+    e.pwdRecent = rng() < (ato ? 0.4 : 0.02);
+    e.blacklist = lau && rng() < 0.25;
+    e.priceDev = type === 'order' ? (bad && rng() < 0.3 ? 0.10 + rng() * 0.2 : rng() * 0.04) : 0;
+    e.beatsChallenge = rng() < 0.3;
+    e.noise = gauss();
+    var load = panic ? 1.7 : 1;
+    e.lat = { feat: lat(6 * load, 0.45, 0.006, 4), rule: lat(0.8, 0.4, 0.005, 5), model: lat(9, 0.35, 0.005, 4) };
+    // model score: logistic over features + noise (example weights)
+    var z = -4.2 + 2.0 * e.newDevice + 3.0 * e.ipRisk + 1.1 * e.addrNew + 0.45 * Math.min(e.velocity, 9) +
+      0.10 * Math.min(e.graph, 20) + 1.4 * e.pwdRecent + 0.5 * Math.max(0, Math.log10(Math.max(e.amount, 1) / 1000)) + 0.7 * e.noise;
+    e.score = 1 / (1 + Math.exp(-z));
+    return e;
+  }
+
+  /* ---------- decision pipeline ---------- */
+  var SEV = { allow: 0, challenge: 1, review: 2, reject: 3 };
+  function worst(a, b) { return SEV[a] >= SEV[b] ? a : b; }
+  function newRuleHit(e, c) { return e.type === 'withdrawal' && e.addrNew && e.amount >= c.amt; }
+
+  // opts.offline: replay from feature snapshot (no outage, no timeouts)
+  function decide(e, c, opts) {
+    var off = opts && opts.offline;
+    var out = { d: 'allow', why: [], fell: false, shadow: false, stage: '', async: false };
+    if (e.type === 'order') {
+      if (e.priceDev > 0.10) { out.d = 'reject'; out.why.push('价格偏离>10%'); return out; }
+      if (!off && c.outage) {
+        out.fell = true; out.stage = 'feat';
+        if (c.fb.order === 'reject') { out.d = 'reject'; out.why.push('降级：全部拒绝'); }
+        else out.why.push('降级：异步模型无特征');
+        return out;
+      }
+      if (e.score >= c.thr) { out.async = true; out.why.push('异步告警 ' + e.score.toFixed(2)); }
+      return out;
+    }
+    var fbAct = e.type === 'login' ? c.fb.login : c.fb.withdrawal;
+    function fallback(stage, why) { out.fell = true; out.stage = stage; out.d = worst(out.d, fbAct); out.why.push(why); return out; }
+    // 1. hard rules from local cache
+    if (e.blacklist) { out.d = 'reject'; out.why.push('黑名单地址'); return out; }
+    // 2. features
+    if (!off) {
+      if (c.outage) return fallback('feat', '降级：特征库不可用');
+      if (e.lat.feat > c.budget.feat) return fallback('feat', '降级：特征超时');
+      if (e.lat.rule > c.budget.rule) return fallback('rule', '降级：规则超时');
+    }
+    // 3. rules
+    if (e.type === 'withdrawal' && e.pwdRecent) { out.d = worst(out.d, 'reject'); out.why.push('改密 24h 冷却'); }
+    if (e.type === 'login' && e.velocity >= 6) { out.d = worst(out.d, 'challenge'); out.why.push('登录失败次数高'); }
+    if (newRuleHit(e, c)) {
+      var act = c.mode === 'full' || (c.mode === 'canary' && e.bucket < c.canary);
+      if (act) { out.d = worst(out.d, 'reject'); out.why.push('新规则命中'); }
+      else if (c.mode !== 'off') { out.shadow = true; out.why.push('影子：本来会拦'); }
+    }
+    // 4. model
+    if (!off && e.lat.model > c.budget.model) {
+      if (out.d === 'reject') return out;
+      return fallback('model', '降级：模型超时');
+    }
+    if (e.score >= c.thr) {
+      out.d = worst(out.d, e.type === 'withdrawal' ? 'review' : 'challenge');
+      out.why.push('模型 ' + e.score.toFixed(2));
+    }
+    return out;
+  }
+
+  function outcome(e, o) {
+    var blocked;
+    if (e.type === 'order') blocked = o.d === 'reject' || o.async;
+    else if (o.d === 'challenge') blocked = e.bad ? !e.beatsChallenge : false;
+    else blocked = o.d !== 'allow';
+    if (e.bad) return blocked ? 'tp' : 'fn';
+    if (o.d === 'reject') return 'fp';
+    if (o.d === 'challenge' || o.d === 'review') return 'fr';
+    return 'ok';
+  }
+
+  /* ---------- evaluate window ---------- */
+  var last = null;
+  function evaluate() {
+    var s = { n: events.length, fp: 0, fr: 0, fn: 0, tp: 0, fb: 0, shG: 0, shB: 0, q: 0, qMax: 0,
+      strongTP: 0, strongFP: 0, bad: 0,
+      by: { login: z4(), withdrawal: z4(), order: z4() },
+      node: { feat: 0, rule: 0, model: 0, fellFeat: 0, fellAny: 0 }, out: { allow: 0, challenge: 0, review: 0, reject: 0 } };
+    function z4() { return { allow: 0, challenge: 0, review: 0, reject: 0, bad: 0 }; }
+    var q = 0, capPer = cfg.cap / 100;
+    for (var i = 0; i < events.length; i++) {
+      var e = events[i], o = decide(e, cfg);
+      e.r = o; e.res = outcome(e, o);
+      if (e.res !== 'ok') s[e.res]++;
+      if (e.bad) s.bad++;
+      if (o.fell) { s.fb++; s.node.fellAny++; if (o.stage === 'feat') s.node.fellFeat++; }
+      if (o.shadow) { if (e.bad) s.shB++; else s.shG++; }
+      var dk = (e.type === 'order' && o.async && o.d === 'allow') ? 'review' : o.d;
+      s.by[e.type][dk]++; if (e.bad) s.by[e.type].bad++;
+      s.out[dk]++;
+      if (o.why.some(function (w) { return w.indexOf('改密') === 0 || w.indexOf('登录失败') === 0 || w.indexOf('新规则') === 0 || w.indexOf('价格') === 0 || w.indexOf('黑名单') === 0; })) s.node.rule++;
+      if (e.type !== 'order' && !o.fell && e.score >= cfg.thr) s.node.model++;
+      if (o.async) s.node.model++;
+      var strong = o.d === 'reject' || o.d === 'review' || o.async;
+      if (strong) { if (e.bad) s.strongTP++; else s.strongFP++; }
+      if (o.d === 'review' || o.async) q += 1;
+      q = Math.max(0, q - capPer);
+      if (q > s.qMax) s.qMax = q;
+    }
+    s.q = q;
+    last = s;
+    return s;
+  }
+
+  function p99(arr) {
+    if (!arr.length) return 0;
+    var a = arr.slice().sort(function (x, y) { return x - y; });
+    return a[Math.min(a.length - 1, Math.floor(a.length * 0.99))];
+  }
+
+  /* ---------- SVG pipeline ---------- */
+  var NODES = [
+    { id: 'src', x: 10, t: '事件源' }, { id: 'feat', x: 150, t: '特征' }, { id: 'rule', x: 290, t: '规则' },
+    { id: 'model', x: 430, t: '模型' }, { id: 'dec', x: 570, t: '决策编排' }
+  ];
+  var OUTS = [
+    { id: 'allow', y: 14, t: '放行' }, { id: 'challenge', y: 72, t: '挑战' },
+    { id: 'review', y: 130, t: '审核 / 告警' }, { id: 'reject', y: 188, t: '拒绝' }
+  ];
+  var nodeEls = {}, outEls = {};
+  function mk(tag, attrs, parent) {
+    var el = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) el.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(el);
+    return el;
+  }
+  function buildSvg() {
+    var eg = $('edges'), ng = $('nodes');
+    NODES.forEach(function (n, i) {
+      if (i > 0) mk('line', { 'class': 'edge', x1: NODES[i - 1].x + 110, y1: 125, x2: n.x, y2: 125 }, eg);
+      var g = mk('g', { 'class': 'n' }, ng);
+      mk('rect', { x: n.x, y: 90, width: 110, height: 70, rx: 10 }, g);
+      var t1 = mk('text', { 'class': 't1', x: n.x + 55, y: 112, 'text-anchor': 'middle' }, g); t1.textContent = n.t;
+      var t2 = mk('text', { 'class': 't2', x: n.x + 55, y: 131, 'text-anchor': 'middle' }, g);
+      var t3 = mk('text', { 'class': 't3', x: n.x + 55, y: 150, 'text-anchor': 'middle' }, g);
+      nodeEls[n.id] = { g: g, t2: t2, t3: t3 };
+    });
+    OUTS.forEach(function (o) {
+      mk('path', { 'class': 'edge', d: 'M680 125 C 690 125, 690 ' + (o.y + 22) + ', 700 ' + (o.y + 22) }, eg);
+      var g = mk('g', { 'class': 'o ' + o.id }, ng);
+      mk('rect', { x: 700, y: o.y, width: 92, height: 44, rx: 8 }, g);
+      var t = mk('text', { x: 746, y: o.y + 18, 'text-anchor': 'middle' }, g); t.textContent = o.t;
+      var c = mk('text', { 'class': 't3', x: 746, y: o.y + 36, 'text-anchor': 'middle' }, g);
+      c.setAttribute('style', 'font-family: var(--mono); font-size: 12px;');
+      outEls[o.id] = c;
+    });
+  }
+  function paintSvg(s) {
+    nodeEls.src.t2.textContent = '登录 / 提币 / 下单';
+    nodeEls.src.t3.textContent = s.n + ' 条';
+    nodeEls.feat.t2.textContent = cfg.outage ? '在线库故障' : '速度 / 图 / 设备';
+    nodeEls.feat.t3.textContent = '降级 ' + s.node.fellFeat;
+    nodeEls.feat.g.setAttribute('class', 'n' + (s.node.fellFeat ? ' alert' : ''));
+    nodeEls.rule.t2.textContent = ({ off: '新规则关闭', shadow: '新规则影子', canary: '金丝雀 ' + cfg.canary + '%', full: '新规则全量' })[cfg.mode];
+    nodeEls.rule.t3.textContent = '命中 ' + s.node.rule;
+    nodeEls.model.t2.textContent = '阈值 ' + cfg.thr.toFixed(2);
+    nodeEls.model.t3.textContent = '≥阈值 ' + s.node.model;
+    nodeEls.dec.t2.textContent = '最严动作优先';
+    nodeEls.dec.t3.textContent = '降级 ' + s.node.fellAny;
+    nodeEls.dec.g.setAttribute('class', 'n' + (s.node.fellAny - s.node.fellFeat > 0 ? ' alert' : ''));
+    OUTS.forEach(function (o) { outEls[o.id].textContent = s.out[o.id]; });
+  }
+
+  /* ---------- animated dots ---------- */
+  var dots = [];
+  function spawnDot(e) {
+    if (dots.length > 40) return;
+    var dk = (e.type === 'order' && e.r.async && e.r.d === 'allow') ? 'review' : e.r.d;
+    var oy = OUTS.filter(function (o) { return o.id === dk; })[0].y + 22;
+    var el = mk('circle', { r: 5, 'class': 'dot ' + dk, cx: 65, cy: 125 }, $('dots'));
+    dots.push({ el: el, t0: performance.now(), oy: oy });
+  }
+  function animate(now) {
+    for (var i = dots.length - 1; i >= 0; i--) {
+      var d = dots[i], t = (now - d.t0) / 1400;
+      if (t >= 1) { d.el.parentNode.removeChild(d.el); dots.splice(i, 1); continue; }
+      var x, y;
+      if (t < 0.8) { x = 65 + (680 - 65) * (t / 0.8); y = 125; }
+      else { var k = (t - 0.8) / 0.2; x = 680 + 66 * k; y = 125 + (d.oy - 125) * k; }
+      d.el.setAttribute('cx', x.toFixed(1)); d.el.setAttribute('cy', y.toFixed(1));
+    }
+    requestAnimationFrame(animate);
+  }
+
+  /* ---------- render ---------- */
+  var TYPE = { login: '登录', withdrawal: '提币', order: '下单' };
+  var KIND = { normal: '好人', ato: '盗号', launder: '洗钱', apikey: '盗用 Key' };
+  var DEC = { allow: ['buy', '放行'], challenge: ['info', '挑战'], review: ['warn', '审核'], reject: ['sell', '拒绝'] };
+  function render() {
+    var s = evaluate();
+    $('sN').textContent = s.n;
+    $('sFP').textContent = s.fp; $('sFr').textContent = s.fr; $('sFN').textContent = s.fn; $('sTP').textContent = s.tp;
+    var prec = s.strongTP + s.strongFP ? s.strongTP / (s.strongTP + s.strongFP) : 0;
+    var rec = s.bad ? s.tp / s.bad : 0;
+    $('sPR').textContent = s.n ? (prec * 100).toFixed(0) + '% / ' + (rec * 100).toFixed(0) + '%' : '–';
+    $('sQ').textContent = Math.round(s.q) + ' / ' + Math.round(s.qMax);
+    $('sFB').textContent = s.fb;
+    $('sSh').textContent = s.shG + ' / ' + s.shB;
+    $('dTable').innerHTML = ['login', 'withdrawal', 'order'].map(function (t) {
+      var b = s.by[t];
+      return '<tr><td>' + TYPE[t] + '</td><td class="num">' + b.allow + '</td><td class="num">' + b.challenge + '</td><td class="num">' + b.review +
+        '</td><td class="num">' + b.reject + '</td><td class="num">' + b.bad + '</td></tr>';
+    }).join('');
+    paintSvg(s);
+    renderLatency();
+    renderEvents();
+  }
+
+  function renderLatency() {
+    var sync = events.filter(function (e) { return e.type !== 'order'; });
+    var rows = [
+      { k: '特征读取', v: cfg.outage ? Infinity : p99(sync.map(function (e) { return e.lat.feat; })), b: cfg.budget.feat },
+      { k: '规则引擎', v: p99(sync.map(function (e) { return e.lat.rule; })), b: cfg.budget.rule },
+      { k: '模型打分', v: p99(sync.map(function (e) { return e.lat.model; })), b: cfg.budget.model }
+    ];
+    var total = cfg.outage ? Infinity : p99(sync.map(function (e) { return Math.min(e.lat.feat, cfg.budget.feat) + Math.min(e.lat.rule, cfg.budget.rule) + Math.min(e.lat.model, cfg.budget.model); }));
+    var html = rows.map(function (r) {
+      var scale = Math.max(r.b, isFinite(r.v) ? r.v : r.b) * 1.25;
+      var w = isFinite(r.v) ? Math.min(100, r.v / scale * 100) : 100;
+      var over = !isFinite(r.v) || r.v > r.b;
+      var txt = !sync.length ? '–' : (isFinite(r.v) ? r.v.toFixed(1) : '超时') + ' / ' + r.b + ' ms';
+      return '<div class="lat-row"><span>' + r.k + '</span><div class="lat-bar"><div class="fill' + (over ? ' over' : '') + '" style="width:' + (sync.length ? w : 0).toFixed(1) +
+        '%"></div><div class="budget" style="left:' + (r.b / scale * 100).toFixed(1) + '%"></div></div><span class="mono">' + txt + '</span></div>';
+    }).join('');
+    html += '<p class="small" style="margin:6px 0 0">登录 / 提币端到端 p99（含超时截断）：<strong class="mono">' +
+      (!sync.length ? '–' : isFinite(total) ? total.toFixed(1) + ' ms' : '特征库不可用，全部降级') + '</strong></p>';
+    $('latBox').innerHTML = html;
+  }
+
+  function renderEvents() {
+    var rows = events.slice(-10).reverse().map(function (e) {
+      var o = e.r, dk = (e.type === 'order' && o.async && o.d === 'allow') ? 'review' : o.d;
+      var res = { tp: '<span class="pill buy">拦截</span>', fn: '<span class="pill sell">漏放</span>', fp: '<span class="pill sell">误杀</span>', fr: '<span class="pill warn">打扰</span>', ok: '' }[e.res];
+      return '<tr><td class="num">' + e.id + '</td><td>' + TYPE[e.type] + (e.type === 'withdrawal' ? ' ' + e.amount : '') + '</td><td>' +
+        (e.bad ? '<span class="pill sell">' + KIND[e.kind] + '</span>' : '<span class="muted small">好人</span>') + '</td><td class="num">' + e.score.toFixed(2) +
+        '</td><td><span class="pill ' + DEC[dk][0] + '">' + DEC[dk][1] + '</span> ' + res + (o.why.length ? '<div class="why">' + o.why.join('、') + '</div>' : '') + '</td></tr>';
+    }).join('');
+    $('evBody').innerHTML = rows || '<tr><td colspan="5" class="muted">点"▶ 播放"或"+200 条"开始。</td></tr>';
+  }
+
+  /* ---------- backtest ---------- */
+  function backtest() {
+    var n = parseInt($('btN').value, 10);
+    var win = events.slice(-n);
+    if (!win.length) { $('btOut').innerHTML = '窗口内没有事件。先生成事件。'; return; }
+    var base = JSON.parse(JSON.stringify(cfg)); base.mode = 'off';
+    var cand = JSON.parse(JSON.stringify(cfg)); cand.mode = 'full';
+    var d = { changed: 0, newGood: 0, newBad: 0, shG: 0, shB: 0, hitG: 0, hitB: 0, list: [] };
+    win.forEach(function (e) {
+      var a = decide(e, base, { offline: true }), b = decide(e, cand, { offline: true });
+      if (a.d !== b.d) {
+        d.changed++;
+        if (e.bad) d.newBad++; else d.newGood++;
+        if (d.list.length < 8) d.list.push({ e: e, a: a.d, b: b.d });
+      }
+      if (!e.blacklist && newRuleHit(e, cand)) { if (e.bad) d.hitB++; else d.hitG++; }
+      if (e.r && e.r.shadow) { if (e.bad) d.shB++; else d.shG++; }
+    });
+    var mode = cfg.mode;
+    var html = '<div class="diff-grid">' +
+      '<div class="stat"><span class="k">回放事件</span><span class="v">' + win.length + '</span></div>' +
+      '<div class="stat"><span class="k">决策改变</span><span class="v">' + d.changed + '</span></div>' +
+      '<div class="stat good"><span class="k">新增拦截坏人</span><span class="v">' + d.newBad + '</span></div>' +
+      '<div class="stat bad"><span class="k">新增误杀好人</span><span class="v">' + d.newGood + '</span></div></div>';
+    html += '<p style="margin:4px 0">新规则：向新地址提币且金额 ≥ ' + cfg.amt + ' USDT → 拒绝。精确率估计：' +
+      (d.changed ? (d.newBad / d.changed * 100).toFixed(0) + '%' : '–') + '。</p>';
+    if (mode === 'shadow' || mode === 'canary') {
+      html += '<p style="margin:4px 0">对照线上影子（同一窗口）：好人 ' + d.shG + '，坏人 ' + d.shB + '。回测命中：好人 ' + d.hitG + '，坏人 ' + d.hitB + '。' +
+        (mode === 'canary' ? '金丝雀模式下，被真正执行的那部分用户不计入影子，所以影子会少于回测。' :
+          d.shG + d.shB < d.hitG + d.hitB ? '影子少于回测：部分事件在线上走了降级（特征库故障或超时），规则根本没运行。' : '影子与回测命中一致。') + '</p>';
+    }
+    if (d.list.length) {
+      html += '<div class="table-wrap"><table><thead><tr><th class="num">#</th><th>真实</th><th>金额</th><th>旧决策 → 新决策</th></tr></thead><tbody>' +
+        d.list.map(function (x) {
+          return '<tr><td class="num">' + x.e.id + '</td><td>' + (x.e.bad ? '<span class="pill sell">' + KIND[x.e.kind] + '</span>' : '好人') + '</td><td class="num">' + x.e.amount +
+            '</td><td>' + DEC[x.a][1] + ' → <strong>' + DEC[x.b][1] + '</strong></td></tr>';
+        }).join('') + '</tbody></table></div>';
+    }
+    $('btOut').innerHTML = html;
+    $('btOut').classList.remove('muted');
+  }
+
+  /* ---------- controls ---------- */
+  function addEvents(n, panic) {
+    var fresh = [];
+    for (var i = 0; i < n; i++) { var e = makeEvent(panic); events.push(e); fresh.push(e); }
+    if (events.length > MAXN) events = events.slice(-MAXN);
+    render();
+    fresh.slice(-6).forEach(spawnDot);
+  }
+  function reset() {
+    var sd = parseInt($('seed').value, 10) || 1;
+    rng = mulberry32(sd); events = []; seq = 0;
+    $('btOut').innerHTML = '点"回测"。系统比较"新规则关闭"和"新规则全量"两种配置下的决策差异。回测读取决策日志里的特征快照，所以不受特征库故障和超时影响。';
+    $('btOut').classList.add('muted');
+    render();
+  }
+  function bindRange(id, outId, key, fmt, sub) {
+    var el = $(id);
+    function sync() {
+      var v = parseFloat(el.value);
+      if (sub) cfg[sub][key] = v; else cfg[key] = v;
+      $(outId).textContent = fmt(v);
+    }
+    el.addEventListener('input', function () { sync(); render(); });
+    sync();
+  }
+  bindRange('ruleAmt', 'ruleAmtO', 'amt', function (v) { return v.toLocaleString('en-US'); });
+  bindRange('canary', 'canaryO', 'canary', function (v) { return v + '%'; });
+  bindRange('thr', 'thrO', 'thr', function (v) { return v.toFixed(2); });
+  bindRange('bFeat', 'bFeatO', 'feat', function (v) { return v + ' ms'; }, 'budget');
+  bindRange('bRule', 'bRuleO', 'rule', function (v) { return v + ' ms'; }, 'budget');
+  bindRange('bModel', 'bModelO', 'model', function (v) { return v + ' ms'; }, 'budget');
+  bindRange('cap', 'capO', 'cap', function (v) { return v + ' 件'; });
+
+  document.querySelectorAll('#ruleMode button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      cfg.mode = b.dataset.m;
+      document.querySelectorAll('#ruleMode button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      render();
+    });
+  });
+  $('outage').addEventListener('change', function () { cfg.outage = this.checked; render(); });
+  $('fbLogin').addEventListener('change', function () { cfg.fb.login = this.value; render(); });
+  $('fbWd').addEventListener('change', function () { cfg.fb.withdrawal = this.value; render(); });
+  $('fbOrder').addEventListener('change', function () { cfg.fb.order = this.value; render(); });
+  $('add200').addEventListener('click', function () { addEvents(200, false); });
+  $('panic').addEventListener('click', function () { addEvents(300, true); });
+  $('reset').addEventListener('click', reset);
+  $('btRun').addEventListener('click', backtest);
+
+  var timer = null, acc = 0, lastT = 0;
+  function tick() {
+    var now = performance.now(), dt = (now - lastT) / 1000; lastT = now;
+    acc += parseFloat($('speed').value) * dt;
+    var n = Math.floor(acc);
+    if (n > 0) { acc -= n; addEvents(n, false); }
+  }
+  $('play').addEventListener('click', function () {
+    if (timer) { clearInterval(timer); timer = null; this.textContent = '▶ 播放'; return; }
+    this.textContent = '⏸ 暂停'; lastT = performance.now(); acc = 0;
+    timer = setInterval(tick, 150);
+  });
+
+  buildSvg();
+  reset();
+  requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>

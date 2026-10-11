@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP11 成交之后：清算、结算与手续费</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: center; font-size: 36px; padding: 34px 34px; }
+  .num-card .n { font-family: var(--mono); font-size: 52px; font-weight: 700; color: var(--gold); }
+  .trade { font-family: var(--mono); font-size: 40px; padding: 16px 30px; border-radius: 14px; background: var(--panel); border: 2px solid var(--gold); display: inline-block; }
+  svg text { font-family: var(--sans); }
+  svg .pbox { fill: var(--panel); stroke: var(--line); stroke-width: 2; }
+  svg .life { stroke: var(--line); stroke-width: 3; stroke-dasharray: 8 8; }
+  svg .msg { stroke: var(--text-2); stroke-width: 3; fill: none; }
+  svg .msg.new { stroke: var(--gold); }
+  svg text.ml { font-size: 27px; fill: var(--text-2); }
+  svg text.ml.new { fill: var(--gold); }
+  svg text.pt { font-size: 28px; font-weight: 600; }
+  /* entries */
+  table.e { border-collapse: collapse; width: 100%; font-size: 32px; }
+  table.e th, table.e td { padding: 7px 20px; border-bottom: 1px solid var(--line); text-align: left; }
+  table.e th { color: var(--text-2); font-weight: 500; font-size: 28px; }
+  table.e td.n { font-family: var(--mono); text-align: right; }
+  table.e tr.new td { background: var(--gold-soft); }
+  table.e tr.tot td { font-weight: 700; border-top: 2px solid var(--text-2); }
+  table.e tr.pend td { opacity: .12; }
+  table.e td.dr { color: var(--info); } table.e td.cr { color: var(--buy); }
+  .stats3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .sbox { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 12px 24px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .sbox .k { font-size: 26px; color: var(--text-2); } .sbox .v { font-family: var(--mono); font-size: 44px; font-weight: 700; white-space: nowrap; }
+  .sbox.ok { border-color: var(--buy); } .sbox.ok .v { color: var(--buy); }
+  .sbox.bad { border-color: var(--sell); } .sbox.bad .v { color: var(--sell); }
+  .calc { font-family: var(--mono); font-size: 38px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px 30px; }
+  .calc .k { display: block; font-family: var(--sans); font-size: 26px; color: var(--text-2); margin-bottom: 4px; }
+  /* order book */
+  .book { font-family: var(--mono); font-size: 36px; }
+  .book .lv { display: grid; grid-template-columns: 1fr 1fr; padding: 8px 18px; border-radius: 8px; }
+  .book .ask { color: var(--sell); } .book .bid { color: var(--buy); }
+  .book .lv.me { background: var(--gold-soft); outline: 2px solid var(--gold); }
+  table.vip { border-collapse: collapse; width: 100%; font-size: 30px; }
+  table.vip th, table.vip td { padding: 5px 16px; line-height: 1.3; border-bottom: 1px solid var(--line); text-align: right; font-family: var(--mono); }
+  table.vip th { font-family: var(--sans); color: var(--text-2); font-weight: 500; font-size: 26px; }
+  table.vip td:first-child, table.vip th:first-child { text-align: left; font-family: var(--sans); }
+  table.vip tr { transition: background .4s; }
+  table.vip tr.hi td { background: var(--gold-soft); color: var(--gold); }
+  .bigstat { font-family: var(--mono); font-size: 84px; font-weight: 700; color: var(--gold); line-height: 1; }
+  /* state machine */
+  svg .st { fill: var(--panel); stroke: var(--line); stroke-width: 3; transition: opacity .4s; }
+  svg .st.ok { stroke: var(--buy); } svg .st.rt { stroke: var(--warn); } svg .st.dl { stroke: var(--sell); } svg .st.mr { stroke: var(--info); } svg .st.pd { stroke: var(--gold); }
+  svg .ed { stroke: var(--text-2); stroke-width: 4; fill: none; }
+  svg .grp { transition: opacity .4s; }
+  svg .grp.off { opacity: .18; }
+  svg text.sl { font-size: 32px; font-weight: 600; } svg text.el { font-size: 26px; fill: var(--text-2); }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP11" data-title="成交之后：清算、结算与手续费">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场" style="gap:20px">
+    <div class="kicker">CEX 交易所系统 · 技术讲解</div>
+    <h1>成交之后：<span class="hl">清算、结算</span>与手续费</h1>
+    <div><span class="trade">TradeExecuted · A ⇄ B · 0.04 BTC @ 60,000</span></div>
+    <p class="lead" data-step="1">把撮合的一句话，翻译成账本里的钱。</p>
+    <div class="grid2" data-step="2">
+      <div class="card info"><b>拍卖师落槌</b> = 撮合<br><span class="muted">一秒钟，喊一声成交</span></div>
+      <div class="card gold"><b>财务室</b> = 结算<br><span class="muted">扣款、转账、收佣金，一分不差</span></div>
+    </div>
+    <div class="card warn" data-step="3">比喻不准之处：真实的财务室是程序，每秒大量成交，且<b>一笔都不能重复</b></div>
+    <ol class="say">
+      <li>撮合引擎只会说一句话。A 和 B 以 60000 的价格，成交了 0.04 BTC。可是 A 的钱什么时候扣？B 的币什么时候到？平台收多少手续费？</li>
+      <li>把这句话翻译成账本里的钱，就是清算和结算。这一集我们讲成交之后发生的一切。</li>
+      <li>打个比方。撮合像拍卖师落槌喊成交。结算像拍卖行的财务室。它从买家押金里扣款，把货款减去佣金转给卖家，佣金进拍卖行的账户。</li>
+      <li>落槌只要一秒，财务室必须一分不差。比方不准的地方是，交易所的财务室是程序。它每秒要处理大量成交，而且一笔都不能重复。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线">
+    <div class="kicker">本集路线图</div>
+    <h2>从一笔成交到一张分录表</h2>
+    <div class="grid2">
+      <div class="card num-card"><span class="n">01</span>清算与结算的区别</div>
+      <div class="card num-card"><span class="n">02</span>成交后的完整链路</div>
+      <div class="card num-card" data-step="0"><span class="n">03</span>BTC/USDT 全部分录</div>
+      <div class="card num-card" data-step="1"><span class="n">04</span>Maker/Taker · VIP · BNB</div>
+      <div class="card num-card" data-step="1"><span class="n">05</span>返佣与零手续费</div>
+      <div class="card num-card warn" data-step="3"><span class="n">!</span>结算失败与恢复</div>
+    </div>
+    <ol class="say">
+      <li>这一集分五段。先分清清算和结算，再看一笔成交从撮合到用户手机的完整链路。</li>
+      <li>然后是本集的重头戏。一笔 BTC 对 USDT 成交的全部分录，我们一行一行写出来。</li>
+      <li>接着讲手续费。Maker 和 Taker，VIP 等级，BNB 抵扣，返佣，还有零手续费活动。</li>
+      <li>最后讲结算失败了怎么办，重试、死信和人工恢复。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="清算与结算">
+    <div class="kicker">01 · Clearing vs Settlement</div>
+    <h2>一个只算账，一个动钱</h2>
+    <div class="grid2">
+      <div class="card info" data-step="0"><h3>清算 Clearing</h3>计算每一方应收、应付多少<br><span class="muted">只算账，不动钱</span></div>
+      <div class="card gold" data-step="1"><h3>结算 Settlement</h3>按清算结果修改账本余额<br><span class="muted">动钱 · 现货中两者连续完成</span></div>
+    </div>
+    <div class="grid3">
+      <div class="card" data-step="2"><h3 class="hl">原子性</h3>买方拿到币，卖方拿到钱</div>
+      <div class="card" data-step="3"><h3 class="hl">准确性</h3>最小单位，规则舍入</div>
+      <div class="card" data-step="3"><h3 class="hl">不重不漏</h3>每笔结算且仅一次</div>
+    </div>
+    <div class="card buy" data-step="4" style="font-size:30px">用户余额<b>逐笔实时结算</b>（币安现货属于这一类）· 手续费汇总、返佣可<b>批量结算</b></div>
+    <ol class="say">
+      <li>先分清两个词。清算，是计算每一方应收多少、应付多少。它只算账，不动钱。</li>
+      <li>结算，是按清算结果，实际修改账本余额。它动钱。在现货交易所，两者通常在同一个服务里连续完成，所以我们合称结算。</li>
+      <li>成交以后，平台必须保证三件事。第一，原子性。买方拿到币，卖方拿到钱，不能只完成一半。</li>
+      <li>第二，准确性。金额精确到最小单位，手续费按规则计算和舍入。第三，不重不漏。每一笔成交，结算且只结算一次。</li>
+      <li>还有一个设计选择。加密现货的用户，期待成交后马上能卖，所以用户余额通常逐笔实时结算。币安现货属于这一类。平台内部的手续费汇总和返佣，可以批量结算。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="成交后的链路" data-onstep="seqStep">
+    <div class="kicker">02 · 成交之后发生什么 · 业界通用做法</div>
+    <h2>从撮合引擎到用户的手机</h2>
+    <svg id="seq" viewBox="0 0 1640 580" width="1640" height="580"></svg>
+    <ol class="say">
+      <li>来看成交之后的链路。撮合引擎产生成交事件 T1，写入消息队列。消息队列把 T1 投递给结算服务，注意是至少投递一次。</li>
+      <li>结算服务先做幂等检查，看 T1 是不是已经结算过。然后计算成交额和双方的手续费。</li>
+      <li>接着调用账本，记两组分录。一组是基础资产 BTC，幂等键 T1 base。一组是计价资产 USDT，幂等键 T1 quote。账本在同一个事务里，写流水、快照和 outbox。</li>
+      <li>账本成功以后，结算服务把 T1 标记为已结算，最后才向消息队列确认消费。如果中途崩溃，消息会重投，幂等键保证不会重复记账。</li>
+      <li>余额变化事件走 outbox，经消息队列到推送服务。推送服务再用 WebSocket 推给用户。所以推送可能比账本晚几十到几百毫秒，这是示例量级。界面短暂显示旧余额，是正常现象。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="场景与手续费">
+    <div class="kicker">03 · 一笔成交的完整推演 · 示例数值</div>
+    <h2>A 挂单买，B 吃单卖</h2>
+    <div class="row">
+      <div class="col" style="flex:.9">
+        <div class="card gold" data-step="0"><h3>用户 A · Maker</h3>限价买 0.1 BTC @ 60,000<br>已冻结 <span class="mono hl">6,000 USDT</span></div>
+        <div class="card info" data-step="1"><h3>用户 B · Taker</h3>卖出，立即成交 <span class="mono">0.04 BTC</span></div>
+      </div>
+      <div class="col">
+        <div class="calc" data-step="1"><span class="k">成交额</span>60,000 × 0.04 = <span class="hl">2,400 USDT</span></div>
+        <div class="calc" data-step="2" style="font-size:32px"><span class="k">费率 · 普通用户示例 · 从收到的资产扣</span>Maker 0.1% · Taker 0.1%</div>
+        <div class="calc" data-step="3"><span class="k">A 收到 BTC → 付 BTC</span>0.04 × 0.1% = <span class="hl">0.00004 BTC</span></div>
+        <div class="calc" data-step="4"><span class="k">B 收到 USDT → 付 USDT</span>2,400 × 0.1% = <span class="hl">2.4 USDT</span></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>下面是本集的重头戏。示例数值：用户 A 先挂买单，0.1 BTC，价格 60000 USDT。A 是挂单方 Maker，下单时已冻结 6000 USDT。</li>
+      <li>用户 B 后下卖单，立即成交 0.04 BTC。B 是吃单方 Taker。成交额等于 60000 乘以 0.04，也就是 2400 USDT。</li>
+      <li>费率按普通用户示例，Maker 和 Taker 都是千分之一。规则是，手续费从收到的资产里扣。</li>
+      <li>A 收到的是 BTC，所以付 BTC 手续费。0.04 乘以千分之一，等于 0.00004 BTC。</li>
+      <li>B 收到的是 USDT，所以付 USDT 手续费。2400 乘以千分之一，等于 2.4 USDT。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="BTC 分录" data-onstep="btcStep" style="gap:26px">
+    <div class="kicker">03 · BTC 分录 · 幂等键 T1:base · 示例</div>
+    <h2>B 交出 BTC，A 收到净额</h2>
+    <table class="e" id="btcT"></table>
+    <div class="stats3" id="btcS"></div>
+    <ol class="say">
+      <li>先写 BTC 这一组分录，幂等键是 T1 base。我们一行一行来。</li>
+      <li>第一行，借用户 B 的 BTC 可用 0.04，B 交出 BTC。第二行，贷清算中间户 0.04，币进入清算户。</li>
+      <li>第三行，借清算中间户 0.04，币从清算户转出。</li>
+      <li>第四行，贷用户 A 的 BTC 可用 0.03996，这是 A 收到的净额。第五行，贷平台手续费收入 0.00004，这是 A 的 Maker 手续费。</li>
+      <li>合计一下。借方 0.08，贷方 0.08，平衡。清算中间户进了 0.04，又出了 0.04，余额归零。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="USDT 分录" data-onstep="usdtStep" style="gap:26px">
+    <div class="kicker">03 · USDT 分录 · 幂等键 T1:quote · 示例</div>
+    <h2>从 A 的冻结扣款，B 收到净额</h2>
+    <table class="e" id="usdT"></table>
+    <div id="usdS"></div>
+    <ol class="say">
+      <li>再写 USDT 这一组，幂等键是 T1 quote。</li>
+      <li>第一行，借用户 A 的 USDT 冻结 2400，扣减 A 下单时冻结的钱。第二行，贷清算中间户 2400。</li>
+      <li>第三行，借清算中间户 2400。第四行，贷用户 B 的 USDT 可用 2397.6，这是 B 收到的净额。</li>
+      <li>第五行，贷平台手续费收入 2.4，这是 B 的 Taker 手续费。借方 4800，贷方 4800，平衡。</li>
+      <li>成交以后，A 的冻结还剩 3600，订单剩下的 0.06 BTC 继续挂在簿上。平台热钱包没有任何变化。成交只是负债在用户之间重新分配，再有一小部分变成平台收入。</li>
+      <li>两个提醒。第一，B 直接从可用余额卖出，是简化写法。真实系统里，B 的卖单也要先冻结。第二，如果漏写了第五行，借贷不平，账本必须拒绝提交。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="Maker 与 Taker">
+    <div class="kicker">04 · 挂单方与吃单方</div>
+    <h2>谁提供流动性，谁消耗流动性</h2>
+    <div class="row">
+      <div class="card book" style="width:620px;flex:0 0 auto">
+        <div class="lv ask"><span>60,020</span><span>0.50</span></div>
+        <div class="lv ask"><span>60,010</span><span>0.30</span></div>
+        <div class="lv bid me"><span>60,000</span><span>0.10 ← A</span></div>
+        <div class="lv bid"><span>59,990</span><span>0.80</span></div>
+        <div class="lv bid"><span>59,980</span><span>1.20</span></div>
+      </div>
+      <div class="col">
+        <div class="card gold" data-step="0"><h3>Maker 挂单方 · A</h3>订单进入订单簿等待成交 → <b>提供</b>流动性</div>
+        <div class="card info" data-step="1"><h3>Taker 吃单方 · B</h3>立即与簿上挂单成交 → <b>消耗</b>流动性</div>
+        <div class="card buy" data-step="2">通常 <b>Maker 费率 ≤ Taker 费率</b><br><span class="muted">挂单多 → 簿更厚 → 滑点小 → 更多 Taker</span></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>刚才 A 是 Maker，B 是 Taker。挂单方 Maker，是订单进入订单簿等待成交的一方。它给市场提供了流动性。</li>
+      <li>吃单方 Taker，是订单立即和簿上已有挂单成交的一方。它消耗了流动性。B 的卖单一进来，就吃掉了 A 挂在 60000 的买单。</li>
+      <li>交易所通常让 Maker 费率小于等于 Taker 费率。原因是，挂单越多，订单簿越厚，滑点越小，就会有更多 Taker 愿意来交易。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="VIP 等级" data-onstep="vipStep" style="gap:22px">
+    <div class="kicker">04 · 币安现货 VIP 费率 · 截至 2026 年公开资料，以官网为准</div>
+    <h2>30 天交易量 + BNB 持仓 → 费率档位</h2>
+    <table class="vip" id="vip">
+      <tr><th>等级</th><th>30 天交易量 USD</th><th>BNB 持仓</th><th>Maker</th><th>Taker</th><th>Maker·BNB</th><th>Taker·BNB</th></tr>
+      <tr><td>普通</td><td>&lt; 1,000,000</td><td>≥ 0</td><td>0.100%</td><td>0.100%</td><td>0.0750%</td><td>0.0750%</td></tr>
+      <tr><td>VIP 1</td><td>≥ 1,000,000</td><td>≥ 5</td><td>0.090%</td><td>0.100%</td><td>0.0675%</td><td>0.0750%</td></tr>
+      <tr><td>VIP 2</td><td>≥ 5,000,000</td><td>≥ 25</td><td>0.080%</td><td>0.100%</td><td>0.0600%</td><td>0.0750%</td></tr>
+      <tr><td>VIP 3</td><td>≥ 20,000,000</td><td>≥ 100</td><td>0.040%</td><td>0.060%</td><td>0.0300%</td><td>0.0450%</td></tr>
+      <tr><td>VIP 4</td><td>≥ 75,000,000</td><td>≥ 500</td><td>0.040%</td><td>0.052%</td><td>0.0300%</td><td>0.0390%</td></tr>
+      <tr><td>VIP 5</td><td>≥ 150,000,000</td><td>≥ 1,000</td><td>0.025%</td><td>0.031%</td><td>0.01875%</td><td>0.02325%</td></tr>
+      <tr><td>VIP 6</td><td>≥ 400,000,000</td><td>≥ 1,750</td><td>0.020%</td><td>0.029%</td><td>0.0150%</td><td>0.02175%</td></tr>
+      <tr><td>VIP 7</td><td>≥ 800,000,000</td><td>≥ 3,000</td><td>0.019%</td><td>0.028%</td><td>0.01425%</td><td>0.0210%</td></tr>
+      <tr><td>VIP 8</td><td>≥ 2,000,000,000</td><td>≥ 4,500</td><td>0.016%</td><td>0.025%</td><td>0.0120%</td><td>0.01875%</td></tr>
+      <tr><td>VIP 9</td><td>≥ 4,000,000,000</td><td>≥ 5,500</td><td>0.011%</td><td>0.023%</td><td>0.00825%</td><td>0.01725%</td></tr>
+    </table>
+    <ol class="say">
+      <li>再看费率怎么定。根据币安官网费率页，截至 2026 年的公开资料。现货按过去 30 天交易量和 BNB 持仓，划分 VIP 等级。</li>
+      <li>普通用户，Maker 和 Taker 都是千分之一。等级越高，费率越低。比如 VIP 3，是万分之四和万分之六。</li>
+      <li>到了 VIP 9，Maker 降到万分之一点一，Taker 是万分之二点三。注意，每一档的 Maker 都不高于 Taker。</li>
+      <li>官网对 VIP 1 及以上，写的是交易量和 BNB 持仓同时满足。系统每天 UTC 零点，重新评估一次等级。参数会调整，请以官网为准。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="BNB 抵扣">
+    <div class="kicker">04 · BNB 抵扣手续费 · 截至 2026 年公开资料</div>
+    <h2>费率打 75 折，扣费资产换成 BNB</h2>
+    <div class="flow">
+      <div class="node gold" data-step="0">折后费率<small>原费率 × 75%</small></div><div class="arrow" data-step="0"></div>
+      <div class="node" data-step="0">按时价折算<small>换成 BNB</small></div><div class="arrow" data-step="0"></div>
+      <div class="node" data-step="0">扣 BNB 可用</div><div class="arrow dashed" data-step="0"></div>
+      <div class="node sell" data-step="0">BNB 不足<small>按原费率扣收到的资产</small></div>
+    </div>
+    <div class="row">
+      <div class="calc" data-step="2" style="flex:1"><span class="k">B 的 Taker 手续费 · 示例 BNB 价格 600 USDT</span>2.4 × 75% = 1.8 USDT<br>1.8 ÷ 600 = <span class="hl">0.003 BNB</span></div>
+      <div class="card" data-step="3" style="flex:1"><h3>多出一组 BNB 分录</h3><span class="blue">借</span> 用户B-BNB-可用 0.003<br><span class="up">贷</span> 平台手续费收入-BNB 0.003</div>
+    </div>
+    <div class="card info" data-step="4">商业逻辑：给 BNB 创造<b>持续的使用需求</b>，平台币的典型设计</div>
+    <ol class="say">
+      <li>第三个机制，BNB 抵扣。用户开启使用 BNB 抵扣以后，系统按折后费率计算手续费。折后费率是原费率乘以 75%。</li>
+      <li>然后把手续费按当时价格折算成 BNB，从用户的 BNB 可用余额里扣除。如果 BNB 不够，就按原费率，从收到的资产里扣。</li>
+      <li>算一下。B 的 Taker 手续费原本是 2.4 USDT。乘以 75%，是 1.8 USDT。假设 BNB 价格是 600 USDT，这只是示例，那就扣 0.003 BNB。</li>
+      <li>在账本里，这会多出一组 BNB 分录。借用户 B 的 BNB 可用，贷平台手续费收入 BNB。这时 USDT 分录里，就不再扣那 2.4 了。</li>
+      <li>商业逻辑是，BNB 抵扣给 BNB 创造了持续的使用需求。这是交易所平台币的典型设计。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="返佣与返现">
+    <div class="kicker">04 · 推荐计划 Referral</div>
+    <h2>手续费先全额收，再按周期返</h2>
+    <div class="grid3">
+      <div class="card" data-step="0"><div class="muted" style="font-size:26px">基础返佣</div><div class="bigstat">20%</div></div>
+      <div class="card" data-step="0"><div class="muted" style="font-size:26px">持有 ≥ 500 BNB，最高</div><div class="bigstat">40%</div></div>
+      <div class="card" data-step="0"><div class="muted" style="font-size:26px">2024 起部分地区</div><div class="bigstat">10–15%</div></div>
+    </div>
+    <div class="muted" data-step="0" style="font-size:26px;margin-top:-20px">来源：第三方非官方整理，币安按地区调整，以官网为准</div>
+    <div class="row">
+      <div class="calc" data-step="2" style="flex:1"><span class="k">返现 Kickback · 示例</span>0.1% × (1 − 20%) = <span class="hl">0.08%</span></div>
+      <div class="card gold" data-step="3" style="flex:1.2;font-size:30px">返佣服务按周期汇总后记账：<br><span class="blue">借</span> 手续费收入 / 返佣支出　<span class="up">贷</span> 推荐人-可用</div>
+    </div>
+    <ol class="say">
+      <li>第四个机制，返佣。老用户分享推荐码。新用户注册以后，平台把新用户手续费的一部分，返给推荐人，或者返给新用户本人。</li>
+      <li>据第三方公开整理，币安现货推荐的基础返佣比例是 20%。推荐人持有至少 500 BNB 时，最高可以到 40%。2024 年起，部分地区的基础比例下调到 10% 到 15%。这些不是官方数字，以官网为准。</li>
+      <li>推荐人还可以把一部分返佣让给被推荐人，这叫返现。示例：标准费率千分之一，被推荐人拿到 20% 返现，实际费率就是万分之八。</li>
+      <li>账本上，业界通常这样做。成交时，手续费先全部进平台手续费收入。返佣服务按周期汇总，比如每小时或者每天，这是示例。然后记一笔分录，借手续费收入或者返佣支出，贷推荐人可用。批量返佣还降低了手续费账户的热点压力，热点账户上一集讲过。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="零手续费">
+    <div class="kicker">04 · 零手续费活动 · 币安官方公告</div>
+    <h2>平台为什么愿意放弃手续费？</h2>
+    <div class="row">
+      <div class="card buy" data-step="0" style="flex:1"><div class="mono hl" style="font-size:40px">2022-07-08</div>13 个 BTC 现货交易对取消手续费<br><span class="muted">含 BTC/USDT、BTC/BUSD</span></div>
+      <div class="card sell" data-step="1" style="flex:1"><div class="mono hl" style="font-size:40px">2023-03-22</div>结束零手续费<br><span class="muted">只保留 BTC/TUSD</span></div>
+    </div>
+    <div class="grid4">
+      <div class="card" data-step="2" style="font-size:30px"><b>抢份额</b><br><span class="muted">交易量集中</span></div>
+      <div class="card" data-step="2" style="font-size:30px"><b>改善流动性</b><br><span class="muted">挂单多，价差窄</span></div>
+      <div class="card" data-step="3" style="font-size:30px"><b>引流</b><br><span class="muted">合约、理财收费</span></div>
+      <div class="card" data-step="3" style="font-size:30px"><b>推稳定币</b><br><span class="muted">只对某币对免费</span></div>
+    </div>
+    <div class="card warn" data-step="4">代价：吸引<b>刷量</b> Wash Trading → 风控识别自成交与异常交易</div>
+    <ol class="say">
+      <li>第五个机制，零手续费。根据币安官方公告。2022 年 7 月 8 日，币安对 13 个 BTC 现货交易对取消了手续费。其中包括 BTC 对 USDT，和 BTC 对 BUSD。</li>
+      <li>到了 2023 年 3 月 22 日，币安结束了这些交易对的零手续费。只保留了 BTC 对 TUSD 一个交易对。</li>
+      <li>平台为什么愿意放弃手续费？一是抢市场份额，交易量向自己集中。二是改善流动性，挂单多了，价差变窄。</li>
+      <li>三是引流，用户来了以后，会用合约、理财这些收费产品。四是推广特定稳定币，只对某个稳定币交易对免费。</li>
+      <li>代价是，零手续费也会吸引刷量，也就是自己和自己成交，制造虚假交易量。平台需要风控来识别自成交和异常交易。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="结算失败与恢复" data-onstep="failStep" style="gap:24px">
+    <div class="kicker">05 · 结算失败与补偿 · 业界通用做法</div>
+    <h2>只能补，不能退回撮合之前</h2>
+    <svg viewBox="0 0 1640 470" width="1640" height="470">
+      <defs><marker id="fa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9ea3ad"/></marker></defs>
+      <g class="grp" data-k="P"><rect class="st pd" x="10" y="235" width="250" height="90" rx="16"/><text class="sl" x="135" y="291" text-anchor="middle">Pending</text></g>
+      <g class="grp" data-k="S"><rect class="st ok" x="1300" y="70" width="320" height="90" rx="16"/><text class="sl" x="1460" y="126" text-anchor="middle">Settled 已结算</text></g>
+      <g class="grp" data-k="R"><rect class="st rt" x="470" y="70" width="320" height="90" rx="16"/><text class="sl" x="630" y="126" text-anchor="middle">Retrying 重试</text></g>
+      <g class="grp" data-k="D"><rect class="st dl" x="470" y="370" width="320" height="90" rx="16"/><text class="sl" x="630" y="426" text-anchor="middle">DeadLetter 死信</text></g>
+      <g class="grp" data-k="M"><rect class="st mr" x="880" y="370" width="330" height="90" rx="16"/><text class="sl" x="1045" y="426" text-anchor="middle">人工恢复</text></g>
+      <g class="grp" data-k="V"><rect class="st" x="1300" y="370" width="320" height="90" rx="16"/><text class="sl" x="1460" y="426" text-anchor="middle">Reversed 冲正</text></g>
+      <g class="grp" data-k="e1"><path class="ed" d="M260 265 L1296 135" marker-end="url(#fa)"/><text class="el" x="900" y="230">账本记账成功</text></g>
+      <g class="grp" data-k="e2"><path class="ed" d="M200 235 L466 145" marker-end="url(#fa)"/><text class="el" x="20" y="190">可重试：超时 · 锁冲突</text></g>
+      <g class="grp" data-k="e4"><path class="ed" d="M580 70 C580 0, 690 0, 690 66" marker-end="url(#fa)"/><text class="el" x="720" y="30">指数退避</text></g>
+      <g class="grp" data-k="e3"><path class="ed" d="M790 115 L1296 115" marker-end="url(#fa)"/><text class="el" x="1040" y="100" text-anchor="middle">重试成功</text></g>
+      <g class="grp" data-k="e5"><path class="ed" d="M630 160 L630 366" marker-end="url(#fa)"/><text class="el" x="645" y="290">超过上限</text></g>
+      <g class="grp" data-k="e6"><path class="ed" d="M200 325 L466 405" marker-end="url(#fa)"/><text class="el" x="130" y="400">不可重试：冻结不足</text></g>
+      <g class="grp" data-k="e7"><path class="ed" d="M790 415 L876 415" marker-end="url(#fa)"/></g>
+      <g class="grp" data-k="e8"><path class="ed" d="M1100 370 L1400 164" marker-end="url(#fa)"/><text class="el" x="1270" y="300">修复后重放</text></g>
+      <g class="grp" data-k="e9"><path class="ed" d="M1210 415 L1296 415" marker-end="url(#fa)"/></g>
+    </svg>
+    <div class="card" id="failNote" style="font-size:32px"></div>
+    <ol class="say">
+      <li>最后看结算失败。账本超时，数据库锁冲突，冻结记录不存在，服务崩溃，结算可能在任何一步失败。</li>
+      <li>收到成交事件，状态是 Pending。账本记账成功，就进入 Settled。</li>
+      <li>遇到可重试的错误，比如超时或锁冲突，进入 Retrying。每次重试的间隔越来越长，这叫指数退避。重试成功，同样进入 Settled。</li>
+      <li>超过最大重试次数，就进入死信。遇到不可重试的错误，比如冻结不足、数据异常，也直接进死信，不再浪费重试次数。</li>
+      <li>运营人员在后台人工排查。修复后手动重放，进入 Settled。如果判定是错误成交，就冲正。所有重试和重放都用同一个幂等键，所以重放多少次，都只记一次账。</li>
+      <li>注意，撮合已经确认的成交不能撤销。结算失败只能补，不能退回到撮合之前。结算卡住期间，用户看到订单已成交，余额却没变，界面要显示结算中。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">结算按<span class="hl">成交号幂等</span>，翻译成两组平衡分录，清算中间户归零。</li>
+      <li data-step="0">手续费从<span class="hl">收到的资产</span>扣；Maker/Taker + VIP 定费率，BNB 抵扣 75 折，返佣事后批量发。</li>
+      <li data-step="1">结算失败<span class="hl">只能补</span>：退避重试 → 死信 → 人工恢复，始终同一幂等键。</li>
+    </ul>
+    <div class="card info" data-step="3"><b>下集 EP12 · 行情</b>：深度、K 线与增量同步</div>
+    <ol class="say">
+      <li>最后小结三点。第一，撮合只产生成交事件。结算服务按成交号幂等，把它翻译成两组平衡的分录，清算中间户最后归零。</li>
+      <li>第二，手续费从收到的资产里扣。费率由 Maker、Taker 和 VIP 等级决定。BNB 抵扣打 75 折，返佣在收取之后批量发放。</li>
+      <li>第三，结算失败只能补，不能退。可重试的走指数退避，不可重试的进死信，人工恢复时仍用同一个幂等键。</li>
+      <li>下一集，我们看成交怎样变成行情。深度、K 线，以及客户端怎样做增量同步。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  function seqStep(el, st) {
+    const P = ['撮合引擎', '消息队列', '结算服务', '账本服务', 'Outbox 发布器', '推送服务', '用户 A · B'];
+    const X = i => 117 + i * 234;
+    const rows = [ // [step, from, to, label]
+      [0, 0, 1, 'TradeExecuted T1'], [0, 1, 2, '投递 T1 · 至少一次'],
+      [1, 2, 2, '幂等检查 + 算手续费'],
+      [2, 2, 3, 'postJournal × 2'], [2, 3, 3, '流水 + 快照 + outbox'],
+      [3, 3, 2, 'journal_id'], [3, 2, 2, '标记 settled'], [3, 2, 1, 'ack 确认消费'],
+      [4, 4, 1, 'BalanceChanged'], [4, 1, 5, '投递余额变化'], [4, 5, 6, 'WebSocket 推送'],
+    ];
+    let s = '<defs><marker id="sa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9ea3ad"/></marker><marker id="sb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f0b90b"/></marker></defs>';
+    P.forEach((p, i) => {
+      s += `<line class="life" x1="${X(i)}" y1="70" x2="${X(i)}" y2="575"/>`;
+      s += `<rect class="pbox" x="${X(i) - 108}" y="0" width="216" height="70" rx="12"/><text class="pt" x="${X(i)}" y="45" text-anchor="middle">${p}</text>`;
+    });
+    rows.forEach((r, k) => {
+      if (r[0] > st) return;
+      const y = 122 + k * 44, nw = r[0] === st ? ' new' : '', mk = r[0] === st ? 'sb' : 'sa';
+      if (r[1] === r[2]) {
+        const x = X(r[1]);
+        s += `<path class="msg${nw}" d="M${x} ${y - 14} h30 v18 h-26" marker-end="url(#${mk})"/><text class="ml${nw}" x="${x + 40}" y="${y + 2}">${r[3]}</text>`;
+      } else {
+        const a = X(r[1]), b = X(r[2]), dir = b > a ? 1 : -1;
+        s += `<line class="msg${nw}" x1="${a}" y1="${y}" x2="${b - dir * 4}" y2="${y}" marker-end="url(#${mk})"/><text class="ml${nw}" x="${(a + b) / 2}" y="${y - 8}" text-anchor="middle">${r[3]}</text>`;
+      }
+    });
+    el.querySelector('#seq').innerHTML = s;
+  }
+  function entriesTable(rows, shown, latest, tot) {
+    let h = '<tr><th>#</th><th>账户</th><th style="text-align:right">借</th><th style="text-align:right">贷</th><th>说明</th></tr>';
+    rows.forEach((r, i) => {
+      const cls = i >= shown ? 'pend' : latest.includes(i) ? 'new' : '';
+      h += `<tr class="${cls}"><td class="mono">${i + 1}</td><td>${r[0]}</td><td class="n dr">${r[1]}</td><td class="n cr">${r[2]}</td><td class="muted">${r[3]}</td></tr>`;
+    });
+    h += `<tr class="tot${tot ? '' : ' pend'}"><td></td><td>合计</td><td class="n">${tot ? tot[0] : ''}</td><td class="n">${tot ? tot[1] : ''}</td><td class="${tot ? 'up' : ''}">${tot ? '平衡 ✓' : ''}</td></tr>`;
+    return h;
+  }
+  function sbox(k, v, cls) { return `<div class="sbox ${cls || ''}"><div class="k">${k}</div><div class="v">${v}</div></div>`; }
+  function btcStep(el, st) {
+    const rows = [['用户B-BTC-可用', '0.04', '', 'B 交出 BTC'], ['清算中间户-BTC', '', '0.04', '进入清算户'], ['清算中间户-BTC', '0.04', '', '清算户转出'], ['用户A-BTC-可用', '', '0.03996', 'A 收到净额'], ['平台手续费收入-BTC', '', '0.00004', 'A 的 Maker 手续费']];
+    const shown = [0, 2, 3, 5, 5][st], latest = [[], [0, 1], [2], [3, 4], []][st];
+    el.querySelector('#btcT').innerHTML = entriesTable(rows, shown, latest, st >= 4 ? ['0.08', '0.08'] : null);
+    const dr = [0, 0.04, 0.08, 0.08, 0.08][st], cr = [0, 0.04, 0.04, 0.08, 0.08][st], clr = [0, 0.04, 0, 0, 0][st];
+    const f = n => n ? n.toFixed(2) : '0';
+    el.querySelector('#btcS').innerHTML = sbox('Σ借', f(dr)) + sbox('Σ贷', f(cr), st === 0 ? '' : dr === cr ? 'ok' : 'bad') + sbox('清算中间户-BTC', f(clr), st >= 4 ? 'ok' : '');
+  }
+  function usdtStep(el, st) {
+    const rows = [['用户A-USDT-冻结', '2400', '', '扣减 A 的冻结'], ['清算中间户-USDT', '', '2400', '进入清算户'], ['清算中间户-USDT', '2400', '', '清算户转出'], ['用户B-USDT-可用', '', '2397.6', 'B 收到净额'], ['平台手续费收入-USDT', '', '2.4', 'B 的 Taker 手续费']];
+    const shown = [0, 2, 4, 5, 5, 5][st], latest = [[], [0, 1], [2, 3], [4], [], []][st];
+    el.querySelector('#usdT').innerHTML = entriesTable(rows, shown, latest, st >= 3 ? ['4800', '4800'] : null);
+    const S = el.querySelector('#usdS');
+    if (st <= 3) {
+      const dr = [0, 2400, 4800, 4800][st], cr = [0, 2400, 4797.6, 4800][st];
+      S.className = 'stats3';
+      S.innerHTML = sbox('Σ借', dr.toLocaleString('en-US')) + sbox('Σ贷', cr.toLocaleString('en-US'), st === 0 ? '' : dr === cr ? 'ok' : 'bad') + sbox('A 的 USDT 冻结', ['6,000', '3,600', '3,600', '3,600'][st], st ? 'ok' : '');
+    } else if (st === 4) {
+      S.className = 'stats3';
+      S.innerHTML = sbox('A 冻结剩余 · 0.06 BTC 仍挂单', '3,600', 'ok') + sbox('清算中间户 BTC / USDT', '0 / 0', 'ok') + sbox('平台热钱包变化', '0');
+    } else {
+      S.className = 'grid2';
+      S.innerHTML = '<div class="card info" style="font-size:30px">简化：B 直接从可用卖出<br><span class="muted">真实系统中 B 的卖单也先冻结 BTC</span></div><div class="card sell" style="font-size:30px">漏写第 5 行 → 4800 ≠ 4797.6<br><b>账本必须拒绝提交</b></div>';
+    }
+  }
+  function vipStep(el, st) {
+    const hi = [[], [1, 4], [10], [2, 3, 4, 5, 6, 7, 8, 9, 10]][st];
+    el.querySelectorAll('#vip tr').forEach((tr, i) => tr.classList.toggle('hi', hi.includes(i)));
+  }
+  function failStep(el, st) {
+    const on = [
+      [],
+      ['P', 'S', 'e1'],
+      ['P', 'S', 'R', 'e2', 'e4', 'e3'],
+      ['P', 'R', 'D', 'e5', 'e6'],
+      ['D', 'M', 'S', 'V', 'e7', 'e8', 'e9'],
+      ['P', 'S', 'R', 'D', 'M', 'V', 'e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9'],
+    ][st];
+    el.querySelectorAll('.grp').forEach(g => g.classList.toggle('off', st > 0 && !on.includes(g.dataset.k)));
+    const notes = [
+      '失败来源：账本超时 · 锁冲突 · 冻结记录不存在 · 服务崩溃',
+      '正常路径：Pending → Settled',
+      '可重试错误：间隔 1s → 2s → 4s … 指数退避（示例间隔）',
+      '超过最大重试次数，或不可重试错误 → 死信，不浪费重试',
+      '人工恢复：修复后重放 或 冲正 · 全程同一幂等键 → 只记一次账',
+      '已成交不可撤销：结算只能补 · 卡住期间界面显示“结算中”',
+    ];
+    const n = el.querySelector('#failNote');
+    n.textContent = notes[st]; n.className = 'card ' + (st === 5 ? 'warn' : st === 3 ? 'sell' : st === 4 ? 'info' : st === 0 ? '' : 'gold');
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

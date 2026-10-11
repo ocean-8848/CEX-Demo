@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>市场监控实验</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .layout { display: grid; gap: 16px; grid-template-columns: minmax(260px, 320px) 1fr; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  .layout > * { min-width: 0; }
+  .toggle { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; color: var(--text); margin: 6px 0; cursor: pointer; }
+  .toggle input { margin-top: 5px; accent-color: var(--accent); }
+  .hint { font-size: 12px; color: var(--text-2); margin: 2px 0 6px; }
+  .chart { width: 100%; height: auto; display: block; }
+  .chart .grid line { stroke: var(--border); stroke-width: 1; }
+  .chart .axis { fill: var(--text-2); font-size: 11px; }
+  .chart .price { fill: none; stroke: var(--info); stroke-width: 1.6; }
+  .chart .vol { fill: var(--text-2); opacity: .35; }
+  .chart .vol.hot { fill: var(--warn); opacity: .85; }
+  .chart .truth { fill: var(--accent-soft); }
+  .chart .truth-l { fill: var(--accent); font-size: 10px; }
+  .chart .m-spoof { fill: var(--sell); }
+  .chart .m-wash { fill: var(--info); stroke: var(--surface); stroke-width: 1; }
+  .chart .m-pump { fill: none; stroke: var(--warn); stroke-width: 2; stroke-dasharray: 4 3; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .cm { display: grid; grid-template-columns: auto 1fr 1fr; gap: 4px; font-size: 13px; max-width: 420px; }
+  .cm div { padding: 8px; border-radius: 6px; text-align: center; background: var(--surface-2); }
+  .cm .h { background: transparent; color: var(--text-2); font-size: 12px; }
+  .cm .tp { background: var(--buy-soft); color: var(--buy); font-weight: 700; }
+  .cm .tn { background: var(--buy-soft); color: var(--buy); }
+  .cm .fp, .cm .fn { background: var(--sell-soft); color: var(--sell); font-weight: 700; }
+  .stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); margin: 12px 0; }
+  tr.tp td:last-child { color: var(--buy); font-weight: 600; }
+  tr.fp td:last-child { color: var(--sell); font-weight: 600; }
+  .alerts-wrap { max-height: 360px; overflow: auto; }
+  ol.try li, ol.howto li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../backstage/B05-business-risk.md">配套章节：B05 业务风控</a>
+  </header>
+  <h1>市场监控实验</h1>
+  <p class="lead">一个合成交易对 XYZ/USDT 的 300 秒订单流与成交带（时间已压缩）。你可以混入三种操纵行为：幌骗、对敲、拉盘砸盘。三个检测器按你设定的阈值扫描数据，在图上标出告警。因为注入的行为带有真值标签，页面能算出混淆矩阵、Precision 和 Recall。配套章节：<a href="../backstage/B05-business-risk.md">B05 业务风控</a>、<a href="../09-risk-control.md">09 风控</a>。</p>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="howto small">
+      <li>在左侧勾选要注入的异常行为。数据按种子重新生成。</li>
+      <li>拖动四个检测器参数。告警、混淆矩阵立即重新计算。</li>
+      <li>在图上找告警点：红色三角 = 幌骗，蓝色圆点 = 对敲，橙色虚线框 = 量价突增。浅金色底 = 注入的真值区间。</li>
+      <li>在告警列表里看"判定"列：真阳性还是误报。误报的账户是谁，为什么像坏人？</li>
+    </ol>
+    <p class="small muted">价格以 0.0001 USDT 为最小单位、数量以 1 枚为单位，全部用整数计算。账户、行为、阈值全部是合成示例。</p>
+  </div>
+
+  <div class="layout" style="margin-top:16px">
+    <aside class="card">
+      <h3>注入异常（真值）</h3>
+      <label class="toggle"><input type="checkbox" id="injSpoof" checked> 幌骗：SP1 在买一下方挂大单，1–3 秒后撤单，同时卖出</label>
+      <label class="toggle"><input type="checkbox" id="injWash" checked> 对敲：关联账户 W1、W2 互相成交</label>
+      <label class="toggle"><input type="checkbox" id="injPump" checked> 拉盘砸盘：P1–P3 集中买入拉升，随后集中卖出</label>
+      <p class="hint">背景里始终有：做市商 MM1、MM2（高撤单率）、大户 N7 在"消息面"时段集中买入、同一家庭的 N3/N4 和同一办公室的 N8/N9 偶尔互相成交。它们是误报的来源。</p>
+      <label for="seed">数据种子</label>
+      <div class="btn-row" style="margin:0"><input type="number" id="seed" value="7" style="flex:1; min-width:0"><button id="btnRegen">重新生成</button></div>
+
+      <h3 style="margin-top:18px">检测器参数</h3>
+      <label for="cr">幌骗 · 账户撤单率阈值</label>
+      <div class="range-row"><input type="range" id="cr" min="10" max="100" value="80"><output id="crO"></output></div>
+      <p class="hint">账户撤单笔数 ÷ 挂单笔数 ≥ 阈值，才可能被判为幌骗。</p>
+      <label for="lt">幌骗 · 大单最长存活时间</label>
+      <div class="range-row"><input type="range" id="lt" min="1" max="30" value="3"><output id="ltO"></output></div>
+      <p class="hint">大单（≥ 全部挂单中位数 × 5）在该时间内撤单，算一次"可疑撤单"。≥ 2 次才告警。</p>
+      <label for="sim">对敲 · 关联账户相似度阈值</label>
+      <div class="range-row"><input type="range" id="sim" min="1" max="10" value="6"><output id="simO"></output></div>
+      <p class="hint">相似度 = 5 项特征（设备、IP、KYC 批次、充值来源、提币地址）中相同的项数 ÷ 5。同一对账户 ≥ 2 笔可疑成交才告警。</p>
+      <label for="vm">拉盘砸盘 · 成交量突增倍数</label>
+      <div class="range-row"><input type="range" id="vm" min="2" max="15" value="5"><output id="vmO"></output></div>
+      <p class="hint">10 秒成交量 ≥ 基线（全部 10 秒桶的中位数）× 倍数，且桶内价格变化 ≥ 2%。告警涉及该桶净买入或净卖出最多、占比 ≥ 20% 的账户。</p>
+    </aside>
+
+    <section>
+      <div class="card">
+        <h3>价格与成交量</h3>
+        <svg class="chart" id="chart" viewBox="0 0 900 360" role="img" aria-label="价格与成交量图，带告警标注"></svg>
+        <div class="legend">
+          <span><i style="background:var(--info)"></i>成交价</span>
+          <span><i style="background:var(--text-2);opacity:.4"></i>10 秒成交量</span>
+          <span><i style="background:var(--warn)"></i>突增桶</span>
+          <span><i style="background:var(--sell)"></i>幌骗告警</span>
+          <span><i style="background:var(--info);border-radius:50%"></i>对敲告警</span>
+          <span><i style="background:var(--accent-soft);border:1px solid var(--accent)"></i>注入的真值区间</span>
+        </div>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:16px">
+        <div class="card">
+          <h3>混淆矩阵（按账户）</h3>
+          <div class="cm" id="cm"></div>
+          <div class="stats">
+            <div class="stat"><span class="k">Precision 精确率</span><span class="v" id="pr"></span></div>
+            <div class="stat"><span class="k">Recall 召回率</span><span class="v" id="rc"></span></div>
+          </div>
+          <p class="small muted">正类 = 注入行为涉及的账户。Precision = TP ÷ (TP + FP)，误报越多越低。Recall = TP ÷ (TP + FN)，漏报越多越低。</p>
+        </div>
+        <div class="card">
+          <h3>分规则统计</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th>规则</th><th class="num">告警账户</th><th class="num">TP</th><th class="num">FP</th><th class="num">FN</th></tr></thead>
+            <tbody id="perRule"></tbody>
+          </table></div>
+          <p class="small muted">每条规则只对照它自己的真值：幌骗 → SP1；对敲 → W1、W2；拉盘砸盘 → P1–P3。</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>告警列表 <span class="small muted" id="alertCount"></span></h3>
+        <div class="table-wrap alerts-wrap"><table>
+          <thead><tr><th>时间</th><th>规则</th><th>账户</th><th>证据</th><th>判定</th></tr></thead>
+          <tbody id="alerts"></tbody>
+        </table></div>
+      </div>
+    </section>
+  </div>
+
+  <h2>试一试</h2>
+  <div class="card">
+    <ol class="try">
+      <li><b>存活时间：</b>只保留"幌骗"。把存活时间从 3 秒拉到 10 秒。哪个账户新出现在告警里？它为什么频繁撤单却不是操纵者？再把撤单率阈值调到 95%，误报是否消失？</li>
+      <li><b>相似度：</b>只保留"对敲"。把相似度从 0.6 降到 0.4，再降到 0.2。每一步新增的误报是哪一对账户？它们共享了哪些特征？</li>
+      <li><b>突增倍数：</b>只保留"拉盘砸盘"。把倍数从 5 降到 3。N7 为什么被告警？要区分"大户追消息"和"拉盘砸盘"，还需要什么信号？</li>
+    </ol>
+  </div>
+
+  <footer class="note">本页为教学模型。订单流、账户、特征和阈值全部为合成示例，不代表币安或任何交易所的监控规则。真实的市场监控还会使用订单簿回放、跨市场数据、资金流和人工调查。本页不构成投资建议。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var T = 300, BUCKET = 10, P0 = 10000; // price unit = 0.0001 USDT, start 1.0000
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function ri(r, lo, hi) { return lo + Math.floor(r() * (hi - lo + 1)); }
+  function px(p) { var s = String(p).padStart(5, '0'); return s.slice(0, -4) + '.' + s.slice(-4); }
+  function pct(x) { return (x * 100).toFixed(1) + '%'; }
+
+  var NORMALS = [];
+  for (var i = 1; i <= 20; i++) NORMALS.push('N' + i);
+  var FEAT_NAMES = ['设备', 'IP', 'KYC 批次', '充值来源', '提币地址'];
+
+  function features(inj) {
+    var f = {};
+    function uniq(a) { f[a] = FEAT_NAMES.map(function (n, i) { return a + ':' + i; }); }
+    NORMALS.concat(['MM1', 'MM2', 'SP1', 'W1', 'W2', 'P1', 'P2', 'P3']).forEach(uniq);
+    // W1/W2 share device, IP, deposit source, withdraw address (4/5)
+    [0, 1, 3, 4].forEach(function (k) { f.W2[k] = f.W1[k]; });
+    // family N3/N4 share device + IP (2/5)
+    [0, 1].forEach(function (k) { f.N4[k] = f.N3[k]; });
+    // office N8/N9 share IP (1/5)
+    f.N9[1] = f.N8[1];
+    // pump group shares withdraw address (1/5)
+    f.P2[4] = f.P1[4]; f.P3[4] = f.P1[4];
+    return f;
+  }
+  function similarity(F, a, b) {
+    if (a === b) return 1;
+    var fa = F[a], fb = F[b], n = 0;
+    for (var k = 0; k < 5; k++) if (fa[k] === fb[k]) n++;
+    return n / 5;
+  }
+  function sharedNames(F, a, b) {
+    var out = [];
+    for (var k = 0; k < 5; k++) if (F[a][k] === F[b][k]) out.push(FEAT_NAMES[k]);
+    return out;
+  }
+
+  // ---------- simulation ----------
+  function simulate(seed, inj) {
+    var r = mulberry32(seed), rI = mulberry32(seed ^ 0x5bd1e995);
+    var orders = [], trades = [], truth = [], mid = P0, oid = 0;
+    var prices = [];
+    function pickNormal(ex, rr) { rr = rr || r; var a; do { a = NORMALS[ri(rr, 0, NORMALS.length - 1)]; } while (a === ex); return a; }
+    function order(t, acct, side, price, size, life, cancelled, tag) {
+      orders.push({ id: ++oid, t: t, acct: acct, side: side, price: price, size: size, life: life, cancelled: cancelled, tag: tag || null });
+    }
+    function trade(t, buyer, seller, qty, tag) {
+      trades.push({ t: t, price: mid, qty: qty, buyer: buyer, seller: seller, tag: tag || null });
+    }
+    // episode timing (drawn regardless of toggles so the background stays identical)
+    var spoofT = [ri(r, 30, 50), ri(r, 100, 120), ri(r, 205, 225)];
+    var washStart = ri(r, 60, 80);
+    var pumpStart = ri(r, 140, 150);
+    var newsStart = ri(r, 255, 265);
+    var familyT = [ri(r, 20, 280), ri(r, 20, 280), ri(r, 20, 280)];
+    var officeT = [ri(r, 20, 280), ri(r, 20, 280)];
+    if (inj.spoof) truth.push({ rule: 'spoof', from: spoofT[0], to: spoofT[2] + 4, accts: ['SP1'], label: '幌骗' });
+    if (inj.wash) truth.push({ rule: 'wash', from: washStart, to: washStart + 40, accts: ['W1', 'W2'], label: '对敲' });
+    if (inj.pump) truth.push({ rule: 'pump', from: pumpStart, to: pumpStart + 45, accts: ['P1', 'P2', 'P3'], label: '拉盘砸盘' });
+
+    for (var t = 0; t < T; t++) {
+      // random walk
+      mid += ri(r, -4, 4);
+      // normal flow
+      var nTr = ri(r, 0, 3);
+      for (var k = 0; k < nTr; k++) { var b = pickNormal(); trade(t, b, pickNormal(b), ri(r, 10, 200)); }
+      if (r() < 0.6) {
+        var whale = r() < 0.05;
+        var cz = r() < (whale ? 0.5 : 0.3);
+        order(t, pickNormal(), r() < 0.5 ? '买' : '卖', mid + ri(r, -30, 30), whale ? ri(r, 1500, 3000) : ri(r, 10, 300), ri(r, 5, 60), cz);
+      }
+      // market makers
+      ['MM1', 'MM2'].forEach(function (m) {
+        var big = r() < 0.03;
+        order(t, m, '买', mid - ri(r, 2, 8), big ? ri(r, 1300, 2000) : ri(r, 50, 250), big ? ri(r, 3, 9) : ri(r, 2, 8), r() < 0.9);
+        order(t, m, '卖', mid + ri(r, 2, 8), ri(r, 50, 250), ri(r, 2, 8), r() < 0.9);
+      });
+      // family / office coincidental trades
+      if (familyT.indexOf(t) >= 0) trade(t, 'N3', 'N4', ri(r, 50, 150));
+      if (officeT.indexOf(t) >= 0) trade(t, 'N8', 'N9', ri(r, 50, 150));
+      // news spike: whale N7 buys legitimately
+      var nb = ri(r, 500, 900), nm = ri(r, 25, 45);
+      if (t >= newsStart && t < newsStart + 8) { trade(t, 'N7', pickNormal('N7'), nb); mid += nm; }
+      // spoofing
+      var sz1 = ri(r, 2500, 4000), sz2 = ri(r, 2500, 4000), sl1 = ri(r, 1, 3), sl2 = ri(r, 1, 3), sq = ri(r, 200, 400), bump = ri(r, 6, 12);
+      if (inj.spoof) {
+        if (spoofT.indexOf(t) >= 0) {
+          order(t, 'SP1', '买', mid - 2, sz1, sl1, true, 'spoof');
+          order(t, 'SP1', '买', mid - 4, sz2, sl2, true, 'spoof');
+          mid += bump;
+        }
+        if (spoofT.indexOf(t - 1) >= 0) trade(t, pickNormal(null, rI), 'SP1', sq, 'spoof');
+      }
+      // wash trading
+      var wq = ri(r, 300, 600);
+      if (inj.wash && t >= washStart && t < washStart + 40 && (t - washStart) % 3 === 0) {
+        if ((t - washStart) % 6 === 0) trade(t, 'W1', 'W2', wq, 'wash'); else trade(t, 'W2', 'W1', wq, 'wash');
+      }
+      // pump and dump
+      var pq = ri(r, 250, 450), pu = ri(r, 25, 45), dq = ri(r, 350, 600), dd = ri(r, 35, 60);
+      if (inj.pump) {
+        var dt = t - pumpStart;
+        if (dt >= 0 && dt < 20) {
+          ['P1', 'P2', 'P3'].forEach(function (p) { trade(t, p, pickNormal(null, rI), pq, 'pump'); });
+          mid += pu;
+        } else if (dt >= 30 && dt < 45) {
+          ['P1', 'P2', 'P3'].forEach(function (p) { trade(t, pickNormal(null, rI), p, dq, 'pump'); });
+          mid -= dd;
+        }
+      }
+      if (mid < 5000) mid = 5000;
+      prices.push(mid);
+    }
+    return { orders: orders, trades: trades, prices: prices, truth: truth, F: features(inj) };
+  }
+
+  // ---------- detectors ----------
+  function median(arr) { var a = arr.slice().sort(function (x, y) { return x - y; }); return a.length ? a[Math.floor(a.length / 2)] : 0; }
+
+  function detect(D, p) {
+    var alerts = [], hot = {};
+    // spoofing
+    var med = median(D.orders.map(function (o) { return o.size; }));
+    var byAcct = {};
+    D.orders.forEach(function (o) {
+      var s = byAcct[o.acct] || (byAcct[o.acct] = { n: 0, c: 0, sus: [] });
+      s.n++; if (o.cancelled) s.c++;
+      if (o.cancelled && o.size >= med * 5 && o.life <= p.life) s.sus.push(o);
+    });
+    Object.keys(byAcct).forEach(function (a) {
+      var s = byAcct[a], rate = s.c / s.n;
+      if (s.sus.length >= 2 && rate * 100 >= p.cancel) {
+        alerts.push({ t: s.sus[0].t, rule: 'spoof', ruleName: '幌骗', accts: [a],
+          ev: s.sus.length + ' 笔大单（≥ ' + (med * 5) + ' 枚）存活 ≤ ' + p.life + ' 秒即撤；撤单率 ' + pct(rate),
+          marks: s.sus.map(function (o) { return o.t; }) });
+      }
+    });
+    // wash trading
+    var pairs = {};
+    D.trades.forEach(function (tr) {
+      var s = similarity(D.F, tr.buyer, tr.seller);
+      if (s + 1e-9 >= p.sim) {
+        var key = [tr.buyer, tr.seller].sort().join('|');
+        (pairs[key] = pairs[key] || { s: s, list: [] }).list.push(tr);
+      }
+    });
+    Object.keys(pairs).forEach(function (k) {
+      var g = pairs[k];
+      if (g.list.length < 2) return;
+      var ab = k.split('|'), vol = 0;
+      g.list.forEach(function (x) { vol += x.qty; });
+      alerts.push({ t: g.list[0].t, rule: 'wash', ruleName: '对敲', accts: ab,
+        ev: g.list.length + ' 笔互相成交，共 ' + vol + ' 枚；相似度 ' + g.s.toFixed(1) + '（共享：' + sharedNames(D.F, ab[0], ab[1]).join('、') + '）',
+        marks: g.list.map(function (x) { return x.t; }) });
+    });
+    // pump and dump: 10s buckets
+    var nb = T / BUCKET, vols = [], buckets = [];
+    for (var b = 0; b < nb; b++) { vols.push(0); buckets.push({ net: {} }); }
+    D.trades.forEach(function (tr) {
+      var bi = Math.floor(tr.t / BUCKET);
+      vols[bi] += tr.qty;
+      var n = buckets[bi].net;
+      n[tr.buyer] = (n[tr.buyer] || 0) + tr.qty;
+      n[tr.seller] = (n[tr.seller] || 0) - tr.qty;
+    });
+    var base = median(vols);
+    for (b = 0; b < nb; b++) {
+      var open = b === 0 ? P0 : D.prices[b * BUCKET - 1], close = D.prices[b * BUCKET + BUCKET - 1];
+      var chg = (close - open) / open;
+      if (vols[b] >= base * p.vm && Math.abs(chg) >= 0.02) {
+        hot[b] = true;
+        var net = buckets[b].net, dir = chg > 0 ? 1 : -1;
+        var top = Object.keys(net).filter(function (a) { return net[a] * dir > 0 && Math.abs(net[a]) >= vols[b] * 0.2; })
+          .sort(function (x, y) { return Math.abs(net[y]) - Math.abs(net[x]); }).slice(0, 3);
+        if (top.length === 0) continue;
+        alerts.push({ t: b * BUCKET, rule: 'pump', ruleName: '拉盘砸盘', accts: top,
+          ev: '10 秒量 ' + vols[b] + ' 枚 = 基线 × ' + (vols[b] / base).toFixed(1) + '；价格 ' + (chg > 0 ? '+' : '') + pct(chg) + '；' + (dir > 0 ? '净买入' : '净卖出') + '最多：' + top.join('、'),
+          marks: [], bucket: b });
+      }
+    }
+    alerts.sort(function (x, y) { return x.t - y.t; });
+    return { alerts: alerts, vols: vols, base: base, hot: hot };
+  }
+
+  // ---------- evaluation ----------
+  function evaluate(D, R) {
+    var universe = {};
+    D.orders.forEach(function (o) { universe[o.acct] = 1; });
+    D.trades.forEach(function (t) { universe[t.buyer] = 1; universe[t.seller] = 1; });
+    var truthAll = {}, truthRule = { spoof: {}, wash: {}, pump: {} };
+    D.truth.forEach(function (g) { g.accts.forEach(function (a) { truthAll[a] = 1; truthRule[g.rule][a] = 1; }); });
+    var flagged = {}, flaggedRule = { spoof: {}, wash: {}, pump: {} };
+    R.alerts.forEach(function (al) { al.accts.forEach(function (a) { flagged[a] = 1; flaggedRule[al.rule][a] = 1; }); });
+    var cm = { tp: 0, fp: 0, fn: 0, tn: 0 };
+    Object.keys(universe).forEach(function (a) {
+      if (flagged[a] && truthAll[a]) cm.tp++; else if (flagged[a]) cm.fp++; else if (truthAll[a]) cm.fn++; else cm.tn++;
+    });
+    var per = ['spoof', 'wash', 'pump'].map(function (rule) {
+      var f = Object.keys(flaggedRule[rule]), tr = Object.keys(truthRule[rule]);
+      var tp = f.filter(function (a) { return truthRule[rule][a]; }).length;
+      return { rule: rule, flagged: f.length, tp: tp, fp: f.length - tp, fn: tr.length - tp };
+    });
+    return { cm: cm, per: per, truthRule: truthRule };
+  }
+
+  // ---------- render ----------
+  var W = 900, PH = 230, VH = 90, L = 54, RM = 10, TOP = 12, GAP = 22;
+  function xOf(t) { return L + (W - L - RM) * t / T; }
+  function renderChart(D, R) {
+    var lo = Math.min.apply(null, D.prices), hi = Math.max.apply(null, D.prices);
+    var pad = Math.max(20, Math.round((hi - lo) * 0.08)); lo -= pad; hi += pad;
+    function yP(p) { return TOP + PH * (hi - p) / (hi - lo); }
+    var vTop = TOP + PH + GAP, vmax = Math.max.apply(null, R.vols) || 1;
+    function yV(v) { return vTop + VH - VH * v / vmax; }
+    var s = '';
+    // truth bands
+    D.truth.forEach(function (g) {
+      s += '<rect class="truth" x="' + xOf(g.from) + '" y="' + TOP + '" width="' + (xOf(g.to) - xOf(g.from)) + '" height="' + (PH + GAP + VH) + '"></rect>';
+      s += '<text class="truth-l" x="' + (xOf(g.from) + 3) + '" y="' + (TOP + 11) + '">真值：' + g.label + '</text>';
+    });
+    // grid
+    s += '<g class="grid">';
+    for (var i = 0; i <= 4; i++) {
+      var p = Math.round(lo + (hi - lo) * i / 4), y = yP(p);
+      s += '<line x1="' + L + '" x2="' + (W - RM) + '" y1="' + y + '" y2="' + y + '"></line>';
+      s += '<text class="axis" x="' + (L - 6) + '" y="' + (y + 4) + '" text-anchor="end">' + px(p).slice(0, -1) + '</text>';
+    }
+    for (var t = 0; t <= T; t += 60) s += '<text class="axis" x="' + xOf(t) + '" y="' + (vTop + VH + 16) + '" text-anchor="middle">' + t + 's</text>';
+    s += '<line x1="' + L + '" x2="' + (W - RM) + '" y1="' + (vTop + VH) + '" y2="' + (vTop + VH) + '"></line></g>';
+    s += '<text class="axis" x="' + (L - 6) + '" y="' + (vTop + 10) + '" text-anchor="end">量</text>';
+    // volume bars
+    var bw = (W - L - RM) / R.vols.length;
+    R.vols.forEach(function (v, b) {
+      s += '<rect class="vol' + (R.hot[b] ? ' hot' : '') + '" x="' + (L + b * bw + 1) + '" y="' + yV(v) + '" width="' + (bw - 2) + '" height="' + (vTop + VH - yV(v)) + '"></rect>';
+    });
+    // price line
+    s += '<polyline class="price" points="' + D.prices.map(function (p, t) { return xOf(t).toFixed(1) + ',' + yP(p).toFixed(1); }).join(' ') + '"></polyline>';
+    // alert markers
+    R.alerts.forEach(function (al) {
+      if (al.rule === 'pump') {
+        var x0 = xOf(al.bucket * BUCKET), x1 = xOf(al.bucket * BUCKET + BUCKET);
+        s += '<rect class="m-pump" x="' + x0 + '" y="' + (TOP + 2) + '" width="' + (x1 - x0) + '" height="' + (PH - 4) + '"><title>' + esc(al.ev) + '</title></rect>';
+      } else {
+        al.marks.forEach(function (t) {
+          var x = xOf(t), y = yP(D.prices[t]);
+          if (al.rule === 'spoof') s += '<path class="m-spoof" d="M' + x + ',' + (y + 8) + ' l-6,10 h12 z"><title>' + esc('幌骗 ' + al.accts.join('、') + ' @' + t + 's') + '</title></path>';
+          else s += '<circle class="m-wash" cx="' + x + '" cy="' + (y - 9) + '" r="4.5"><title>' + esc('对敲 ' + al.accts.join('、') + ' @' + t + 's') + '</title></circle>';
+        });
+      }
+    });
+    $('chart').innerHTML = s;
+  }
+
+  function renderTables(D, R, E) {
+    var cm = E.cm;
+    $('cm').innerHTML = '<div class="h"></div><div class="h">实际：操纵者</div><div class="h">实际：正常</div>' +
+      '<div class="h">告警</div><div class="tp">TP ' + cm.tp + '</div><div class="fp">FP ' + cm.fp + '<br><span class="small">误报</span></div>' +
+      '<div class="h">未告警</div><div class="fn">FN ' + cm.fn + '<br><span class="small">漏报</span></div><div class="tn">TN ' + cm.tn + '</div>';
+    $('pr').textContent = cm.tp + cm.fp ? pct(cm.tp / (cm.tp + cm.fp)) : '—';
+    $('rc').textContent = cm.tp + cm.fn ? pct(cm.tp / (cm.tp + cm.fn)) : '—';
+    var names = { spoof: '幌骗', wash: '对敲', pump: '拉盘砸盘' };
+    $('perRule').innerHTML = E.per.map(function (x) {
+      return '<tr><td>' + names[x.rule] + '</td><td class="num">' + x.flagged + '</td><td class="num">' + x.tp + '</td><td class="num">' + x.fp + '</td><td class="num">' + x.fn + '</td></tr>';
+    }).join('');
+    $('alertCount').textContent = '共 ' + R.alerts.length + ' 条';
+    $('alerts').innerHTML = R.alerts.length ? R.alerts.map(function (al) {
+      var tr = E.truthRule[al.rule];
+      var good = al.accts.filter(function (a) { return tr[a]; }).length;
+      var verdict = good === al.accts.length ? '真阳性' : good === 0 ? '误报' : '部分误报';
+      return '<tr class="' + (good === al.accts.length ? 'tp' : 'fp') + '"><td>' + al.t + 's</td><td>' + al.ruleName + '</td><td class="mono">' + al.accts.join('、') + '</td><td class="small">' + esc(al.ev) + '</td><td>' + verdict + '</td></tr>';
+    }).join('') : '<tr><td colspan="5" class="muted">没有告警。</td></tr>';
+  }
+
+  var data = null;
+  function params() {
+    return { cancel: +$('cr').value, life: +$('lt').value, sim: +$('sim').value / 10, vm: +$('vm').value };
+  }
+  function labels() {
+    $('crO').textContent = $('cr').value + '%';
+    $('ltO').textContent = $('lt').value + ' 秒';
+    $('simO').textContent = (+$('sim').value / 10).toFixed(1);
+    $('vmO').textContent = '× ' + $('vm').value;
+  }
+  function regen() {
+    var seed = parseInt($('seed').value, 10); if (!isFinite(seed)) seed = 1;
+    data = simulate(seed, { spoof: $('injSpoof').checked, wash: $('injWash').checked, pump: $('injPump').checked });
+    analyze();
+  }
+  function analyze() {
+    labels();
+    var R = detect(data, params());
+    var E = evaluate(data, R);
+    renderChart(data, R);
+    renderTables(data, R, E);
+  }
+  ['cr', 'lt', 'sim', 'vm'].forEach(function (id) { $(id).addEventListener('input', analyze); });
+  ['injSpoof', 'injWash', 'injPump'].forEach(function (id) { $(id).addEventListener('change', regen); });
+  $('btnRegen').addEventListener('click', regen);
+  $('seed').addEventListener('change', regen);
+  regen();
+})();
+</script>
+</body>
+</html>

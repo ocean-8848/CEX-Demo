@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AML 资金流图谱</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); }
+  @media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .case-btns button { flex: 1 1 150px; }
+  .case-btns button.on { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .ctl { border-bottom: 1px dashed var(--border); padding: 6px 0 10px; }
+  .ctl:last-child { border-bottom: 0; }
+  .ctl .range-row output { min-width: 96px; font-size: 13px; white-space: nowrap; }
+  .switch { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); margin: 8px 0 0; }
+  .graph-wrap { background: var(--surface-2); border-radius: 8px; padding: 4px; }
+  .graph-wrap svg { width: 100%; height: auto; display: block; }
+  .edge { stroke: var(--text-2); stroke-width: 1.4; fill: none; opacity: .55; }
+  .edge.bridge { stroke-dasharray: 5 3; }
+  .edge.hit { stroke: var(--sell); stroke-width: 3; opacity: 1; }
+  .edge.hit.exp { stroke: var(--warn); }
+  .elabel { font-size: 10px; fill: var(--text-2); }
+  .elabel.hit { fill: var(--sell); font-weight: 600; }
+  .node circle.body { stroke: var(--surface); stroke-width: 2; }
+  .node.user circle.body { fill: var(--info); }
+  .node.ext circle.body { fill: var(--text-2); }
+  .node.mixer circle.body { fill: var(--warn); }
+  .node.sanc circle.body { fill: var(--sell); }
+  .node.cex circle.body { fill: var(--accent); }
+  .node.p2p circle.body { fill: var(--buy); }
+  .node.bridge circle.body { fill: var(--surface); stroke: var(--text-2); stroke-width: 2; }
+  .node text { font-size: 11px; }
+  .node .sub { font-size: 9.5px; fill: var(--text-2); }
+  .node .ring { fill: none; stroke: var(--sell); stroke-width: 3; opacity: 0; }
+  .node.hit .ring { opacity: 1; }
+  .node .truth { fill: none; stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0; }
+  .show-truth .node.bad .truth { opacity: 1; }
+  .node { cursor: pointer; }
+  .arrow-head { fill: var(--text-2); }
+  .arrow-hit { fill: var(--sell); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-2); margin: 8px 0 0; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; }
+  .stats .stat .v { font-size: 19px; }
+  .alerts td { vertical-align: top; }
+  .alerts .why { color: var(--text-2); font-size: 12px; }
+  #detail { min-height: 48px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../backstage/B01-compliance.md">配套章节：B01 合规防护</a>
+  </header>
+  <h1>AML 资金流图谱</h1>
+  <p class="lead">一张合成的交易网络：本平台账户、外部地址、混币器、制裁地址、其他交易所、P2P 对手方。选一个案例，调阈值，点"运行监控"。引擎标出命中规则的节点和边，并生成告警列表。所有地址、金额和时间都是虚构的示例。</p>
+
+  <div class="card small">
+    <strong>怎么玩</strong>
+    <ol style="margin:6px 0 0; padding-left:20px;">
+      <li>选择一个预置案例：拆分、分层或间接暴露。</li>
+      <li>在左侧调整跳数阈值、单笔报告阈值、时间窗口和风险分告警线。</li>
+      <li>点"运行监控"。红圈是被告警的节点，红边是命中的资金路径，橙边是风险暴露路径。</li>
+      <li>勾选"显示真实标签"。虚线圈是真正可疑的账户。对照右上角的误报和漏报。</li>
+      <li>点击任意节点，查看它的类型和资金往来。</li>
+    </ol>
+  </div>
+
+  <div class="btn-row case-btns" style="margin-top:16px">
+    <button type="button" data-case="smurf">案例 1：拆分 Smurfing</button>
+    <button type="button" data-case="layer">案例 2：分层 Layering</button>
+    <button type="button" data-case="expo">案例 3：间接暴露</button>
+  </div>
+
+  <div class="layout" style="margin-top:8px">
+    <aside class="card">
+      <h3>监控参数</h3>
+      <div class="ctl">
+        <label for="hop">跳数阈值（暴露追溯的最大跳数）</label>
+        <div class="range-row"><input id="hop" type="range" min="1" max="6" step="1" value="3"><output id="hopO"></output></div>
+      </div>
+      <div class="ctl">
+        <label for="thr">单笔报告阈值（USDT）</label>
+        <div class="range-row"><input id="thr" type="range" min="2000" max="20000" step="500" value="10000"><output id="thrO"></output></div>
+        <p class="small muted" style="margin:2px 0 0">≥ 阈值：生成大额报告。阈值的 50%–100%：计入拆分规则。</p>
+      </div>
+      <div class="ctl">
+        <label for="win">时间窗口（小时）</label>
+        <div class="range-row"><input id="win" type="range" min="1" max="48" step="1" value="24"><output id="winO"></output></div>
+        <p class="small muted" style="margin:2px 0 0">拆分：窗口内笔数。分层：相邻两跳的最大间隔。</p>
+      </div>
+      <div class="ctl">
+        <label for="line">风险分告警线</label>
+        <div class="range-row"><input id="line" type="range" min="5" max="80" step="1" value="25"><output id="lineO"></output></div>
+        <p class="small muted" style="margin:2px 0 0">风险分 = 基础分 × 0.6^(跳数 − 1)。制裁 100，混币器 80，被盗资金 90。</p>
+        <label class="switch"><input id="stopCex" type="checkbox" checked> 在其他交易所节点停止追溯</label>
+      </div>
+      <label class="switch"><input id="truth" type="checkbox"> 显示真实标签</label>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="primary" id="run" type="button">▶ 运行监控</button>
+        <button id="reset" type="button">恢复默认</button>
+      </div>
+      <p class="small muted" style="margin:6px 0 0">规则固定：拆分需窗口内 ≥ 3 笔；分层需连续 ≥ 3 跳且每跳金额保留 ≥ 90%。</p>
+    </aside>
+
+    <main style="min-width:0">
+      <div class="card">
+        <div class="stats">
+          <div class="stat"><span class="k">告警数</span><span class="v" id="sAlerts">–</span></div>
+          <div class="stat"><span class="k">命中真可疑</span><span class="v up" id="sTP">–</span></div>
+          <div class="stat"><span class="k">误报</span><span class="v" id="sFP" style="color:var(--warn)">–</span></div>
+          <div class="stat"><span class="k">漏报</span><span class="v down" id="sFN">–</span></div>
+          <div class="stat"><span class="k">精确率</span><span class="v" id="sP">–</span></div>
+          <div class="stat"><span class="k">召回率</span><span class="v" id="sR">–</span></div>
+        </div>
+        <p class="small muted" style="margin:8px 0 0">评估对象：本平台账户（蓝色节点）。外部地址不计入误报和漏报。</p>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3 id="caseTitle">图谱</h3>
+        <p class="small muted" id="caseDesc" style="margin:0 0 8px"></p>
+        <div class="graph-wrap" id="graphWrap"><svg id="svg" role="img" aria-label="资金流图谱"></svg></div>
+        <div class="legend">
+          <span><i style="background:var(--info)"></i>本平台账户</span>
+          <span><i style="background:var(--text-2)"></i>外部地址</span>
+          <span><i style="background:var(--warn)"></i>混币器</span>
+          <span><i style="background:var(--sell)"></i>制裁 / 被盗资金</span>
+          <span><i style="background:var(--accent)"></i>其他交易所</span>
+          <span><i style="background:var(--buy)"></i>P2P 对手方</span>
+          <span><i style="background:var(--surface);border:2px solid var(--text-2)"></i>跨链桥</span>
+        </div>
+        <div id="detail" class="small muted" style="margin-top:10px">点击节点查看详情。</div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>告警列表</h3>
+        <div class="table-wrap">
+          <table class="alerts">
+            <thead><tr><th>规则</th><th>涉及账户</th><th>证据</th></tr></thead>
+            <tbody id="alertBody"><tr><td colspan="3" class="muted">尚未运行监控。</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>试一试</h3>
+    <ol style="margin:6px 0 0; padding-left:20px;">
+      <li>案例 1：把单笔报告阈值从 10,000 调到 5,000，再运行。公司账户发工资为什么被误报？再把时间窗口缩到 6 小时，看真正的拆分是否漏掉。</li>
+      <li>案例 2：把时间窗口从 24 调到 2，再调到 40。哪一档漏掉了洗钱链？哪一档把正常的 DEX 用户也拉进来了？</li>
+      <li>案例 3：把跳数阈值调到 5，告警线降到 10，再取消"在其他交易所节点停止追溯"。剥离链被抓到了吗？代价是多了哪些误报？</li>
+    </ol>
+  </div>
+
+  <footer class="note">本页是教学模拟。规则、分值和衰减系数是示例，不代表币安或任何 KYT 服务商的真实算法。全部数据虚构。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- Case data (all fictional) ----------
+  // node: id, label, type(user|ext|mixer|sanc|cex|p2p|bridge), col, row, bad(true/false for users), base(risk base), note
+  // edge: from, to, amt (USDT), t (hours), bridge(bool)
+  var CASES = {
+    smurf: {
+      title: '案例 1：拆分 Smurfing',
+      desc: '外部地址 E0 有 48,000 USDT。它拆成 5 笔略低于 10,000 的转账，分给 5 个本平台账户，再汇总提走。旁边有一家公司账户在发工资。',
+      cols: 4,
+      nodes: [
+        { id: 'E0', label: 'E0', type: 'ext', col: 0, row: 2, note: '资金来源，未知身份' },
+        { id: 'U1', label: 'U1', type: 'user', col: 1, row: 0, bad: true, note: '新注册，学生' },
+        { id: 'U2', label: 'U2', type: 'user', col: 1, row: 1, bad: true, note: '新注册' },
+        { id: 'U3', label: 'U3', type: 'user', col: 1, row: 2, bad: true, note: '新注册' },
+        { id: 'U4', label: 'U4', type: 'user', col: 1, row: 3, bad: true, note: '新注册' },
+        { id: 'U5', label: 'U5', type: 'user', col: 1, row: 4, bad: true, note: '新注册' },
+        { id: 'E9', label: 'E9', type: 'ext', col: 2, row: 2, note: '汇总地址' },
+        { id: 'C', label: 'C 公司', type: 'user', col: 2, row: 5, bad: false, note: 'KYB 企业账户，月度发薪' },
+        { id: 'U6', label: 'U6', type: 'user', col: 3, row: 4, bad: false, note: '员工' },
+        { id: 'U7', label: 'U7', type: 'user', col: 3, row: 5, bad: false, note: '员工' },
+        { id: 'U8', label: 'U8', type: 'user', col: 3, row: 6, bad: false, note: '员工' },
+        { id: 'U9', label: 'U9', type: 'user', col: 3, row: 7, bad: false, note: '员工' },
+        { id: 'X1', label: 'X1', type: 'cex', col: 0, row: 6, note: '其他交易所' },
+        { id: 'U10', label: 'U10', type: 'user', col: 1, row: 6, bad: false, note: '老用户，单笔大额充值' }
+      ],
+      edges: [
+        { from: 'E0', to: 'U1', amt: 9600, t: 0 },
+        { from: 'E0', to: 'U2', amt: 9500, t: 7 },
+        { from: 'E0', to: 'U3', amt: 9700, t: 15 },
+        { from: 'E0', to: 'U4', amt: 9400, t: 22 },
+        { from: 'E0', to: 'U5', amt: 9800, t: 31 },
+        { from: 'U1', to: 'E9', amt: 9500, t: 34 },
+        { from: 'U2', to: 'E9', amt: 9400, t: 42 },
+        { from: 'U3', to: 'E9', amt: 9600, t: 51 },
+        { from: 'U4', to: 'E9', amt: 9300, t: 60 },
+        { from: 'U5', to: 'E9', amt: 9700, t: 69 },
+        { from: 'C', to: 'U6', amt: 2600, t: 0 },
+        { from: 'C', to: 'U7', amt: 2800, t: 1 },
+        { from: 'C', to: 'U8', amt: 2500, t: 2 },
+        { from: 'C', to: 'U9', amt: 3000, t: 3 },
+        { from: 'X1', to: 'U10', amt: 12000, t: 5 }
+      ]
+    },
+    layer: {
+      title: '案例 2：分层 Layering',
+      desc: '被盗资金 H 经过 2 个地址、1 座跨链桥、2 个新链地址，快速进入本平台 U1，再转给 P2P 对手方套现。每跳间隔 1–4 小时。U2 是正常用户：钱包在 DEX 换币后隔 30 小时才充值。',
+      cols: 8,
+      nodes: [
+        { id: 'H', label: 'H 被盗', type: 'sanc', col: 0, row: 1, base: 90, note: '被盗资金标签（虚构）' },
+        { id: 'A1', label: 'A1', type: 'ext', col: 1, row: 1, note: '链 A 地址' },
+        { id: 'A2', label: 'A2', type: 'ext', col: 2, row: 1, note: '链 A 地址' },
+        { id: 'BR', label: '桥', type: 'bridge', col: 3, row: 1, note: '跨链桥合约' },
+        { id: 'B1', label: 'B1', type: 'ext', col: 4, row: 1, note: '链 B 地址' },
+        { id: 'B2', label: 'B2', type: 'ext', col: 5, row: 1, note: '链 B 地址' },
+        { id: 'U1', label: 'U1', type: 'user', col: 6, row: 1, bad: true, note: '本平台账户，注册 3 天' },
+        { id: 'P1', label: 'P1', type: 'p2p', col: 7, row: 1, note: 'P2P 对手方' },
+        { id: 'W', label: 'W 钱包', type: 'ext', col: 3, row: 3, note: 'U2 的自托管钱包' },
+        { id: 'DEX', label: 'DEX', type: 'ext', col: 4, row: 4, note: '去中心化交易所合约' },
+        { id: 'U2', label: 'U2', type: 'user', col: 6, row: 3, bad: false, note: '老用户，正常换币' },
+        { id: 'X1', label: 'X1', type: 'cex', col: 4, row: 6, note: '其他交易所' },
+        { id: 'U3', label: 'U3', type: 'user', col: 6, row: 6, bad: false, note: '从其他交易所搬砖' }
+      ],
+      edges: [
+        { from: 'H', to: 'A1', amt: 50000, t: 0 },
+        { from: 'A1', to: 'A2', amt: 49900, t: 3 },
+        { from: 'A2', to: 'BR', amt: 49800, t: 7 },
+        { from: 'BR', to: 'B1', amt: 49600, t: 9, bridge: true },
+        { from: 'B1', to: 'B2', amt: 49500, t: 13 },
+        { from: 'B2', to: 'U1', amt: 49400, t: 16 },
+        { from: 'U1', to: 'P1', amt: 48500, t: 17 },
+        { from: 'W', to: 'DEX', amt: 20000, t: 0 },
+        { from: 'DEX', to: 'W', amt: 19900, t: 30 },
+        { from: 'W', to: 'U2', amt: 19800, t: 32 },
+        { from: 'X1', to: 'U3', amt: 15000, t: 3 },
+        { from: 'U3', to: 'X1', amt: 15100, t: 60 }
+      ]
+    },
+    expo: {
+      title: '案例 3：与制裁 / 混币器地址的间接暴露',
+      desc: '制裁地址 S 和混币器 M 的资金经过不同跳数到达本平台账户。U4 的资金走了 5 跳的剥离链（Peel Chain）：每跳剥掉约 15%，避开"金额保留 ≥ 90%"的分层规则。U6、U7 的资金只是经过另一家交易所 X1。',
+      cols: 6,
+      nodes: [
+        { id: 'S', label: 'S 制裁', type: 'sanc', col: 0, row: 0, base: 100, note: '制裁名单地址（虚构）' },
+        { id: 'M', label: 'M 混币', type: 'mixer', col: 0, row: 3, base: 80, note: '混币器（虚构）' },
+        { id: 'U5', label: 'U5', type: 'user', col: 1, row: 0, bad: true, note: '直接收到制裁地址的资金' },
+        { id: 'E1', label: 'E1', type: 'ext', col: 1, row: 1, note: '外部地址' },
+        { id: 'U1', label: 'U1', type: 'user', col: 2, row: 1, bad: true, note: '2 跳间接暴露' },
+        { id: 'E2', label: 'E2', type: 'ext', col: 1, row: 2, note: '外部地址' },
+        { id: 'E3', label: 'E3', type: 'ext', col: 2, row: 2, note: '外部地址' },
+        { id: 'U2', label: 'U2', type: 'user', col: 3, row: 2, bad: true, note: '3 跳间接暴露' },
+        { id: 'E4', label: 'E4', type: 'ext', col: 1, row: 4, note: '剥离链' },
+        { id: 'E5', label: 'E5', type: 'ext', col: 2, row: 4, note: '剥离链' },
+        { id: 'E6', label: 'E6', type: 'ext', col: 3, row: 4, note: '剥离链' },
+        { id: 'E7', label: 'E7', type: 'ext', col: 4, row: 4, note: '剥离链' },
+        { id: 'U4', label: 'U4', type: 'user', col: 5, row: 4, bad: true, note: '5 跳剥离链末端' },
+        { id: 'X1', label: 'X1', type: 'cex', col: 1, row: 6, note: '其他大型交易所热钱包' },
+        { id: 'E8', label: 'E8', type: 'ext', col: 2, row: 6, note: '普通用户钱包' },
+        { id: 'U6', label: 'U6', type: 'user', col: 3, row: 6, bad: false, note: '从其他交易所提币后充值' },
+        { id: 'U7', label: 'U7', type: 'user', col: 2, row: 7, bad: false, note: '从其他交易所直接提币到本平台' },
+        { id: 'U8', label: 'U8', type: 'user', col: 4, row: 2, bad: false, note: '收到 U2 卖币的对手方转账（本平台内部转账）' }
+      ],
+      edges: [
+        { from: 'S', to: 'U5', amt: 3000, t: 1 },
+        { from: 'S', to: 'E1', amt: 8000, t: 0 },
+        { from: 'E1', to: 'U1', amt: 7800, t: 4 },
+        { from: 'M', to: 'E2', amt: 6000, t: 0 },
+        { from: 'E2', to: 'E3', amt: 5900, t: 6 },
+        { from: 'E3', to: 'U2', amt: 5800, t: 12 },
+        { from: 'U2', to: 'U8', amt: 1200, t: 20 },
+        { from: 'M', to: 'E4', amt: 9000, t: 0 },
+        { from: 'E4', to: 'E5', amt: 7600, t: 3 },
+        { from: 'E5', to: 'E6', amt: 6400, t: 6 },
+        { from: 'E6', to: 'E7', amt: 5400, t: 9 },
+        { from: 'E7', to: 'U4', amt: 4600, t: 12 },
+        { from: 'M', to: 'X1', amt: 5000, t: 2 },
+        { from: 'X1', to: 'E8', amt: 4000, t: 30 },
+        { from: 'E8', to: 'U6', amt: 3900, t: 33 },
+        { from: 'X1', to: 'U7', amt: 2500, t: 40 }
+      ]
+    }
+  };
+
+  var DEFAULTS = { hop: 3, thr: 10000, win: 24, line: 25, stopCex: true };
+  var DECAY = 0.6;
+  var MIN_SMURF = 3;
+  var MIN_CHAIN = 3;
+  var RETAIN = 0.9;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var svg = $('svg');
+  var NS = 'http://www.w3.org/2000/svg';
+  var current = 'smurf';
+  var nodeEls = {};
+  var edgeEls = [];
+  var hasRun = false;
+
+  function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
+  function el(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) { if (Object.prototype.hasOwnProperty.call(attrs, k)) e.setAttribute(k, attrs[k]); }
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function params() {
+    return {
+      hop: +$('hop').value, thr: +$('thr').value, win: +$('win').value,
+      line: +$('line').value, stopCex: $('stopCex').checked
+    };
+  }
+  function syncOutputs() {
+    var p = params();
+    $('hopO').textContent = p.hop + ' 跳';
+    $('thrO').textContent = fmt(p.thr);
+    $('winO').textContent = p.win + ' 小时';
+    $('lineO').textContent = p.line + ' 分';
+  }
+
+  // ---------- Layout & render ----------
+  var W = 760, PADX = 50, PADY = 34, ROWH = 54, R = 15;
+  function pos(c, n) {
+    var span = Math.max(1, c.cols - 1);
+    return { x: PADX + n.col * (W - 2 * PADX) / span, y: PADY + n.row * ROWH };
+  }
+
+  function render() {
+    var c = CASES[current];
+    var maxRow = 0;
+    c.nodes.forEach(function (n) { if (n.row > maxRow) maxRow = n.row; });
+    var H = PADY * 2 + maxRow * ROWH + 10;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var defs = el('defs', {}, svg);
+    var m1 = el('marker', { id: 'ah', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' }, defs);
+    el('path', { d: 'M0,0 L10,5 L0,10 z', 'class': 'arrow-head' }, m1);
+    var m2 = el('marker', { id: 'ahHit', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '6', markerHeight: '6', orient: 'auto-start-reverse' }, defs);
+    el('path', { d: 'M0,0 L10,5 L0,10 z', 'class': 'arrow-hit' }, m2);
+
+    var byId = {};
+    c.nodes.forEach(function (n) { byId[n.id] = n; });
+    var gE = el('g', {}, svg);
+    var gL = el('g', {}, svg);
+    var gN = el('g', {}, svg);
+    edgeEls = [];
+    c.edges.forEach(function (e, i) {
+      var a = pos(c, byId[e.from]), b = pos(c, byId[e.to]);
+      var dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx * dx + dy * dy) || 1;
+      var x1 = a.x + dx / len * R, y1 = a.y + dy / len * R;
+      var x2 = b.x - dx / len * (R + 3), y2 = b.y - dy / len * (R + 3);
+      // slight curve for readability
+      var mx = (x1 + x2) / 2 - dy / len * 10, my = (y1 + y2) / 2 + dx / len * 10;
+      var path = el('path', { d: 'M' + x1 + ',' + y1 + ' Q' + mx + ',' + my + ' ' + x2 + ',' + y2, 'class': 'edge' + (e.bridge ? ' bridge' : ''), 'marker-end': 'url(#ah)' }, gE);
+      var tx = (x1 + 2 * mx + x2) / 4, ty = (y1 + 2 * my + y2) / 4 - 3;
+      var lab = el('text', { x: tx, y: ty, 'text-anchor': 'middle', 'class': 'elabel' }, gL);
+      lab.textContent = (e.amt >= 1000 ? (e.amt / 1000).toFixed(1) + 'k' : e.amt) + ' · t' + e.t + 'h';
+      edgeEls.push({ path: path, label: lab, idx: i });
+    });
+    nodeEls = {};
+    c.nodes.forEach(function (n) {
+      var p = pos(c, n);
+      var g = el('g', { 'class': 'node ' + n.type + (n.bad ? ' bad' : ''), transform: 'translate(' + p.x + ',' + p.y + ')', tabindex: '0' }, gN);
+      el('circle', { r: R + 7, 'class': 'truth' }, g);
+      el('circle', { r: R + 4, 'class': 'ring' }, g);
+      el('circle', { r: R, 'class': 'body' }, g);
+      var t = el('text', { y: R + 13, 'text-anchor': 'middle' }, g);
+      t.textContent = n.label;
+      g.addEventListener('click', function () { showDetail(n.id); });
+      g.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') showDetail(n.id); });
+      nodeEls[n.id] = g;
+    });
+    $('caseTitle').textContent = c.title;
+    $('caseDesc').textContent = c.desc;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-case]'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-case') === current);
+    });
+  }
+
+  // ---------- Detection engine ----------
+  function detect(c, p) {
+    var byId = {};
+    c.nodes.forEach(function (n) { byId[n.id] = n; });
+    var alerts = [];
+    var hitNodes = {};   // id -> true
+    var hitEdges = {};   // idx -> 'tm' | 'exp'
+    function isUser(id) { return byId[id] && byId[id].type === 'user'; }
+    function markUser(id) { if (isUser(id)) hitNodes[id] = true; }
+
+    // R0: large single transfer report (informational, not suspicious), merged per user
+    var big = {};
+    c.edges.forEach(function (e) {
+      if (e.amt < p.thr) return;
+      [e.to, e.from].forEach(function (id) {
+        if (isUser(id)) (big[id] = big[id] || []).push(e.from + '→' + e.to + ' ' + fmt(e.amt));
+      });
+    });
+    Object.keys(big).forEach(function (id) {
+      alerts.push({ rule: '大额报告', kind: 'info', users: [id],
+        why: big[id].length + ' 笔单笔 ≥ ' + fmt(p.thr) + '：' + big[id].join('；') + '。按法规报告，不等于可疑。' });
+    });
+
+    // R1: structuring — hub fans out / fans in sub-threshold transfers within window
+    var low = p.thr * 0.5;
+    var hubs = {};
+    c.edges.forEach(function (e, i) {
+      if (e.amt >= low && e.amt < p.thr) {
+        (hubs['out:' + e.from] = hubs['out:' + e.from] || []).push(i);
+        (hubs['in:' + e.to] = hubs['in:' + e.to] || []).push(i);
+      }
+    });
+    Object.keys(hubs).forEach(function (key) {
+      var list = hubs[key].slice().sort(function (a, b) { return c.edges[a].t - c.edges[b].t; });
+      var flagged = {};
+      for (var s = 0; s < list.length; s++) {
+        var win = [];
+        for (var k = s; k < list.length; k++) {
+          if (c.edges[list[k]].t - c.edges[list[s]].t <= p.win) win.push(list[k]);
+        }
+        var sum = win.reduce(function (acc, idx) { return acc + c.edges[idx].amt; }, 0);
+        if (win.length >= MIN_SMURF && sum >= p.thr) win.forEach(function (idx) { flagged[idx] = true; });
+      }
+      var idxs = Object.keys(flagged).map(Number);
+      if (!idxs.length) return;
+      var dir = key.slice(0, key.indexOf(':'));
+      var hub = key.slice(key.indexOf(':') + 1);
+      var users = {};
+      var total = 0;
+      idxs.forEach(function (idx) {
+        var e = c.edges[idx];
+        total += e.amt;
+        [e.from, e.to].forEach(function (id) { if (isUser(id)) users[id] = true; });
+      });
+      if (!Object.keys(users).length) return;
+      idxs.forEach(function (idx) { hitEdges[idx] = 'tm'; });
+      Object.keys(users).forEach(markUser);
+      alerts.push({ rule: 'TM-02 结构化拆分', kind: 'sell', users: Object.keys(users),
+        why: (dir === 'out' ? hub + ' 拆出 ' : hub + ' 汇入 ') + idxs.length + ' 笔，每笔在 ' + fmt(low) + '–' + fmt(p.thr) +
+          ' 之间，合计 ' + fmt(total) + '；' + p.win + ' 小时窗口内 ≥ ' + MIN_SMURF + ' 笔。' });
+    });
+
+    // R2: layering — chains of rapid forwarding with high retention
+    var outByNode = {};
+    c.edges.forEach(function (e, i) { (outByNode[e.from] = outByNode[e.from] || []).push(i); });
+    var chains = [];
+    function extend(chain) {
+      var last = c.edges[chain[chain.length - 1]];
+      var nexts = (outByNode[last.to] || []).filter(function (j) {
+        var n = c.edges[j];
+        var gap = n.t - last.t;
+        return chain.indexOf(j) < 0 && gap >= 0 && gap <= p.win && n.amt >= last.amt * RETAIN && n.amt <= last.amt * 1.05;
+      });
+      if (!nexts.length) { if (chain.length >= MIN_CHAIN) chains.push(chain); return; }
+      nexts.forEach(function (j) { extend(chain.concat([j])); });
+    }
+    c.edges.forEach(function (e, i) { extend([i]); });
+    // keep maximal chains only (not a contiguous sub-chain of another)
+    chains = chains.filter(function (ch) {
+      var s = ch.join(',');
+      return !chains.some(function (o) { return o !== ch && o.length > ch.length && (',' + o.join(',') + ',').indexOf(',' + s + ',') >= 0; });
+    });
+    chains.forEach(function (ch) {
+      var users = {};
+      var path = [c.edges[ch[0]].from];
+      var bridge = false;
+      ch.forEach(function (idx) {
+        var e = c.edges[idx];
+        path.push(e.to);
+        if (e.bridge) bridge = true;
+        [e.from, e.to].forEach(function (id) { if (isUser(id)) users[id] = true; });
+      });
+      var u = Object.keys(users);
+      if (!u.length) return;
+      ch.forEach(function (idx) { hitEdges[idx] = 'tm'; });
+      u.forEach(markUser);
+      var dur = c.edges[ch[ch.length - 1]].t - c.edges[ch[0]].t;
+      alerts.push({ rule: 'TM-03 多跳快速转移' + (bridge ? '（含跨链）' : ''), kind: 'sell', users: u,
+        why: path.join(' → ') + '：' + ch.length + ' 跳，' + dur + ' 小时，每跳间隔 ≤ ' + p.win + ' 小时，金额保留 ≥ 90%。' });
+    });
+
+    // R3: exposure — BFS from risky sources with hop limit & decay
+    var best = {};   // id -> {score, hops, src, prevEdge}
+    c.nodes.filter(function (n) { return n.base; }).forEach(function (src) {
+      var frontier = [{ id: src.id, hops: 0, trail: [] }];
+      while (frontier.length) {
+        var cur = frontier.shift();
+        if (cur.hops >= p.hop) continue;
+        var curNode = byId[cur.id];
+        if (cur.hops > 0 && p.stopCex && curNode.type === 'cex') continue;
+        (outByNode[cur.id] || []).forEach(function (j) {
+          var e = c.edges[j];
+          var h = cur.hops + 1;
+          if (cur.trail.some(function (k) { return c.edges[k].from === e.to; }) || e.to === src.id) return;
+          var score = src.base * Math.pow(DECAY, h - 1);
+          var trail = cur.trail.concat([j]);
+          if (!best[e.to] || best[e.to].score < score) best[e.to] = { score: score, hops: h, src: src.id, trail: trail };
+          frontier.push({ id: e.to, hops: h, trail: trail });
+        });
+      }
+    });
+    Object.keys(best).forEach(function (id) {
+      if (!isUser(id)) return;
+      var b = best[id];
+      if (b.score < p.line) return;
+      markUser(id);
+      b.trail.forEach(function (idx) { if (hitEdges[idx] !== 'tm') hitEdges[idx] = 'exp'; });
+      var srcType = byId[b.src].type === 'mixer' ? '混币器' : (byId[b.src].type === 'sanc' ? '高风险' : '');
+      alerts.push({ rule: 'TM-04 ' + (b.hops === 1 ? '直接暴露' : '间接暴露'), kind: 'warn', users: [id],
+        why: '来源 ' + b.src + '（' + srcType + '），' + b.hops + ' 跳，风险分 ' + b.score.toFixed(1) + ' ≥ 告警线 ' + p.line + '。' });
+    });
+
+    // Evaluation over our users
+    var tp = 0, fp = 0, fn = 0;
+    c.nodes.forEach(function (n) {
+      if (n.type !== 'user') return;
+      var hit = !!hitNodes[n.id];
+      if (hit && n.bad) tp++;
+      else if (hit && !n.bad) fp++;
+      else if (!hit && n.bad) fn++;
+    });
+    return { alerts: alerts, hitNodes: hitNodes, hitEdges: hitEdges, tp: tp, fp: fp, fn: fn, best: best };
+  }
+
+  var lastResult = null;
+  function run() {
+    var c = CASES[current];
+    var p = params();
+    var r = detect(c, p);
+    lastResult = r;
+    hasRun = true;
+    Object.keys(nodeEls).forEach(function (id) { nodeEls[id].classList.toggle('hit', !!r.hitNodes[id]); });
+    edgeEls.forEach(function (o) {
+      var k = r.hitEdges[o.idx];
+      o.path.setAttribute('class', 'edge' + (c.edges[o.idx].bridge ? ' bridge' : '') + (k ? ' hit' + (k === 'exp' ? ' exp' : '') : ''));
+      o.path.setAttribute('marker-end', k ? 'url(#ahHit)' : 'url(#ah)');
+      o.label.setAttribute('class', 'elabel' + (k ? ' hit' : ''));
+    });
+    var suspicious = r.alerts.filter(function (a) { return a.kind !== 'info'; }).length;
+    $('sAlerts').textContent = suspicious + (r.alerts.length > suspicious ? ' +' + (r.alerts.length - suspicious) : '');
+    $('sTP').textContent = r.tp;
+    $('sFP').textContent = r.fp;
+    $('sFN').textContent = r.fn;
+    $('sP').textContent = (r.tp + r.fp) ? Math.round(r.tp / (r.tp + r.fp) * 100) + '%' : '–';
+    $('sR').textContent = (r.tp + r.fn) ? Math.round(r.tp / (r.tp + r.fn) * 100) + '%' : '–';
+    var body = $('alertBody');
+    if (!r.alerts.length) {
+      body.innerHTML = '<tr><td colspan="3" class="muted">没有告警。检查是否有漏报。</td></tr>';
+      return;
+    }
+    var order = { sell: 0, warn: 1, info: 2 };
+    r.alerts.sort(function (a, b) { return order[a.kind] - order[b.kind]; });
+    body.innerHTML = r.alerts.map(function (a) {
+      var tags = a.users.map(function (u) {
+        var n = c.nodes.filter(function (x) { return x.id === u; })[0];
+        var mark = $('truth').checked ? (n && n.bad ? ' <span class="pill sell">真可疑</span>' : ' <span class="pill buy">正常</span>') : '';
+        return '<code>' + esc(u) + '</code>' + mark;
+      }).join('<br>');
+      return '<tr><td><span class="pill ' + a.kind + '">' + esc(a.rule) + '</span></td><td>' + tags + '</td><td class="why">' + esc(a.why) + '</td></tr>';
+    }).join('');
+  }
+
+  function showDetail(id) {
+    var c = CASES[current];
+    var n = c.nodes.filter(function (x) { return x.id === id; })[0];
+    var TYPES = { user: '本平台账户', ext: '外部地址', mixer: '混币器', sanc: '高风险来源', cex: '其他交易所', p2p: 'P2P 对手方', bridge: '跨链桥' };
+    var ins = c.edges.filter(function (e) { return e.to === id; }).map(function (e) { return e.from + ' → ' + fmt(e.amt) + '（t' + e.t + 'h）'; });
+    var outs = c.edges.filter(function (e) { return e.from === id; }).map(function (e) { return fmt(e.amt) + ' → ' + e.to + '（t' + e.t + 'h）'; });
+    var html = '<strong>' + esc(n.label) + '</strong> · ' + TYPES[n.type] + ' · ' + esc(n.note || '');
+    if (n.base) html += ' · 基础分 ' + n.base;
+    if (n.type === 'user' && $('truth').checked) html += ' · 真实标签：' + (n.bad ? '<span class="pill sell">可疑</span>' : '<span class="pill buy">正常</span>');
+    if (hasRun && lastResult && lastResult.best[id]) html += ' · 风险分 ' + lastResult.best[id].score.toFixed(1) + '（' + lastResult.best[id].hops + ' 跳）';
+    html += '<br>流入：' + (ins.length ? esc(ins.join('；')) : '无') + '<br>流出：' + (outs.length ? esc(outs.join('；')) : '无');
+    $('detail').innerHTML = html;
+  }
+
+  function loadCase(k) {
+    current = k;
+    hasRun = false;
+    lastResult = null;
+    render();
+    ['sAlerts', 'sTP', 'sFP', 'sFN', 'sP', 'sR'].forEach(function (id) { $(id).textContent = '–'; });
+    $('alertBody').innerHTML = '<tr><td colspan="3" class="muted">尚未运行监控。</td></tr>';
+    $('detail').textContent = '点击节点查看详情。';
+  }
+
+  function reset() {
+    $('hop').value = DEFAULTS.hop; $('thr').value = DEFAULTS.thr; $('win').value = DEFAULTS.win;
+    $('line').value = DEFAULTS.line; $('stopCex').checked = DEFAULTS.stopCex;
+    syncOutputs();
+    if (hasRun) run();
+  }
+
+  ['hop', 'thr', 'win', 'line'].forEach(function (id) {
+    $(id).addEventListener('input', function () { syncOutputs(); if (hasRun) run(); });
+  });
+  $('stopCex').addEventListener('change', function () { if (hasRun) run(); });
+  $('truth').addEventListener('change', function () {
+    $('graphWrap').classList.toggle('show-truth', $('truth').checked);
+    if (hasRun) run();
+  });
+  $('run').addEventListener('click', run);
+  $('reset').addEventListener('click', reset);
+  Array.prototype.forEach.call(document.querySelectorAll('[data-case]'), function (b) {
+    b.addEventListener('click', function () { loadCase(b.getAttribute('data-case')); });
+  });
+
+  syncOutputs();
+  loadCase('smurf');
+
+  // expose for testing
+  window.__aml = { CASES: CASES, detect: detect };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B06 金库与流动性</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .scene > h2 { font-size: 58px; }
+  svg text { font-size: 28px; }
+  .g text { dominant-baseline: middle; text-anchor: middle; }
+  .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1640px; }
+  .hero .card { display: flex; flex-direction: column; gap: 10px; min-height: 260px; }
+  .hero .card .k { font-size: 28px; color: var(--text-2); }
+  .hero .card .big { font-size: 72px; }
+  .map { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .map .card { font-size: 30px; display: flex; flex-direction: column; gap: 10px; }
+  .map .card .a { color: var(--text-2); }
+  .map .card .b { font-size: 34px; font-weight: 700; }
+  .tacct { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 2px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .tacct .hd { padding: 16px 28px; font-size: 34px; font-weight: 700; background: var(--panel-2); }
+  .tacct .hd.r { border-left: 2px solid var(--line); }
+  .tacct .c { padding: 14px 28px; font-size: 30px; border-top: 1px solid var(--line); transition: opacity .4s, background .4s; }
+  .tacct .c.r { border-left: 2px solid var(--line); }
+  .tacct .c.on { background: var(--gold-soft); }
+  .tacct .c.own { color: var(--info); }
+  .risk8 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .risk8 .card { padding: 20px 24px; font-size: 30px; min-height: 230px; display: flex; flex-direction: column; gap: 8px; }
+  .risk8 .card h3 { font-size: 34px; margin: 0; }
+  .risk8 .card .d { color: var(--warn); font-size: 28px; }
+  .layers { display: flex; flex-direction: column; gap: 12px; }
+  .layers .ly { display: grid; grid-template-columns: 330px 1fr 420px; gap: 18px; align-items: center; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 14px 24px; font-size: 30px; transition: all .35s; }
+  .layers .ly .n { font-family: var(--mono); color: var(--gold); font-weight: 700; }
+  .layers .ly .leak { color: var(--sell); font-size: 28px; }
+  .layers .ly.pend { opacity: .15; }
+  .layers .ly.cur { border-color: var(--gold); background: #221e10; box-shadow: 0 0 0 6px var(--gold-soft); }
+  .layers .ly.bot .n { color: var(--buy); }
+  table.t td.num { font-family: var(--mono); }
+  table.t tr { transition: background .3s, opacity .3s; }
+  table.t tr.on td { background: var(--gold-soft); }
+  table.t td.cov { font-weight: 700; }
+  .calc { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .calc .card { font-size: 30px; padding: 20px 26px; }
+  .tier { width: 100%; }
+  .tier td { font-size: 30px; }
+  .cc2 { display: grid; grid-template-columns: 320px 60px 1fr 60px 1fr 60px 1fr; gap: 0; row-gap: 18px; align-items: stretch; }
+  .cc2 .nd { background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 14px 18px; font-size: 30px; line-height: 1.4; transition: opacity .4s, box-shadow .4s, border-color .4s; }
+  .cc2 .nd.r { border-color: var(--sell); } .cc2 .nd.i { border-color: var(--warn); } .cc2 .nd.f { border-color: var(--buy); } .cc2 .nd.s { border-color: var(--info); }
+  .cc2 .ar { display: flex; align-items: center; justify-content: center; font-size: 46px; color: var(--text-2); transition: opacity .4s; }
+  .cc2 .lab { font-size: 28px; font-weight: 700; letter-spacing: .08em; display: flex; align-items: center; }
+  .pend { opacity: .1 !important; }
+  .cc2 .nd.cur { box-shadow: 0 0 0 6px var(--gold-soft); border-color: var(--gold) !important; }
+  .side { display: flex; flex-direction: column; gap: 18px; width: 540px; flex: 0 0 540px; }
+  .side .card { font-size: 30px; padding: 20px 26px; }
+  .side .card h3 { font-size: 34px; margin-bottom: 6px; }
+  .trade td { font-size: 30px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="B06" data-title="金库与流动性：储备、调拨与挤兑压力">
+
+  <!-- 1 开场 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 幕后核心 · B06</div>
+    <h1>同样被挤兑，<span class="hl">为什么结局不同</span></h1>
+    <div class="hero">
+      <div class="card sell" data-step="0"><div class="k">2022-11 · FTX · 11 月 8 日前 72 小时</div><div class="big">约 60 亿$</div><div>被用户提走</div><div class="chip sell" data-step="1" style="align-self:flex-start; font-size:28px">暂停提币 → 11-11 申请破产</div></div>
+      <div class="card buy" data-step="2"><div class="k">2022-12-13 前后 · 币安 · 据 Nansen</div><div class="big">约 37 亿$</div><div>一周净流出；最近 24 小时约 20 亿$</div><div class="chip buy" style="align-self:flex-start; font-size:28px">保持提币处理</div></div>
+    </div>
+    <div class="muted" data-step="0" style="font-size:28px">以上据公开报道 · 本集比例、阈值、金额除标注外均为示例 · 不构成投资建议</div>
+    <ol class="say">
+      <li>大家好，欢迎来到幕后核心第6集，金库与流动性。据公开报道，2022年11月8日前的72小时内，FTX 用户提走约60亿美元。</li>
+      <li>FTX 随后暂停提币，并在11月11日申请破产。</li>
+      <li>之后挤兑传染到整个行业。据 Nansen 统计，2022年12月13日前后，币安一周净流出约37亿美元。最近24小时约20亿美元，币安在此期间保持提币处理。</li>
+      <li>同样遭遇挤兑，一家倒下，一家熬了过去。差别不在挤兑本身，而在资产负债表的另一侧。今天就讲金库运营，钱放在哪里、放多少、怎么调。</li>
+    </ol>
+  </section>
+
+  <!-- 2 目标与比喻 -->
+  <section class="scene" data-title="金库运营的目标">
+    <div class="kicker">一句话理解 · 打个比方</div>
+    <h2>任何时刻，每一种币，在对应的链上都付得出</h2>
+    <div class="card gold" data-step="0" style="font-size:34px">首要目标：用户要提走的<b>每一种币</b>，在<b>对应的链上</b>，都有足够余额可付。</div>
+    <div class="map">
+      <div class="card" data-step="1"><div class="a">门店收银台：只放当天找零</div><div class="b">→ 热钱包</div></div>
+      <div class="card" data-step="1"><div class="a">总部金库：两个经理签字才能调</div><div class="b">→ 冷钱包</div></div>
+      <div class="card info" data-step="2"><div class="a">A 店人民币不能给 B 店找美元</div><div class="b">→ 不同链、不同币 = 不同库存</div></div>
+    </div>
+    <div class="card warn" data-step="3" style="font-size:30px">比喻不准的地方：超市运钞只是慢；交易所跨链调拨可能要过跨链桥，桥本身可能被攻击。</div>
+    <ol class="say">
+      <li>金库运营的首要目标只有一个。任何时刻，用户要提走的每一种币，在对应的链上都有足够余额可付。</li>
+      <li>打个比方，交易所金库像连锁超市的调度中心。门店收银台只放当天找零的现金，这是热钱包。总部金库放大部分现金，调拨要两个经理签字，这是冷钱包。</li>
+      <li>门店之间的现金不能直接混用。A 店的人民币，不能给 B 店的顾客找美元。对应到交易所，不同链、不同币种是不同的库存。</li>
+      <li>比喻不准的地方在于运钞方式。超市运钞只是慢一点。交易所跨链调拨可能要经过跨链桥，桥本身可能被攻击。</li>
+    </ol>
+  </section>
+
+  <!-- 3 资产负债表 -->
+  <section class="scene" data-title="资产负债表视角" data-onstep="bsStep">
+    <div class="kicker">资产负债表视角</div>
+    <h2>交易所持有什么，又欠谁什么</h2>
+    <div class="tacct" id="tacct">
+      <div class="hd">资产 · 交易所持有</div><div class="hd r">负债与权益 · 交易所欠谁</div>
+      <div class="c" data-g="1">链上钱包余额：热、温、冷，按币种按链</div><div class="c r" data-g="2">用户负债：全部用户的可用 + 冻结余额</div>
+      <div class="c" data-g="1">在途资金：已签名未确认的转账</div><div class="c r" data-g="2">待处理提币：已扣款未上链</div>
+      <div class="c" data-g="1">法币银行账户、支付通道备付金</div><div class="c r" data-g="2">法币用户负债</div>
+      <div class="c own" data-g="3">做市和闪兑库存 · 平台自有</div><div class="c r own" data-g="3">平台权益：手续费累计、自营利润</div>
+      <div class="c own" data-g="3">保险基金、SAFU · 专款专用</div><div class="c r own" data-g="3">保险基金、SAFU 对应的专项准备</div>
+    </div>
+    <ol class="say">
+      <li>先换成资产负债表的视角。左边是资产，交易所持有什么。右边是负债和权益，交易所欠谁。</li>
+      <li>资产侧有链上钱包余额，按热、温、冷，按币种按链分开。还有在途资金和法币备付金。</li>
+      <li>负债侧最大的一项是用户负债，也就是全部用户的可用余额加冻结余额。还有已扣款、未上链的待处理提币。</li>
+      <li>平台自有的东西单独成栏。做市和闪兑库存，手续费累计，以及保险基金和 SAFU。专项基金要专款专用。</li>
+    </ol>
+  </section>
+
+  <!-- 4 逐币种 1:1 -->
+  <section class="scene" data-title="逐币种 1:1 储备" data-onstep="reserveStep">
+    <div class="kicker">1:1 储备 · 示例数字</div>
+    <h2>按美元总值相等，不等于付得出</h2>
+    <div class="row">
+      <svg id="rsv" width="1000" height="560" viewBox="0 0 1000 560"></svg>
+      <div class="side" id="rsvSide"></div>
+    </div>
+    <ol class="say">
+      <li>1比1储备的定义是逐币种的。对每一种币，交易所持有的用户资产，都要大于等于用户负债。</li>
+      <li>举个示例。用户在平台上有100万美元的 BTC，还有100万美元的 USDT。平台各自持有对应数量，两种币的储备率都是100%。</li>
+      <li>现在换一种做法。平台拿100万美元的自有代币，冒充 BTC 储备。按美元总值算，资产200万，负债200万，看起来还是100%。</li>
+      <li>但用户来提 BTC 时，平台付不出 BTC，BTC 的储备率其实是0。FTX 的问题之一，就是资产端大量持有低流动性的关联代币。</li>
+      <li>所以金库的第一个指标是逐币种储备率，等于平台持有除以用户负债。低于100%，立即告警，等级是 P0。</li>
+    </ol>
+  </section>
+
+  <!-- 5 要防什么 -->
+  <section class="scene" data-title="金库要防的八类风险">
+    <div class="kicker">问题模型</div>
+    <h2>八类风险，后果都指向付不出</h2>
+    <div class="risk8">
+      <div class="card" data-step="0"><h3>单链流动性不足</h3>某条链提币集中爆发<div class="d">提币排队，信任下降</div></div>
+      <div class="card" data-step="0"><h3>币种错配</h3>负债是 BTC，资产是 USDT<div class="d">价格波动时储备不足</div></div>
+      <div class="card" data-step="1"><h3>资金混用</h3>自有资金与用户资金同账户<div class="d">挪用风险</div></div>
+      <div class="card" data-step="1"><h3>稳定币风险</h3>脱锚；发行方黑名单冻结<div class="d">储备价值缩水</div></div>
+      <div class="card" data-step="2"><h3>法币通道中断</h3>合作银行终止服务<div class="d">法币出入金停止</div></div>
+      <div class="card sell" data-step="2"><h3>挤兑</h3>负面消息引发集中提币<div class="d">流动性枯竭，最终破产</div></div>
+      <div class="card" data-step="3"><h3>坏账</h3>穿仓、闪兑报价错误、被盗<div class="d">用户负债 &gt; 资产</div></div>
+      <div class="card sell" data-step="3"><h3>内部挪用</h3>高管绕过审批调用用户资金<div class="d">资不抵债</div></div>
+    </div>
+    <ol class="say">
+      <li>金库要防八类风险。先看前两类。单链流动性不足，是某条链的提币集中爆发。币种错配，是负债是 BTC，资产却是 USDT。</li>
+      <li>资金混用，是自有资金和用户资金放在同一个账户，有挪用风险。稳定币也会出事，可能脱锚，也可能被发行方冻结。</li>
+      <li>法币通道可能中断，比如合作银行终止服务。挤兑，是负面消息引发集中提币，最终可能流动性枯竭。</li>
+      <li>最后是坏账和内部挪用。坏账来自穿仓、闪兑报价错误或被盗。内部挪用，是高管绕过审批调用用户资金。</li>
+    </ol>
+  </section>
+
+  <!-- 6 六层防线 -->
+  <section class="scene" data-title="六层防线" data-onstep="layerStep">
+    <div class="kicker">防线分层</div>
+    <h2>前四层预防，后两层兜底</h2>
+    <div class="layers">
+      <div class="ly"><span class="n">第 1 层 账户隔离</span><span>用户资金、自有资金、专项基金分账</span><span class="leak">漏：账面隔离但钱包未隔离</span></div>
+      <div class="ly"><span class="n">第 2 层 1:1 储备</span><span>逐币种；每日对账；PoR 定期公开</span><span class="leak">漏：快照之间的挪用</span></div>
+      <div class="ly"><span class="n">第 3 层 水位调拨</span><span>热温冷水位、跨链再平衡</span><span class="leak">漏：全链同时挤兑</span></div>
+      <div class="ly"><span class="n">第 4 层 敞口对冲</span><span>手续费收入、做市库存、闪兑库存</span><span></span></div>
+      <div class="ly bot"><span class="n">第 5 层 专项基金</span><span>合约保险基金、SAFU</span><span class="muted">兜底</span></div>
+      <div class="ly bot"><span class="n">第 6 层 坏账处置</span><span>ADL、平台资本、社会化分摊</span><span class="muted">兜底</span></div>
+    </div>
+    <ol class="say">
+      <li>对应的防线有六层。第1层是账户隔离，用户资金、平台自有资金和专项基金分账。它的漏洞是，账面隔离了，钱包却没隔离。</li>
+      <li>第2层是逐币种1比1储备，每日对账，定期公开储备金证明。漏洞是，两次快照之间的挪用看不见。</li>
+      <li>第3层是水位与调拨，管好热温冷水位和跨链再平衡。第4层是敞口对冲，处理手续费收入和库存的价格风险。</li>
+      <li>前四层是预防。第5层是专项基金，包括合约保险基金和 SAFU。第6层是坏账处置，ADL、平台资本和社会化分摊。这两层是兜底。</li>
+      <li>注意一个局限。全部用户同时提走全部资产时，没有任何一层能做到毫无延迟。冷钱包出账需要时间，这是安全设计的代价。</li>
+    </ol>
+  </section>
+
+  <!-- 7 按链分布 -->
+  <section class="scene" data-title="按币种按链的水位" data-onstep="distStep">
+    <div class="kicker">流动性分布 · 示例数据</div>
+    <h2>同一个币，换一条链就是另一份库存</h2>
+    <table class="t" id="dist">
+      <thead><tr><th>币种-链</th><th>用户负债</th><th>热</th><th>温</th><th>冷</th><th>热钱包覆盖率</th></tr></thead>
+      <tbody>
+        <tr><td>BTC-Bitcoin</td><td class="num">100,000 BTC</td><td class="num">3,000</td><td class="num">10,000</td><td class="num">87,500</td><td class="num cov">3.0%</td></tr>
+        <tr><td>USDT-Tron</td><td class="num">80 亿</td><td class="num">3.2 亿</td><td class="num">8 亿</td><td class="num">69 亿</td><td class="num cov">4.0%</td></tr>
+        <tr><td>USDT-Ethereum</td><td class="num">50 亿</td><td class="num">1 亿</td><td class="num">5 亿</td><td class="num">44.2 亿</td><td class="num cov">2.0%</td></tr>
+        <tr><td>ETH-Ethereum</td><td class="num">2,000,000 ETH</td><td class="num">60,000</td><td class="num">200,000</td><td class="num">1,750,000</td><td class="num cov">3.0%</td></tr>
+      </tbody>
+    </table>
+    <div id="distNote"></div>
+    <ol class="say">
+      <li>同一个币在不同链上，是不同的库存。比如 USDT 有 Tron、Ethereum 等多个版本。每个版本都要单独管水位。</li>
+      <li>看这张示例表。USDT-Tron 的用户负债是80亿。热钱包3.2亿，温钱包8亿，冷钱包69亿。资产略大于负债，差额是平台自有部分。</li>
+      <li>热钱包覆盖率，等于热钱包余额除以用户负债。3.2亿除以80亿，是4%。BTC 是3000除以10万，3%。</li>
+      <li>覆盖率要设上下限，示例是1%到5%。太低，提币会排队。太高，被盗时损失大。</li>
+      <li>再算耗尽时间。假设 USDT-Ethereum 6小时净流出1.5亿，每小时就是2500万。热钱包1亿，只够撑4小时。</li>
+      <li>示例规则是，耗尽时间少于4小时就告警，这里已经到了线上。该从温钱包补充，或者从 Tron 链再平衡。温钱包5亿，按这个速度还能撑20小时。</li>
+      <li>其他指标还有几项。单一稳定币超过稳定币储备的60%要告警。单一银行超过法币余额的40%要告警。Gas 币不够3天消耗，也要告警。</li>
+    </ol>
+  </section>
+
+  <!-- 8 调拨审批 -->
+  <section class="scene" data-title="调拨审批流" data-onstep="xferStep">
+    <div class="kicker">冷 → 热 调拨 · 示例</div>
+    <h2>补一次热钱包，也要过白名单、审批和签名</h2>
+    <svg class="g" id="xf" width="1640" height="250" viewBox="0 0 1640 250"></svg>
+    <div class="row">
+      <table class="t tier" id="tier" style="flex:1">
+        <thead><tr><th>单笔金额 · 美元等值</th><th>审批</th></tr></thead>
+        <tbody>
+          <tr><td>≤ 100 万</td><td>1 人</td></tr>
+          <tr><td>100 万 – 1,000 万</td><td>2 人</td></tr>
+          <tr><td>&gt; 1,000 万</td><td>2 人 + 风险负责人</td></tr>
+        </tbody>
+      </table>
+      <div class="card" id="xfNote" style="flex:1; font-size:30px"></div>
+    </div>
+    <ol class="say">
+      <li>热钱包水位低了，就要从冷钱包补。这笔调拨本身也要走审批流。来看一个示例，从冷钱包调3000万美元等值的 USDT 到热钱包。</li>
+      <li>第一步是规则校验。调拨只能发往内部白名单地址。白名单本身的变更，需要3人审批。</li>
+      <li>第二步是分级审批。示例规则是，100万美元以内1人审批，100万到1000万要2人。超过1000万，要2人再加风险负责人。这笔3000万，走最高一级。</li>
+      <li>第三步是签名。发起人、审批人、签名人，三个角色分离，任何一人都不能单独把钱调走。签名人还要在签名设备上复核目标地址和金额。</li>
+      <li>广播之后等确认数，到账才算完成。如果超过预期确认时间的3倍还没到账，就进入对账异常，人工核实。</li>
+      <li>还有两条规则。冷钱包单笔出账，不超过冷钱包余额的10%。常规出账只在工作时段，紧急出账要额外审批。所以挤兑时，补充速度受审批人在线时间限制，要预先排班。</li>
+    </ol>
+  </section>
+
+  <!-- 9 跨链再平衡与稳定币 -->
+  <section class="scene" data-title="跨链再平衡与稳定币" data-onstep="rebalStep">
+    <div class="kicker">跨链再平衡 · 稳定币与法币通道</div>
+    <h2>A 链堆积，B 链见底：怎么把钱挪过去</h2>
+    <div class="row">
+      <svg class="g" id="rb" width="1040" height="560" viewBox="0 0 1040 560"></svg>
+      <div class="side" style="width:560px; flex-basis:560px" id="rbSide"></div>
+    </div>
+    <ol class="say">
+      <li>用户在 A 链充值、在 B 链提币，A 链的库存就变多，B 链变少。金库要把资金从 A 链挪到 B 链。</li>
+      <li>第一种方法是发行方换链。在 A 链把稳定币交还发行方，在 B 链重新发行。没有桥风险，但依赖发行方的处理时间和最小额。</li>
+      <li>第二种是跨链桥，快，但桥可能被攻击。第三种是场内对冲，在 A 链卖、B 链买，或和做市商场外互换。代价是价差和对手方风险。</li>
+      <li>第四种是引导用户，比如调整 B 链的提币手续费，甚至暂停 B 链提币。零成本，但影响体验。</li>
+      <li>稳定币本身也是金库风险。发行方可以在链上冻结地址。所以要同时持有多种主流稳定币，并给单一发行方设上限。法币通道也一样，要多银行、多通道。</li>
+      <li>据公开报道，2022年9月，币安把用户持有的三种稳定币自动转为 BUSD。它们是 USDC、USDP 和 TUSD。2023年2月，纽约州金融服务部要求 Paxos 停止新铸 BUSD。之后币安逐步停止了 BUSD 相关产品。</li>
+    </ol>
+  </section>
+
+  <!-- 10 敞口对冲 -->
+  <section class="scene" data-title="平台敞口与对冲" data-onstep="hedgeStep">
+    <div class="kicker">敞口对冲 · 示例数字</div>
+    <h2>平台自己的钱，也会被币价拖累</h2>
+    <div class="row">
+      <svg id="hg" width="1000" height="560" viewBox="0 0 1000 560"></svg>
+      <div class="side" id="hgSide"></div>
+    </div>
+    <ol class="say">
+      <li>平台自有资金也有币价敞口。最常见的是手续费收入，因为手续费以 BTC、ETH 和各种代币收取。</li>
+      <li>举个示例。平台本月手续费收入500个 BTC，BTC 价格6万美元，价值3000万美元。</li>
+      <li>如果不对冲，BTC 下跌20%，收入就缩水600万美元。500乘以6万，再乘以20%。</li>
+      <li>如果每天把当天的手续费换成 USDT，敞口就只剩一天的价格波动。</li>
+      <li>其他敞口还有三类。做市库存，用永续合约做空对冲。闪兑库存，在现货市场或向做市商平盘。理财期限错配，要保留赎回缓冲。</li>
+    </ol>
+  </section>
+
+  <!-- 11 挤兑压力测试 -->
+  <section class="scene" data-title="挤兑压力测试" data-onstep="runStep">
+    <div class="kicker">挤兑压力测试 · USDT-Ethereum · 示例</div>
+    <h2 id="runH">哪条链、哪个币、第几小时会耗尽</h2>
+    <svg id="run" width="1640" height="520" viewBox="0 0 1640 520"></svg>
+    <div class="card" id="runNote" style="font-size:30px; padding:14px 26px"></div>
+    <ol class="say">
+      <li>金库最重要的演练，是挤兑压力测试。输入是真实负债和真实余额。输出是哪条链、哪个币、第几小时会耗尽。</li>
+      <li>情景分三档，都是示例。温和是24小时提走5%，看热钱包能否覆盖。严重是15%，看温钱包补充速度。极端是30%，而且集中在2条链。</li>
+      <li>拿 USDT-Ethereum 来算严重情景。负债50亿，15%就是7.5亿，每小时约3100万。热钱包1亿，大约3小时就耗尽。</li>
+      <li>接着动用温钱包。温钱包5亿，又能撑16小时。热加温一共6亿，还差1.5亿，必须在第19小时前从冷钱包补上。</li>
+      <li>极端情景更难。提走30%就是15亿，每小时约6200万。温钱包撑到第10小时左右就见底。缺口9亿，全靠冷钱包紧急出账。</li>
+      <li>所以关键参数是冷钱包补充速度。它取决于审批人到位时间、签名设备的物理位置和链的确认时间。演练要真的测出补充耗时，再更新水位下限和排班。</li>
+      <li>记住一句话。1比1储备的交易所，挤兑时有钱但可能慢。非1比1储备的交易所，慢了之后就没钱。真实挤兑往往比平均情景更集中，更极端。</li>
+    </ol>
+  </section>
+
+  <!-- 12 兜底顺序 -->
+  <section class="scene" data-title="保险基金、SAFU 与坏账" data-onstep="lossStep">
+    <div class="kicker">兜底顺序</div>
+    <h2>损失发生后，按类型走不同的兜底池</h2>
+    <svg class="g" id="loss" width="1640" height="560" viewBox="0 0 1640 560"></svg>
+    <ol class="say">
+      <li>如果损失已经发生，谁来承担？不同类型的损失，走不同的兜底池。</li>
+      <li>合约穿仓，先用合约保险基金。保险基金不足，就触发自动减仓 ADL。</li>
+      <li>被盗或系统事故，用 SAFU 基金。杠杆借贷坏账，用杠杆风险准备。这两池都不足时，由平台资本承担。</li>
+      <li>平台资本是最后一道自愿的防线。再不足，就是社会化分摊或破产程序。这意味着用户承担损失，是最差的结果。</li>
+      <li>专项基金必须和运营资金隔离。专项基金被挪作他用，兜底就是空的。</li>
+    </ol>
+  </section>
+
+  <!-- 13 案例 -->
+  <section class="scene" data-title="案例：2022 挤兑与传染" data-onstep="caseStep">
+    <div class="kicker">真实案例 · 2022-11 至 12 · 据公开报道</div>
+    <h2>挤兑只是暴露问题，根因在资产端</h2>
+    <div class="cc2">
+      <div class="nd s" data-k="0">负面消息：资产端质量受质疑</div>
+      <div class="ar" data-k="1">→</div>
+      <div class="nd r" data-k="1">FTX：用户资金转到关联公司，用低流动性代币填补</div>
+      <div class="ar" data-k="2">→</div>
+      <div class="nd i" data-k="2">72 小时提走约 60 亿$；热、冷钱包都不足</div>
+      <div class="ar" data-k="2">→</div>
+      <div class="nd r" data-k="2">暂停提币；11-11 申请破产</div>
+
+      <div class="nd s" data-k="3">行业信任下降：挤兑传染</div>
+      <div class="ar" data-k="4">→</div>
+      <div class="nd f" data-k="4">币安：一周净流出约 37 亿$，24 小时约 20 亿$</div>
+      <div class="ar" data-k="4">→</div>
+      <div class="nd i" data-k="4">冷钱包补充热钱包</div>
+      <div class="ar" data-k="4">→</div>
+      <div class="nd f" data-k="4">保持提币处理；2022-11 已上线 PoR</div>
+    </div>
+    <div class="row">
+      <div class="card buy" data-k="5" style="flex:1; font-size:30px">挤兑不会让 1:1 储备的交易所破产，只考验调度速度。</div>
+      <div class="card warn" data-k="5" style="flex:1; font-size:30px">局限：数据来自链上分析机构的地址标注，覆盖不完整，各机构数字有差异。</div>
+    </div>
+    <ol class="say">
+      <li>现在把机制放回真实案例，以下据公开报道。起点都一样，负面消息让人怀疑资产端的质量，用户开始集中提币。</li>
+      <li>FTX 的根因在资产端。据破产程序公开文件，用户资金被转移到关联公司，并用低流动性代币填补。</li>
+      <li>挤兑来了。11月8日前的72小时，用户提走约60亿美元。热钱包耗尽，冷钱包也不足。FTX 暂停提币，11月11日申请破产。</li>
+      <li>一家倒闭，用户开始怀疑所有交易所，这是挤兑的传染。整个行业出现集中提币。</li>
+      <li>据 Nansen 统计，12月13日前后，币安一周净流出约37亿美元。最近24小时约20亿，币安保持提币处理。它在2022年11月已上线储备金证明。</li>
+      <li>结论是，挤兑本身不会让1比1储备的交易所破产，只会考验调度速度。局限是，这些数字来自链上分析机构的地址标注。覆盖不完整，不同机构的数字会有差异。</li>
+    </ol>
+  </section>
+
+  <!-- 14 权衡、小结、预告 -->
+  <section class="scene" data-title="权衡、小结与预告" data-onstep="endStep">
+    <div class="kicker">局限与权衡 · 小结</div>
+    <h2 class="pA">安全和流动性，永远在拉扯</h2>
+    <table class="t trade pA">
+      <thead><tr><th>权衡</th><th>一侧</th><th>另一侧</th><th>常见做法</th></tr></thead>
+      <tbody>
+        <tr data-step="0"><td>安全 vs 流动性</td><td>热钱包少：被盗损失小</td><td>挤兑时提币慢</td><td>动态水位</td></tr>
+        <tr data-step="1"><td>收益 vs 储备</td><td>用户资金出借：有收益</td><td>破坏 1:1 储备</td><td>用户资金不出借</td></tr>
+        <tr data-step="1"><td>审批 vs 速度</td><td>多人审批：防挪用</td><td>紧急时慢</td><td>预设紧急流程</td></tr>
+        <tr data-step="1"><td>跨链效率 vs 桥风险</td><td>用桥：快</td><td>桥被攻击损失大</td><td>优先发行方换链</td></tr>
+      </tbody>
+    </table>
+    <div class="card warn pA" data-step="2" style="font-size:32px">1:1 储备是<b>必要条件</b>，不是充分条件：签名设备失联、审批人缺席、链拥堵，用户依然提不出币。</div>
+    <h2 class="pB">记住三件事</h2>
+    <ul class="bullets pB">
+      <li data-step="3">储备要<span class="hl">逐币种、逐链</span>看，按美元总值算不够。</li>
+      <li data-step="4">金库管两件事：<span class="hl">有没有钱</span>，和<span class="hl">能不能及时付出去</span>。</li>
+      <li data-step="5">损失按类型走不同兜底池；<span class="hl">专项基金必须隔离</span>。</li>
+    </ul>
+    <div class="row pB" data-step="6">
+      <div class="card gold" style="flex:1; font-size:30px"><div>下一集 <b class="mono">B07</b> 应急响应 · 系列终章</div><div class="muted" style="margin-top:8px">防线被突破之后：止血、追回、复盘</div></div>
+      <div class="card info" style="flex:1; font-size:30px"><div>交互实验 · 充提模拟器</div><div class="muted" style="margin-top:8px">看热冷水位怎样随充提变化</div></div>
+    </div>
+    <ol class="say">
+      <li>最后看权衡。热钱包少，被盗损失小，但挤兑时提币慢。业界常见做法是动态水位，挤兑时临时调高下限。</li>
+      <li>用户资金出借能赚收益，但会破坏1比1储备。多人审批能防内部挪用，但紧急时慢，所以要预设紧急流程和事后复核。</li>
+      <li>还要记住，1比1储备是必要条件，不是充分条件。储备还在，签名设备失联、审批人缺席、链拥堵，用户依然提不出币。</li>
+      <li>小结三点。第一，储备要逐币种、逐链地看，按美元总值算不够。</li>
+      <li>第二，金库运营管两件事。有没有钱，靠储备和对账。能不能及时付出去，靠水位、调拨审批和压力测试。</li>
+      <li>第三，损失按类型走不同的兜底池，专项基金必须隔离。</li>
+      <li>下一集是 B07 应急响应，也是整个系列的最后一集。防线被突破之后，怎样止血、追回和复盘。可以先打开充提模拟器，看看热冷水位怎样变化。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+  function svgEl(tag, attrs, text) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text !== undefined) e.textContent = text; return e; }
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', text: '#eceae4', t2: '#9ea3ad', line: '#2c3038', panel: '#16181c', dim: '#555b66' };
+  function box(svg, x, y, w, h, t, o = {}) {
+    svg.appendChild(svgEl('rect', { x, y, width: w, height: h, rx: 12, fill: o.fill || C.panel, stroke: o.stroke || C.line, 'stroke-width': o.sw || 3, opacity: o.op ?? 1 }));
+    const lines = Array.isArray(t) ? t : [t];
+    lines.forEach((s, i) => svg.appendChild(svgEl('text', { x: x + w / 2, y: y + h / 2 + (i - (lines.length - 1) / 2) * 34, fill: i ? C.t2 : (o.tc || C.text), opacity: o.op ?? 1, 'text-anchor': 'middle', 'dominant-baseline': 'middle', style: 'font-size:' + (i ? 26 : (o.fs || 30)) + 'px' }, s)));
+  }
+  function arrow(svg, x1, y1, x2, y2, color, dash, w) {
+    const id = 'ah' + svg.id + color.slice(1);
+    if (!svg.querySelector('#' + id)) {
+      let defs = svg.querySelector('defs'); if (!defs) { defs = svgEl('defs', {}); svg.appendChild(defs); }
+      const m = svgEl('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' });
+      m.appendChild(svgEl('path', { d: 'M0,0 L10,5 L0,10 z', fill: color })); defs.appendChild(m);
+    }
+    svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': w || 4, 'marker-end': `url(#${id})`, 'stroke-dasharray': dash ? '10 8' : '' }));
+  }
+  const T = (svg, x, y, s, fill, size, anchor, weight) => svg.appendChild(svgEl('text', { x, y, fill: fill || C.text, 'text-anchor': anchor || 'middle', 'dominant-baseline': 'middle', style: `font-size:${size || 28}px;${weight ? 'font-weight:700' : ''}` }, s));
+
+  // 3: balance sheet
+  function bsStep(el, st) {
+    el.querySelectorAll('#tacct .c').forEach(c => {
+      const g = +c.dataset.g;
+      c.style.opacity = st === 0 ? .25 : (g <= st ? 1 : .15);
+      c.classList.toggle('on', g === st);
+    });
+  }
+
+  // 4: per-coin reserve bars
+  function reserveStep(el, st) {
+    const svg = el.querySelector('#rsv'); svg.innerHTML = '';
+    const base = 460, sc = 3.2, W = 150;
+    svg.appendChild(svgEl('line', { x1: 40, y1: base, x2: 960, y2: base, stroke: C.line, 'stroke-width': 3 }));
+    const groups = [['BTC', 80], ['USDT', 540]];
+    const fake = st >= 2;
+    groups.forEach(([coin, gx], gi) => {
+      // liability bar
+      const lh = st >= 1 || st === 0 ? 100 * sc : 0;
+      svg.appendChild(svgEl('rect', { x: gx, y: base - lh, width: W, height: lh, rx: 8, fill: 'rgba(91,156,255,.18)', stroke: C.info, 'stroke-width': 3 }));
+      T(svg, gx + W / 2, base - lh - 26, st >= 1 ? '100 万$' : '负债', C.info, 30, 'middle', true);
+      T(svg, gx + W / 2, base + 34, '用户负债', C.t2, 26);
+      // asset bar
+      const ax = gx + W + 40;
+      let color = C.buy, label = st >= 1 ? '100 万$' : '资产', name = '平台持有 ' + coin;
+      if (gi === 0 && fake) { color = st >= 3 ? C.sell : C.warn; label = '100 万$'; name = '自有代币'; }
+      svg.appendChild(svgEl('rect', { x: ax, y: base - 100 * sc, width: W, height: 100 * sc, rx: 8, fill: color, opacity: .85 }));
+      T(svg, ax + W / 2, base - 100 * sc - 26, label, color, 30, 'middle', true);
+      T(svg, ax + W / 2, base + 34, name, gi === 0 && fake ? color : C.t2, 26);
+      T(svg, gx + W + 20, 40, coin, C.text, 36, 'middle', true);
+      if (st >= 1) {
+        const ok = !(gi === 0 && st >= 3);
+        T(svg, gx + W + 20, base + 82, coin + ' 储备率 ' + (gi === 0 && st >= 3 ? '0%' : (gi === 0 && st === 2 ? '?' : '100%')), ok ? (gi === 0 && st === 2 ? C.warn : C.buy) : C.sell, 30, 'middle', true);
+      }
+      if (gi === 0 && st >= 3) {
+        svg.appendChild(svgEl('line', { x1: ax + 10, y1: base - 100 * sc + 10, x2: ax + W - 10, y2: base - 10, stroke: C.sell, 'stroke-width': 6 }));
+        svg.appendChild(svgEl('line', { x1: ax + W - 10, y1: base - 100 * sc + 10, x2: ax + 10, y2: base - 10, stroke: C.sell, 'stroke-width': 6 }));
+      }
+    });
+    T(svg, 960, 535, '示例数字', C.warn, 24, 'end');
+    const side = [
+      '<div class="card gold"><h3>1:1 储备</h3>对<b>每一种币</b>：平台持有的用户资产 ≥ 用户负债</div><div class="card"><div class="muted">不是按美元总值比较</div></div>',
+      '<div class="card buy"><h3>健康</h3>BTC 负债 100 万$ ↔ 持有 100 万$ BTC<br>USDT 负债 100 万$ ↔ 持有 100 万$ USDT</div>',
+      '<div class="card warn"><h3>按美元总值</h3>资产 200 万$ = 负债 200 万$<br>“覆盖率 100%”</div>',
+      '<div class="card warn"><h3>按美元总值</h3>资产 200 万$ = 负债 200 万$</div><div class="card sell"><h3>按 BTC 算</h3>用户提 BTC → 付不出<br>BTC 储备率 = <b>0%</b></div>',
+      '<div class="formula" style="font-size:34px">逐币种储备率<br>= 平台持有 ÷ 用户负债</div><div class="card sell"><h3>&lt; 100% → P0</h3>立即告警 · 示例</div>',
+    ];
+    el.querySelector('#rsvSide').innerHTML = side[st];
+  }
+
+  // 6: layers
+  function layerStep(el, st) {
+    const cur = [[0], [1], [2, 3], [4, 5], []][st];
+    const reach = [0, 1, 3, 5, 5][st];
+    el.querySelectorAll('.ly').forEach((n, i) => {
+      n.classList.toggle('pend', i > reach);
+      n.classList.toggle('cur', cur.includes(i) || (st === 4 && i === 2));
+    });
+  }
+
+  // 7: distribution
+  function distStep(el, st) {
+    const rows = el.querySelectorAll('#dist tbody tr');
+    const hl = [[], [1], [1, 0], [], [2], [2, 1], []][st];
+    rows.forEach((r, i) => { r.classList.toggle('on', hl.includes(i)); r.querySelector('.cov').style.opacity = st >= 2 ? 1 : 0; r.style.display = (st >= 4 && st <= 5 && i !== 2 && i !== 1) ? 'none' : ''; });
+    const note = el.querySelector('#distNote');
+    const notes = [
+      '<div class="card info" style="font-size:30px">USDT 有 Tron、Ethereum、BNB Smart Chain 等版本 → 每个版本单独管水位</div>',
+      '<div class="card" style="font-size:30px">资产合计略大于负债，差额是平台自有部分</div>',
+      '<div class="formula">热钱包覆盖率 = 热钱包余额 ÷ 该链该币用户负债<br><span class="hl">3.2 亿 ÷ 80 亿 = 4.0%</span> · BTC：3,000 ÷ 100,000 = 3.0%</div>',
+      '<div class="calc"><div class="card sell"><h3>&lt; 1%</h3>太低：提币排队</div><div class="card warn"><h3>&gt; 5%</h3>太高：被盗时损失大</div></div>',
+      '<div class="formula">净流出 1.5 亿 ÷ 6 小时 = <span class="hl">2,500 万 / 小时</span><br>热钱包耗尽时间 = 1 亿 ÷ 2,500 万 = <span class="down">4 小时</span></div>',
+      '<div class="calc"><div class="card warn"><h3>规则：耗尽 &lt; 4 小时 → 告警</h3>已到线上 · 先补热钱包</div><div class="card"><h3>温钱包 5 亿</h3>÷ 2,500 万 = 再撑 20 小时；或从 Tron 再平衡</div></div>',
+      '',
+    ];
+    if (st === 6) {
+      el.querySelector('#dist').style.display = 'none';
+      note.innerHTML = `<table class="t"><thead><tr><th>指标 · 示例阈值</th><th>告警条件</th></tr></thead><tbody>
+        <tr><td>逐币种储备率</td><td class="down">&lt; 100% · P0</td></tr>
+        <tr><td>热钱包覆盖率</td><td>&lt; 1% 或 &gt; 5%</td></tr>
+        <tr><td>热钱包耗尽时间</td><td>&lt; 4 小时</td></tr>
+        <tr><td>单一稳定币集中度</td><td>&gt; 60%</td></tr>
+        <tr><td>单一银行集中度</td><td>&gt; 40%</td></tr>
+        <tr><td>Gas 币水位</td><td>&lt; 3 天预计消耗</td></tr></tbody></table>`;
+    } else { el.querySelector('#dist').style.display = ''; note.innerHTML = notes[st]; }
+  }
+
+  // 8: transfer approval flow
+  function xferStep(el, st) {
+    const svg = el.querySelector('#xf'); svg.innerHTML = '';
+    const N = [['调拨申请', '3,000 万$'], ['规则校验', '白名单地址'], ['分级审批', '2人+风险负责人'], ['多签或 MPC', '复核地址金额'], ['广播', '等确认数'], ['已到账', '或对账异常']];
+    const at = [0, 1, 2, 3, 4, 5][st];
+    N.forEach((n, i) => {
+      const x = 10 + i * 270, cur = i === at || (st === 5 && i === 0), done = i < at;
+      box(svg, x, 60, 250, 120, n, { stroke: cur ? C.gold : done ? C.buy : C.line, fill: cur ? '#2a2412' : C.panel, sw: cur ? 5 : 3, op: i <= at || st === 5 ? 1 : .35 });
+      if (i < 5) arrow(svg, x + 252, 120, x + 268, 120, i < at ? C.buy : C.line);
+    });
+    if (st >= 1) T(svg, 415, 220, st === 1 ? '白名单变更需 3 人审批' : '✓ 白名单内', st === 1 ? C.gold : C.buy, 24);
+    if (st >= 2) { for (let k = 0; k < 3; k++) { svg.appendChild(svgEl('circle', { cx: 635 + k * 50, cy: 220, r: 16, fill: k < 2 ? C.buy : C.gold })); } T(svg, 685, 22, '3,000 万 > 1,000 万 → 最高一级', C.gold, 26); }
+    if (st >= 3) T(svg, 955, 220, '发起 ≠ 审批 ≠ 签名', C.gold, 24);
+    if (st >= 4) T(svg, 1360, 220, '超时 3 倍 → 对账异常', C.warn, 24);
+    el.querySelectorAll('#tier tbody tr').forEach((r, i) => r.classList.toggle('on', st === 2 && i === 2));
+    const notes = [
+      '<b>场景</b>：USDT 热钱包水位告警 → 从冷钱包补充 3,000 万$ 等值（示例）',
+      '只能发往<b class="hl">内部白名单地址</b>；白名单本身变更需要 3 人审批',
+      '3,000 万 &gt; 1,000 万 → <b class="hl">2 人 + 风险负责人</b>',
+      '<b>职责分离</b>：任何一人都不能单独把钱调走；签名人在签名设备上复核目标地址和金额',
+      '已广播未到账 &gt; 预期确认时间 <b class="hl">3 倍</b> → 对账异常，人工核实',
+      '冷钱包单笔出账 ≤ 冷钱包余额 <b class="hl">10%</b>；常规出账只在工作时段；紧急出账需额外审批 → <b>预先排班</b>',
+    ];
+    el.querySelector('#xfNote').innerHTML = notes[st];
+  }
+
+  // 9: rebalancing
+  function rebalStep(el, st) {
+    const svg = el.querySelector('#rb'); svg.innerHTML = '';
+    const tank = (x, name, lvl, color, sub) => {
+      svg.appendChild(svgEl('rect', { x, y: 110, width: 220, height: 360, rx: 16, fill: '#1e2127', stroke: C.line, 'stroke-width': 3 }));
+      svg.appendChild(svgEl('rect', { x: x + 6, y: 470 - 6 - 348 * lvl, width: 208, height: 348 * lvl, rx: 12, fill: color, opacity: .75 }));
+      T(svg, x + 110, 70, name, C.text, 32, 'middle', true);
+      T(svg, x + 110, 505, sub, color, 26);
+    };
+    const a = st === 0 ? .8 : .55, b = st === 0 ? .12 : .4;
+    tank(40, 'A 链 · 例 Tron', a, C.info, st === 0 ? '充值多，堆积' : '调出后');
+    tank(780, 'B 链 · 例 Ethereum', b, b < .2 ? C.sell : C.buy, st === 0 ? '提币多，见底' : '补充后');
+    const methods = [['发行方换链', C.buy, 1], ['跨链桥', C.sell, 2], ['场内对冲 · 场外互换', C.warn, 2], ['引导用户', C.info, 3]];
+    methods.forEach(([m, c, k], i) => {
+      const y = 230 + i * 80, on = st === k || (k === 2 && st === 2);
+      const vis = st >= 1 && st <= 3 ? (st >= k ? 1 : .2) : (st >= 4 ? .2 : 0);
+      if (!vis) return;
+      svg.appendChild(svgEl('rect', { x: 300, y: y - 30, width: 440, height: 60, rx: 10, fill: on ? '#2a2412' : C.panel, stroke: on ? C.gold : c, 'stroke-width': on ? 4 : 2, opacity: vis }));
+      svg.appendChild(svgEl('text', { x: 520, y, fill: c, opacity: vis, 'text-anchor': 'middle', 'dominant-baseline': 'middle', style: 'font-size:28px' }, m));
+    });
+    if (st >= 1 && st <= 3) { arrow(svg, 262, 150, 776, 150, C.gold, true, 4); T(svg, 520, 125, '调拨', C.gold, 26); }
+
+    const side = [
+      '<div class="card"><h3>为什么失衡</h3>用户在 A 链充值、在 B 链提币 → A 链库存增加，B 链减少</div>',
+      '<div class="card buy"><h3>发行方换链</h3>A 链交还发行方，B 链重新发行<br><span class="muted">无桥风险；依赖处理时间和最小额</span></div>',
+      '<div class="card sell"><h3>跨链桥</h3>快；桥可能被攻击</div><div class="card warn"><h3>场内对冲</h3>A 链卖、B 链买；或场外互换<br><span class="muted">价差成本，对手方风险</span></div>',
+      '<div class="card info"><h3>引导用户</h3>调整 B 链提币手续费，或暂停 B 链提币<br><span class="muted">零成本，影响体验</span></div>',
+      '<div class="card gold"><h3>稳定币分散</h3>多种主流稳定币；单一发行方设上限；监控发行方黑名单</div><div class="card"><h3>法币通道</h3>多银行、多通道；单独计算备付金</div>',
+      '<div class="card"><h3>据公开报道</h3><b>2022-09</b> USDC、USDP、TUSD 自动转为 BUSD<br><b>2023-02</b> NYDFS 要求 Paxos 停止新铸 BUSD<br>→ 币安逐步停止 BUSD 产品</div><div class="card warn">稳定币的选择本身就是金库风险</div>',
+    ];
+    el.querySelector('#rbSide').innerHTML = side[st];
+    if (st >= 4) { svg.querySelectorAll('rect,text,line').forEach(n => n.setAttribute('opacity', .35)); }
+  }
+
+  // 10: hedging
+  function hedgeStep(el, st) {
+    const svg = el.querySelector('#hg'); svg.innerHTML = '';
+    const base = 470, sc = 10;
+    svg.appendChild(svgEl('line', { x1: 40, y1: base, x2: 960, y2: base, stroke: C.line, 'stroke-width': 3 }));
+    const bar = (x, v, c, name, lab) => { svg.appendChild(svgEl('rect', { x, y: base - v * sc, width: 180, height: v * sc, rx: 8, fill: c, opacity: .85 })); T(svg, x + 90, base - v * sc - 26, lab, c, 32, 'middle', true); T(svg, x + 90, base + 34, name, C.t2, 26); };
+    if (st === 0) {
+      ['BTC', 'ETH', '各种代币'].forEach((c, i) => { svg.appendChild(svgEl('circle', { cx: 200 + i * 280, cy: 260, r: 90, fill: '#1e2127', stroke: C.gold, 'stroke-width': 4 })); T(svg, 200 + i * 280, 260, c, C.gold, 32, 'middle', true); });
+      T(svg, 480, 430, '手续费以多种币收取 → 收入随币价波动', C.t2, 28);
+      el.querySelector('#hgSide').innerHTML = '<div class="card gold"><h3>敞口</h3>平台自有资金受价格变动影响的头寸</div>';
+      return;
+    }
+    bar(100, 30, C.gold, '本月手续费', '3,000 万$');
+    if (st >= 2) {
+      bar(400, st >= 3 ? 30 : 24, st >= 3 ? C.buy : C.sell, st >= 3 ? '每日换成 USDT' : 'BTC 跌 20% 后', st >= 3 ? '≈ 3,000 万$' : '2,400 万$');
+      if (st === 2) { svg.appendChild(svgEl('rect', { x: 400, y: base - 30 * sc, width: 180, height: 6 * sc, rx: 8, fill: 'none', stroke: C.sell, 'stroke-width': 3, 'stroke-dasharray': '10 6' })); T(svg, 700, base - 27 * sc, '− 600 万$', C.sell, 40, 'middle', true); }
+      if (st >= 3) T(svg, 760, base - 20 * sc, '只剩一天的波动', C.buy, 30, 'middle', true);
+    }
+    T(svg, 960, 535, '示例数字', C.warn, 24, 'end');
+    const side = [
+      '',
+      '<div class="formula" style="font-size:34px">500 BTC × 60,000$<br>= <span class="hl">3,000 万$</span></div>',
+      '<div class="formula" style="font-size:34px">500 × 60,000 × 20%<br>= <span class="down">600 万$</span></div><div class="card sell">不对冲：收入缩水</div>',
+      '<div class="card buy"><h3>每天换成稳定币</h3>敞口 = 一天的价格波动</div>',
+      '<div class="card"><h3>做市库存</h3>永续合约做空对冲</div><div class="card"><h3>闪兑库存</h3>现货市场或向做市商平盘</div><div class="card warn"><h3>理财期限错配</h3>期限管理，保留赎回缓冲</div>',
+    ];
+    el.querySelector('#hgSide').innerHTML = side[st];
+    if (st === 4) svg.querySelectorAll('*').forEach(n => n.setAttribute('opacity', .4));
+  }
+
+  // 11: run stress test
+  function runStep(el, st) {
+    const svg = el.querySelector('#run'); svg.innerHTML = '';
+    const X0 = 140, X1 = 1600, Y0 = 440, H = 360;
+    const hx = h => X0 + (X1 - X0) * h / 24;
+    const scen = st >= 4 ? { rate: 0.625, total: 15, name: '极端 30%' } : { rate: 0.3125, total: 7.5, name: '严重 15%' };
+    const VMAX = scen.total;
+    if (st <= 1) {
+      // scenario table drawn in svg
+      const rows = [['温和', '5%', '热钱包是否覆盖', C.buy], ['严重', '15%', '温钱包补充速度', C.warn], ['极端', '30%，且集中在 2 条链', '冷钱包紧急出账；跨链再平衡', C.sell]];
+      T(svg, 120, 40, '情景 · 示例', C.t2, 26, 'start');
+      T(svg, 420, 40, '24 小时提币比例', C.t2, 26, 'start');
+      T(svg, 900, 40, '关注点', C.t2, 26, 'start');
+      rows.forEach(([a, b, c, col], i) => {
+        const y = 120 + i * 120, vis = st >= 1 || i === 1 ? 1 : .25;
+        svg.appendChild(svgEl('rect', { x: 100, y: y - 45, width: 1440, height: 90, rx: 12, fill: C.panel, stroke: col, 'stroke-width': 3, opacity: vis }));
+        svg.appendChild(svgEl('text', { x: 130, y, fill: col, opacity: vis, 'dominant-baseline': 'middle', style: 'font-size:34px;font-weight:700' }, a));
+        svg.appendChild(svgEl('text', { x: 420, y, fill: C.text, opacity: vis, 'dominant-baseline': 'middle', style: 'font-size:32px' }, b));
+        svg.appendChild(svgEl('text', { x: 900, y, fill: C.text, opacity: vis, 'dominant-baseline': 'middle', style: 'font-size:30px' }, c));
+      });
+      if (st === 0) T(svg, 820, 480, '输入：真实负债 + 真实余额  →  输出：某链某币第 N 小时耗尽', C.gold, 30);
+    } else {
+      // axes
+      svg.appendChild(svgEl('line', { x1: X0, y1: Y0, x2: X1, y2: Y0, stroke: C.line, 'stroke-width': 3 }));
+      for (let h = 0; h <= 24; h += 4) { T(svg, hx(h), Y0 + 30, '第 ' + h + ' 时', C.t2, 22); }
+      // cumulative outflow line vs hot, hot+warm levels (unit 亿)
+      const vy = v => Y0 - v / VMAX * H;
+      const lvl = (v, c, lab) => { svg.appendChild(svgEl('line', { x1: X0, y1: vy(v), x2: X1, y2: vy(v), stroke: c, 'stroke-width': 3, 'stroke-dasharray': '10 8' })); T(svg, X0 - 12, vy(v), lab, c, 24, 'end'); };
+      lvl(1, C.gold, '热 1 亿');
+      if (st >= 3) lvl(6, C.info, '热+温 6 亿');
+      const endH = 24;
+      const pts = [];
+      for (let h = 0; h <= endH + 1e-9; h += 0.2) pts.push(hx(h) + ',' + vy(scen.rate * h));
+      svg.appendChild(svgEl('polyline', { points: pts.join(' '), fill: 'none', stroke: C.sell, 'stroke-width': 5 }));
+      T(svg, hx(Math.min(endH, 24)) - 10, vy(scen.rate * endH) - 26, '累计净流出 · ' + scen.name, C.sell, 26, 'end');
+      const mark = (h, v, lab, c) => { svg.appendChild(svgEl('circle', { cx: hx(h), cy: vy(v), r: 10, fill: c })); svg.appendChild(svgEl('line', { x1: hx(h), y1: vy(v), x2: hx(h), y2: Y0, stroke: c, 'stroke-width': 2, 'stroke-dasharray': '6 6' })); T(svg, hx(h) + 14, vy(v) + 28, lab, c, 26, 'start', true); };
+      if (st === 2 || st === 3) mark(3.2, 1, '约第 3 时 热钱包耗尽', C.gold);
+      if (st === 3) { mark(19.2, 6, '约第 19 时 温钱包耗尽', C.info); svg.appendChild(svgEl('rect', { x: hx(19.2), y: vy(7.5), width: hx(24) - hx(19.2), height: vy(6) - vy(7.5), fill: 'rgba(246,70,93,.25)' })); T(svg, hx(19.2) - 14, vy(7.2), '缺口 1.5 亿', C.sell, 28, 'end', true); }
+      if (st >= 4) { lvl(6, C.info, '热+温 6 亿'); mark(1.6, 1, '', C.gold); mark(9.6, 6, '约第 10 时 温钱包见底', C.info); svg.appendChild(svgEl('rect', { x: hx(9.6), y: vy(15), width: hx(24) - hx(9.6), height: vy(6) - vy(15), fill: 'rgba(246,70,93,.2)' })); T(svg, hx(10) + 10, vy(13.2), '缺口 9 亿 → 冷钱包紧急出账', C.sell, 30, 'start', true); }
+      if (st >= 5) { svg.appendChild(svgEl('rect', { x: hx(0) + 20, y: vy(14.6), width: 520, height: 60, rx: 10, fill: '#1e2127', stroke: C.gold, 'stroke-width': 3 })); T(svg, hx(0) + 280, vy(14.6) + 30, '冷钱包补充速度 = 关键参数', C.gold, 30, 'middle', true); }
+    }
+    const notes = [
+      '风险管理读取各币种各链<b>用户负债</b>、热温冷<b>余额与在途</b> → 施加情景 → 计算每小时缺口',
+      '示例情景：温和 5% · 严重 15% · 极端 30% 且集中在 2 条链',
+      '负债 50 亿 × 15% = 7.5 亿 ÷ 24 ≈ <b class="hl">3,100 万 / 小时</b> → 热钱包 1 亿约 3 小时耗尽',
+      '温钱包 5 亿再撑约 16 小时；热 + 温 6 亿 &lt; 7.5 亿 → <b class="down">缺口 1.5 亿</b>，第 19 小时前须从冷钱包补上',
+      '15 亿 ÷ 24 ≈ <b class="hl">6,200 万 / 小时</b> → 约第 10 小时温钱包见底，缺口 <b class="down">9 亿</b>',
+      '补充耗时取决于：审批人到位时间 · 签名设备物理位置 · 链确认时间 → 更新水位下限与排班',
+      '1:1 储备：<b class="up">有钱但可能慢</b> · 非 1:1 储备：<b class="down">慢了之后就没钱</b>',
+    ];
+    el.querySelector('#runNote').innerHTML = notes[st];
+    if (st === 6) svg.querySelectorAll('*').forEach(n => n.setAttribute('opacity', .45));
+  }
+
+  // 12: loss waterfall
+  function lossStep(el, st) {
+    const svg = el.querySelector('#loss'); svg.innerHTML = '';
+    const on = (k) => st >= k;
+    box(svg, 10, 230, 200, 100, '损失发生', { stroke: C.sell });
+    const types = [['合约穿仓', 40, 1], ['被盗或系统事故', 230, 2], ['杠杆借贷坏账', 420, 2]];
+    types.forEach(([t, y, k]) => { box(svg, 290, y, 280, 90, t, { stroke: on(k) ? C.warn : C.line, op: on(k) ? 1 : .3 }); arrow(svg, 210, 280, 286, y + 45, on(k) ? C.warn : C.line); });
+    // pools
+    box(svg, 660, 40, 300, 90, '合约保险基金', { stroke: on(1) ? C.info : C.line, op: on(1) ? 1 : .3, fill: st === 1 ? '#1a2333' : C.panel });
+    box(svg, 660, 230, 300, 90, 'SAFU 基金', { stroke: on(2) ? C.info : C.line, op: on(2) ? 1 : .3, fill: st === 2 ? '#1a2333' : C.panel });
+    box(svg, 660, 420, 300, 90, '杠杆风险准备', { stroke: on(2) ? C.info : C.line, op: on(2) ? 1 : .3, fill: st === 2 ? '#1a2333' : C.panel });
+    [[85, 1], [275, 2], [465, 2]].forEach(([y, k]) => arrow(svg, 570, y, 656, y, on(k) ? C.info : C.line));
+    box(svg, 1060, 40, 260, 90, ['ADL', '自动减仓'], { stroke: on(1) ? C.warn : C.line, op: on(1) ? 1 : .3 });
+    arrow(svg, 960, 85, 1056, 85, on(1) ? C.warn : C.line, true); if (on(1)) T(svg, 1008, 60, '不足', C.warn, 22);
+    box(svg, 1060, 320, 260, 100, ['平台资本', '最后的自愿防线'], { stroke: on(2) ? C.gold : C.line, op: on(2) ? 1 : .3, fill: st === 3 ? '#2a2412' : C.panel, sw: st === 3 ? 5 : 3 });
+    arrow(svg, 960, 275, 1056, 350, on(2) ? C.gold : C.line, true); arrow(svg, 960, 465, 1056, 395, on(2) ? C.gold : C.line, true);
+    if (on(2)) T(svg, 1008, 300, '不足', C.gold, 22);
+    box(svg, 1390, 300, 240, 140, ['社会化分摊', '或破产程序'], { stroke: on(3) ? C.sell : C.line, op: on(3) ? 1 : .3, fill: on(3) ? '#2a1418' : C.panel });
+    arrow(svg, 1320, 370, 1386, 370, on(3) ? C.sell : C.line, true);
+    if (on(3)) T(svg, 1510, 470, '用户承担 · 最差结果', C.sell, 26, 'middle', true);
+    if (st >= 4) {
+      svg.appendChild(svgEl('rect', { x: 640, y: 20, width: 340, height: 510, rx: 18, fill: 'none', stroke: C.buy, 'stroke-width': 4, 'stroke-dasharray': '14 8' }));
+      T(svg, 810, 548, '专项基金：与运营资金隔离', C.buy, 28, 'middle', true);
+    }
+  }
+
+  function caseStep(el, st) {
+    el.querySelectorAll('[data-k]').forEach(n => { const k = +n.dataset.k; n.classList.toggle('pend', st < k); n.classList.toggle('cur', st === k); });
+  }
+  function endStep(el, st) {
+    el.querySelectorAll('.pA').forEach(n => n.style.display = st <= 2 ? '' : 'none');
+    el.querySelectorAll('.pB').forEach(n => n.style.display = st >= 3 ? '' : 'none');
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

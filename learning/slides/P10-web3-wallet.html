@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P10 Web3 钱包</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  table.t td, table.t th { padding: 13px 18px; transition: background .3s, color .3s, opacity .3s; }
+  table.t td.on, table.t th.on { background: var(--gold-soft); color: var(--text); }
+  table.t tr.mark td { background: var(--sell-soft); }
+  table.t td.off { opacity: .35; }
+  .cmp th:first-child, .cmp td:first-child { color: var(--text-2); width: 260px; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .tag { font-family: var(--mono); font-size: 26px; color: var(--text-2); }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="P10" data-title="Web3 钱包：MPC、DEX 聚合与授权风险">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 产品深潜 · P10</div>
+    <h1>一键划转，<span class="hl">其实是一次提币</span></h1>
+    <div class="row" style="max-width:1640px">
+      <div class="card col" data-step="0"><div class="stat"><div class="k">交易所账户 · 示例</div><div class="v">1,000 USDT</div></div><span class="muted">币安账本上的一个数字 · 币安保管私钥</span></div>
+      <div class="card gold col" data-step="1"><div class="stat"><div class="k">Web3 钱包 · 链上地址</div><div class="v">1,000 USDT</div></div><span class="muted">属于链上一个地址 · 签名需要你参与</span></div>
+    </div>
+    <div class="card warn" data-step="2" style="max-width:1640px">链上赚币、跨链桥、新币交易可能损失全部本金 · 仅讲系统设计，不构成投资建议</div>
+    <ol class="say">
+      <li>你在币安 App 里点一下，把1000 USDT 转进 Web3 钱包。界面上，它看起来像一次站内划转。但底层发生的，是一次真实的链上提币。</li>
+      <li>交易所账户里的币，是币安账本上的一个数字，私钥由币安保管。Web3 钱包里的币，属于链上的一个地址，签名需要你参与。</li>
+      <li>这一集，我们拆开这条边界。先提醒一句，链上赚币、跨链桥和新币交易，都可能损失全部本金。本集只讲系统设计，不构成投资建议。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>本集路线图</h2>
+    <div class="grid2">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>MPC 无私钥钱包<br><span class="muted">三片密钥 · 生命周期 · 联合签名</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>交易所与钱包之间的资金流<br><span class="muted">划转 = 提币 · 一次签名的调用链</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">3</span><div>DEX 聚合 · MEV · 跨链桥<br><span class="muted">路由 · 三明治攻击 · 凭空铸币</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">4</span><div>收入 · 授权钓鱼 · 失败场景<br><span class="muted">无限授权为什么危险</span></div></div>
+    </div>
+    <ol class="say">
+      <li>本集分四段。第一，币安钱包的 MPC 方案。三片密钥放在哪里，谁能单独动钱，谁不能。第二，交易所和钱包之间的资金流，以及一次签名的调用链。</li>
+      <li>第三，钱包里的 DEX 聚合交易、MEV 保护和跨链桥。第四，平台怎么赚钱，无限授权为什么危险，以及两个典型的失败场景。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="三种托管模式" data-onstep="cmpStep">
+    <div class="kicker">Custody Models</div>
+    <h2>三种托管模式：签名权在谁手里</h2>
+    <table class="t cmp" id="cmp">
+      <tr><th>维度</th><th data-c="1">交易所托管</th><th data-c="2">助记词钱包</th><th data-c="3">MPC 无私钥钱包</th></tr>
+      <tr><td>谁控制签名</td><td data-c="1">交易所</td><td data-c="2">用户独自</td><td data-c="3">设备 + 币安，或设备 + 云备份</td></tr>
+      <tr><td>资产记在哪</td><td data-c="1">交易所账本</td><td data-c="2">链上地址</td><td data-c="3">链上地址</td></tr>
+      <tr><td>助记词</td><td data-c="1">无</td><td data-c="2">12 或 24 个单词</td><td data-c="3">无</td></tr>
+      <tr><td>转账是否上链</td><td data-c="1">站内转账不上链</td><td data-c="2">上链</td><td data-c="3">上链</td></tr>
+      <tr><td>典型风险</td><td data-c="1">挪用、被盗</td><td data-c="2">助记词丢失、泄露</td><td data-c="3">设备被控、授权钓鱼</td></tr>
+      <tr id="frz"><td>平台能否冻结</td><td data-c="1">能</td><td data-c="2">不能</td><td data-c="3">不能单独冻结，但能停止参与签名</td></tr>
+    </table>
+    <ol class="say">
+      <li>先把三种托管模式摆在一起。交易所托管，签名由交易所控制，资产记在交易所账本上。站内转账不上链，平台也能冻结。</li>
+      <li>传统自托管钱包，用户独自控制签名，靠12个或24个单词的助记词恢复。资产在链上地址，平台冻结不了。</li>
+      <li>MPC 无私钥钱包在中间。资产同样在链上地址，也没有助记词。签名需要用户设备加币安，或者用户设备加云备份。</li>
+      <li>注意最后一行。平台不能单独冻结链上资产，但它可以停止参与签名。不能单独动钱，不等于永远可用。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="MPC 三片密钥" data-onstep="mpcStep">
+    <div class="kicker">MPC · Threshold Signature</div>
+    <h2>三片密钥，任意两片才能签名</h2>
+    <svg id="mpc" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>先看 MPC 无私钥钱包。打个比方，它像一个保险柜，需要3把钥匙里任意2把才能打开。一把在你手机里，一把在币安，一把加密后放在你自己的云盘里。</li>
+      <li>根据币安公开资料，创建钱包时生成3个密钥分片。分片1由币安保管，分片2存在用户设备上。分片3用你设置的恢复密码加密，备份到个人云盘。</li>
+      <li>但比喻在这里不成立。保险柜的钥匙真实存在，而 MPC 里完整私钥从不出现。业界通常这样做：三方各自生成随机数，共同算出公钥和地址。</li>
+      <li>签名时，设备分片和币安分片各算一部分，合成一个完整签名。这叫门限签名，3片里任意2片就能签。</li>
+      <li>反过来，币安只持有1片，无法单独动用户资产。这是币安官方文章的说法。</li>
+      <li>丢了手机怎么办？新设备登录，输入恢复密码。云备份分片加币安分片，重新生成新的分片。地址不变，旧设备上的分片作废。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="钱包生命周期" data-onstep="lifeStep">
+    <div class="kicker">State Machine · 业界通用 MPC 做法</div>
+    <h2>钱包的一生：最危险的是没备份</h2>
+    <svg id="life" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>把钱包的一生画成状态机。用户创建钱包，三方完成分布式密钥生成，钱包进入已激活但未备份的状态。注意，这是危险状态。此时只有两片可用，丢一片就无法签名。</li>
+      <li>用户完成云备份，钱包才进入正常的已激活状态。币安还提供快速备份，用生物识别代替恢复密码，加密分片交给第三方安全服务商保存。</li>
+      <li>正常使用时，用户发起交易，设备分片和币安分片联合签名，完成后回到已激活。</li>
+      <li>换机或丢失手机，进入恢复流程。恢复不是把私钥找回来，而是重新分片。说明一下，这是业界通用的 MPC 做法，币安具体协议没有完整公开。</li>
+      <li>最危险的路径在这里。没备份就丢了设备，钱包永久无法签名。另外，根据新闻报道，2025年12月起，一个币安账户最多可创建5个无私钥钱包。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="资金流：划转即提币" data-onstep="flowStep">
+    <div class="kicker">Money Flow · CEX ↔ Web3 Wallet</div>
+    <h2>每一次移动，都是真实的链上交易</h2>
+    <svg id="flow" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>现在看资金流。从交易所转进钱包，第一步是账本扣减，这是内部操作。第二步，币安热钱包签名，把币转到你的钱包地址。这就是一次完整的提币。</li>
+      <li>币到了钱包地址，币安账本就不再记录这笔资产。币安的储备金证明，也不再包含它。</li>
+      <li>第三步，你在钱包里用 DEX、链上赚币或者跨链桥。每一次都是你签名的链上交易，要付 gas，结果不可撤销。</li>
+      <li>反方向，从钱包转回交易所，是一次完整的充值，要等确认数达标才入账。App 把两边做成一键划转，但底层仍是链上交易。部分 gas 可能由平台补贴，以官网为准。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="一次签名的调用链" data-onstep="seqStep">
+    <div class="kicker">Call Chain · 签名前先模拟</div>
+    <h2>一次签名：先模拟，再提示，再联合签名</h2>
+    <svg id="seq" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>一次签名，系统内部怎么走？App 先在本地构造交易，把交易摘要发给网关，请求联合签名。网关鉴权后，转给持有币安分片的钱包签名服务。</li>
+      <li>签名服务先不签。它把交易交给模拟服务试运行，解析资产变化。示例结果是：将转出100 USDT，授权额度为无限。风控服务再检查目标地址和合约的风险标签。</li>
+      <li>风险提示返回 App。用户阅读提示，确认之后，才开始真正的签名。</li>
+      <li>MPC 签名要来回两轮。App 合成完整签名，再广播到区块链节点。交易一旦广播，任何一方都无法撤回。</li>
+      <li>注意这里的两面性。币安分片参与签名，所以币安能在签名前做风控，这是相对助记词钱包的优势。但同一个机制也意味着，币安可以拒绝签名。签名服务和模拟服务，是按业界通用做法画出的组件。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="DEX 聚合交易" data-onstep="aggStep">
+    <div class="kicker">DEX Aggregator</div>
+    <h2>链下算路由，链上执行，合约检查最低到手</h2>
+    <svg id="agg" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>接下来是钱包里的 DEX 兑换。用户选择从 USDT 兑换到代币 X。界面显示预估数量、最低到手数量、滑点容忍度和网络费。</li>
+      <li>背后是 DEX 聚合器。它同时查询多个去中心化交易所，把一笔订单拆到多个池子。示例里，1000 USDT 的60%直接走池子 A。另外40%先换成 BNB，再换成 X。</li>
+      <li>路由是链下算、链上执行。聚合服务把路径写进交易数据，由用户签名执行。最低到手数量也写在交易里，由合约检查。这才是滑点保护真正执行的地方。</li>
+      <li>出错点在时间差。链下报价和链上执行之间，行情可能已经变了。到手数量低于最低值，交易就会失败。失败也要付 gas。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="MEV 与三明治攻击" data-onstep="mevStep">
+    <div class="kicker">MEV · Sandwich Attack</div>
+    <h2 id="mev-h">三明治攻击：机器人夹住你的买单</h2>
+    <svg id="mev" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>用户把兑换交易广播到公开内存池。买入代币 X，滑点容忍度2%。问题是，内存池是公开的，三明治机器人也在看。</li>
+      <li>机器人抢先买入 X，把价格推高。用户的买单接着以更差的价格成交。机器人再把 X 卖掉，赚走用户推高的那段差价。这就是三明治攻击。</li>
+      <li>机器人能抽走多少，取决于你的滑点容忍度。设成2%，就是最多2%的潜在损失。容忍度越大，机器人的利润越多。</li>
+      <li>防御方法是私有交易通道。交易不进公开内存池，直接交给出块者。根据公开资料，币安钱包宣称提供 MEV 保护。局限是，你要信任通道运营方和出块者，而且不是所有链都有成熟的私有通道。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="跨链桥与链上赚币" data-onstep="bridgeStep">
+    <div class="kicker">Bridge · On-chain Earn</div>
+    <h2 id="br-h">跨链桥：锁定一边，铸造另一边</h2>
+    <svg id="bridge" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>再看跨链桥。常见做法是，在链 A 锁定资产，在链 B 铸造等量的包装资产。链 B 上的包装资产，靠链 A 的锁仓来支撑。</li>
+      <li>风险在验证环节。验证者私钥被盗，或者验证逻辑有漏洞，攻击者就能伪造证明。他在链 B 凭空铸币。公开案例发生在2022年10月。BNB Chain 的跨链桥 BSC Token Hub 被利用。攻击者凭空铸造了约200万枚 BNB。验证者随后暂停了链。</li>
+      <li>对比一下，交易所内部的跨链不需要桥。你在 BSC 充值 USDT，在以太坊提 USDT。交易所用两条链上各自的热钱包库存完成，风险由交易所的库存管理承担。</li>
+      <li>链上赚币也要区分清楚。交易所理财的资产留在币安账本内，由币安负责兑付。钱包里的链上赚币，资产在第三方协议合约里，由合约代码负责兑付。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="平台怎么赚钱">
+    <div class="kicker">Revenue</div>
+    <h2>钱包不收保管费，收入来自钱包里的交易</h2>
+    <div class="formula" data-step="0" style="font-size:34px">平台收入 = DEX 兑换服务费 + 跨链服务费 + 链上赚币分成 + 新币活动生态收入</div>
+    <div class="row">
+      <div class="card col" data-step="1"><div class="stat"><div class="k">单笔 · 示例</div><div class="v">3 USDT</div></div><span class="mono">1,000 USDT × 0.3% 服务费</span></div>
+      <div class="card gold col" data-step="2"><div class="stat"><div class="k">单日兑换量 · 2025-05 · 新闻报道</div><div class="v">≈ 50 亿美元</div></div><span class="mono">× 0.1% 示例 ≈ 500 万美元/天</span></div>
+      <div class="card info col" data-step="3"><div class="stat"><div class="k">NFT · 2026 年新闻报道</div><div class="v" style="font-size:52px">托管 → 钱包</div></div>中心化 NFT 服务 2026-07-03 截止，迁移到 Binance Wallet</div>
+    </div>
+    <ol class="say">
+      <li>钱包本身不收保管费。平台收入来自钱包里的交易。有 DEX 兑换服务费、跨链服务费和链上赚币分成。还有新币活动带来的生态收入。</li>
+      <li>算一笔示例。用户在钱包里用1000 USDT 兑换代币 X。服务费0.3%，平台收入3 USDT。</li>
+      <li>再看规模。新闻报道引用了 Dune 数据。2025年5月，币安钱包单日兑换量约50亿美元。按0.1%的示例平均费率算，单日约500万美元。</li>
+      <li>还有一个趋势。根据新闻报道，币安在2026年6月宣布关闭中心化 NFT 服务。截止日是2026年7月3日，NFT 服务迁移到币安钱包。行业正在从托管模式，转向钱包模式。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="无限授权钓鱼" data-onstep="approveStep">
+    <div class="kicker">Approval Phishing</div>
+    <h2>一次签名，变成永久权限</h2>
+    <svg id="appr" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>最后一个风险，也是钱包用户最常遇到的。ERC-20 代币有一个 approve 操作。它允许某个合约，从你的地址转走若干代币。很多 DApp 默认请求最大整数，也就是无限授权。</li>
+      <li>用户访问了一个假冒网站，签了一个无限授权。授权本身不转钱，余额一分没少。所以签名的时候，用户几乎没有警惕。</li>
+      <li>链上从此多了一条记录：攻击合约可以转走你全部的 USDT。攻击者不急，他在等。几个月后，你充值了5000 USDT。攻击者调用 transferFrom，一次转走全部余额。</li>
+      <li>防御有三条。只授权本次需要的数量。定期撤销不用的授权，也就是把额度设为0。钱包在签名前模拟交易，显示风险。同类风险还有 permit 离线签名。NFT 也有 setApprovalForAll。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="风险与失败场景">
+    <div class="kicker">Risks · Failure Cases</div>
+    <h2>链上的风险，大多由用户自己承担</h2>
+    <div class="split">
+      <table class="t" data-step="0">
+        <tr><th>风险</th><th>谁承担</th></tr>
+        <tr><td>设备被恶意软件控制</td><td class="down">用户</td></tr>
+        <tr><td>币安分片服务中断</td><td class="down">用户</td></tr>
+        <tr><td>云盘被盗 + 恢复密码泄露</td><td class="down">用户</td></tr>
+        <tr><td>合约漏洞</td><td class="down">用户</td></tr>
+        <tr><td>声誉与监管</td><td class="hl">平台</td></tr>
+      </table>
+      <div class="col">
+        <div class="card sell" data-step="1"><h3>失败 1 · 以为有 SAFU 保护</h3>SAFU 为交易所托管资产设计 · 钱包被钓鱼，平台通常无赔付义务 · 以官网条款为准</div>
+        <div class="card sell" data-step="2"><h3>失败 2 · 换机未备份</h3>旧手机已重置 · 无法恢复 · 资产永久锁死</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>把风险汇总一下。设备被恶意软件控制，币安分片服务中断。云盘被盗加恢复密码泄露，还有合约漏洞。这四类都由用户承担。平台承担的，主要是声誉和监管风险。</li>
+      <li>第一个失败场景。用户以为钱包余额受交易所保护。但用户保护基金 SAFU 是为交易所托管资产设计的。钱包资产在链上，被钓鱼转走后，平台通常没有赔付义务。这是业界通用规则，以官网条款为准。</li>
+      <li>第二个失败场景。用户换机前没有备份，旧手机已经重置。系统无法恢复，资产永久锁死。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">交易所账户是<span class="hl">账本数字</span>，钱包是<span class="hl">链上地址</span>；之间每次移动都是真实充提。</li>
+      <li data-step="1">MPC：3 片任意 2 片签名；币安 1 片，<span class="hl">不能单独动钱</span>，但能风控、能拒签。</li>
+      <li data-step="2">滑点、跨链桥、<span class="hl">无限授权</span>：链上风险由用户自己承担。</li>
+    </ul>
+    <div class="card gold" data-step="3"><h3>下一集 · P11 增长与机构</h3>推荐返佣 · 体验金 · VIP 与子账户 · 经纪商 · 做市商负费率 · 场外结算</div>
+    <ol class="say">
+      <li>小结三点。第一，交易所账户是账本上的数字，Web3 钱包是链上地址。两者之间的每次移动，都是真实的提币或充值。</li>
+      <li>第二，MPC 钱包用3片密钥，任意2片签名。币安只有1片，不能单独动钱，但能在签名前做风控，也能拒绝签名。</li>
+      <li>第三，链上的风险由用户自己承担。滑点容忍度、跨链桥和无限授权，都可能让你损失全部本金。</li>
+      <li>下一集是产品深潜的最后一集。我们回到交易所内部，看推荐返佣、VIP、经纪商和做市商。平台怎样把一部分手续费让出去，换来用户和流动性。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10', done: '#5a5f6a' };
+  const SOFT = { gold: 'rgba(240,185,11,.16)', buy: 'rgba(46,189,133,.16)', sell: 'rgba(246,70,93,.16)', info: 'rgba(91,156,255,.16)', warn: 'rgba(240,163,64,.16)' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 28}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.mono ? ' font-family="JetBrains Mono, SF Mono, Menlo, monospace"' : ''}${o.plain ? '' : ` stroke="${C.bg}" stroke-width="8" paint-order="stroke"`}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op !== undefined ? ` opacity="${o.op}"` : ''}/>`;
+  function A(x1, y1, x2, y2, o = {}) {
+    const col = o.col || C.t2, w = o.w || 4, a = Math.atan2(y2 - y1, x2 - x1), h = 18;
+    const p = d => `${(x2 - h * Math.cos(a + d)).toFixed(1)},${(y2 - h * Math.sin(a + d)).toFixed(1)}`;
+    return `<line x1="${x1}" y1="${y1}" x2="${x2 - 10 * Math.cos(a)}" y2="${y2 - 10 * Math.sin(a)}" stroke="${col}" stroke-width="${w}"${o.dash ? ' stroke-dasharray="12 9"' : ''}${o.op !== undefined ? ` opacity="${o.op}"` : ''}/><polygon points="${x2},${y2} ${p(0.42)} ${p(-0.42)}" fill="${col}"${o.op !== undefined ? ` opacity="${o.op}"` : ''}/>`;
+  }
+  // box: state on | done | off | bad | ok | info
+  function B(x, y, w, h, title, sub, st = 'done', o = {}) {
+    const m = { on: [SOFT.gold, C.gold, C.text], done: [C.panel, C.done, C.text], off: [C.panel, C.line, C.t2], bad: [SOFT.sell, C.sell, C.text], ok: [SOFT.buy, C.buy, C.text], info: [SOFT.info, C.info, C.text], warn: [SOFT.warn, C.warn, C.text] }[st];
+    const ts = o.size || 30;
+    let s = R(x, y, w, h, { fill: m[0], stroke: m[1], sw: st === 'off' ? 2 : 3 });
+    if (sub) s += T(x + w / 2, y + h / 2 - 4, title, { anchor: 'middle', size: ts, bold: true, fill: m[2], plain: true }) + T(x + w / 2, y + h / 2 + 32, sub, { anchor: 'middle', size: o.subSize || 24, fill: st === 'off' ? C.t2 : (o.subCol || C.t2), plain: true });
+    else s += T(x + w / 2, y + h / 2 + ts * 0.36, title, { anchor: 'middle', size: ts, bold: true, fill: m[2], plain: true });
+    return s;
+  }
+  const keyIcon = (x, y, col) => `<circle cx="${x}" cy="${y}" r="16" fill="none" stroke="${col}" stroke-width="6"/><line x1="${x + 16}" y1="${y}" x2="${x + 58}" y2="${y}" stroke="${col}" stroke-width="6"/><line x1="${x + 46}" y1="${y}" x2="${x + 46}" y2="${y + 14}" stroke="${col}" stroke-width="6"/><line x1="${x + 56}" y1="${y}" x2="${x + 56}" y2="${y + 12}" stroke="${col}" stroke-width="6"/>`;
+
+  function cmpStep(el, st) {
+    const col = [1, 2, 3, 3][st];
+    el.querySelectorAll('#cmp [data-c]').forEach(c => { c.classList.toggle('on', +c.dataset.c === col && st < 3); c.classList.toggle('off', st < 3 && +c.dataset.c > st + 1); });
+    el.querySelector('#frz').classList.toggle('mark', st === 3);
+  }
+
+  function mpcStep(el, st) {
+    const svg = el.querySelector('#mpc');
+    let h = '';
+    const sh = [[60, '分片 1 · 币安保管', 'wallet-mpc-service'], [620, '分片 2 · 用户设备', '手机 App'], [1180, '分片 3 · 个人云盘', '恢复密码加密备份']];
+    // address box
+    h += B(560, 20, 520, 100, '钱包地址 · 链上', '0x7a…c3 · 示例', st === 2 || st === 5 ? 'on' : 'done');
+    const state = i => {
+      if (st === 0) return 'done';
+      if (st === 1) return 'on';
+      if (st === 2) return 'on';
+      if (st === 3) return i === 2 ? 'off' : 'on';
+      if (st === 4) return i === 0 ? 'bad' : 'off';
+      if (st === 5) return i === 1 ? 'ok' : 'on';
+    };
+    if (st === 2) { sh.forEach(([x]) => { h += A(x + 200, 380, 820, 126, { col: C.gold, dash: true }); }); h += T(820, 250, '各自生成随机数 → 共同算出公钥和地址', { anchor: 'middle', size: 32, bold: true, fill: C.gold }); h += T(820, 300, '完整私钥 ✕ 从不出现', { anchor: 'middle', size: 32, bold: true, fill: C.sell }); }
+    if (st === 3) { h += A(260, 380, 760, 250, { col: C.gold }) + A(820, 380, 820, 262, { col: C.gold }); h += B(660, 170, 320, 90, '联合签名 ✓', '', 'ok'); h += T(1060, 230, '3 片中任意 2 片 · 门限签名 TSS', { size: 30, fill: C.buy, bold: true }); }
+    if (st === 4) { h += A(260, 380, 720, 250, { col: C.sell }); h += B(660, 170, 320, 90, '签名 ✕', '', 'bad'); h += T(1010, 230, '币安只有 1 片 → 无法单独动用户资产', { size: 30, fill: C.sell, bold: true }); }
+    if (st === 5) {
+      h += A(260, 380, 700, 262, { col: C.gold }) + A(1380, 380, 940, 262, { col: C.gold });
+      h += B(640, 170, 360, 90, '重新分片 Resharing', '', 'on', { size: 30 });
+      h += A(820, 260, 820, 376, { col: C.buy });
+      h += T(820, 160, '地址不变 · 旧分片作废', { anchor: 'middle', size: 28, fill: C.gold, bold: true });
+    }
+    sh.forEach(([x, t, s], i) => {
+      const stt = state(i);
+      h += R(x, 380, 400, 170, { fill: { on: SOFT.gold, bad: SOFT.sell, ok: SOFT.buy, off: C.panel, done: C.panel }[stt], stroke: { on: C.gold, bad: C.sell, ok: C.buy, off: C.line, done: C.done }[stt] });
+      h += keyIcon(x + 40, 440, stt === 'off' ? C.done : stt === 'bad' ? C.sell : C.gold);
+      const title = st === 5 && i === 1 ? '新设备分片 ✓' : t;
+      h += T(x + 120, 450, title, { size: 32, bold: true, fill: stt === 'off' ? C.t2 : C.text, plain: true });
+      h += T(x + 40, 515, st === 5 && i === 1 ? '旧设备分片 ✕ 作废' : s, { size: 26, fill: st === 5 && i === 1 ? C.sell : C.t2, plain: true });
+    });
+    if (st <= 1) {
+      h += T(820, 230, st === 0 ? '比喻：保险柜 · 3 把钥匙，任意 2 把能开' : '分片 3 存在 iCloud 或 Google Drive', { anchor: 'middle', size: 36, bold: true, fill: C.gold });
+      h += T(820, 290, st === 0 ? '一把在手机 · 一把在币安 · 一把加密放在你的云盘' : '截至 2026 年公开资料 · 币安官方文章', { anchor: 'middle', size: 30, fill: C.t2 });
+    }
+    svgEl(svg, h);
+  }
+
+  function lifeStep(el, st) {
+    const svg = el.querySelector('#life');
+    const W = 330, H = 100;
+    const N = {
+      kg: [30, 30, '密钥生成', 'KEYGEN'], nb: [430, 30, '已激活 · 未备份', 'ACTIVE_NO_BACKUP'], ac: [830, 30, '已激活', 'ACTIVE'], sg: [1250, 30, '签名中', 'SIGNING'],
+      lost: [430, 260, '永久丢失', 'LOST'], dl: [830, 260, '设备丢失', 'DEVICE_LOST'], rc: [830, 460, '恢复中', 'RECOVERING'], rs: [1250, 460, '已重新分片', 'RESHARED'],
+    };
+    const on = [['kg', 'nb'], ['ac'], ['sg', 'ac'], ['dl', 'rc', 'rs'], ['lost']][st];
+    const seen = [['kg', 'nb'], ['kg', 'nb', 'ac'], ['kg', 'nb', 'ac', 'sg'], ['kg', 'nb', 'ac', 'sg', 'dl', 'rc', 'rs'], Object.keys(N)][st];
+    const E = [
+      ['kg', 'nb', 1015, 0, [360, 80, 428, 80]], ['nb', 'ac', 1, 1, [760, 80, 828, 80]],
+      ['ac', 'sg', 2, 2, [1160, 62, 1248, 62]], ['sg', 'ac', 2, 2, [1250, 100, 1162, 100]],
+      ['ac', 'dl', 3, 3, [995, 130, 995, 258]], ['dl', 'rc', 3, 3, [995, 360, 995, 458]], ['rc', 'rs', 3, 3, [1160, 510, 1248, 510]], ['rs', 'ac', 3, 3, [1300, 458, 1140, 132]],
+      ['nb', 'lost', 4, 4, [595, 130, 595, 258]],
+    ];
+    let h = '';
+    E.forEach(([a, b, , k, [x1, y1, x2, y2]]) => {
+      if (!seen.includes(a) || !seen.includes(b)) return;
+      const act = k === st;
+      h += A(x1, y1, x2, y2, { col: act ? (b === 'lost' ? C.sell : C.gold) : C.done, w: act ? 5 : 3 });
+    });
+    Object.entries(N).forEach(([k, [x, y, t, s]]) => {
+      if (!seen.includes(k)) { h += R(x, y, W, H, { fill: 'none', stroke: C.line, sw: 2, dash: '8 8' }); return; }
+      const act = on.includes(k);
+      const bad = k === 'lost' || (k === 'nb' && st === 0) || (k === 'dl' && act);
+      h += B(x, y, W, H, t, s, act ? (bad ? 'bad' : 'on') : 'done', { subSize: 20 });
+    });
+    const note = [
+      ['未备份：只有两片可用，丢一片就无法签名', C.sell],
+      ['完成云备份或快速备份 → 进入正常状态', C.gold],
+      ['设备分片 + 币安分片联合签名 → 回到已激活', C.gold],
+      ['恢复 = 重新分片：地址不变，旧设备分片作废', C.gold],
+      ['未备份时丢失设备 → 永久无法签名', C.sell],
+    ][st];
+    h += T(30, 590, note[0], { size: 32, bold: true, fill: note[1] });
+    if (st >= 3) h += T(1640, 225, '币安具体协议未完整公开', { anchor: 'end', size: 24, fill: C.t2 });
+    svgEl(svg, h);
+  }
+
+  function flowStep(el, st) {
+    const svg = el.querySelector('#flow');
+    let h = '';
+    h += R(10, 10, 580, 580, { fill: 'rgba(255,255,255,.02)', stroke: C.line, rx: 18 }) + T(40, 60, '币安交易所 · 账本记账', { size: 30, bold: true, fill: C.gold, plain: true });
+    h += R(680, 10, 950, 580, { fill: 'rgba(91,156,255,.04)', stroke: C.line, rx: 18 }) + T(710, 60, '链上 · 用户地址', { size: 30, bold: true, fill: C.info, plain: true });
+    const spotBal = st === 0 ? '1,000 → 0 USDT' : st === 3 ? '入账 ✓' : '0 USDT';
+    h += B(50, 100, 500, 130, '用户资金账户', st === 0 ? '账本余额 1,000 USDT' : '账本 ' + spotBal, st === 0 || st === 3 ? 'on' : 'done');
+    h += B(50, 400, 500, 130, '币安热钱包', '链上地址 · 币安签名', st === 0 || st === 3 ? 'on' : 'done');
+    h += B(720, 230, 380, 140, 'Binance Wallet', st >= 1 ? '1,000 USDT · MPC 2/3' : 'MPC 2/3', st === 1 || st === 2 ? 'on' : 'done');
+    const tgt = [['DEX / 聚合器', 90], ['链上赚币协议', 250], ['跨链桥合约', 410]];
+    tgt.forEach(([t, y]) => { h += B(1220, y, 380, 110, t, '', st === 2 ? 'info' : 'off'); });
+    // arrows
+    h += A(160, 232, 160, 396, { col: st === 0 ? C.gold : C.done, w: st === 0 ? 5 : 3 });
+    h += T(176, 305, '① 账本扣减', { size: 26, fill: st === 0 ? C.gold : C.t2, bold: st === 0 });
+    h += T(176, 340, '内部操作', { size: 24, fill: C.t2 });
+    h += A(552, 440, 716, 330, { col: st === 0 ? C.gold : C.done, w: st === 0 ? 5 : 3 });
+    if (st < 3) h += T(720, 415, '② 链上转账 = 提币', { size: 28, fill: st === 0 ? C.gold : C.t2, bold: true });
+    tgt.forEach(([, y]) => { h += A(1102, 300, 1216, y + 55, { col: st === 2 ? C.info : C.line, w: st === 2 ? 4 : 2 }); });
+    if (st === 2) h += T(910, 420, '③ 用户签名 · 付 gas · 不可撤销', { anchor: 'middle', size: 28, bold: true, fill: C.info });
+    if (st === 3) {
+      h += A(716, 350, 552, 500, { col: C.buy, w: 5 });
+      h += T(720, 415, '④ 链上转回 = 充值', { size: 28, fill: C.buy, bold: true });
+      h += A(440, 396, 440, 232, { col: C.buy, w: 5 });
+      h += T(456, 305, '⑤ 确认数', { size: 24, fill: C.buy, bold: true });
+      h += T(456, 340, '达标入账', { size: 24, fill: C.buy, bold: true });
+    }
+    if (st === 1) {
+      h += R(720, 440, 460, 130, { fill: SOFT.sell, stroke: C.sell });
+      h += T(950, 492, '币安账本不再记录', { anchor: 'middle', size: 30, bold: true, plain: true });
+      h += T(950, 540, '储备金证明 PoR 不包含', { anchor: 'middle', size: 30, bold: true, fill: C.sell, plain: true });
+    }
+    svgEl(svg, h);
+  }
+
+  function seqStep(el, st) {
+    const svg = el.querySelector('#seq');
+    const X = [130, 400, 670, 940, 1210, 1490];
+    const heads = [['用户 App', '设备分片'], ['api-gateway', '鉴权'], ['wallet-mpc', '币安分片'], ['risk-service', '风险标签'], ['交易模拟', '解析资产变化'], ['区块链节点', '广播']];
+    const M = [
+      [0, 0, '本地构造交易', 0], [0, 1, '请求联合签名 · 交易摘要', 0], [1, 2, '鉴权后转发', 0],
+      [2, 4, '模拟执行', 1], [4, 2, '转出 100 USDT · 授权无限', 1, C.sell], [2, 3, '查地址与合约标签', 1], [3, 2, '风险提示：无限授权', 1, C.sell],
+      [2, 0, '返回风险提示', 2], [0, 0, '用户阅读并确认', 2],
+      [0, 2, 'MPC 签名第 1 轮', 3], [2, 0, 'MPC 签名第 2 轮', 3], [0, 5, '合成完整签名 → 广播', 3],
+    ];
+    let h = '';
+    heads.forEach(([t, s], i) => { const a = (i === 2 && st === 4); h += B(X[i] - 125, 0, 250, 86, t, s, a ? 'on' : 'done', { size: 28, subSize: 22 }); h += `<line x1="${X[i]}" y1="88" x2="${X[i]}" y2="590" stroke="${C.line}" stroke-width="3" stroke-dasharray="6 8"/>`; });
+    const y0 = 136, dy = 42;
+    M.forEach(([a, b, lab, k, col], i) => {
+      if (k > st && st < 4) return;
+      const y = y0 + i * dy, act = k === st, c = act ? (col || C.gold) : C.done;
+      if (a === b) { h += `<circle cx="${X[a]}" cy="${y - 8}" r="9" fill="${c}"/>` + T(X[a] + 22, y, lab, { size: 26, fill: act ? (col || C.text) : C.t2 }); }
+      else { h += A(X[a], y, X[b], y, { col: c, w: act ? 4 : 3 }); h += T((X[a] + X[b]) / 2, y - 7, lab, { anchor: 'middle', size: 26, fill: act ? (col || C.text) : C.t2 }); }
+    });
+    if (st === 4) {
+      h += R(0, 100, 1640, 495, { fill: '#0d0e10', stroke: '#0d0e10', rx: 0 }) + R(220, 170, 1200, 360, { fill: '#121418', stroke: C.gold, rx: 18 });
+      h += T(820, 260, '币安分片参与签名 · 一个机制，两面', { anchor: 'middle', size: 34, bold: true, fill: C.gold, plain: true });
+      h += T(300, 370, '✓ 签名前风控：模拟、识别钓鱼、提示无限授权', { size: 30, fill: C.buy, plain: true });
+      h += T(300, 430, '✕ 币安也可以拒绝签名：签名能力依赖币安服务', { size: 30, fill: C.sell, plain: true });
+      h += T(300, 485, '组件按业界通用做法绘制，非币安公开架构', { size: 24, fill: C.t2, plain: true });
+    }
+    svgEl(svg, h);
+  }
+
+  function aggStep(el, st) {
+    const svg = el.querySelector('#agg');
+    let h = '';
+    ['预估数量', '最低到手数量', '滑点容忍度', '网络费'].forEach((t, i) => {
+      const x = 10 + i * 410, act = st === 0 || (st === 2 && i === 1);
+      h += R(x, 0, 390, 80, { fill: act ? SOFT.gold : C.panel, stroke: act ? C.gold : C.line }) + T(x + 195, 52, t, { anchor: 'middle', size: 30, bold: act, fill: act ? C.text : C.t2, plain: true });
+    });
+    const r = st >= 1 ? 'done' : 'off';
+    h += B(20, 230, 240, 120, '用户钱包', '1,000 USDT', st >= 1 ? 'on' : 'done');
+    h += B(330, 230, 260, 120, '聚合路由合约', st === 1 ? '链下算最优拆分' : '', st === 1 ? 'on' : r);
+    h += B(680, 130, 290, 100, '池子 A', 'USDT / X', st === 1 ? 'info' : r);
+    h += B(680, 360, 290, 100, '池子 B', 'USDT / BNB', st === 1 ? 'info' : r);
+    h += B(1040, 360, 290, 100, '池子 C', 'BNB / X', st === 1 ? 'info' : r);
+    h += B(1390, 230, 240, 120, '汇总代币 X', '', st >= 2 ? 'on' : r);
+    h += B(1390, 112, 240, 72, '平台费用地址', '', st >= 2 ? 'warn' : 'off', { size: 26 });
+    const ac = st >= 1 ? C.gold : C.line;
+    h += A(262, 290, 326, 290, { col: ac });
+    h += A(592, 270, 676, 182, { col: ac }) + T(560, 205, '60%', { size: 32, bold: true, fill: st >= 1 ? C.gold : C.t2 });
+    h += A(592, 310, 676, 408, { col: ac }) + T(560, 400, '40%', { size: 32, bold: true, fill: st >= 1 ? C.gold : C.t2 });
+    h += A(972, 410, 1036, 410, { col: ac });
+    h += A(972, 180, 1386, 270, { col: ac });
+    h += A(1332, 400, 1386, 320, { col: ac });
+    h += A(1510, 228, 1510, 188, { col: st >= 2 ? C.warn : C.line, dash: true });
+    const rc = st === 3 ? C.sell : st === 2 ? C.buy : C.line;
+    h += `<polyline points="1510,352 1510,520 140,520 140,362" fill="none" stroke="${rc}" stroke-width="${st >= 2 ? 5 : 3}"/>` + A(140, 380, 140, 354, { col: rc });
+    if (st === 2) h += T(825, 570, '合约检查：到手 ≥ 最低到手数量，否则整笔失败', { anchor: 'middle', size: 30, bold: true, fill: C.buy });
+    if (st === 3) h += T(825, 570, '报价在链下，执行在链上：有时间差 · 失败也付 gas', { anchor: 'middle', size: 30, bold: true, fill: C.sell });
+    if (st === 1) h += T(825, 570, '示例拆分：60% 直达 · 40% 经 BNB 两跳', { anchor: 'middle', size: 30, bold: true, fill: C.gold });
+    if (st === 0) h += T(825, 570, 'USDT → 代币 X · 用户在钱包里看到的界面字段', { anchor: 'middle', size: 30, fill: C.t2 });
+    svgEl(svg, h);
+  }
+
+  function mevStep(el, st) {
+    const svg = el.querySelector('#mev');
+    let h = '';
+    if (st < 3) {
+      h += B(20, 40, 360, 120, '用户交易', '买入 X · 滑点 2%', 'on');
+      h += R(440, 20, 480, 300, { fill: 'rgba(255,255,255,.02)', stroke: C.t2, rx: 18, dash: '10 8' }) + T(680, 70, '公开内存池', { anchor: 'middle', size: 32, bold: true, fill: C.t2, plain: true });
+      h += B(480, 100, 400, 80, '用户：买入 X', '', 'on', { size: 28 });
+      h += A(382, 100, 476, 140, { col: C.gold });
+      h += B(440, 400, 480, 120, '三明治机器人', st === 0 ? '监听内存池' : '抢跑 + 尾随', st === 0 ? 'warn' : 'bad');
+      h += A(680, 396, 680, 186, { col: C.sell, dash: true });
+      h += T(700, 300, '看到了', { size: 28, fill: C.sell, bold: true });
+      h += R(990, 20, 640, 500, { fill: 'rgba(255,255,255,.02)', stroke: C.line, rx: 18 }) + T(1310, 70, '区块内顺序', { anchor: 'middle', size: 32, bold: true, fill: C.t2, plain: true });
+      const slots = [['① 机器人买入 X', '价格被推高', 'bad'], ['② 用户买入 X', '以更差价格成交', 'on'], ['③ 机器人卖出 X', '赚走差价', 'bad']];
+      slots.forEach(([t, s, k], i) => { h += B(1030, 110 + i * 130, 560, 110, t, s, st >= 1 ? k : 'off'); });
+      if (st >= 1) { [0, 1, 2].forEach(i => { const ph = [60, 110, 70][i]; h += `<rect x="${60 + i * 110}" y="${560 - ph}" width="80" height="${ph}" rx="6" fill="${i === 1 ? C.gold : C.sell}" opacity=".8"/>`; }); h += T(60, 380, '成交价 · 示意', { size: 26, fill: C.t2 }); }
+      if (st === 2) { h += R(440, 540 - 0, 1190, 56, { fill: SOFT.sell, stroke: C.sell }); h += T(1035, 580, '滑点容忍度 2% = 最多 2% 的潜在损失', { anchor: 'middle', size: 32, bold: true, fill: C.sell, plain: true }); }
+    } else {
+      h += B(20, 200, 340, 130, '用户交易', '买入 X', 'on');
+      h += R(440, 30, 480, 140, { fill: C.panel, stroke: C.line, rx: 18, dash: '10 8', op: .5 }) + T(680, 110, '公开内存池 · 不经过', { anchor: 'middle', size: 30, fill: C.t2, plain: true });
+      h += B(440, 200, 480, 130, '私有交易通道', '不进公开内存池', 'ok');
+      h += B(1000, 200, 300, 130, '出块者', '', 'done');
+      h += B(1360, 200, 260, 130, '按报价', '附近成交', 'ok');
+      h += A(362, 265, 436, 265, { col: C.buy, w: 5 }) + A(922, 265, 996, 265, { col: C.buy, w: 5 }) + A(1302, 265, 1356, 265, { col: C.buy, w: 5 });
+      h += B(440, 400, 480, 110, '三明治机器人', '看不到交易', 'off');
+      h += R(1000, 390, 620, 130, { fill: SOFT.warn, stroke: C.warn });
+      h += T(1310, 440, '局限：要信任通道运营方和出块者', { anchor: 'middle', size: 28, bold: true, plain: true });
+      h += T(1310, 490, '不是所有链都有成熟私有通道', { anchor: 'middle', size: 28, plain: true, fill: C.t2 });
+      h += T(20, 580, '币安钱包宣称提供 MEV 保护 · 截至 2026 年公开资料', { size: 28, fill: C.t2 });
+    }
+    el.querySelector('#mev-h').textContent = st < 3 ? '三明治攻击：机器人夹住你的买单' : '防御：私有通道，让机器人看不到';
+    svgEl(svg, h);
+  }
+
+  function bridgeStep(el, st) {
+    const svg = el.querySelector('#bridge');
+    let h = '';
+    if (st <= 1) {
+      h += R(10, 30, 560, 330, { fill: 'rgba(255,255,255,.02)', stroke: C.line, rx: 18 }) + T(40, 80, '链 A', { size: 32, bold: true, fill: C.t2, plain: true });
+      h += R(1070, 30, 560, 330, { fill: 'rgba(255,255,255,.02)', stroke: C.line, rx: 18 }) + T(1100, 80, '链 B', { size: 32, bold: true, fill: C.t2, plain: true });
+      h += B(60, 140, 460, 160, '锁定资产', '桥合约金库', st === 0 ? 'on' : 'done');
+      h += B(640, 130, 360, 180, '验证者 / 桥合约', st === 1 ? '私钥被盗 · 验证逻辑漏洞' : '确认 已锁定', st === 1 ? 'bad' : 'done', { subSize: 22 });
+      h += B(1120, 140, 460, 160, st === 1 ? '凭空铸币' : '铸造等量包装资产', st === 1 ? '没有锁仓支撑' : '靠链 A 锁仓支撑', st === 1 ? 'bad' : 'on');
+      if (st === 0) { h += A(522, 220, 636, 220, { col: C.gold }); h += A(1002, 220, 1116, 220, { col: C.gold }); }
+      else { h += A(1002, 220, 1116, 220, { col: C.sell, w: 5 }); h += T(820, 370, '伪造 已锁定 证明', { anchor: 'middle', size: 30, bold: true, fill: C.sell }); h += `<line x1="530" y1="160" x2="630" y2="280" stroke="${C.sell}" stroke-width="5"/><line x1="630" y1="160" x2="530" y2="280" stroke="${C.sell}" stroke-width="5"/>`; }
+      if (st === 1) { h += R(10, 410, 1620, 170, { fill: SOFT.sell, stroke: C.sell }); h += T(40, 470, '公开案例 · 2022 年 10 月 · BSC Token Hub', { size: 32, bold: true, plain: true }); h += T(40, 530, '攻击者凭空铸造约 200 万枚 BNB · BNB Chain 验证者随后暂停了链', { size: 30, plain: true, fill: C.text }); }
+      else { h += T(820, 470, '风险：验证者私钥被盗 · 合约漏洞 · 包装资产脱锚', { anchor: 'middle', size: 32, fill: C.t2 }); }
+    } else if (st === 2) {
+      h += B(40, 60, 420, 140, '用户在 BSC 充值', 'USDT', 'on');
+      h += B(610, 60, 420, 140, '币安账本', '只改余额', 'done');
+      h += B(1180, 60, 420, 140, '用户在以太坊提币', 'USDT', 'on');
+      h += A(462, 130, 606, 130, { col: C.gold }) + A(1032, 130, 1176, 130, { col: C.gold });
+      h += B(40, 300, 420, 120, 'BSC 热钱包', '库存增加', 'info');
+      h += B(1180, 300, 420, 120, '以太坊热钱包', '库存减少', 'info');
+      h += A(250, 202, 250, 296, { col: C.info }) + A(1390, 296, 1390, 202, { col: C.info });
+      h += T(820, 360, '交易所内部跨链 · 不需要桥', { anchor: 'middle', size: 34, bold: true, fill: C.gold });
+      h += T(820, 520, '风险由交易所的库存管理承担 · 详见 B06 金库与流动性', { anchor: 'middle', size: 30, fill: C.t2 });
+    } else {
+      h += R(20, 40, 780, 480, { fill: SOFT.gold, stroke: C.gold, rx: 18 });
+      h += T(60, 110, '交易所理财 · P05', { size: 38, bold: true, plain: true });
+      [['资产位置', '币安账本内'], ['谁负责兑付', '币安'], ['收益来源', '平台产品']].forEach(([k, v], i) => { h += T(60, 200 + i * 90, k, { size: 30, fill: C.t2, plain: true }) + T(340, 200 + i * 90, v, { size: 34, bold: true, plain: true }); });
+      h += R(840, 40, 780, 480, { fill: SOFT.info, stroke: C.info, rx: 18 });
+      h += T(880, 110, '钱包内链上赚币', { size: 38, bold: true, plain: true });
+      [['资产位置', '第三方协议合约'], ['谁负责兑付', '合约代码'], ['收益来源', '利息 · 质押奖励 · 手续费']].forEach(([k, v], i) => { h += T(880, 200 + i * 90, k, { size: 30, fill: C.t2, plain: true }) + T(1160, 200 + i * 90, v, { size: 30, bold: true, plain: true }); });
+      h += T(880, 480, '合约漏洞的损失，平台不承担', { size: 30, fill: C.sell, bold: true, plain: true });
+    }
+    el.querySelector('#br-h').textContent = ['跨链桥：锁定一边，铸造另一边', '跨链桥被攻破：凭空铸币', '交易所内部跨链：两条链各有库存', '链上赚币：兑付方是合约代码'][st];
+    svgEl(svg, h);
+  }
+
+  function approveStep(el, st) {
+    const svg = el.querySelector('#appr');
+    let h = '';
+    h += R(10, 10, 1060, 150, { fill: C.panel, stroke: st === 0 ? C.gold : C.line });
+    h += T(40, 70, 'approve(spender, amount)', { size: 36, mono: true, fill: C.gold, plain: true });
+    h += T(40, 128, 'amount = 2^256 − 1 → 无限授权', { size: 32, mono: true, fill: st === 0 ? C.sell : C.t2, plain: true });
+    const bal = ['—', '余额不变', '5,000 → 0', '额度设为 0'][st];
+    h += R(1120, 10, 510, 150, { fill: st === 2 ? SOFT.sell : C.panel, stroke: st === 2 ? C.sell : C.line });
+    h += T(1150, 60, '用户 USDT', { size: 28, fill: C.t2, plain: true });
+    h += T(1150, 128, bal, { size: 44, bold: true, mono: true, fill: st === 2 ? C.sell : st === 3 ? C.buy : C.text, plain: true });
+    const s1 = st >= 1;
+    h += B(10, 220, 300, 120, '假冒网站', '诱导签名', s1 ? 'bad' : 'off');
+    h += B(380, 220, 330, 120, '签名 approve', '额度无限 · 不转钱', s1 ? 'on' : 'off');
+    h += B(780, 220, 400, 120, '链上授权记录', '攻击合约可转走全部 USDT', st >= 2 ? 'bad' : s1 ? 'done' : 'off', { subSize: 22 });
+    h += B(1250, 220, 380, 120, '攻击者等待', '用户余额增加', st >= 2 ? 'warn' : 'off');
+    h += A(312, 280, 376, 280, { col: s1 ? C.gold : C.line }) + A(712, 280, 776, 280, { col: s1 ? C.gold : C.line }) + A(1182, 280, 1246, 280, { col: st >= 2 ? C.warn : C.line });
+    h += B(780, 420, 400, 120, '数月后', '用户充值 5,000 USDT', st >= 2 ? 'on' : 'off');
+    h += B(1250, 420, 380, 120, 'transferFrom', '转走全部余额', st === 2 ? 'bad' : 'off', { size: 30 });
+    h += A(1182, 480, 1246, 480, { col: st >= 2 ? C.sell : C.line });
+    h += A(1440, 342, 1440, 416, { col: st >= 2 ? C.sell : C.line });
+    if (st === 1) h += T(545, 400, '授权不转钱 → 用户警惕性低', { anchor: 'middle', size: 32, bold: true, fill: C.gold });
+    if (st === 3) {
+      h += B(10, 420, 700, 120, '防御：只授权所需数量 · 定期撤销', '签名前模拟交易并提示风险', 'ok');
+      h += `<line x1="712" y1="470" x2="900" y2="344" stroke="${C.buy}" stroke-width="5" stroke-dasharray="12 9"/>` + T(740, 395, '阻断', { size: 28, bold: true, fill: C.buy });
+      h += T(10, 590, '同类风险：permit 离线签名 · NFT setApprovalForAll', { size: 28, fill: C.warn });
+    }
+    if (st === 2) h += T(10, 590, '一次签名 → 永久权限：之后存入的钱也会被转走', { size: 30, bold: true, fill: C.sell });
+    svgEl(svg, h);
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

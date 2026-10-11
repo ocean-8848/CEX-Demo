@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP13 风控</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 44px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .layer { display: flex; flex-direction: column; gap: 14px; }
+  .layer h3 { font-size: 40px; }
+  .layer .tag { font-family: var(--mono); font-size: 22px; color: var(--text-2); letter-spacing: .08em; }
+  .layer ul { margin: 0; padding-left: 30px; font-size: 30px; line-height: 1.55; }
+  .chips { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; font-size: 30px; }
+  .chips .chip { font-size: 30px; padding: 8px 24px; }
+  .checks { display: flex; flex-direction: column; gap: 14px; width: 1060px; }
+  .checks .ck { display: grid; grid-template-columns: 70px 1fr; align-items: center; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 24px; font-size: 32px; transition: border-color .3s, background .3s; }
+  .checks .ck .i { font-family: var(--mono); color: var(--gold); font-size: 34px; font-weight: 700; }
+  .checks .ck small { color: var(--text-2); font-size: 26px; margin-left: 14px; }
+  .checks .ck.on { border-color: var(--gold); background: var(--gold-soft); }
+  .tbl-tight td, .tbl-tight th { padding: 12px 18px; }
+  .path { display: grid; grid-template-columns: repeat(4, 1fr); gap: 26px; }
+  .path .step { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 18px 20px; font-size: 32px; text-align: center; position: relative; transition: all .3s; }
+  .path .step.on { border-color: var(--sell); background: var(--sell-soft); }
+  .path .step .who { font-size: 24px; color: var(--text-2); display: block; margin-bottom: 4px; font-family: var(--mono); }
+  .path .gate { margin-top: 18px; font-size: 27px; line-height: 1.45; padding: 18px 20px; }
+  .pipe { display: flex; align-items: center; }
+  .pipe .node { transition: border-color .3s, background .3s, opacity .3s; }
+  .pipe .node.on { border-color: var(--gold); background: var(--gold-soft); }
+  .pipe .node.off { opacity: .35; }
+  .out { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .out .o { text-align: center; padding: 18px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel); font-size: 32px; transition: all .3s; }
+  .out .o.on.buy { border-color: var(--buy); background: var(--buy-soft); }
+  .out .o.on.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .out .o.on.info { border-color: var(--info); background: var(--info-soft); }
+  .out .o.on.sell { border-color: var(--sell); background: var(--sell-soft); }
+  .out .o.off { opacity: .3; }
+  .ladder { display: flex; flex-direction: column; gap: 16px; }
+  .ladder .rung { border: 2px solid var(--line); border-radius: 14px; padding: 18px 24px; font-size: 30px; background: var(--panel); transition: all .3s; display: flex; justify-content: space-between; align-items: center; }
+  .ladder .rung b { font-family: var(--mono); font-size: 44px; }
+  .ladder .rung.on.ok { border-color: var(--buy); background: var(--buy-soft); }
+  .ladder .rung.on.w { border-color: var(--warn); background: var(--warn-soft); }
+  .ladder .rung.on.bad { border-color: var(--sell); background: var(--sell-soft); }
+  .ladder .rung.off { opacity: .35; }
+  .matrix { display: grid; grid-template-columns: 170px 1fr 1fr; font-size: 28px; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
+  .matrix div { padding: 14px 16px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); background: var(--panel); }
+  .matrix .h { color: var(--text-2); }
+  .matrix .fp { background: var(--warn-soft); color: var(--warn); font-weight: 700; }
+  .matrix .fn { background: var(--sell-soft); color: var(--sell); font-weight: 700; }
+  .rm { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .rm .card { display: flex; gap: 20px; align-items: center; font-size: 34px; }
+  .rm .card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP13" data-title="风控：交易前、交易中与限流">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解 · EP13</div>
+    <h1>风控：交易所的<span class="hl">安检系统</span></h1>
+    <p class="lead" data-step="1">所有乘客过探测门 · 门响了手检 · 监控室回看录像</p>
+    <div class="row" data-step="2" style="max-width:1500px">
+      <div class="card info col" style="flex:1"><h3>比喻</h3>拦或放，两种结果</div>
+      <div class="card gold col" style="flex:1.4"><h3>真实风控</h3>五种动作 · 微秒级决策 · 误杀与漏放的权衡</div>
+    </div>
+    <ol class="say">
+      <li>假设你凌晨三点登录交易所，想把全部余额提走。页面却提示，这笔提币需要人工审核。你可能会很生气。可从交易所的角度看，它正在判断，你到底是不是本人。</li>
+      <li>这一集我们讲风控。风控就像机场安检。所有乘客都要过金属探测门。门响了，安检员再手检。门后面还有监控室，回看录像找可疑的人。</li>
+      <li>不过比喻只能帮你入门。安检好像只有拦和放两种结果，真实的风控有五种动作。它还要在极短的时间里做决定，并且在误杀和漏放之间取舍。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>本集路线图</h2>
+    <div class="grid3">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>四层风控<br><span class="muted">交易前 · 交易中 · 资金 · 账户</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>价格保护带<br><span class="muted">拦住胖手指</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">3</span><div>决策流<br><span class="muted">规则 · 评分 · 人工</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">4</span><div>延迟预算<br><span class="muted">同步与异步</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">5</span><div>令牌桶限流<br><span class="muted">429 与 418</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">6</span><div>误杀与漏放<br><span class="muted">阈值 · 制裁</span></div></div>
+    </div>
+    <ol class="say">
+      <li>本集分六段。先看风控的四层结构。再看价格保护带怎样拦住胖手指。然后看规则引擎、评分模型和人工审核怎样配合。</li>
+      <li>接着讲同步和异步的延迟预算。再用令牌桶讲限流，对照币安 API 的429和418。最后讨论误杀和漏放，以及制裁合规。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="四层风控">
+    <div class="kicker">Risk Layers</div>
+    <h2>四类风险，对应四层风控</h2>
+    <div class="grid4">
+      <div class="card layer gold" data-step="0"><span class="tag">PRE-TRADE · 同步</span><h3>交易前</h3><ul><li>余额不足</li><li>胖手指错价</li><li>请求洪水</li></ul></div>
+      <div class="card layer info" data-step="1"><span class="tag">IN-TRADE · 异步</span><h3>交易中</h3><ul><li>自成交</li><li>刷量 幌骗</li><li>拉盘砸盘</li></ul></div>
+      <div class="card layer sell" data-step="2"><span class="tag">FUNDS · 同步</span><h3>资金</h3><ul><li>盗号提币</li><li>洗钱</li><li>制裁地址</li></ul></div>
+      <div class="card layer warn" data-step="3"><span class="tag">ACCOUNT</span><h3>账户</h3><ul><li>撞库登录</li><li>SIM 卡劫持</li><li>钓鱼后改密</li></ul></div>
+    </div>
+    <div class="chips" data-step="4"><span class="muted">五种动作：</span><span class="chip buy">通过</span><span class="chip sell">拒绝</span><span class="chip">限制</span><span class="chip gold">加验证</span><span class="chip info">转人工</span></div>
+    <div class="card warn" data-step="5">目标：①减少资金损失 ②满足合规 ③<span class="hl">降低正常用户摩擦</span>　—— ③ 与 ①② 互相冲突</div>
+    <ol class="say">
+      <li>交易所同时面对四类风险，每类对应一层风控。第一层是交易前。它防余额不足下单、胖手指错价，还有请求洪水。</li>
+      <li>第二层是交易中，也叫市场监察。它找自成交、刷量、幌骗和拉盘砸盘。</li>
+      <li>第三层是资金，主要是提币。它防盗号提币、洗钱，以及向制裁地址转账。</li>
+      <li>第四层是账户。它防撞库登录、SIM卡劫持，以及钓鱼之后改密码。</li>
+      <li>注意，风控不等于拒绝。风控有五种动作：通过、拒绝、限制、加验证、转人工审核。比如降额度，就是一种限制。</li>
+      <li>风控的目标有三个：减少资金损失，满足合规，降低正常用户的摩擦。第三条和前两条互相冲突。风控所有的难点，都来自这个冲突。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="交易前五道检查" data-onstep="preStep">
+    <div class="kicker">Pre-trade</div>
+    <h2>订单进撮合之前的五道检查</h2>
+    <div class="row">
+      <div class="checks">
+        <div class="ck" data-step="1" data-k="1"><span class="i">1</span><span>校验格式<small>价格精度 · 数量精度 · 最小名义价值</small></span></div>
+        <div class="ck" data-step="2" data-k="2"><span class="i">2</span><span>价格保护带<small>不能偏离参考价太远</small></span></div>
+        <div class="ck" data-step="3" data-k="3"><span class="i">3</span><span>最大订单<small>单笔数量与名义价值上限</small></span></div>
+        <div class="ck" data-step="3" data-k="3"><span class="i">4</span><span>挂单数量<small>未成交订单数上限</small></span></div>
+        <div class="ck" data-step="4" data-k="4"><span class="i">5</span><span>可用余额<small>足够则冻结对应金额</small></span></div>
+      </div>
+      <div class="col">
+        <div class="card gold stat" data-step="0"><div class="k">延迟预算 · 示例</div><div class="v">&lt; 1 ms</div></div>
+        <div class="card" data-step="0" style="font-size:30px">同步运行在请求路径上<br><span class="muted">结果决定订单能否继续</span></div>
+        <div class="card buy" data-step="4" style="font-size:30px">全部通过 → 冻结资金 → 进入撮合</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>先看交易前风控。订单进入撮合引擎之前，要过五道检查。它是同步的，必须快。业界通常把延迟预算压在1毫秒以内，这是示例数字。</li>
+      <li>第一道，校验格式。价格精度、数量精度、最小名义价值，都要符合交易对的规则。</li>
+      <li>第二道，价格保护带。订单价格不能偏离参考价太远。下一个画面我们专门算一算。</li>
+      <li>第三道和第四道，检查最大订单和挂单数量。单笔不能太大，一个账户的未成交订单也不能太多。</li>
+      <li>最后一道，检查可用余额。余额足够，系统就冻结对应金额。五道都通过，订单才进入撮合。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="价格保护带" data-onstep="bandStep">
+    <div class="kicker">Percent Price Filter</div>
+    <h2>价格保护带：拦住胖手指</h2>
+    <svg id="band" width="1640" height="470" viewBox="0 0 1640 470"></svg>
+    <div class="row" style="gap:24px">
+      <div class="card" data-step="3" style="flex:1;padding:18px 28px">币安现货过滤器：<span class="mono hl">PERCENT_PRICE</span> · <span class="mono hl">PERCENT_PRICE_BY_SIDE</span><br><span class="muted">由 exchangeInfo 下发 · 参考价参数 avgPriceMins</span></div>
+    </div>
+    <ol class="say">
+      <li>价格保护带怎么算？举个示例。参考价是50000 USDT，上限是5%。买单价格高于参考价的1.05倍，也就是52500，系统就拒绝。</li>
+      <li>一笔买单报价52000，偏离4%，在带内，系统通过。</li>
+      <li>再来一笔买单，报价60000，偏离20%，系统直接拒绝。手滑填错的价格，根本进不了撮合。这就是防胖手指。</li>
+      <li>注意参考价从哪里来。根据币安公开资料，现货用一段时间的加权平均价做参考价。相关过滤器在 exchangeInfo 接口里下发，具体倍数以接口返回为准。</li>
+      <li>为什么不用最新成交价？看这根线。一笔小单就能把最新价打到58000。如果拿它当参考价，保护带会跟着被拉歪。平均价几乎不动。合约里的标记价格，用的也是这个思路。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="交易中风控" style="gap:26px">
+    <div class="kicker">Market Surveillance</div>
+    <h2>交易中风控：市场监察找四类行为</h2>
+    <table class="t tbl-tight" style="font-size:29px">
+      <tr><th style="width:230px">行为</th><th>定义</th><th style="width:560px">识别信号 · 业界通用</th></tr>
+      <tr data-step="0"><td class="hl">自成交</td><td>同一用户的买单和卖单互相成交</td><td>双方用户 ID 相同</td></tr>
+      <tr data-step="0"><td class="hl">刷量</td><td>关联账户对敲，制造虚假成交量</td><td>设备、IP、资金来源关联</td></tr>
+      <tr data-step="1"><td class="hl">幌骗</td><td>挂大单制造假象，成交前撤单</td><td>大额挂单撤单率极高</td></tr>
+      <tr data-step="1"><td class="hl">拉盘砸盘</td><td>低流动性币种集中拉高后抛售</td><td>短时涨幅异常，资金集中流入</td></tr>
+    </table>
+    <div class="row">
+      <div class="card buy col" data-step="2" style="padding:18px 26px"><b>自成交预防 STP · 同步</b><span class="mono" style="font-size:24px">selfTradePreventionMode<br>EXPIRE_TAKER · EXPIRE_MAKER · EXPIRE_BOTH</span></div>
+      <div class="card info col" data-step="3" style="padding:18px 26px"><b>刷量 · 幌骗 · 异步</b><span>看一段时间的行为才能判断</span><span class="muted">事后发现 → 案件系统</span></div>
+    </div>
+    <ol class="say">
+      <li>第二层，交易中风控，也叫市场监察。它找四类行为。自成交，是同一用户的买单和卖单互相成交。刷量，是关联账户之间对敲，制造虚假成交量。</li>
+      <li>幌骗，是挂大单制造假象，快成交时撤单。拉盘砸盘，是在低流动性的币上集中拉高，然后抛售。</li>
+      <li>自成交有同步解法，叫自成交预防，简称 STP。根据币安公开资料，下单时可以指定 STP 模式。撮合引擎发现两边是同一账户，就让一边或两边订单失效。</li>
+      <li>刷量和幌骗没有同步解法。系统必须看一段时间的行为才能判断。所以它们属于异步风控，事后发现，再送进案件系统。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="提币与账户风控" data-onstep="theftStep">
+    <div class="kicker">Funds &amp; Account</div>
+    <h2>盗号者的四步路径，风控步步设卡</h2>
+    <div class="path">
+      <div><div class="step" data-i="0"><span class="who">STEP 1</span>登录</div><div class="card warn gate" data-step="1">新设备指纹<br>机房 IP · 异地 IP<br><b class="hl">输出风险分</b></div></div>
+      <div><div class="step" data-i="1"><span class="who">STEP 2</span>改 2FA 或邮箱</div><div class="card warn gate" data-step="2">改安全设置后<br><b class="hl">暂停提币 24 小时</b><br><span class="muted">时长以官网为准</span></div></div>
+      <div><div class="step" data-i="2"><span class="who">STEP 3</span>加新地址</div><div class="card warn gate" data-step="3">首次向该地址提币<br><b class="hl">加验证或延迟</b><br><span class="muted">地址白名单</span></div></div>
+      <div><div class="step" data-i="3"><span class="who">STEP 4</span>全额提币</div><div class="card sell gate" data-step="4">单笔限额 · 24h 累计<br>地址黑名单<br><b class="hl">链上 KYT 评分</b></div></div>
+    </div>
+    <div class="card info" data-step="5" style="padding:20px 30px">KYT 标签：暗网市场 · 混币器 · 被盗资金 · 制裁实体　→　充值命中：冻结转合规　提币命中：拒绝</div>
+    <ol class="say">
+      <li>第三层和第四层要放在一起看。盗号者拿到密码以后，典型路径有四步。登录，改2FA或邮箱，加新提币地址，然后提走全部余额。</li>
+      <li>账户风控在第一步设卡。新设备、机房 IP、异地 IP，都是信号。但正常用户也会换手机。所以账户风控输出风险分，不是是或否。</li>
+      <li>第二步改安全设置，会触发冷却期。根据币安公开资料，修改安全设置后会暂停提币24小时，具体时长以官网为准。</li>
+      <li>第三步加新地址。首次向一个地址提币，系统可以加验证，或者延迟处理。提币地址白名单也是在防这一步。</li>
+      <li>第四步提币。这是资产离开交易所的唯一出口，链上转账不可撤回，所以这一层最严。单笔限额、24小时累计、黑名单、KYT 评分，都放在这里。</li>
+      <li>KYT 是链上交易监测。服务商给地址打标签，比如混币器、被盗资金、制裁实体。充值方向命中，就冻结并转合规审核。提币方向命中，就直接拒绝。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="决策流" data-onstep="decStep">
+    <div class="kicker">Rules + Score + Review</div>
+    <h2>决策流：规则引擎、评分模型、人工审核</h2>
+    <div class="flow pipe">
+      <div class="node" id="d-ev">风控事件<small id="d-evn">下单 · 提币 · 登录</small></div><div class="arrow"></div>
+      <div class="node" id="d-rule">硬规则<small>黑名单 · 制裁 · 冷却期</small></div><div class="arrow"></div>
+      <div class="node" id="d-feat">特征计算<small>设备 · IP · 24h 累计 · KYT</small></div><div class="arrow"></div>
+      <div class="node" id="d-model">评分模型<small>输出 0–100 风险分</small></div>
+    </div>
+    <svg id="gauge" width="1640" height="150" viewBox="0 0 1640 150"></svg>
+    <div class="out">
+      <div class="o buy" id="o-pass">通过</div>
+      <div class="o warn" id="o-step">加验证 · 2FA</div>
+      <div class="o info" id="o-man">人工审核</div>
+      <div class="o sell" id="o-rej">拒绝</div>
+    </div>
+    <div class="card" data-step="5" style="padding:18px 28px">所有决策 + 特征快照 → 审计日志 → <span class="hl">审核结论 = 模型训练标签</span></div>
+    <ol class="say">
+      <li>现在把各层串起来，看一个风控事件怎样被决策。业界通常用三件套：规则引擎、评分模型、人工审核。</li>
+      <li>第一关是硬规则，比如黑名单、制裁、冷却期。硬规则便宜，可解释，零容忍。示例中这笔提币的目标是制裁地址，直接拒绝，不进模型。</li>
+      <li>没命中硬规则，就计算特征。模型把几十个弱信号，合成一个0到100的风险分。举个示例，这笔分数是18，低于30，直接通过。</li>
+      <li>另一笔分数是52，落在30到70之间。系统要求加验证，比如2FA或邮件确认。加验证是一种软拒绝，它把误杀的成本，转成用户的一次点击。</li>
+      <li>再一笔分数是85，高于70，进入人工审核队列。审核员可以放行，可以拒绝，也可以冻结账户并联系用户。</li>
+      <li>最后，所有决策都要记录，连同当时的特征快照。审核员的结论，就是模型的训练标签。没有记录，模型就无法改进。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="同步与异步的延迟预算" data-onstep="latStep">
+    <div class="kicker">Latency Budget</div>
+    <h2>延迟预算：同步路径只放便宜的检查</h2>
+    <svg id="lat" width="1640" height="560" viewBox="0 0 1640 560"></svg>
+    <ol class="say">
+      <li>每个风控检查都消耗时间。请求路径上的时间有上限，这个上限叫延迟预算。横轴是对数刻度，下面的数字都是示例。</li>
+      <li>下单的预算不到1毫秒。只能做内存里的检查：余额、价格带、限频计数。调用外部 KYT，或者跑大模型，都来不及。</li>
+      <li>登录宽一些，大约100到300毫秒。可以查设备指纹和 IP 信誉，再跑一个轻量模型。</li>
+      <li>提币可以是秒级到小时级。KYT、复杂模型、人工审核都能用上。链上不可撤回，多等几分钟换安全，是值得的。</li>
+      <li>市场监察是异步的，分钟级到天级。客户端拿到下单回执时，它还没开始。等它发现问题，成交早已发生，只能限制账户、冻结资金、追责。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="令牌桶限流" data-onstep="bucketStep">
+    <div class="kicker">Token Bucket</div>
+    <h2>令牌桶：允许突发，限制长期速率</h2>
+    <div class="row">
+      <svg id="bucket" width="1000" height="560" viewBox="0 0 1000 560"></svg>
+      <div class="col">
+        <div class="card"><div class="stat"><div class="k">容量 B · 示例</div><div class="v">10</div></div></div>
+        <div class="card"><div class="stat"><div class="k">补充速率 R · 示例</div><div class="v">2 / 秒</div></div></div>
+        <div class="card"><div class="stat"><div class="k">每个请求权重 N · 示例</div><div class="v">2</div></div></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>网关上最便宜的检查是限流。业界常用令牌桶来讲原理。一个桶最多装B个令牌，系统按速率R往桶里加。示例中，B是10，R是每秒2个。</li>
+      <li>每个请求要取走N个令牌，N就是请求的权重。示例中权重是2。来一个请求，桶里剩8个。</li>
+      <li>令牌桶允许突发。客户端一口气发了5个请求，正好把10个令牌用光。</li>
+      <li>第6个请求来了，桶里一个令牌也没有。系统拒绝请求，返回 HTTP 429。</li>
+      <li>等3秒，按每秒2个补回6个令牌，又能发3个请求。长期来看，平均速率被R锁住，突发大小被B锁住。</li>
+      <li>你可以把它想成一个匀速滴水的杯子，满了就溢出。但比喻不等于实现。币安文档没有说明内部用令牌桶还是固定窗口，令牌桶只是业界通用的解释方式。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="币安 API 权重与 429、418" data-onstep="binStep">
+    <div class="kicker">Binance API Rate Limits · 公开规则</div>
+    <h2>按 IP 计权重：429 要停，否则 418</h2>
+    <div class="row">
+      <div class="col" style="flex:1.1">
+        <div class="card">
+          <div class="muted" style="font-size:26px">响应头</div>
+          <div class="mono hl" style="font-size:32px">X-MBX-USED-WEIGHT-1M: <span id="w-used">0</span></div>
+          <svg id="meter" width="760" height="110" viewBox="0 0 760 110"></svg>
+          <div class="muted" style="font-size:26px">上限以 exchangeInfo 的 rateLimits 为准</div>
+        </div>
+        <div class="card" data-step="1" style="font-size:30px">按 <b class="hl">IP</b> 计算，不按 API Key<br>下单另有订单数限制 <span class="mono" style="font-size:24px">X-MBX-ORDER-COUNT-*</span></div>
+      </div>
+      <div class="col ladder">
+        <div class="rung ok" id="r0"><span>正常请求，累计权重</span><b>200</b></div>
+        <div class="rung w" id="r1"><span>超过限额<br><small class="muted">带 Retry-After 头</small></span><b>429</b></div>
+        <div class="rung bad" id="r2"><span>收到 429 仍继续请求<br><small class="muted">IP 被自动封禁</small></span><b>418</b></div>
+        <div class="rung bad" id="r3"><span>封禁时长按违规历史递增</span><b style="font-size:36px">2 分钟 → 3 天</b></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>现在对照币安的公开规则。根据币安 API 文档，每个接口有一个权重。重的接口，比如一次查询全部交易对，权重就高。</li>
+      <li>限额按 IP 计算，不按 API Key 计算。每个响应都带一个已用权重的响应头，客户端随时能看到自己用了多少。下单还有独立的订单数限制。</li>
+      <li>已用权重超过限额，接口返回429。响应带一个 Retry-After 头，告诉你要等多久。</li>
+      <li>收到429还继续请求，IP 会被自动封禁，接口返回418。</li>
+      <li>封禁时长按违规历史递增，从2分钟到3天。注意封的是 IP，同一 IP 下的全部程序都会受影响。</li>
+      <li>所以客户端要读响应头控制节奏。收到429立刻停下，按 Retry-After 等待。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="误杀与漏放" data-onstep="fpStep">
+    <div class="kicker">False Positive vs False Negative</div>
+    <h2>阈值一动，误杀和漏放此消彼长</h2>
+    <div class="row">
+      <svg id="dist" width="1040" height="540" viewBox="0 0 1040 540"></svg>
+      <div class="col">
+        <div class="matrix" id="mx">
+          <div class="h"></div><div class="h">实际坏人</div><div class="h">实际好人</div>
+          <div class="h">拦截</div><div>TP 拦对</div><div class="fp">FP 误杀</div>
+          <div class="h">放行</div><div class="fn">FN 漏放</div><div>TN 放对</div>
+        </div>
+        <div class="card warn stat" style="padding:16px 26px"><div class="k">误杀率 = FP ÷ 全部好人</div><div class="v" id="fpr">—</div></div>
+        <div class="card sell stat" style="padding:16px 26px"><div class="k">漏放率 = FN ÷ 全部坏人</div><div class="v" id="fnr">—</div></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>风控本质上是一个分类问题。每个事件有真实标签，好人或坏人，也有风控决策，拦或放。拦了好人，叫误杀。放了坏人，叫漏放。</li>
+      <li>来看一组示例数据。横轴是风险分，绿色是1000个好人，红色是100个坏人，两堆有重叠。阈值放在70，分数达到70就拦。误杀率3.5%，漏放率却有40%。</li>
+      <li>把阈值收紧到50。漏放率降到18%，误杀率涨到12%。</li>
+      <li>再收紧到30。漏放只剩5%，可误杀涨到32%。差不多三个好人里，就有一个被拦。</li>
+      <li>同一个阈值，同时影响误杀和漏放，两者不能同时降到零。人工审核是缓冲区，但容量有限。正常用户等6小时才提到币，体验和被误杀差不多。</li>
+      <li>所以阈值是商业决策：一次漏放的损失，对比一次误杀的损失乘以误杀次数。业界通常让新规则先跑影子模式，只记录不拦截，确认误杀率再上线。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="制裁合规与失败即关闭">
+    <div class="kicker">Sanctions · Fail-Closed</div>
+    <h2>两个必须“硬”的地方</h2>
+    <div class="row">
+      <div class="col">
+        <div class="card gold" data-step="0"><h3>制裁名单</h3>OFAC SDN · 联合国 · 欧盟 · 英国</div>
+        <div class="card" data-step="1" style="font-size:30px">① 注册与 KYC：姓名、国籍、居住地<br>② 登录：IP 地理位置<br>③ 充值与提币：链上地址</div>
+        <div class="card sell" data-step="2">命中 = 硬规则，直接拒绝并上报<br><span class="muted">2023 和解：约 43 亿美元 · 公开报道</span></div>
+      </div>
+      <div class="col">
+        <div class="card info" data-step="3"><h3>故障时怎么办</h3>资金相关检查：<b class="hl">Fail-Closed</b><br>风控宕机 → 下单拒绝，提币暂停排队<br>KYT 超时 → 转人工，不默认放行</div>
+        <div class="card warn" data-step="4"><h3>误区：攻击者会一次提大额</h3>实际会探测阈值，拆成多笔小额<br>→ 24h 累计限额，按账户和设备两个维度</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>最后看两个必须硬起来的地方。第一是制裁合规。主要名单有美国财政部 OFAC 的 SDN 名单，还有联合国、欧盟、英国的名单。</li>
+      <li>制裁检查在三处执行。注册和 KYC 时，筛查姓名、国籍和居住地。登录时，筛查 IP 地理位置。充值和提币时，筛查链上地址。</li>
+      <li>制裁命中是硬规则，直接拒绝并上报合规团队，不能交给模型打分后放行。公开报道显示，2023年币安与美国监管和解，同意支付约43亿美元。合规不是可选功能。</li>
+      <li>第二是故障时的选择。风控服务宕机了，是放行还是拒绝？资金相关的检查，一律失败即关闭，也就是故障时拒绝。KYT 服务商超时，就转人工，不能默认放行。</li>
+      <li>再说一个常见误区，以为攻击者会一次提走大额。实际上，攻击者会探测阈值，把提币拆成多笔小额。所以要加24小时累计限额，并且按账户和设备两个维度累计。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与下集预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">四层风控：交易前、资金是<span class="hl">同步</span>的，交易中监察是<span class="hl">异步</span>的。</li>
+      <li data-step="0">硬规则零容忍，模型管灰色地带，人工兜底；<span class="hl">429 要停</span>，否则 418。</li>
+      <li data-step="1">误杀与漏放<span class="hl">此消彼长</span>，阈值是商业决策。</li>
+    </ul>
+    <div class="card gold" data-step="3" style="font-size:34px">下集 EP14 · 永续合约：资金费率与标记价格</div>
+    <ol class="say">
+      <li>小结一下。第一，风控分四层。交易前和资金风控在请求路径上，是同步的，必须快。交易中的市场监察是异步的，不阻塞交易。</li>
+      <li>第二，决策靠三件套。硬规则零容忍，模型处理灰色地带，人工审核兜底。限流按权重计数，收到429就要停，否则升级成418封禁。</li>
+      <li>第三，误杀和漏放此消彼长，阈值的选择是商业决策。</li>
+      <li>下一集我们进入合约。永续合约没有到期日，它靠什么锚定现货价格？标记价格又为什么能挡住插针？我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const fmt = n => n.toLocaleString('en-US');
+
+  function preStep(el, st) {
+    el.querySelectorAll('.ck').forEach(c => c.classList.toggle('on', +c.dataset.k === st));
+  }
+
+  function bandStep(el, st) {
+    const svg = el.querySelector('#band');
+    const x0 = 120, x1 = 1600, p0 = 44000, p1 = 62000;
+    const X = p => x0 + (p - p0) / (p1 - p0) * (x1 - x0);
+    let h = '';
+    if (st >= 4) {
+      // time chart: last price vs average price
+      const pts = [50100, 49900, 50050, 50000, 50080, 58000, 50020, 49950, 50080, 50000, 49980];
+      const tx0 = 200, tx1 = 1300, Y = p => 420 - (p - 49000) / 10000 * 380;
+      const xs = i => tx0 + i * (tx1 - tx0) / (pts.length - 1);
+      [49000, 51000, 53000, 55000, 57000, 59000].forEach(p => h += `<line x1="${tx0}" y1="${Y(p)}" x2="${tx1}" y2="${Y(p)}" stroke="${C.line}" stroke-width="2"/><text x="${tx0 - 16}" y="${Y(p) + 9}" font-size="26" text-anchor="end" fill="${C.t2}">${fmt(p)}</text>`);
+      h += `<text x="${(tx0 + tx1) / 2}" y="462" font-size="26" text-anchor="middle" fill="${C.t2}">时间 → · 示例</text>`;
+      h += `<polyline points="${pts.map((p, i) => xs(i) + ',' + Y(p)).join(' ')}" fill="none" stroke="${C.sell}" stroke-width="5"/>`;
+      const avg = pts.map((p, i) => 50000 + (i >= 5 ? 250 : 0));
+      h += `<polyline points="${avg.map((p, i) => xs(i) + ',' + Y(p)).join(' ')}" fill="none" stroke="${C.info}" stroke-width="6"/>`;
+      h += `<text x="${xs(5) + 22}" y="${Y(58000) + 10}" font-size="30" fill="${C.sell}">最新价：一笔小单打到 58,000</text>`;
+      h += `<text x="${tx1 + 20}" y="${Y(50250) + 10}" font-size="30" fill="${C.info}">平均价</text>`;
+      h += `<text x="${tx1 + 20}" y="${Y(50250) + 50}" font-size="26" fill="${C.t2}">几乎不动</text>`;
+      svgEl(svg, h); return;
+    }
+    // axis
+    h += `<line x1="${x0}" y1="400" x2="${x1}" y2="400" stroke="${C.t2}" stroke-width="3"/>`;
+    for (let p = 44000; p <= 62000; p += 2000) h += `<line x1="${X(p)}" y1="400" x2="${X(p)}" y2="412" stroke="${C.t2}" stroke-width="2"/><text x="${X(p)}" y="446" font-size="26" text-anchor="middle" fill="${C.t2}">${fmt(p)}</text>`;
+    // allowed zone for buy orders
+    h += `<rect x="${x0}" y="120" width="${X(52500) - x0}" height="270" fill="rgba(46,189,133,.10)"/>`;
+    h += `<rect x="${X(52500)}" y="120" width="${x1 - X(52500)}" height="270" fill="rgba(246,70,93,.10)"/>`;
+    h += `<line x1="${X(52500)}" y1="100" x2="${X(52500)}" y2="400" stroke="${C.sell}" stroke-width="4" stroke-dasharray="12 8"/>`;
+    h += `<text x="${X(52500) + 14}" y="94" font-size="30" fill="${C.sell}">买单上限 52,500 · +5%</text>`;
+    h += `<line x1="${X(50000)}" y1="100" x2="${X(50000)}" y2="400" stroke="${C.gold}" stroke-width="5"/>`;
+    h += `<text x="${X(50000) - 14}" y="94" font-size="30" text-anchor="end" fill="${C.gold}">参考价 50,000</text>`;
+    h += `<text x="${x0 + 16}" y="380" font-size="28" fill="${C.buy}">买单允许区 · 示例</text>`;
+    const order = (p, ok, y) => `<circle cx="${X(p)}" cy="${y}" r="20" fill="${ok ? C.buy : C.sell}"/>` +
+      `<text x="${X(p) - 34}" y="${y + 10}" font-size="32" font-weight="700" text-anchor="end" stroke="#0d0e10" stroke-width="10" paint-order="stroke" fill="${ok ? C.buy : C.sell}">买 ${fmt(p)} · ${ok ? '+4% 通过' : '+20% 拒绝'}</text>`;
+    if (st >= 1) h += order(52000, true, 300);
+    if (st >= 2) h += order(60000, false, 220);
+    svgEl(svg, h);
+  }
+
+  function theftStep(el, st) {
+    el.querySelectorAll('.path .step').forEach(s => s.classList.toggle('on', st >= 1 && +s.dataset.i === Math.min(st - 1, 3)));
+  }
+
+  function decStep(el, st) {
+    const on = (id, b) => el.querySelector(id).classList.toggle('on', b);
+    const off = (id, b) => el.querySelector(id).classList.toggle('off', b);
+    const score = [null, null, 18, 52, 85, null][st];
+    const evn = ['下单 · 提币 · 登录', '提币 → 制裁地址', '提币 · 示例 A', '提币 · 示例 B', '提币 · 示例 C', '下单 · 提币 · 登录'][st];
+    el.querySelector('#d-evn').textContent = evn;
+    on('#d-ev', st >= 1 && st <= 4); on('#d-rule', st === 1);
+    on('#d-feat', st >= 2 && st <= 4); on('#d-model', st >= 2 && st <= 4);
+    off('#d-feat', st === 1); off('#d-model', st === 1);
+    const res = [null, 'rej', 'pass', 'step', 'man', null][st];
+    ['pass', 'step', 'man', 'rej'].forEach(k => { on('#o-' + k, res === k); off('#o-' + k, res && res !== k); });
+    const svg = el.querySelector('#gauge');
+    const x0 = 40, w = 1560, X = s => x0 + s / 100 * w;
+    let h = `<rect x="${X(0)}" y="40" width="${X(30) - X(0)}" height="44" fill="rgba(46,189,133,.35)"/>` +
+      `<rect x="${X(30)}" y="40" width="${X(70) - X(30)}" height="44" fill="rgba(240,163,64,.35)"/>` +
+      `<rect x="${X(70)}" y="40" width="${X(100) - X(70)}" height="44" fill="rgba(91,156,255,.35)"/>`;
+    [0, 30, 70, 100].forEach(s => h += `<text x="${X(s)}" y="122" font-size="28" text-anchor="middle" fill="${C.t2}">${s}</text>`);
+    h += `<text x="${X(15)}" y="72" font-size="26" text-anchor="middle">通过</text><text x="${X(50)}" y="72" font-size="26" text-anchor="middle">加验证</text><text x="${X(85)}" y="72" font-size="26" text-anchor="middle">人工审核</text>`;
+    h += `<text x="${X(100)}" y="28" font-size="24" text-anchor="end" fill="${C.t2}">分档阈值为示例</text>`;
+    if (score !== null) h += `<polygon points="${X(score) - 16},10 ${X(score) + 16},10 ${X(score)},38" fill="${C.gold}"/><text x="${X(score) + 24}" y="30" font-size="30" fill="${C.gold}" font-weight="700">${score}</text>`;
+    svgEl(svg, h);
+  }
+
+  function latStep(el, st) {
+    const svg = el.querySelector('#lat');
+    const x0 = 300, x1 = 1600, l0 = -6, l1 = 5;
+    const X = sec => x0 + (Math.log10(sec) - l0) / (l1 - l0) * (x1 - x0);
+    let h = '';
+    const ticks = [[1e-6, '1μs'], [1e-5, '10μs'], [1e-3, '1ms'], [0.1, '100ms'], [1, '1s'], [60, '1min'], [3600, '1h'], [86400, '1d']];
+    ticks.forEach(([s, l]) => h += `<line x1="${X(s)}" y1="20" x2="${X(s)}" y2="470" stroke="${C.line}" stroke-width="2"/><text x="${X(s)}" y="510" font-size="26" text-anchor="middle" fill="${C.t2}">${l}</text>`);
+    const rows = [
+      ['下单', 1e-5, 1e-3, C.gold, '内存检查 · < 1ms', '同步'],
+      ['登录', 0.1, 0.3, C.warn, '100–300ms', '同步'],
+      ['提币', 1, 3600, C.sell, '秒级 → 小时级', '同步'],
+      ['市场监察', 60, 86400, C.info, '分钟级 → 天级', '异步'],
+    ];
+    rows.forEach((r, i) => {
+      const y = 50 + i * 108;
+      const shown = st >= i + 1;
+      h += `<text x="20" y="${y + 44}" font-size="34" fill="${shown ? C.text : C.t2}" opacity="${shown ? 1 : .35}">${r[0]}</text>`;
+      h += `<text x="20" y="${y + 80}" font-size="24" fill="${C.t2}" opacity="${shown ? 1 : .35}">${r[5]}</text>`;
+      if (shown) {
+        const a = X(r[1]), b = X(r[2]);
+        h += `<rect x="${a}" y="${y + 10}" width="${Math.max(b - a, 14)}" height="60" rx="8" fill="${r[3]}" opacity="${st === i + 1 ? 1 : .55}"/>`;
+        const tx = b + 18 > 1250 ? a - 18 : b + 18, anchor = b + 18 > 1250 ? 'end' : 'start';
+        h += `<text x="${tx}" y="${y + 52}" font-size="30" text-anchor="${anchor}" fill="${r[3]}">${r[4]}</text>`;
+      }
+    });
+    if (st >= 4) {
+      h += `<line x1="${X(1e-3)}" y1="480" x2="${X(1e-3)}" y2="20" stroke="${C.buy}" stroke-width="4" stroke-dasharray="10 8"/>`;
+      h += `<text x="${X(1e-3) + 12}" y="${50 + 3 * 108 + 52}" font-size="28" fill="${C.buy}">← 客户端已拿到回执</text>`;
+    }
+    svgEl(svg, h);
+  }
+
+  function bucketStep(el, st) {
+    const svg = el.querySelector('#bucket');
+    const tokens = [10, 8, 0, 0, 6, 6][st];
+    const reqs = [0, 1, 5, 6, 6, 6][st];
+    let h = '';
+    // bucket
+    h += `<path d="M120 120 L160 500 L480 500 L520 120" fill="none" stroke="${C.t2}" stroke-width="6"/>`;
+    h += `<text x="320" y="545" font-size="28" text-anchor="middle" fill="${C.t2}">桶内令牌：<tspan fill="${C.gold}" font-weight="700">${tokens}</tspan> / 10</text>`;
+    // refill drip
+    h += `<text x="320" y="50" font-size="28" text-anchor="middle" fill="${C.info}">每秒补 2 个 ↓</text>`;
+    h += `<circle cx="320" cy="85" r="14" fill="${C.info}" opacity="${st === 4 ? 1 : .5}"/>`;
+    for (let i = 0; i < 10; i++) {
+      const col = i % 5, row = Math.floor(i / 5);
+      const cx = 196 + col * 62, cy = 458 - row * 66;
+      const has = i < tokens;
+      h += `<circle cx="${cx}" cy="${cy}" r="28" fill="${has ? C.gold : 'none'}" stroke="${has ? C.gold : C.line}" stroke-width="3" stroke-dasharray="${has ? '' : '6 6'}"/>`;
+    }
+    // requests column
+    h += `<text x="640" y="50" font-size="28" fill="${C.t2}">请求</text>`;
+    for (let i = 0; i < 6; i++) {
+      if (i >= reqs) continue;
+      const y = 80 + i * 72;
+      const rej = i === 5;
+      h += `<rect x="600" y="${y}" width="360" height="56" rx="10" fill="${rej ? 'rgba(246,70,93,.18)' : 'rgba(46,189,133,.14)'}" stroke="${rej ? C.sell : C.buy}" stroke-width="2"/>`;
+      h += `<text x="620" y="${y + 38}" font-size="28" fill="${rej ? C.sell : C.buy}">#${i + 1} 权重 2 → ${rej ? 'HTTP 429' : '200 OK'}</text>`;
+      if (!rej) h += `<line x1="590" y1="${y + 28}" x2="540" y2="${y + 28}" stroke="${C.gold}" stroke-width="3"/>`;
+    }
+    if (st === 4) h += `<text x="600" y="540" font-size="30" fill="${C.info}">等 3 秒 → 补回 6 个，可再发 3 个</text>`;
+    if (st === 5) h += `<text x="600" y="540" font-size="28" fill="${C.t2}">原理示意，非币安内部实现</text>`;
+    svgEl(svg, h);
+  }
+
+  function binStep(el, st) {
+    const used = [200, 600, 1300, 1300, 1300, 600][st];
+    const lim = 1000;
+    el.querySelector('#w-used').textContent = used;
+    const svg = el.querySelector('#meter');
+    const w = 700, X = v => 20 + Math.min(v, 1300) / 1300 * w;
+    let h = `<rect x="20" y="30" width="${w}" height="44" rx="8" fill="${C.panel}" stroke="${C.line}"/>`;
+    h += `<rect x="20" y="30" width="${X(used) - 20}" height="44" rx="8" fill="${used > lim ? C.sell : C.buy}"/>`;
+    h += `<line x1="${X(lim)}" y1="16" x2="${X(lim)}" y2="88" stroke="${C.gold}" stroke-width="4"/><text x="${X(lim) - 10}" y="106" font-size="24" text-anchor="end" fill="${C.gold}">上限 · 示例</text>`;
+    svgEl(svg, h);
+    const lvl = [0, 0, 1, 2, 3, 1][st];
+    for (let i = 0; i < 4; i++) {
+      const r = el.querySelector('#r' + i);
+      r.classList.toggle('on', i === lvl);
+      r.classList.toggle('off', i > lvl);
+    }
+    el.querySelector('#r0 b').textContent = used > lim ? '超限' : used;
+  }
+
+  const GOOD = [250, 250, 180, 120, 80, 50, 35, 20, 10, 5];
+  const BAD = [0, 2, 3, 5, 8, 10, 12, 15, 20, 25];
+  function fpStep(el, st) {
+    const t = [null, 70, 50, 30, 50, 50][st];
+    const svg = el.querySelector('#dist');
+    const x0 = 70, bw = 94, base = 440;
+    const gy = v => v / 250 * 300, by = v => v / 25 * 300 * 0.55;
+    let h = `<line x1="${x0}" y1="${base}" x2="${x0 + bw * 10}" y2="${base}" stroke="${C.t2}" stroke-width="3"/>`;
+    for (let i = 0; i <= 10; i += 1) h += `<text x="${x0 + i * bw}" y="${base + 38}" font-size="26" text-anchor="middle" fill="${C.t2}">${i * 10}</text>`;
+    h += `<text x="${x0 + bw * 5}" y="${base + 82}" font-size="28" text-anchor="middle" fill="${C.t2}">风险分 · 示例数据</text>`;
+    if (st >= 1) {
+      for (let i = 0; i < 10; i++) {
+        const blocked = t !== null && i * 10 >= t;
+        h += `<rect x="${x0 + i * bw + 6}" y="${base - gy(GOOD[i])}" width="${bw / 2 - 8}" height="${gy(GOOD[i])}" fill="${C.buy}" opacity="${blocked ? 1 : .45}"/>`;
+        h += `<rect x="${x0 + i * bw + bw / 2 + 2}" y="${base - by(BAD[i])}" width="${bw / 2 - 8}" height="${by(BAD[i])}" fill="${C.sell}" opacity="${blocked ? 1 : .45}"/>`;
+      }
+      h += `<text x="${x0 + 10}" y="40" font-size="28" fill="${C.buy}">■ 好人 1000</text><text x="${x0 + 230}" y="40" font-size="28" fill="${C.sell}">■ 坏人 100 · 高度放大</text>`;
+      const tx = x0 + t / 10 * bw;
+      h += `<line x1="${tx}" y1="60" x2="${tx}" y2="${base}" stroke="${C.gold}" stroke-width="5"/>`;
+      h += `<text x="${tx + 12}" y="92" font-size="30" fill="${C.gold}" font-weight="700">阈值 ${t} → 拦</text>`;
+      let fp = 0, tp = 0;
+      for (let i = 0; i < 10; i++) if (i * 10 >= t) { fp += GOOD[i]; tp += BAD[i]; }
+      el.querySelector('#fpr').textContent = (fp / 10).toFixed(1).replace(/\.0$/, '') + '%';
+      el.querySelector('#fnr').textContent = (100 - tp) + '%';
+    } else {
+      el.querySelector('#fpr').textContent = '—'; el.querySelector('#fnr').textContent = '—';
+    }
+    svgEl(svg, h);
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://web3-cex.local/config/markets.schema.json",
+  "title": "Web3 CEX market & asset configuration",
+  "description": "Single source of truth for listed assets and spot markets. Structural checks live here (editor support); cross-field rules (asset references, step alignment, unique codes) are enforced by parseMarketConfig() in packages/domain.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "defaultMarket", "assets", "markets"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "defaultMarket": {
+      "description": "Market opened by default in trader-web / ops-console and used by demo scripts. Must exist and not be delisted.",
+      "$ref": "#/$defs/marketSymbol"
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/asset" }
+    },
+    "markets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/market" }
+    }
+  },
+  "$defs": {
+    "assetCode": { "type": "string", "pattern": "^[A-Z][A-Z0-9]{1,9}$" },
+    "marketSymbol": { "type": "string", "pattern": "^[A-Z][A-Z0-9]{1,9}-[A-Z][A-Z0-9]{1,9}$" },
+    "positiveDecimal": { "type": "string", "pattern": "^(0|[1-9]\\d*)(\\.\\d+)?$" },
+    "network": { "enum": ["ethereum", "bsc", "base", "solana", "bitcoin"] },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "name", "decimals", "networks"],
+      "properties": {
+        "code": { "$ref": "#/$defs/assetCode" },
+        "name": { "type": "string", "minLength": 1 },
+        "decimals": { "type": "integer", "minimum": 0, "maximum": 18 },
+        "displayDecimals": { "type": "integer", "minimum": 0, "maximum": 18 },
+        "networks": {
+          "description": "Networks the asset can be deposited / withdrawn on. In the demo every asset lives on the single local EVM chain (\"ethereum\").",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/network" }
+        },
+        "withdrawalFee": {
+          "description": "Flat withdrawal fee shown and sent by trader-web. Defaults to \"0\".",
+          "$ref": "#/$defs/positiveDecimal"
+        },
+        "demo": {
+          "description": "Demo-only knobs (faucet, treasury floor). Omit to disable the faucet for the asset.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "faucetMaxAmount": { "$ref": "#/$defs/positiveDecimal" },
+            "depositSourceFloor": { "$ref": "#/$defs/positiveDecimal" },
+            "faucetPresets": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/positiveDecimal" }
+            }
+          }
+        }
+      }
+    },
+    "market": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "symbol",
+        "baseAsset",
+        "quoteAsset",
+        "status",
+        "priceStep",
+        "quantityStep",
+        "minQuantity",
+        "makerFeeRate",
+        "takerFeeRate",
+        "maxPriceDeviationRatio",
+        "referencePrice"
+      ],
+      "properties": {
+        "symbol": { "$ref": "#/$defs/marketSymbol" },
+        "baseAsset": { "$ref": "#/$defs/assetCode" },
+        "quoteAsset": { "$ref": "#/$defs/assetCode" },
+        "status": {
+          "description": "Default status. listed = trading; halted = new orders rejected (cancels allowed); delisted = hidden and rejected. Ops can override listed/halted at runtime (risk-service DB).",
+          "enum": ["listed", "halted", "delisted"]
+        },
+        "priceStep": { "$ref": "#/$defs/positiveDecimal" },
+        "quantityStep": { "$ref": "#/$defs/positiveDecimal" },
+        "minQuantity": { "$ref": "#/$defs/positiveDecimal" },
+        "makerFeeRate": { "$ref": "#/$defs/positiveDecimal" },
+        "takerFeeRate": { "$ref": "#/$defs/positiveDecimal" },
+        "maxPriceDeviationRatio": { "$ref": "#/$defs/positiveDecimal" },
+        "referencePrice": {
+          "description": "Configured fallback reference price for risk (overridable via RISK_REFERENCE_PRICE_<BASE>_<QUOTE>) and default simulator mid price.",
+          "$ref": "#/$defs/positiveDecimal"
+        },
+        "simulator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "midPrice": { "$ref": "#/$defs/positiveDecimal" },
+            "minQuantity": { "$ref": "#/$defs/positiveDecimal" },
+            "maxQuantity": { "$ref": "#/$defs/positiveDecimal" },
+            "baseInventory": { "$ref": "#/$defs/positiveDecimal" },
+            "quoteInventory": { "$ref": "#/$defs/positiveDecimal" }
+          }
+        }
+      }
+    }
+  }
+}

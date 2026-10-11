@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP16 交易所怎么赚钱</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .scene > h2 { font-size: 60px; }
+  .stamp { display: inline-block; border: 3px solid var(--warn); color: var(--warn); border-radius: 10px; padding: 6px 18px; font-size: 26px; font-weight: 700; letter-spacing: .06em; transform: rotate(-2deg); }
+  .qchips { display: flex; gap: 24px; flex-wrap: wrap; }
+  .qchips .chip { font-size: 32px; padding: 10px 26px; }
+
+  /* roadmap */
+  .road { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; }
+  .road .card { min-height: 300px; display: flex; flex-direction: column; gap: 14px; }
+  .road .n { font-family: var(--mono); font-size: 56px; color: var(--gold); font-weight: 700; }
+  .road .card div:last-child { font-size: 30px; color: var(--text-2); }
+
+  /* capability matrix */
+  table.cap { border-collapse: separate; border-spacing: 0 8px; width: 100%; font-size: 32px; }
+  table.cap th { font-size: 28px; color: var(--text-2); font-weight: 500; padding: 6px 10px; text-align: center; }
+  table.cap th:first-child { text-align: left; }
+  table.cap td { padding: 10px 10px; text-align: center; background: var(--panel); transition: opacity .4s; }
+  table.cap td:first-child { text-align: left; border-radius: 10px 0 0 10px; padding-left: 24px; font-weight: 600; }
+  table.cap td:last-child { border-radius: 0 10px 10px 0; }
+  table.cap tr.off td { opacity: 0; }
+  table.cap tr.cur td { background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--gold); }
+  .dot { display: inline-block; width: 30px; height: 30px; border-radius: 50%; background: var(--line); }
+  .dot.on { background: var(--gold); box-shadow: 0 0 0 6px var(--gold-soft); }
+  .dot.on.cr { background: var(--sell); box-shadow: 0 0 0 6px var(--sell-soft); }
+  .dot.on.pr { background: var(--info); box-shadow: 0 0 0 6px var(--info-soft); }
+
+  /* convert */
+  .calc { font-family: var(--mono); font-size: 36px; line-height: 1.7; }
+  .calc .row2 { display: flex; justify-content: space-between; gap: 30px; border-bottom: 1px dashed var(--line); padding: 4px 0; }
+
+  /* stacked revenue bar */
+  .stackwrap { position: relative; width: 1640px; }
+  .stack { position: relative; height: 150px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .seg { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 36px; font-weight: 700; color: #111; transition: width .5s ease, left .5s ease, opacity .4s; border-right: 2px solid var(--bg); overflow: hidden; white-space: nowrap; }
+  .legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 24px; margin-top: 26px; font-size: 28px; }
+  .legend .it { display: flex; align-items: center; gap: 12px; transition: opacity .4s; }
+  .legend .sw { width: 26px; height: 26px; border-radius: 6px; flex: 0 0 auto; }
+  .legend .it b { font-family: var(--mono); margin-left: auto; }
+  .brace { position: absolute; top: -58px; height: 44px; border: 3px solid var(--gold); border-bottom: 0; border-radius: 10px 10px 0 0; color: var(--gold); font-size: 28px; text-align: center; transition: opacity .4s, width .5s; }
+  .brace span { position: relative; top: -44px; background: var(--bg); padding: 0 12px; }
+
+  /* waterfall */
+  .wf text { font-size: 30px; }
+  .wf .lbl { fill: var(--text-2); font-size: 28px; }
+  .wf .val { font-family: var(--mono); font-weight: 700; font-size: 34px; }
+  .wf rect { transition: opacity .4s; }
+
+  /* flywheel */
+  .fly .nd rect { fill: var(--panel); stroke: var(--line); stroke-width: 3; transition: all .4s; }
+  .fly .nd text { font-size: 30px; text-anchor: middle; dominant-baseline: middle; }
+  .fly .nd.on rect { stroke: var(--gold); fill: #2a2412; }
+  .fly .nd.bad rect { stroke: var(--sell); fill: #2a1418; }
+  .fly path.ed { fill: none; stroke: var(--line); stroke-width: 6; transition: stroke .4s; }
+  .fly path.ed.on { stroke: var(--gold); }
+  .fly path.ed.bad { stroke: var(--sell); }
+  .fly .center { font-size: 30px; font-weight: 700; }
+
+  /* order books */
+  .ob { font-family: var(--mono); font-size: 32px; }
+  .ob .lv { display: grid; grid-template-columns: 1fr 1fr; padding: 4px 14px; border-radius: 6px; }
+  .ob .ask { color: var(--sell); } .ob .bid { color: var(--buy); }
+  .ob .mm { background: var(--gold-soft); }
+  .ob .sp { text-align: center; color: var(--text-2); font-size: 28px; padding: 6px 0; }
+
+  /* bnb */
+  .bnb text { font-size: 30px; }
+  .bnb .v { font-family: var(--mono); font-weight: 700; font-size: 34px; }
+  .bnb rect.b { transition: width .6s ease; }
+
+  .costs .card { padding: 20px 26px; font-size: 30px; }
+  .costs .card h3 { font-size: 34px; margin-bottom: 6px; }
+  .tl { display: flex; gap: 0; align-items: stretch; }
+  .tl .ev { flex: 1; border-top: 4px solid var(--gold); padding: 14px 18px 0; font-size: 30px; position: relative; }
+  .tl .ev::before { content: ""; position: absolute; top: -13px; left: 14px; width: 22px; height: 22px; border-radius: 50%; background: var(--gold); }
+  .tl .ev b { display: block; font-family: var(--mono); color: var(--gold); font-size: 30px; }
+
+  /* routing */
+  .route { display: grid; grid-template-columns: 440px 1fr; gap: 40px; align-items: center; }
+  .ent { display: grid; grid-template-columns: 220px 1fr; align-items: center; gap: 16px; padding: 14px 22px; }
+  .ent .chip { font-size: 26px; margin-right: 8px; }
+  .chip.x { text-decoration: line-through; opacity: .45; }
+
+  .chain { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .chain .c { background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 14px 18px; font-size: 32px; line-height: 1.4; position: relative; }
+  .chain .c.r { border-color: var(--sell); } .chain .c.i { border-color: var(--warn); } .chain .c.f { border-color: var(--buy); }
+  .chain .c small { display: block; font-size: 25px; color: var(--text-2); }
+  .money { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 20px; }
+  .money .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 24px; }
+  .money .stat .v { font-size: 52px; }
+
+  .myth { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .myth .card { font-size: 34px; padding: 34px 36px; line-height: 1.7; }
+  .myth .card b { color: var(--sell); }
+  .myth .card .ok { color: var(--buy); display: block; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP16" data-title="交易所怎么赚钱：产品生态与商业模式">
+
+  <!-- 1 开场 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解 · 第 16 集</div>
+    <h1>交易所<span class="hl">怎么赚钱</span></h1>
+    <p class="lead">产品生态与商业模式：钱从哪来，花到哪去，用户为什么不走</p>
+    <div class="qchips">
+      <span class="chip gold" data-step="0">闪兑零手续费，利润在哪？</span>
+      <span class="chip sell" data-step="1">倒贴做市商，账怎么算？</span>
+      <span class="chip info" data-step="2">收入 · 成本 · 护城河</span>
+    </div>
+    <div data-step="3"><span class="stamp">本集收入比例均为 示例假设 · 非真实财务数据 · 不构成投资建议</span></div>
+    <ol class="say">
+      <li>大家好，欢迎来到交易所系统技术讲解，这是第16集。先问一个问题。闪兑页面写着零手续费，平台靠什么赚钱？</li>
+      <li>再问一个。币安给顶级做市商的挂单费率可以是负数，等于倒贴。这笔账怎么算得过来？</li>
+      <li>这一集，我们把交易所当成一门生意来拆。看钱从哪里来，花到哪里去，用户为什么不走。</li>
+      <li>先说明一点。币安是私营公司，不公开完整财报。本集的收入比例都是示例假设，也不构成投资建议。</li>
+    </ol>
+  </section>
+
+  <!-- 2 路线图 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>本集分五段</h2>
+    <div class="road">
+      <div class="card" data-step="0"><div class="n">1</div><h3>产品拆解</h3><div>五种底层能力的组合</div></div>
+      <div class="card" data-step="1"><div class="n">2</div><h3>收入构成</h3><div>手续费为主体，层层折扣</div></div>
+      <div class="card" data-step="2"><div class="n">3</div><h3>飞轮</h3><div>流动性与做市商计划</div></div>
+      <div class="card" data-step="3"><div class="n">4</div><h3>BNB 与成本</h3><div>销毁机制、SAFU</div></div>
+      <div class="card" data-step="4"><div class="n">5</div><h3>合规</h3><div>2023 美国和解、误区、小结</div></div>
+    </div>
+    <ol class="say">
+      <li>本集分五段。第一段，把每个产品拆回底层能力。</li>
+      <li>第二段，看收入构成，以及一笔手续费到手之前要打几次折。</li>
+      <li>第三段，讲飞轮效应和做市商计划。这是交易所的护城河。</li>
+      <li>第四段，讲 BNB 的代币机制，以及成本结构里的 SAFU 基金。</li>
+      <li>第五段，讲合规，包括2023年的美国和解。最后是常见误区和小结。</li>
+    </ol>
+  </section>
+
+  <!-- 3 产品拆解 -->
+  <section class="scene" data-title="产品 = 底层能力的组合" data-onstep="capStep">
+    <div class="kicker">产品拆解</div>
+    <h2>每个产品，都是五种底层能力的组合</h2>
+    <table class="cap" id="capT">
+      <thead><tr><th style="width:300px">产品</th><th>托管</th><th>记账</th><th>撮合</th><th>授信</th><th>定价与对冲</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="card warn" data-step="6" style="padding:18px 28px">所有产品都写进<span class="hl">同一个账本</span>。底层一出事，所有店铺一起停业。</div>
+    <ol class="say">
+      <li>先看产品。币安主站有几十个入口，但拆开看，底层只有五种能力。托管、记账、撮合、授信，还有定价与对冲。</li>
+      <li>现货最简单。币放在平台托管，成交靠撮合，所有权变化写进账本。</li>
+      <li>杠杆在现货上加了一层授信。平台先借钱给你，保证金兜底，按小时计息。</li>
+      <li>闪兑不走订单簿。平台直接给你报价，自己承担风险，再去市场对冲。</li>
+      <li>P2P 和 Pay 基本不用撮合。P2P 靠账本冻结卖家的币，Pay 是账本内划转，不上链。</li>
+      <li>双币投资看起来像理财，本质是用户卖出一份期权。平台赚的是期权费的差价。</li>
+      <li>记住一点。所有产品最后都写进同一个账本。底层一出事，所有店铺一起停业。</li>
+    </ol>
+  </section>
+
+  <!-- 4 闪兑算账 -->
+  <section class="scene" data-title="闪兑的隐含价差">
+    <div class="kicker">算一笔账 · 示例数字</div>
+    <h2>零手续费的闪兑，钱藏在价差里</h2>
+    <div class="row">
+      <div class="card col calc" style="flex:1.15">
+        <div class="row2" data-step="0"><span>用户支付</span><span>1000 USDT</span></div>
+        <div class="row2" data-step="1"><span>市场中间价</span><span class="blue">2480 USDT/ETH</span></div>
+        <div class="row2" data-step="2"><span>按中间价应得</span><span>≈ 0.4032 ETH</span></div>
+        <div class="row2" data-step="3"><span>闪兑报价 · 10 秒</span><span class="hl">0.4000 ETH</span></div>
+        <div class="row2" data-step="3"><span>差额</span><span class="down">0.0032 ETH</span></div>
+        <div class="row2" data-step="4" style="border:0"><span>隐含费率</span><span class="hl">≈ 0.8%</span></div>
+      </div>
+      <div class="col" style="flex:1">
+        <div class="flow" data-step="5" style="flex-direction:column; align-items:stretch; gap:10px">
+          <div class="node info">用户确认报价<small>平台成为对手方</small></div>
+          <div class="node gold">账本划转<small>USDT 给平台，ETH 给用户</small></div>
+          <div class="node buy">对冲服务<small>现货市场买回 0.4 ETH</small></div>
+        </div>
+        <div class="card warn" data-step="6" style="font-size:30px">比喻：机场换汇柜台。<br>不准之处：闪兑用户会<span class="hl">挑报价</span>，只接受对自己有利的。</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>来算一笔闪兑的账。用户要用1000 USDT 换 ETH。</li>
+      <li>报价引擎先取市场中间价。举个示例，中间价是2480 USDT 一个 ETH。</li>
+      <li>按中间价，1000 USDT 能换大约0.4032个 ETH。</li>
+      <li>但页面报给你的是0.4个 ETH，10秒内有效。差出来的0.0032个 ETH，就是价差。</li>
+      <li>折算一下，这笔价差大约是0.8%。零手续费，不等于零成本。</li>
+      <li>用户确认后，平台成了你的对手方，手里多了一个反向敞口。对冲服务马上去现货市场买回0.4个 ETH。如果报价期间价格跳得太快，对冲的亏损由平台承担。</li>
+      <li>这像机场的换汇柜台，牌价里已含利润。比喻不准的地方是，闪兑用户可以比较外部价格，只接受对自己有利的报价。这就是报价被套利的风险。</li>
+    </ol>
+  </section>
+
+  <!-- 5 收入构成 -->
+  <section class="scene" data-title="收入构成" data-onstep="revStep">
+    <div class="kicker">收入构成 · 示例假设</div>
+    <h2>一根柱子，堆出交易所的收入 <span class="stamp" style="font-size:24px; vertical-align:middle">示例假设</span></h2>
+    <div class="stackwrap" style="margin-top:80px">
+      <div class="brace" id="rvBrace"><span>交易手续费 70%</span></div>
+      <div class="stack" id="rvStack"></div>
+      <div class="legend" id="rvLegend"></div>
+    </div>
+    <div class="card info" data-step="0" style="padding:18px 28px; font-size:30px">熊市交易量下降 → 利息和理财收入占比上升。Coinbase 公开财报：交易收入长期占主要部分。</div>
+    <ol class="say">
+      <li>现在看整体收入。交易所有八类收入来源，示例图把它们合成七段，我们一段一段堆起来。</li>
+      <li>第一段，合约手续费，示例占45%。合约按名义价值收费，单笔名义价值通常很大。</li>
+      <li>第二段，现货手续费，示例占25%。两项加起来是70%，交易手续费是收入主体。</li>
+      <li>第三段，借贷利息和理财利差，示例占12%。</li>
+      <li>再加上闪兑与期权价差6%，法币通道与 P2P 4%。</li>
+      <li>最后是上币与生态的间接收入5%，其他3%，合计100%。</li>
+      <li>注意，真实比例会随牛熊剧烈变化。熊市交易量下降，利息和理财收入的占比会上升。上市交易所 Coinbase 的公开财报也显示，交易收入长期是主要部分。</li>
+    </ol>
+  </section>
+
+  <!-- 6 净手续费 -->
+  <section class="scene" data-title="手续费的层层折扣" data-onstep="netStep">
+    <div class="kicker">净手续费 · 示例数字</div>
+    <h2>1000 万毛手续费，到手还剩多少？</h2>
+    <svg class="wf" id="wf" width="1640" height="520" viewBox="0 0 1640 520"></svg>
+    <ol class="say">
+      <li>交易手续费不是成交额乘以一个费率这么简单。到手之前，要打好几次折。</li>
+      <li>举个示例。某月按费率表算出的毛手续费是1000万 USDT。VIP 等级越高费率越低，示例从0.1%降到0.02%，这已经算在加权费率里。</li>
+      <li>第一折，BNB 抵扣。用 BNB 付手续费，币安现货打75折。假设40%的手续费用 BNB 支付，平台少收100万。</li>
+      <li>第二折，返佣。假设一半手续费来自被邀请用户，返佣比例20%，再支出90万。</li>
+      <li>第三折，做市商负费率。顶级做市商挂单不但不交钱，平台还倒贴。示例支出60万。</li>
+      <li>最后净收入是750万，只有毛收入的75%。平台愿意少收，是为了换来 BNB 需求、新用户和更厚的订单簿。</li>
+    </ol>
+  </section>
+
+  <!-- 7 飞轮 -->
+  <section class="scene" data-title="飞轮效应" data-onstep="flyStep">
+    <div class="kicker">护城河</div>
+    <h2>飞轮的起点是流动性，不是手续费</h2>
+    <div class="row" style="align-items:center">
+      <svg class="fly" id="fly" width="980" height="600" viewBox="0 0 980 600"></svg>
+      <div class="col">
+        <div class="card sell" data-step="4" style="font-size:30px">刹车 1：费率过高 → 用户流失到竞品</div>
+        <div class="card sell" data-step="4" style="font-size:30px">刹车 2：补贴过多 → 利润下降</div>
+        <div class="card warn" data-step="6" style="font-size:30px">比喻：菜市场管理方。<br>不准之处：流动性有<span class="hl">马太效应</span>，零手续费也抢不走深度。</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>交易所为什么愿意倒贴？答案在飞轮效应。飞轮的起点是流动性，不是手续费。</li>
+      <li>流动性好，就是深度厚、价差小，用户的交易成本就低。成本低，更多用户和机构会加入。</li>
+      <li>用户多了，交易量增长。交易量增长，手续费收入增长。</li>
+      <li>手续费再拿去补贴做市和营销，流动性更好，飞轮转完一圈。交易量本身也会让订单簿变厚，这是中间那条捷径。</li>
+      <li>飞轮有两个刹车。费率太高，用户流失到竞品。补贴太多，利润被吃掉。</li>
+      <li>飞轮还会反转。一旦发生安全事故或监管处罚，用户撤离，流动性变差，又逼走更多用户。2022年的 FTX 就是这样。</li>
+      <li>打个比方，交易所像菜市场的管理方，摊位越多，顾客越多。比喻不准的地方是，流动性有很强的马太效应。新交易所即使零手续费，订单簿太薄，滑点成本仍然更高。</li>
+    </ol>
+  </section>
+
+  <!-- 8 做市商计划 -->
+  <section class="scene" data-title="做市商计划">
+    <div class="kicker">做市商计划 · 示例订单簿</div>
+    <h2>做市商让价差从 100 缩到 10</h2>
+    <div class="row">
+      <div class="card col ob" data-step="0">
+        <div class="muted" style="font-family:var(--sans); font-size:30px">没有做市商</div>
+        <div class="lv ask"><span>50,080</span><span>0.3</span></div>
+        <div class="lv ask"><span>50,050</span><span>0.2</span></div>
+        <div class="sp">价差 <span class="down">100</span></div>
+        <div class="lv bid"><span>49,950</span><span>0.2</span></div>
+        <div class="lv bid"><span>49,920</span><span>0.4</span></div>
+      </div>
+      <div class="card col ob gold" data-step="2">
+        <div class="muted" style="font-family:var(--sans); font-size:30px">做市商双边挂单后</div>
+        <div class="lv ask"><span>50,010</span><span>3.5</span></div>
+        <div class="lv ask mm"><span>50,005</span><span>2.0</span></div>
+        <div class="sp">价差 <span class="up">10</span></div>
+        <div class="lv bid mm"><span>49,995</span><span>2.0</span></div>
+        <div class="lv bid"><span>49,990</span><span>3.2</span></div>
+      </div>
+      <div class="col" style="flex:1.1">
+        <div class="formula" data-step="3" style="font-size:32px">做市商收入 = 价差 + 返佣<br>平台成本 = 返佣支出</div>
+        <div class="card info" data-step="4" style="font-size:30px">流动性提供者计划：考核深度、价差、在线时间，达标给挂单费率优惠</div>
+        <div class="card sell" data-step="5" style="font-size:30px">风险：剧烈行情撤单 → 要求极端行情最低在线率</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>流动性从哪来？主要靠做市商。做市商在买卖两侧持续挂单，赚取价差。</li>
+      <li>看一个示例订单簿。没有做市商时，买一49950，卖一50050，价差100。</li>
+      <li>做市商进场后，买一49995，卖一50005，价差缩到10。普通用户每次交易都更便宜。</li>
+      <li>做市商的收入是价差加平台返佣。平台的成本，就是这笔返佣。</li>
+      <li>根据币安公开资料，现货和合约都有流动性提供者计划。考核挂单深度、价差和在线时间，达标就给挂单费率优惠。</li>
+      <li>风险在于，行情剧烈时做市商会撤单，订单簿瞬间变薄。所以考核里通常要求极端行情下的最低在线率。</li>
+    </ol>
+  </section>
+
+  <!-- 9 BNB -->
+  <section class="scene" data-title="BNB 代币经济" data-onstep="bnbStep">
+    <div class="kicker">BNB 代币经济 · 公开资料</div>
+    <h2>供给在减少，需求绑定在平台上</h2>
+    <div class="row">
+      <svg class="bnb" id="bnb" width="1000" height="460" viewBox="0 0 1000 460"></svg>
+      <div class="col">
+        <div class="card" data-step="2" style="font-size:30px"><b class="hl">季度 Auto-Burn</b><br>2021 年底起；按当季价格和出块数计算</div>
+        <div class="card" data-step="3" style="font-size:30px"><b class="hl">实时销毁 BEP-95</b><br>2021 年起；每个区块销毁部分 Gas</div>
+        <div class="card info" data-step="5" style="font-size:30px">需求侧：手续费抵扣 · Launchpool · Gas · VIP 门槛</div>
+      </div>
+    </div>
+    <div class="card sell" data-step="6" style="padding:16px 28px; font-size:30px">双刃剑：平台遇到监管或信任危机，BNB 需求同时下降。本集不评价投资价值。</div>
+    <ol class="say">
+      <li>再看 BNB。根据公开资料，BNB 于2017年发行，初始总量2亿枚。</li>
+      <li>币安承诺通过销毁，把总量减少到1亿枚。</li>
+      <li>2021年底起，改用季度自动销毁。销毁数量按公式算，输入是当季 BNB 价格和出块数量。</li>
+      <li>同样从2021年起，链上还有实时销毁。BNB Smart Chain 每个区块都会销毁一部分 Gas 费。</li>
+      <li>据公开报道，2026年1月完成第34次季度销毁，约137万枚。销毁后总量约1.36亿枚。</li>
+      <li>需求侧有手续费抵扣、Launchpool、Gas 费和 VIP 门槛。平台少收的手续费，换来了用户持有 BNB 的意愿。</li>
+      <li>但这是双刃剑。BNB 需求和平台经营高度相关。平台出问题，BNB 需求也会同时下降。本集只讲机制，不评价投资价值。</li>
+    </ol>
+  </section>
+
+  <!-- 10 成本结构 -->
+  <section class="scene" data-title="成本结构与 SAFU">
+    <div class="kicker">成本结构</div>
+    <h2>钱花在哪里：六类成本</h2>
+    <div class="grid3 costs">
+      <div class="card" data-step="0"><h3>技术</h3>固定为主，规模越大边际越低</div>
+      <div class="card" data-step="2"><h3>合规</h3>随业务地区数量增长</div>
+      <div class="card" data-step="2"><h3>营销 · 做市激励</h3>弹性大，牛市高熊市低</div>
+      <div class="card gold" data-step="3"><h3>安全储备</h3>SAFU、保险基金、安全团队</div>
+      <div class="card" data-step="3"><h3>客服运营</h3>多语言客服、P2P 申诉</div>
+      <div class="card sell" data-step="6"><h3>熊市陷阱</h3>收入下降，固定成本不变</div>
+    </div>
+    <div class="tl" data-step="4">
+      <div class="ev"><b>2018.07</b>SAFU 设立，提取手续费 10%</div>
+      <div class="ev" data-step="5"><b>约 10 亿美元</b>据公开报道的规模</div>
+      <div class="ev" data-step="5"><b>2024</b>转为稳定币持有</div>
+      <div class="ev" data-step="5"><b>2026 初</b>约 15,000 BTC；低于 8 亿补足到 10 亿</div>
+    </div>
+    <ol class="say">
+      <li>看完收入，看成本。交易所的成本大致分六类。</li>
+      <li>技术成本以固定成本为主。撮合、账本、机房和研发，规模越大，边际成本越低。</li>
+      <li>合规成本随业务地区增长。营销和做市激励弹性大，牛市高，熊市低。</li>
+      <li>还有安全储备和客服运营。安全储备里最有名的，是 SAFU 基金。</li>
+      <li>根据币安公告，SAFU 于2018年7月设立，最初从交易手续费中提取10%注入。</li>
+      <li>据公开报道，SAFU 规模约10亿美元，2024年转为稳定币持有。2026年初又转换为约15000枚 BTC。币安承诺，市值低于8亿美元时，补足到10亿美元。</li>
+      <li>这里有个陷阱。熊市交易量下降，技术和合规这些固定成本却不变，利润会快速下降。</li>
+    </ol>
+  </section>
+
+  <!-- 11 全球合规 -->
+  <section class="scene" data-title="全球合规与地区路由">
+    <div class="kicker">全球合规</div>
+    <h2>按 KYC 国家，把用户路由到不同实体</h2>
+    <div class="route">
+      <div class="col">
+        <div class="card info" data-step="0" style="text-align:center">用户<br><span class="hl">KYC 国家</span></div>
+        <div class="card" data-step="2" style="text-align:center; font-size:30px">地区路由<br>产品开关 · 限额 · 禁止名单</div>
+      </div>
+      <div class="col">
+        <div class="card ent" data-step="0"><div>地区实体 A</div><div><span class="chip buy">现货</span><span class="chip buy">合约</span><span class="chip buy">理财</span></div></div>
+        <div class="card ent" data-step="0"><div>地区实体 B</div><div><span class="chip buy">现货</span><span class="chip buy">理财</span><span class="chip">P2P</span></div></div>
+        <div class="card ent sell" data-step="2"><div>地区实体 C</div><div><span class="chip buy">现货</span><span class="chip x">合约</span><span class="chip x">理财</span></div></div>
+        <div class="muted" data-step="2" style="font-size:24px">示例配置</div>
+      </div>
+    </div>
+    <div class="card gold" data-step="3" style="padding:16px 28px; font-size:30px">系统要求：产品开关按地区配置；风控按地区执行限额与禁止名单</div>
+    <ol class="say">
+      <li>接下来讲合规。根据公开资料，币安在迪拜、阿布扎比等地持有牌照。欧盟 MiCA 过渡期在2026年7月1日结束。币安此前撤回了在希腊的申请。此后它暂停了对欧盟居民的大部分服务，只保留提币。</li>
+      <li>业界通常按地区设立独立法人。每个实体在当地申请牌照，提供不同的产品组合。</li>
+      <li>系统按用户的 KYC 国家做路由。举个示例，某地区不允许衍生品，这里的用户就看不到合约入口。</li>
+      <li>所以产品开关必须能按地区配置。风控也要按地区执行不同的限额和禁止名单。</li>
+    </ol>
+  </section>
+
+  <!-- 12 2023 美国和解 -->
+  <section class="scene" data-title="2023 年美国和解">
+    <div class="kicker">2023-11-21 · 美国司法部等机构公开公告</div>
+    <h2>约 43 亿美元：合规成本的一次集中体现</h2>
+    <div class="chain">
+      <div class="c r" data-step="0">根因<small>早期快速扩张，KYC 与制裁筛查不足</small></div>
+      <div class="c r" data-step="1">违规事项<small>反洗钱、无牌汇款业务、违反制裁</small></div>
+      <div class="c i" data-step="2">认罪和解<small>DOJ · FinCEN · OFAC · CFTC</small></div>
+      <div class="c f" data-step="5">系统改进<small>KYC 强制、制裁实时筛查、地区开关</small></div>
+    </div>
+    <div class="money">
+      <div class="stat" data-step="2"><div class="k">总计约</div><div class="v hl">43 亿美元</div></div>
+      <div class="stat" data-step="3"><div class="k">FinCEN 民事罚款</div><div class="v">约 34 亿</div></div>
+      <div class="stat" data-step="3"><div class="k">OFAC</div><div class="v">约 9.68 亿</div></div>
+      <div class="stat" data-step="3"><div class="k">CFTC 合计</div><div class="v">约 27 亿</div></div>
+    </div>
+    <div class="row">
+      <div class="card col" data-step="3" style="font-size:30px; padding:16px 24px">各机构金额有部分相互抵扣，加总不等于 43 亿</div>
+      <div class="card col info" data-step="4" style="font-size:30px; padding:16px 24px">赵长鹏认罪卸任，个人罚款 5,000 万美元；滕瑞贤接任 CEO；独立合规监察数年</div>
+    </div>
+    <ol class="say">
+      <li>合规为什么这么贵？看2023年的美国和解。以下内容根据美国司法部等机构2023年11月21日的公开公告。</li>
+      <li>币安承认违反银行保密法等法律，涉及反洗钱、无牌经营汇款业务和违反制裁规定。</li>
+      <li>币安同意支付总计约43亿美元。和解涉及美国司法部、FinCEN、OFAC 和 CFTC。</li>
+      <li>其中 FinCEN 民事罚款约34亿美元。OFAC 约9.68亿美元，CFTC 合计约27亿美元。各机构金额有部分相互抵扣，加起来不等于总数。</li>
+      <li>创始人赵长鹏认罪并卸任 CEO，个人支付5000万美元罚款，滕瑞贤接任 CEO。币安还要接受为期数年的独立合规监察。</li>
+      <li>基于和解文件的公开描述，根因是早期增长优先于合规。改进落在系统层面，包括 KYC 强制、制裁名单实时筛查和按地区的产品开关。本集只总结公开文件，不评价各方立场。</li>
+    </ol>
+  </section>
+
+  <!-- 13 误区 -->
+  <section class="scene" data-title="常见误区">
+    <div class="kicker">常见误区</div>
+    <h2>四个关于交易所赚钱的误解</h2>
+    <div class="myth">
+      <div class="card" data-step="0"><b>✗ 零手续费等于免费</b><span class="ok">✓ 成本藏在报价价差里</span></div>
+      <div class="card" data-step="1"><b>✗ 理财收益凭空产生</b><span class="ok">✓ 来自借款人、质押奖励或平台补贴</span></div>
+      <div class="card" data-step="2"><b>✗ 飞轮只会越转越快</b><span class="ok">✓ 信任危机会让飞轮反转</span></div>
+      <div class="card" data-step="3"><b>✗ 交易所收入很稳定</b><span class="ok">✓ 随市场周期波动，禁令可让地区收入归零</span></div>
+    </div>
+    <ol class="say">
+      <li>来看四个常见误区。第一，零手续费等于免费。不对，成本藏在报价价差里。</li>
+      <li>第二，理财收益是凭空产生的。不对，收益一定来自借款人、链上质押奖励，或者平台补贴。</li>
+      <li>第三，飞轮一旦转起来，就只会越转越快。不对，信任危机会让它反转。</li>
+      <li>第四，交易所收入很稳定。不对，手续费随市场活跃度波动。一个地区的禁令，也可能让该地区收入瞬间归零。</li>
+    </ol>
+  </section>
+
+  <!-- 14 小结 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">产品 = 托管、记账、撮合、授信、定价的<span class="hl">组合</span>，最后写进同一个账本。</li>
+      <li data-step="0">手续费是收入主体，但要扣掉 <span class="hl">BNB 抵扣、返佣、做市商返佣</span>。</li>
+      <li data-step="2">飞轮靠<span class="hl">流动性</span>启动；合规与安全储备是进入市场的门票。</li>
+    </ul>
+    <div class="row" data-step="3">
+      <div class="card gold" style="flex:1; font-size:30px">产品深潜系列 <b class="mono">P01–P11</b><br>杠杆借贷 · 闪兑 · P2P · 理财 · 双币 · 上币 · 跟单 · Pay · Web3 钱包 · 增长与机构</div>
+      <div class="card info" style="flex:1; font-size:30px">交互实验 <b class="mono">revenue-model</b><br>调 BNB 抵扣率、费率和补贴，逐期运行飞轮</div>
+    </div>
+    <ol class="say">
+      <li>小结三点。第一，每个产品都是托管、记账、撮合、授信和定价的组合，最后都写进同一个账本。</li>
+      <li>第二，交易手续费是收入主体，但要扣掉 BNB 抵扣、返佣和做市商返佣。</li>
+      <li>第三，飞轮靠流动性启动。合规和安全储备，是进入市场的门票。</li>
+      <li>想深入单个产品，可以看产品深潜系列。从 P01 杠杆借贷，一直到 P11 增长与机构。也可以打开收入模型实验，亲手跑一遍飞轮。下一集是主线最后一集，我们看交易所怎样倒下，又怎样不倒下。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+  function svgEl(tag, attrs, text) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text !== undefined) e.textContent = text; return e; }
+
+  // Scene 3: capability matrix. Row r is visible from step r+1.
+  const CAP_ROWS = [
+    ['现货', ['c', 'l', 'm']],
+    ['杠杆', ['c', 'l', 'm', 'cr']],
+    ['闪兑', ['c', 'l', 'pr']],
+    ['P2P', ['c', 'l']],
+    ['Binance Pay', ['c', 'l']],
+    ['双币投资', ['c', 'l', 'pr']],
+  ];
+  const CAP_STEP = [1, 2, 3, 4, 4, 5];
+  function capStep(el, st) {
+    const tb = el.querySelector('#capT tbody');
+    tb.innerHTML = '';
+    CAP_ROWS.forEach(([name, caps], i) => {
+      const tr = document.createElement('tr');
+      if (st < CAP_STEP[i]) tr.className = 'off';
+      else if (st === CAP_STEP[i]) tr.className = 'cur';
+      tr.innerHTML = `<td>${name}</td>` + ['c', 'l', 'm', 'cr', 'pr'].map(k =>
+        `<td><span class="dot ${caps.includes(k) ? 'on ' + k : ''}"></span></td>`).join('');
+      tb.appendChild(tr);
+    });
+  }
+
+  // Scene 5: stacked revenue bar (example assumptions).
+  const REV = [
+    ['合约手续费', 45, '#f0b90b', 1], ['现货手续费', 25, '#f6d365', 2], ['借贷与理财利差', 12, '#2ebd85', 3],
+    ['闪兑与期权价差', 6, '#5b9cff', 4], ['法币与 P2P', 4, '#a77bff', 4], ['上币与生态', 5, '#f0a340', 5], ['其他', 3, '#9ea3ad', 5],
+  ];
+  function revStep(el, st) {
+    const W = 1640, stack = el.querySelector('#rvStack'), leg = el.querySelector('#rvLegend');
+    stack.innerHTML = ''; leg.innerHTML = '';
+    let x = 0;
+    REV.forEach(([name, v, c, s]) => {
+      const on = st >= s, w = v / 100 * W;
+      const seg = document.createElement('div');
+      seg.className = 'seg';
+      seg.style.cssText = `left:${x}px;width:${on ? w : 0}px;background:${c};opacity:${on ? 1 : 0}`;
+      seg.textContent = v >= 4 ? v + '%' : '';
+      stack.appendChild(seg);
+      x += on ? w : 0;
+      const it = document.createElement('div');
+      it.className = 'it';
+      it.style.opacity = on ? 1 : .25;
+      it.innerHTML = `<span class="sw" style="background:${c}"></span>${name}<b>${on ? v + '%' : '—'}</b>`;
+      leg.appendChild(it);
+    });
+    const tot = document.createElement('div');
+    tot.className = 'it';
+    const sum = REV.filter(r => st >= r[3]).reduce((a, r) => a + r[1], 0);
+    tot.innerHTML = `<span class="sw" style="background:transparent;border:2px solid var(--gold)"></span>合计<b class="hl">${sum}%</b>`;
+    leg.appendChild(tot);
+    const br = el.querySelector('#rvBrace');
+    br.style.left = '0px'; br.style.width = (0.70 * W) + 'px'; br.style.opacity = st >= 2 ? 1 : 0;
+  }
+
+  // Scene 6: net fee waterfall (example numbers, unit: 10k USDT).
+  function netStep(el, st) {
+    const svg = el.querySelector('#wf'); svg.innerHTML = '';
+    const items = [
+      ['毛手续费', 1000, 'total', 1, '#5b9cff'], ['BNB 抵扣', -100, 'd', 2, '#f6465d'], ['返佣', -90, 'd', 3, '#f6465d'],
+      ['做市商负费率', -60, 'd', 4, '#f6465d'], ['净手续费', 750, 'total', 5, '#2ebd85'],
+    ];
+    const base = 440, sc = 0.38, bw = 220, gap = 105;
+    let run = 0;
+    svg.appendChild(svgEl('line', { x1: 40, y1: base, x2: 1600, y2: base, stroke: '#2c3038', 'stroke-width': 3 }));
+    items.forEach(([name, v, kind, s, c], i) => {
+      const x = 60 + i * (bw + gap);
+      let top, h;
+      if (kind === 'total') { h = v * sc; top = base - h; run = v; }
+      else { top = base - run * sc; h = -v * sc; run += v; }
+      const on = st >= s;
+      svg.appendChild(svgEl('rect', { x, y: top, width: bw, height: Math.max(h, 2), rx: 8, fill: c, opacity: on ? (st === s ? 1 : .75) : .08 }));
+      svg.appendChild(svgEl('text', { x: x + bw / 2, y: base + 44, 'text-anchor': 'middle', class: 'lbl' }, name));
+      if (on) svg.appendChild(svgEl('text', { x: x + bw / 2, y: top - 16, 'text-anchor': 'middle', class: 'val', fill: c }, (v > 0 ? '' : '−') + Math.abs(v) + ' 万'));
+      if (i < items.length - 1 && on && st >= items[i + 1][3]) {
+        const y = base - run * sc;
+        svg.appendChild(svgEl('line', { x1: x + bw, y1: y, x2: x + bw + gap, y2: y, stroke: '#9ea3ad', 'stroke-width': 2, 'stroke-dasharray': '8 6' }));
+      }
+    });
+    if (st >= 5) svg.appendChild(svgEl('text', { x: 1600, y: 60, 'text-anchor': 'end', fill: '#f0b90b', style: 'font-size:36px;font-weight:700' }, '净 / 毛 = 75%'));
+    svg.appendChild(svgEl('text', { x: 960, y: 280, 'text-anchor': 'middle', fill: '#f0a340', style: 'font-size:26px' }, '示例假设 · 单位：万 USDT'));
+  }
+
+  // Scene 7: flywheel.
+  const FLY = ['流动性更好', '交易成本降低', '更多用户加入', '交易量增长', '手续费增长', '补贴与做市激励'];
+  const FLY_ON = [0, 2, 4, 5, 5, 5, 5]; // highest node index lit at each step
+  function flyStep(el, st) {
+    const svg = el.querySelector('#fly'); svg.innerHTML = '';
+    const cx = 490, cy = 300, rx = 355, ry = 228;
+    const pos = FLY.map((_, i) => { const a = -Math.PI / 2 + i * Math.PI * 2 / 6; return [cx + rx * Math.cos(a), cy + ry * Math.sin(a)]; });
+    const bad = st >= 5;
+    const defs = svgEl('defs', {});
+    [['ag', '#f0b90b'], ['ar', '#f6465d'], ['ad', '#2c3038']].forEach(([id, c]) => {
+      const m = svgEl('marker', { id, viewBox: '0 0 10 10', refX: 6, refY: 5, markerWidth: 4, markerHeight: 4, orient: 'auto' });
+      m.appendChild(svgEl('path', { d: 'M0,0 L10,5 L0,10 z', fill: c })); defs.appendChild(m);
+    });
+    svg.appendChild(defs);
+    const lit = FLY_ON[st];
+    for (let i = 0; i < 6; i++) {
+      const j = (i + 1) % 6;
+      let [a, b] = [pos[i], pos[j]];
+      if (bad) [a, b] = [b, a];
+      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      const ox = (mx - cx) * .22, oy = (my - cy) * .22;
+      const sx = a[0] + (b[0] - a[0]) * .3, sy = a[1] + (b[1] - a[1]) * .3, ex = a[0] + (b[0] - a[0]) * .7, ey = a[1] + (b[1] - a[1]) * .7;
+      const on = bad || (j === 0 ? st >= 3 : j <= lit);
+      const cls = bad ? 'ed bad' : on ? 'ed on' : 'ed';
+      svg.appendChild(svgEl('path', { class: cls, d: `M${sx},${sy} Q${mx + ox},${my + oy} ${ex},${ey}`, 'marker-end': `url(#${bad ? 'ar' : on ? 'ag' : 'ad'})` }));
+    }
+    if (st >= 3 && !bad) {
+      const a = pos[3], b = pos[0];
+      svg.appendChild(svgEl('path', { class: 'ed on', d: `M${a[0]},${a[1] - 50} L${b[0]},${b[1] + 50}`, 'stroke-dasharray': '12 10', 'marker-end': 'url(#ag)' }));
+    }
+    FLY.forEach((t, i) => {
+      const g = svgEl('g', { class: 'nd' + (bad ? ' bad' : i <= lit ? ' on' : '') });
+      g.appendChild(svgEl('rect', { x: pos[i][0] - 130, y: pos[i][1] - 38, width: 260, height: 76, rx: 14 }));
+      g.appendChild(svgEl('text', { x: pos[i][0], y: pos[i][1] + 2 }, bad ? ['流动性变差', '交易成本上升', '用户撤离', '交易量下降', '收入下降', '无力补贴'][i] : t));
+      svg.appendChild(g);
+    });
+    if (st >= 3) svg.appendChild(svgEl('text', { x: bad ? cx : cx + 24, y: cy + 10, 'text-anchor': bad ? 'middle' : 'start', class: 'center', fill: bad ? '#f6465d' : '#f0b90b' }, bad ? '信任危机：反转' : '交易量直接加厚订单簿'));
+  }
+
+  // Scene 9: BNB supply bars.
+  function bnbStep(el, st) {
+    const svg = el.querySelector('#bnb'); svg.innerHTML = '';
+    const X0 = 290, W = 660, max = 2;
+    const rows = [
+      ['2017 初始', 2, '#f0b90b', 0, '2 亿枚'],
+      ['2026 年 1 月', 1.36, '#f0b90b', 4, '约 1.36 亿枚'],
+      ['承诺目标', 1, '#2ebd85', 1, '1 亿枚'],
+    ];
+    rows.forEach(([name, v, c, s, lab], i) => {
+      const y = 60 + i * 130, on = st >= s;
+      svg.appendChild(svgEl('text', { x: X0 - 20, y: y + 42, 'text-anchor': 'end', fill: '#9ea3ad' }, name));
+      svg.appendChild(svgEl('rect', { x: X0, y, width: W, height: 70, rx: 10, fill: '#16181c', stroke: '#2c3038' }));
+      svg.appendChild(svgEl('rect', { class: 'b', x: X0, y, width: on ? v / max * W : 0, height: 70, rx: 10, fill: c, opacity: i === 2 ? .55 : 1 }));
+      if (on) svg.appendChild(svgEl('text', { x: X0 + 20, y: y + 46, class: 'v', fill: '#111' }, lab));
+    });
+    // burned portion
+    if (st >= 4) {
+      const y = 190, x = X0 + 1.36 / max * W, w = 0.64 / max * W;
+      svg.appendChild(svgEl('rect', { x, y, width: w, height: 70, rx: 10, fill: 'none', stroke: '#f6465d', 'stroke-width': 3, 'stroke-dasharray': '10 8' }));
+      svg.appendChild(svgEl('text', { x: x + w / 2, y: y + 46, 'text-anchor': 'middle', fill: '#f6465d' }, '已销毁'));
+    }
+    if (st >= 1) {
+      const x = X0 + 1 / max * W;
+      svg.appendChild(svgEl('line', { x1: x, y1: 30, x2: x, y2: 420, stroke: '#2ebd85', 'stroke-width': 3, 'stroke-dasharray': '6 6' }));
+      svg.appendChild(svgEl('text', { x, y: 450, 'text-anchor': 'middle', fill: '#2ebd85' }, '目标线 1 亿'));
+    }
+    if (st >= 2 && st < 4) svg.appendChild(svgEl('text', { x: X0 + 20, y: 236, fill: '#f0a340' }, '持续销毁中……'));
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

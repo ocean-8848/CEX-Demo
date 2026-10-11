@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B12 安全事故案例库</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .scene > h2 { font-size: 58px; }
+  svg text { font-size: 28px; }
+  .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1640px; }
+  .hero .card { display: flex; flex-direction: column; gap: 10px; min-height: 230px; }
+  .hero .card .k { font-size: 28px; color: var(--text-2); }
+  .hero .card .big { font-size: 76px; }
+  .road { display: flex; gap: 14px; align-items: center; flex-wrap: nowrap; }
+  .road .chip { font-size: 30px; padding: 10px 22px; }
+  .road .ar { color: var(--text-2); font-size: 30px; }
+  .quote { font-size: 42px; }
+
+  .cc { display: grid; grid-template-columns: 1fr 64px 1fr 64px 1fr; gap: 0; align-items: stretch; }
+  .cc .colh { font-size: 28px; font-weight: 700; margin-bottom: 12px; letter-spacing: .1em; }
+  .cc .stack { display: flex; flex-direction: column; gap: 14px; }
+  .cc .nd { background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 14px 20px; font-size: 30px; line-height: 1.4; transition: opacity .4s, box-shadow .4s, border-color .4s; }
+  .cc .r .nd { border-color: var(--sell); } .cc .i .nd { border-color: var(--warn); } .cc .f .nd { border-color: var(--buy); }
+  .cc .r .colh { color: var(--sell); } .cc .i .colh { color: var(--warn); } .cc .f .colh { color: var(--buy); }
+  .cc .ar { display: flex; align-items: center; justify-content: center; font-size: 52px; color: var(--text-2); transition: opacity .4s; }
+  .pend { opacity: .1 !important; }
+  .cc .nd.cur, .facts .stat.cur { box-shadow: 0 0 0 6px var(--gold-soft); border-color: var(--gold) !important; }
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .facts .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 22px; transition: opacity .4s; }
+  .facts .stat .k { font-size: 26px; } .facts .stat .v { font-size: 42px; }
+
+  .side { display: flex; flex-direction: column; gap: 18px; width: 540px; flex: 0 0 540px; }
+  .side .card { font-size: 30px; padding: 20px 26px; transition: opacity .4s, box-shadow .4s; }
+  .side .card h3 { font-size: 34px; margin-bottom: 6px; }
+  .side .card .m { font-family: var(--mono); font-size: 38px; font-weight: 700; }
+  .side .card.cur { box-shadow: 0 0 0 6px var(--gold-soft); border-color: var(--gold); }
+
+  .mm { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .mm .card { font-size: 30px; padding: 22px 28px; display: flex; flex-direction: column; gap: 10px; min-height: 600px; transition: opacity .4s; }
+  .mm .card h3 { font-size: 36px; margin: 0; }
+  .mm .line { font-size: 30px; line-height: 1.45; transition: opacity .4s; }
+  .lay { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 6px; }
+  .lay div { text-align: center; padding: 12px 4px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel-2); font-size: 26px; line-height: 1.3; transition: all .4s; }
+  .lay div b { display: block; font-family: var(--mono); font-size: 30px; }
+  .lay div.main { border-color: var(--buy); background: var(--buy-soft); }
+  .lay div.aux { border-color: var(--warn); }
+  .lay div.no { opacity: .35; }
+
+  table.mx { border-collapse: separate; border-spacing: 6px 5px; font-size: 30px; }
+  table.mx th { font-size: 24px; color: var(--text-2); font-weight: 500; line-height: 1.25; padding: 4px 4px; text-align: center; transition: color .3s; }
+  table.mx th b { display: block; font-family: var(--mono); font-size: 28px; color: var(--text); }
+  table.mx td { text-align: center; width: 128px; height: 46px; padding: 0; border-radius: 8px; background: var(--panel); font-size: 30px; transition: all .35s; }
+  table.mx td.lbl { text-align: left; width: 340px; padding: 0 16px; font-size: 28px; background: transparent; white-space: nowrap; }
+  table.mx td.lbl b { font-family: var(--mono); color: var(--gold); margin-right: 10px; }
+  table.mx td.s2 { color: var(--buy); } table.mx td.s1 { color: var(--warn); } table.mx td.s0 { color: #5a606b; }
+  table.mx tr.off td { opacity: .3; }
+  table.mx td.lit { background: var(--buy-soft); box-shadow: inset 0 0 0 3px var(--buy); opacity: 1 !important; }
+  table.mx td.lit1 { background: var(--warn-soft); box-shadow: inset 0 0 0 3px var(--warn); opacity: 1 !important; }
+  table.mx td.lit0 { background: var(--sell-soft); box-shadow: inset 0 0 0 3px var(--sell); opacity: 1 !important; }
+  table.mx th.lit { color: var(--gold); }
+
+  table.t td, table.t th { font-size: 30px; padding: 14px 16px; }
+  table.t tr { transition: opacity .4s, background .4s; }
+  table.t tr.on td { background: var(--gold-soft); }
+  table.t tr.dimr { opacity: .3; }
+  .calc { font-family: var(--mono); font-size: 34px; line-height: 1.6; }
+
+  .bullets li { transition: opacity .4s; }
+  .sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .sum .card { font-size: 30px; min-height: 260px; display: flex; flex-direction: column; gap: 10px; }
+  .sum .card .n { font-family: var(--mono); font-size: 56px; font-weight: 700; color: var(--gold); line-height: 1; }
+  .sum .card .d { color: var(--text-2); font-size: 28px; }
+
+  .path { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .path .card { font-size: 30px; display: flex; flex-direction: column; gap: 10px; min-height: 330px; transition: opacity .4s, box-shadow .4s; }
+  .path .card .n { font-family: var(--mono); font-size: 64px; font-weight: 700; color: var(--gold); line-height: 1; }
+  .path .card .n small { font-size: 30px; color: var(--text-2); margin-left: 10px; font-family: var(--sans); font-weight: 500; }
+  .path .card .d { color: var(--text-2); font-size: 28px; line-height: 1.5; }
+  .path .card.cur { box-shadow: 0 0 0 6px var(--gold-soft); border-color: var(--gold); }
+  .labs { display: flex; flex-wrap: wrap; gap: 14px; transition: opacity .4s; }
+  .labs .chip { font-size: 30px; padding: 8px 22px; }
+  .maprow .chip { font-size: 28px; padding: 6px 18px; }
+  .thanks { font-family: var(--display); font-size: 92px; font-weight: 800; color: var(--gold); margin-left: auto; transition: opacity .4s; }
+  .finale-top { display: flex; align-items: baseline; gap: 28px; }
+  .finale-top .big { font-size: 110px; color: var(--gold); }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="B12" data-title="安全事故案例库：防线是怎样被突破的">
+
+  <!-- 1 开场 -->
+  <section class="scene" data-title="开场">
+    <div class="kicker">幕后核心 · 第 12 集 · 系列终章 · 据公开报道</div>
+    <h2>十年事故档案：钱是从哪条路被拿走的</h2>
+    <div class="hero">
+      <div class="card sell" data-step="0"><div class="k">2025-02 · Bybit · 一起事件</div><div class="big down">约 14.6 亿$</div><div>超过本篇案例表里其他交易所事件之和</div></div>
+      <div class="card warn" data-step="1"><div class="k">2018-01 · Coincheck · 热钱包被转空</div><div class="big" style="color:var(--warn)">约 8.5 小时</div><div>从第一笔转出到被发现</div></div>
+    </div>
+    <div class="quote" data-step="2">像航空事故调查档案：把<span class="hl">别人的事故</span>，变成<span class="hl">自己的检查单</span>。</div>
+    <div class="road" data-step="3">
+      <span class="chip gold">10 类路径</span><span class="ar">→</span><span class="chip">时间线</span><span class="ar">→</span><span class="chip">5 组案例</span><span class="ar">→</span><span class="chip">跨案例统计</span><span class="ar">→</span><span class="chip">防线矩阵</span><span class="ar">→</span><span class="chip buy">用户结局</span>
+    </div>
+    <ol class="say">
+      <li>大家好，这是幕后核心的最后一集，也是整个系列的最后一集。2025年2月，Bybit 一次被盗约14.6亿美元。据公开报道，它超过本集案例表里其他交易所事件之和。</li>
+      <li>再往前看。2018年1月，Coincheck 的热钱包被转空。从第一笔转出到被发现，隔了约8.5小时。</li>
+      <li>本集不讲防线原理，原理在 B02 到 B07。我们把十年真实事故按攻击路径分类，再反查防线。打个比方，这像航空业的事故调查档案。调查员不只问这次为什么出事，还问同类故障出过几次。</li>
+      <li>不过比喻有边界。航空事故有完整的公开报告，交易所多数没有。所以本集的金额、日期和归因，都是据公开报道。</li>
+    </ol>
+  </section>
+
+  <!-- 2 十类攻击路径 -->
+  <section class="scene" data-title="10 类攻击路径" data-onstep="taxStep">
+    <div class="kicker">威胁模型 · 按最终突破点分类</div>
+    <h2>攻击者最后控制了什么</h2>
+    <svg id="tax" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>先分类。本集按最终突破点分类，也就是攻击者最后控制了什么。一共5个大类，10类路径。</li>
+      <li>第一类是平台密钥与签名。P1 是热钱包私钥泄露。P2 更隐蔽，签名人看到的内容，和实际签的交易不一样。</li>
+      <li>第二类是人员与组织。P3 是被收买的员工，P4 是员工遭到社会工程。P8 是交易所自己挪用资产。</li>
+      <li>第三类是用户账户，P5 指账户被批量接管。第四类是协议与市场，比如合约漏洞和价格操纵。</li>
+      <li>第五类是外部依赖。P9 是供应商被入侵，P10 是域名或路由被劫持。2018年4月，钱包网站 MyEtherWallet 就遭遇过。</li>
+      <li>注意，路径会串联。很多热钱包事故的入口，是员工先被钓鱼。Bybit 的入口在供应商。所以每个案例定一个主路径，再标次路径。</li>
+    </ol>
+  </section>
+
+  <!-- 3 时间线 -->
+  <section class="scene" data-title="十年时间线" data-onstep="tlStep">
+    <div class="kicker">时间线 · 2016–2025 · 损失按事发时市值，据公开报道</div>
+    <h2 id="tlH">交易所与相关平台安全事故</h2>
+    <svg id="tl" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>来看时间线。纵轴是损失金额，用对数刻度，每往上一条线，大约乘以3。2016年8月，Bitfinex 被盗约11.98万个 BTC。</li>
+      <li>2018年，日本两家交易所出事。1月 Coincheck 被盗5.23亿个 XEM。9月 Zaif 被盗约67亿日元。</li>
+      <li>2019到2021年，几乎全是热钱包被盗。Upbit、KuCoin、Liquid、BitMart 接连出事。</li>
+      <li>2022年换了面孔。Crypto.com 是2FA被绕过，Mango 是价格操纵。币安2019年那起和 FTX，主线第17集讲过。</li>
+      <li>2024年，DMM Bitcoin 被盗4502.9个 BTC。WazirX 约2.3亿美元，BingX 约4400万美元。</li>
+      <li>2025年最密集。Bybit、Phemex、CoinDCX 和 Upbit 都有资金损失。Coinbase 是数据泄露，图上是成本估计。</li>
+      <li>Bybit 一个点，高出其他点一大截。再注意 Upbit，2019年和2025年两次热钱包被盗。同类风险，会重复出现。</li>
+    </ol>
+  </section>
+
+  <!-- 4 案例 A：Coincheck -->
+  <section class="scene" data-title="案例：热钱包密钥泄露 Coincheck" data-onstep="ckStep">
+    <div class="kicker">案例 A · P1 热钱包密钥泄露 · 2018-01-26 · 据公开报道</div>
+    <h2>Coincheck：损失等于热钱包余额</h2>
+    <div class="cc">
+      <div class="r"><div class="colh">根因与入口</div><div class="stack">
+        <div class="nd" data-k="0">NEM 全部放在联网热钱包</div>
+        <div class="nd" data-k="0">没有使用多签</div>
+        <div class="nd" data-k="1">员工电脑被恶意邮件感染，远控木马拿到密钥</div>
+      </div></div>
+      <div class="ar" data-k="2">→</div>
+      <div class="i"><div class="colh">影响</div><div class="stack">
+        <div class="nd" data-k="2">热钱包被一次性转空</div>
+        <div class="nd" data-k="2">损失 = 全部 NEM 持仓</div>
+        <div class="nd" data-k="3">02:57 开始转出 → 11:25 才发现</div>
+      </div></div>
+      <div class="ar" data-k="5">→</div>
+      <div class="f"><div class="colh">修复</div><div class="stack">
+        <div class="nd" data-k="5">热钱包限额与冷钱包迁移</div>
+        <div class="nd" data-k="5">分钟级余额告警与自动暂停</div>
+        <div class="nd" data-k="5">对照 BingX 2024：损失被热钱包余额封顶</div>
+      </div></div>
+    </div>
+    <div class="facts">
+      <div class="stat" data-k="0"><div class="k">被盗</div><div class="v down">5.23 亿 XEM</div></div>
+      <div class="stat" data-k="3"><div class="k">转出 → 发现</div><div class="v" style="color:var(--warn)">8 小时 28 分</div></div>
+      <div class="stat" data-k="4"><div class="k">赔付价 · 约 26 万用户</div><div class="v hl">88.549 円/XEM</div></div>
+      <div class="stat" data-k="4"><div class="k">5.23 亿 × 88.549</div><div class="v">≈ 463 亿円</div></div>
+    </div>
+    <ol class="say">
+      <li>第一组案例，热钱包密钥泄露，看 Coincheck 2018。根因有两条。NEM 全部放在联网热钱包，而且没有用多签。</li>
+      <li>入口在员工身上。据公开报道，员工电脑被恶意邮件植入远控木马，攻击者借此拿到私钥。</li>
+      <li>后果很直接，热钱包被一次性转空。因为全部 NEM 都在热钱包里，损失就等于全部持仓。</li>
+      <li>再算发现时间。凌晨2点57分开始转出，上午11点25分才发现。中间隔了8小时28分，约8.5小时。</li>
+      <li>处置上，Coincheck 用自有资金赔付约26万用户。每个 XEM 按88.549日元计。粗算一下，5.23亿个乘以88.549，约463亿日元。</li>
+      <li>修复思路不是让热钱包不被入侵，而是被入侵也不致命。一是热钱包限额，二是分钟级告警和自动暂停。BingX 2024 的损失，就被热钱包余额封顶。</li>
+    </ol>
+  </section>
+
+  <!-- 5 案例 B：签名操纵 -->
+  <section class="scene" data-title="案例：签名流程操纵 WazirX" data-onstep="sigStep">
+    <div class="kicker">案例 B · P2 签名界面操纵 + P9 供应商 · 据公开调查</div>
+    <h2>不偷私钥，让合法签名人签下恶意交易</h2>
+    <div class="row" style="gap:40px">
+      <svg id="sig" width="1060" height="600" viewBox="0 0 1060 600"></svg>
+      <div class="side">
+        <div class="card sell sgA"><h3>WazirX · 2024-07</h3><span class="m">约 2.3 亿$</span></div>
+        <div class="card sell sgA"><h3>DMM Bitcoin · 2024-05</h3><span class="m">4,502.9 BTC</span><div class="muted" style="font-size:28px">入口：供应商员工被假招聘</div></div>
+        <div class="card sell sgA"><h3>Bybit · 2025-02</h3><span class="m">约 14.6 亿$</span></div>
+        <div class="card info sgB"><h3>WazirX · 4-of-6 多签</h3>5 名 WazirX + 1 名 Liminal<div class="muted" style="font-size:28px;margin-top:8px">据 WazirX：界面与实际数据不一致<br>Liminal：称未被入侵<br>双方说法不一</div></div>
+        <div class="card buy sgC"><h3>修复</h3>独立意图校验器<br>拒绝含合约升级的签名请求<br>供应商纳入威胁模型</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>第二组案例，签名流程操纵。WazirX、DMM 和 Bybit 的公开调查结构几乎一样。攻击者不偷私钥，而是让签名人签下恶意交易。</li>
+      <li>第一步，攻击者入侵供应商员工的电脑，或者签名前端的代码。DMM 那次，是假招聘者让供应商员工运行了恶意脚本。签名人照常发起转账。</li>
+      <li>关键在这里。界面上显示的是正常转账，推给硬件钱包的，却是被替换的交易。</li>
+      <li>硬件钱包只显示一串难以核对的哈希。签名人按惯例确认，这就是盲签。</li>
+      <li>恶意交易被广播出去。攻击者拿到钱包控制权，或者直接转走资产。</li>
+      <li>以 WazirX 为例。6个签名人凑齐4个就能签名，其中1个是托管商 Liminal。据 WazirX 说明，界面和实际签名数据不一致，Liminal 则称未被入侵。</li>
+      <li>所以签名人再多也没用，每个人看到的都是假的。修复是独立的意图校验器，拒绝含合约升级的签名请求，再把供应商纳入威胁模型。</li>
+    </ol>
+  </section>
+
+  <!-- 6 案例 C：人员 -->
+  <section class="scene" data-title="案例：被收买员工与员工社工" data-onstep="hrStep">
+    <div class="kicker">案例 C · P3 被收买员工 · P4 员工社会工程 · 2025 · 据公开报道</div>
+    <h2>不需要密码学突破：一笔贿赂，或一份假工作</h2>
+    <svg id="hr" width="1640" height="400" viewBox="0 0 1640 400"></svg>
+    <div class="facts">
+      <div class="stat" data-k="2"><div class="k">Coinbase · 受影响客户</div><div class="v">69,461 名</div></div>
+      <div class="stat" data-k="2"><div class="k">勒索 → 改设悬赏</div><div class="v" style="color:var(--warn)">2,000 万$</div></div>
+      <div class="stat" data-k="3"><div class="k">初步估计成本</div><div class="v down">1.8–4 亿$</div></div>
+      <div class="stat" data-k="4"><div class="k">CoinDCX · 运营账户</div><div class="v down">约 4,420 万$</div></div>
+    </div>
+    <ol class="say">
+      <li>第三组是人员。这类事故不需要密码学突破，成本可能只是一笔贿赂，或一份假工作。</li>
+      <li>先看 Coinbase 2025。据它向监管提交的文件，攻击者付钱给境外的客服外包人员。他们复制了客户姓名、地址和证件照片。</li>
+      <li>受影响客户69461名。Coinbase 收到2000万美元勒索，拒付赎金，改设同额悬赏。</li>
+      <li>平台没有丢一枚币，但初步估计成本是1.8亿到4亿美元。损失发生在用户侧，用户被冒充平台的人骗走资金。</li>
+      <li>再看 CoinDCX 2025。被盗的是一个只做流动性的内部运营账户，约4420万美元。据报道，入口是一名工程师的工作笔记本。</li>
+      <li>修复有三条。客服权限最小化，并监控访问量基线。运营账户也按热钱包管理。员工终端要管控，兼职要申报。</li>
+    </ol>
+  </section>
+
+  <!-- 7 案例 D/E：价格操纵与挪用 -->
+  <section class="scene" data-title="案例：价格操纵与内部挪用" data-onstep="mfStep">
+    <div class="kicker">案例 D · P7 价格操纵 · 案例 E · P8 内部挪用 · 据公开报道</div>
+    <div class="mm">
+      <div class="card" id="mgC">
+        <h3>Mango Markets · 2022-10 <span class="chip">DeFi，作为对照</span></h3>
+        <svg id="mg" width="700" height="300" viewBox="0 0 700 300"></svg>
+        <div class="line" data-k="2">示例：仓位 1,000 万$ × 14 = <span class="hl mono">1.4 亿$</span> 账面价值</div>
+        <div class="line" data-k="2">按虚高估值借空平台：损失约 <span class="down mono">1.14 亿$</span></div>
+        <div class="line" data-k="3">DAO 方案：攻击者返还约 6,700 万$<br><span class="up">CEX 防线：抵押率上限 + 价格偏离熔断</span></div>
+      </div>
+      <div class="card" id="ftC">
+        <h3>FTX · 2022 · 交易所内部挪用</h3>
+        <div class="line">管理层绕过账本规则，客户资产被挪用</div>
+        <div class="line" data-k="4">操作者本身就有权限 → <span class="down">不触发任何技术告警</span></div>
+        <div class="line" data-k="5" style="margin-top:6px">P8 在 6 层防线上的位置：</div>
+        <div class="lay" data-k="5">
+          <div class="aux"><b>L0</b>人员</div><div class="no"><b>L1</b>账户</div><div class="no"><b>L2</b>风控</div><div class="aux"><b>L3</b>密钥</div><div class="main"><b>L4</b>对账</div><div class="no"><b>L5</b>恢复</div>
+        </div>
+        <div class="line" data-k="5"><span class="up">只有对账与外部审计能发现</span> → 行业推进储备金证明与资产隔离</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>第四组案例是价格操纵，看 Mango Markets。它是 DeFi 平台，不是 CEX，这里作为对照。</li>
+      <li>2022年10月，攻击者几分钟内把 MNGO 拉高了1300%以上。也就是原来的14倍以上。</li>
+      <li>举个示例。一份仓位原值1000万美元，涨到14倍，账面就是1.4亿美元。平台按虚高估值放贷，被借空约1.14亿美元。</li>
+      <li>结局是 DAO 投票，攻击者返还约6700万美元。CEX 的借贷产品同样怕这种抵押品，防线是抵押率上限和价格熔断。</li>
+      <li>最后一组是 P8 内部挪用，代表是 FTX。它不触发任何技术告警，因为操作者本身有权限。</li>
+      <li>六层防线里，只有第4层对账是它的主防线。这解释了 FTX 之后，行业为什么集中推进储备金证明和资产隔离。</li>
+    </ol>
+  </section>
+
+  <!-- 8 按路径统计 -->
+  <section class="scene" data-title="跨案例：按路径统计" data-onstep="cntStep">
+    <div class="kicker">跨案例分析 · 本篇 16 张案例卡 · 按主攻击路径</div>
+    <h2 id="cntH">次数和金额，讲的是两个故事</h2>
+    <svg id="cnt" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>开始跨案例统计。本集16张案例卡，按主路径数一数。热钱包密钥泄露有8起，正好一半。</li>
+      <li>签名操纵有3起，其余5类各有1起。</li>
+      <li>换成金额，排名就变了。签名操纵合计约17.6亿美元，热钱包合计约13.3亿美元。</li>
+      <li>算一下单起平均。17.6亿除以3，约5.9亿美元。13.3亿除以8，约1.7亿美元。前者是后者的3倍多。</li>
+      <li>注意，样本是有可靠公开报道的大案，不是随机抽样。比例只说明趋势，不能当成发生概率。</li>
+    </ol>
+  </section>
+
+  <!-- 9 趋势与朝鲜占比 -->
+  <section class="scene" data-title="趋势：从偷钥匙到骗签名人" data-onstep="trStep">
+    <div class="kicker">趋势 · 按时期统计主路径 · 归因据链上分析公司与执法机构</div>
+    <h2>攻击重心：从偷钥匙，到骗签名人</h2>
+    <div class="row" style="gap:40px">
+      <svg id="tr" width="1000" height="600" viewBox="0 0 1000 600"></svg>
+      <div class="side" style="width:600px;flex-basis:600px;gap:16px">
+        <div class="card trL" id="trLegend"></div>
+        <div class="card info trD" data-k="4"><div class="muted" style="font-size:26px">2024 · Chainalysis · 朝鲜相关</div><span class="m">约 13.4 亿$ · 61%</span><div style="font-size:26px">占全年被盗总额约 22 亿$</div></div>
+        <div class="card info trD" data-k="4"><div class="muted" style="font-size:26px">2025 · Chainalysis · 朝鲜相关</div><span class="m">约 20.2 亿$ · 约 60%</span><div style="font-size:26px">全年约 34 亿$ · 服务类入侵中占 76%</div></div>
+        <div class="card gold trD" data-k="5"><div class="muted" style="font-size:26px">本篇 16 张案例卡</div><span class="m">7 起</span> 公开归因指向朝鲜相关组织<div style="font-size:26px;color:var(--warn)">Phemex 为分析人士推测，未经官方确认</div></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>再看趋势。2016年到2021年，7起里有6起是热钱包密钥泄露。损失上限就是热钱包余额。</li>
+      <li>2022年是过渡。有2FA缺陷、协议漏洞和 FTX 挪用，行业开始推进储备金证明。</li>
+      <li>到了2024年和2025年，7起分散在5类路径。主角变成签名流程、供应商和员工，目标是冷钱包和多签主钱包。</li>
+      <li>热钱包限额普及后，偷热钱包不再划算，攻击者转向人和流程。但 Phemex 和 Upbit 2025，仍是热钱包被盗。</li>
+      <li>谁在做这些事？据 Chainalysis 报告，2024年朝鲜相关黑客窃取约13.4亿美元。占全年被盗总额的61%。2025年约20.2亿美元，约占60%。</li>
+      <li>本集16张卡中，有7起的公开归因指向朝鲜相关组织。其中 Phemex 只是分析人士推测，未经官方确认。</li>
+    </ol>
+  </section>
+
+  <!-- 10 覆盖矩阵 -->
+  <section class="scene" data-title="防线覆盖矩阵" data-onstep="mxStep">
+    <div class="kicker">攻击路径 × 防线层 · 业界通用判断，不是标准答案</div>
+    <h2>没有一层防线能覆盖全部路径</h2>
+    <div class="row" style="gap:30px; align-items:flex-start">
+      <table class="mx" id="mx"></table>
+      <div class="side" style="width:440px;flex-basis:440px">
+        <div class="card" style="font-size:28px;padding:16px 22px"><span class="up">●</span> 主防线，能直接拦截<br><span style="color:var(--warn)">◐</span> 辅助，能限损或发现<br><span style="color:#5a606b">○</span> 基本无效</div>
+        <div class="card gold" id="mxNote"></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>纵向是10类路径，横向是6层防线。实心圆是主防线，半圆是辅助，空心圆基本无效。</li>
+      <li>先看热钱包事故。第3层密钥与签名是主防线，热钱包限额给损失封顶。第5层决定用户能不能拿回钱。</li>
+      <li>签名操纵这一行，主防线也在第3层，但靠的是意图校验，不是限额。账户安全和提币风控，基本无效。</li>
+      <li>人员类路径，主防线在第0层，人员与供应商。这是近年最常被突破的一层。</li>
+      <li>挪用这一行，只有第4层对账是主防线，其他层最多是辅助。</li>
+      <li>最后看第5层，承受与恢复。它不防攻击，却决定结局是用户无损，还是破产清算。没有哪一层能覆盖全部路径，所以要纵深防御。</li>
+    </ol>
+  </section>
+
+  <!-- 11 检查单 -->
+  <section class="scene" data-title="把案例变成检查单" data-onstep="ckl">
+    <div class="kicker">规则与阈值 · 数字均为示例</div>
+    <h2>别人的事故，自己的检查单</h2>
+    <div class="row" style="gap:32px; align-items:flex-start">
+      <table class="t" id="cklT" style="flex:1">
+        <tr><th>规则（示例）</th><th>来自案例</th></tr>
+        <tr><td>热钱包余额 ≤ 24 小时提币量 × 1.5</td><td>Coincheck · Upbit 2019</td></tr>
+        <tr><td>任意 3 条链热钱包 10 分钟同降 &gt; 30% → 全部暂停</td><td>Phemex · BingX</td></tr>
+        <tr><td>认证流程变更后回归测试：无 2FA 能否提币</td><td>Crypto.com</td></tr>
+        <tr><td>单个客服每小时看完整证件 &gt; 20 份 → 告警</td><td>Coinbase 2025</td></tr>
+        <tr><td>热钱包异常转出到人工确认 ≤ 5 分钟</td><td>Coincheck · Zaif</td></tr>
+      </table>
+      <div class="card gold calc" id="cklC" style="width:520px;flex:0 0 520px;min-height:420px"></div>
+    </div>
+    <ol class="say">
+      <li>读档案，是为了把别人的事故变成自己的检查单。下面5条规则，数字都是示例。</li>
+      <li>第一条，热钱包余额不超过24小时提币量的1.5倍。举个示例，一天提币2000万美元，上限就是3000万。被盗时，最多损失3000万。</li>
+      <li>第二条，跨链联动熔断。任意3条链的热钱包，10分钟内同时下降超过30%，就暂停全部提币。</li>
+      <li>第三条，每次改认证流程，都回归测试一遍，没有2FA能不能提币。Crypto.com 事后还加了新地址24小时冷却。</li>
+      <li>第四条，单个客服每小时查看完整证件超过20份，就告警。第五条，异常转出到人工确认，不超过5分钟。对比 Coincheck 的8.5小时，相差约100倍。</li>
+    </ol>
+  </section>
+
+  <!-- 12 用户结局 -->
+  <section class="scene" data-title="用户结局" data-onstep="ocStep">
+    <div class="kicker">用户结局 · 16 张案例卡 · 据公开报道</div>
+    <h2>用户拿回钱了吗</h2>
+    <svg id="oc" width="1640" height="300" viewBox="0 0 1640 300"></svg>
+    <div class="card" id="ocC" style="font-size:32px;line-height:1.6;min-height:200px"></div>
+    <ol class="say">
+      <li>最后一个问题，用户拿回钱了吗？16起里，有10起由平台或股东全额兜底。</li>
+      <li>2起是延迟或间接全额。Bitfinex 把损失按约36%分摊给全部用户。示例，10个 BTC 先剩6.4个，差额记成 BFX 代币。后来全部赎回或转股。</li>
+      <li>1起按比例重组，就是 WazirX。2025年10月新加坡法院批准方案，约85.5%先行分配。示例，1万美元资产，先拿回约8550美元。</li>
+      <li>Phemex 承诺赔付，结果未核实。CoinDCX 和 Coinbase，没有用户资产损失。</li>
+      <li>要点是，结局取决于有没有储备或股东支持，而不取决于攻击路径。这正是保险基金存在的理由。</li>
+    </ol>
+  </section>
+
+  <!-- 13 小结 -->
+  <section class="scene" data-title="小结">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <div class="sum">
+      <div class="card gold" data-step="0"><div class="n">1</div><b>按最终突破点分类</b><div class="d">10 类路径，各有主责防线；路径会串联，主路径加次路径</div></div>
+      <div class="card info" data-step="1"><div class="n">2</div><b>攻击重心在转移</b><div class="d">从偷热钱包私钥，转向签名流程、供应商和员工；单起损失可达十亿美元级</div></div>
+      <div class="card buy" data-step="2"><div class="n">3</div><b>没有万能的一层</b><div class="d">热钱包限额封顶损失，意图校验防盲签，对账防挪用，储备决定用户结局</div></div>
+    </div>
+    <div class="card maprow" data-step="0" style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:22px 28px">
+      <span class="muted">路径 → 主防线：</span><span class="chip gold">P1 → L3 限额</span><span class="chip sell">P2 → L3 意图校验</span><span class="chip info">P3 P4 → L0 人员</span><span class="chip">P5 → L1 L2</span><span class="chip">P7 → L2 抵押上限</span><span class="chip buy">P8 → L4 对账</span><span class="chip buy">结局 → L5 储备</span>
+    </div>
+    <ol class="say">
+      <li>小结三点。第一，按最终突破点给事故分类。10类路径各有主责防线。</li>
+      <li>第二，攻击重心在转移。从偷热钱包私钥，转向骗签名人、供应商和员工。</li>
+      <li>第三，没有哪一层防线能覆盖全部路径。限额封顶损失，意图校验防盲签，对账防挪用，储备决定用户结局。</li>
+    </ol>
+  </section>
+
+  <!-- 14 系列结语 -->
+  <section class="scene" data-title="系列结语" data-onstep="endStep">
+    <div class="kicker">系列结语 · 主线 17 + 产品深潜 11 + 幕后核心 12</div>
+    <div class="finale-top"><span class="big mono">40</span><h2 style="font-size:58px">集，三条学习路线</h2><div class="thanks" data-p="5" id="thx">感谢收看</div></div>
+    <div class="path">
+      <div class="card gold" data-p="1"><div class="n">17<small>EP01–EP17 主线</small></div><b>交易所怎样运转</b><div class="d">托管、记账、撮合 → 充提与钱包 → 账本、订单簿、清算 → 行情、风控、合约 → 商业模式与事故</div></div>
+      <div class="card info" data-p="2"><div class="n">11<small>P01–P11 产品深潜</small></div><b>每个产品背后的风险</b><div class="d">杠杆借贷、闪兑 OTC、P2P、合约进阶、理财、双币、上币、跟单、支付、Web3 钱包、增长与机构</div></div>
+      <div class="card buy" data-p="3"><div class="n">12<small>B01–B12 幕后核心</small></div><b>防线怎样建成</b><div class="d">合规、平台与账户安全、对账、风控、金库、应急 → 风控平台、监管牌照、税务隐私、安全工程、事故案例库</div></div>
+    </div>
+    <div class="labs" data-p="4">
+      <span class="chip gold">交互实验</span><span class="chip buy">事故案例浏览器</span><span class="chip buy">风控流水线实验</span><span class="chip buy">牌照监管矩阵</span><span class="chip">撮合引擎实验</span><span class="chip">永续合约实验室</span><span class="chip">储备金证明</span><span class="chip">对账实验室</span><span class="chip">盗号攻防实验</span><span class="chip">AML 资金流图谱</span><span class="chip">市场监控实验</span>
+    </div>
+    <ol class="say">
+      <li>整个系列到这里就讲完了。一共40集，分成三条路线。</li>
+      <li>主线17集，从托管、记账、撮合讲起，一直讲到交易所怎样倒下。</li>
+      <li>产品深潜11集，拆开杠杆、理财、跟单、支付和 Web3 钱包，看每个产品的风险。</li>
+      <li>幕后核心12集，讲合规、安全、对账、金库和应急，再讲风控平台和监管。最后就是这集案例库。</li>
+      <li>想动手的话，打开配套的交互实验。比如事故案例浏览器、风控流水线实验和牌照监管矩阵。</li>
+      <li>交易所的技术，归根到底守住一件事。用户的钱，记得对，取得出。感谢收看，再见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+  function svgEl(tag, attrs, text) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text !== undefined) e.textContent = text; return e; }
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', text: '#eceae4', t2: '#9ea3ad', line: '#2c3038', panel: '#16181c', dim: '#5a606b', vio: '#b07cff' };
+  const T = (svg, x, y, s, fill, size, anchor, weight, op) => svg.appendChild(svgEl('text', { x, y, fill: fill || C.text, 'text-anchor': anchor || 'middle', 'dominant-baseline': 'middle', opacity: op ?? 1, style: `font-size:${size || 28}px;${weight ? 'font-weight:700' : ''}` }, s));
+  function box(svg, x, y, w, h, t, o = {}) {
+    svg.appendChild(svgEl('rect', { x, y, width: w, height: h, rx: 12, fill: o.fill || C.panel, stroke: o.stroke || C.line, 'stroke-width': o.sw || 3, opacity: o.op ?? 1 }));
+    const lines = Array.isArray(t) ? t : [t];
+    lines.forEach((s, i) => T(svg, x + w / 2, y + h / 2 + (i - (lines.length - 1) / 2) * 36, s, i ? (o.tc2 || C.t2) : (o.tc || C.text), i ? 26 : (o.fs || 30), 'middle', !i && o.bold, o.op ?? 1));
+  }
+  function arrow(svg, x1, y1, x2, y2, color, dash, w, op) {
+    const id = 'ah' + svg.id + color.slice(1);
+    if (!svg.querySelector('#' + id)) {
+      let defs = svg.querySelector('defs'); if (!defs) { defs = svgEl('defs', {}); svg.appendChild(defs); }
+      const m = svgEl('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' });
+      m.appendChild(svgEl('path', { d: 'M0,0 L10,5 L0,10 z', fill: color })); defs.appendChild(m);
+    }
+    svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: color, 'stroke-width': w || 4, 'marker-end': `url(#${id})`, 'stroke-dasharray': dash ? '10 8' : '', opacity: op ?? 1 }));
+  }
+  function curve(svg, d, color, dash, w, op) {
+    const id = 'ah' + svg.id + color.slice(1);
+    arrow(svg, -10, -10, -9, -9, color, false, 1, 0);
+    svg.appendChild(svgEl('path', { d, fill: 'none', stroke: color, 'stroke-width': w || 3, 'marker-end': `url(#${id})`, 'stroke-dasharray': dash ? '10 8' : '', opacity: op ?? 1 }));
+  }
+  const kStep = (el, st) => el.querySelectorAll('[data-k]').forEach(n => { const k = +n.dataset.k; n.classList.toggle('pend', st < k); n.classList.toggle('cur', st === k); });
+
+  // 2: taxonomy tree
+  const PATHS = [
+    ['P1', '热钱包密钥泄露', 'B02 密钥与签名', 0], ['P2', '多签与签名界面操纵', 'B02 所见即所签', 0],
+    ['P3', '内部人员与被收买员工', 'B11 内部威胁 · B02 内控', 1], ['P4', '员工社会工程', 'B11 终端与身份', 1], ['P8', '交易所内部欺诈与挪用', 'B04 对账与 PoR', 1],
+    ['P5', 'API 密钥与账户批量接管', 'B03 账户安全', 2],
+    ['P6', '智能合约与跨链桥漏洞', 'B11 安全开发', 3], ['P7', '预言机与价格操纵', 'B08 风控 · B06', 3],
+    ['P9', '第三方与供应商被入侵', 'B11 供应链 · B02', 4], ['P10', 'DNS · BGP · 前端劫持', 'B11 边界 · B03', 4],
+  ];
+  const GROUPS = ['平台密钥与签名', '人员与组织', '用户账户', '协议与市场', '外部依赖'];
+  const GCOL = [C.gold, C.sell, C.info, C.vio, C.warn];
+  function taxStep(el, st) {
+    const svg = el.querySelector('#tax'); svg.innerHTML = '';
+    const ry = i => 62 + i * 56;
+    const gy = g => { const rows = PATHS.map((p, i) => [p, i]).filter(([p]) => p[3] === g).map(([, i]) => ry(i)); return (Math.min(...rows) + Math.max(...rows)) / 2; };
+    const shownG = [-1, 0, 1, 3, 4, 4][st];
+    const curG = st === 3 ? [2, 3] : st >= 1 && st <= 4 ? [shownG] : [];
+    T(svg, 860, 18, '攻击路径', C.t2, 24); T(svg, 1250, 18, '主责防线', C.t2, 24, 'start');
+    box(svg, 0, 262, 190, 100, ['交易所', '资产损失'], { stroke: C.sell, fill: '#2a1418', bold: true });
+    for (let g = 0; g < 5; g++) {
+      const y = gy(g), on = st === 0 || g <= shownG || st === 5, cur = curG.includes(g);
+      svg.appendChild(svgEl('path', { d: `M190,312 C240,312 240,${y} 290,${y}`, fill: 'none', stroke: GCOL[g], 'stroke-width': 3, opacity: on ? 1 : .3 }));
+      box(svg, 290, y - 32, 270, 64, GROUPS[g], { stroke: GCOL[g], fill: cur ? '#221e10' : C.panel, sw: cur ? 5 : 3, bold: cur, op: on ? 1 : .3 });
+    }
+    PATHS.forEach(([id, name, def, g], i) => {
+      const y = ry(i), on = g <= shownG || st === 5, cur = curG.includes(g);
+      const op = on ? 1 : .14;
+      svg.appendChild(svgEl('path', { d: `M560,${gy(g)} C600,${gy(g)} 600,${y} 640,${y}`, fill: 'none', stroke: GCOL[g], 'stroke-width': 2, opacity: op }));
+      svg.appendChild(svgEl('rect', { x: 640, y: y - 23, width: 440, height: 46, rx: 10, fill: cur ? '#221e10' : C.panel, stroke: cur ? C.gold : GCOL[g], 'stroke-width': cur ? 4 : 2, opacity: op }));
+      T(svg, 660, y, id, GCOL[g], 28, 'start', true, op);
+      T(svg, 730, y, name, C.text, 28, 'start', cur, op);
+      T(svg, 1250, y, def, cur ? C.gold : C.t2, 26, 'start', false, op);
+    });
+    if (st === 4) {
+      svg.appendChild(svgEl('rect', { x: 0, y: 420, width: 192, height: 140, rx: 12, fill: '#2a2412', stroke: C.warn, 'stroke-width': 3 }));
+      T(svg, 96, 450, 'MyEtherWallet', C.warn, 22, 'middle', true); T(svg, 96, 488, '2018 · 路由劫持', C.text, 24); T(svg, 96, 526, '约 15 万$ ETH', C.text, 24);
+    }
+    if (st === 5) {
+      curve(svg, `M1080,${ry(3)} C1170,${ry(3)} 1170,${ry(0)} 1086,${ry(0)}`, C.gold, true, 3);
+      curve(svg, `M1080,${ry(8)} C1230,${ry(8)} 1230,${ry(1)} 1086,${ry(1)}`, C.gold, true, 3);
+      svg.appendChild(svgEl('rect', { x: 1125, y: 118, width: 120, height: 40, rx: 8, fill: '#0d0e10' }));
+      T(svg, 1185, 138, '常作入口', C.gold, 24, 'middle', true);
+    }
+  }
+
+  // 3: log-scale timeline
+  const CASES = [
+    // [year, name, lossMUSD, label, side, dx, path]
+    [2016, 'Bitfinex', 72, 'Bitfinex 约 11.98 万 BTC', 'above', 0, 'P2'],
+    [2018, 'Coincheck', 530, 'Coincheck 5.23 亿 XEM', 'right', 0, 'P1'],
+    [2018, 'Zaif', 60, 'Zaif 约 67 亿日元', 'below', 0, 'P1'],
+    [2019, 'Upbit', 50, 'Upbit 34.2 万 ETH', 'right', 0, 'P1'],
+    [2020, 'KuCoin', 281, 'KuCoin 约 2.81 亿$', 'left', 0, 'P1'],
+    [2021, 'BitMart', 196, 'BitMart 约 1.96 亿$', 'right', 0, 'P1'],
+    [2021, 'Liquid', 97, 'Liquid 约 9,700 万$', 'below', 0, 'P1'],
+    [2022, 'Mango', 114, 'Mango 约 1.14 亿$', 'right', 0, 'P7'],
+    [2022, 'Crypto.com', 34, 'Crypto.com 约 3,400 万$', 'left', 0, 'P5'],
+    [2024, 'DMM', 308, 'DMM 4,502.9 BTC', 'left', 0, 'P9'],
+    [2024, 'WazirX', 230, 'WazirX 约 2.3 亿$', 'right', 0, 'P2'],
+    [2024, 'BingX', 44, 'BingX 约 4,400 万$', 'left', 0, 'P1'],
+    [2025, 'Bybit', 1460, 'Bybit 约 14.6 亿$', 'right', 0, 'P2'],
+    [2025, 'Coinbase', 180, 'Coinbase 成本估计', 'right', -20, 'data'],
+    [2025, 'Phemex', 70, 'Phemex 约 7,000 万$', 'right', 0, 'P1'],
+    [2025, 'CoinDCX', 44.2, 'CoinDCX 约 4,420 万$', 'right', 12, 'P4'],
+    [2025, 'Upbit25', 30.4, 'Upbit 约 445 亿韩元', 'right', -20, 'P1'],
+  ];
+  const YX = { 2016: 300, 2017: 390, 2018: 470, 2019: 630, 2020: 760, 2021: 890, 2022: 1030, 2023: 1120, 2024: 1210, 2025: 1320 };
+  const PCOL = { P1: C.gold, P2: C.sell, P3: C.info, P4: C.info, P5: C.buy, P7: C.vio, P9: C.warn, data: C.info };
+  function tlStep(el, st) {
+    const svg = el.querySelector('#tl'); svg.innerHTML = '';
+    const ly = v => 540 - (Math.log10(v) - Math.log10(20)) * 235;
+    [[30, '0.3 亿$'], [100, '1 亿$'], [300, '3 亿$'], [1000, '10 亿$']].forEach(([v, s]) => {
+      svg.appendChild(svgEl('line', { x1: 150, y1: ly(v), x2: 1640, y2: ly(v), stroke: C.line, 'stroke-width': 2, 'stroke-dasharray': '6 8' }));
+      T(svg, 140, ly(v), s, C.t2, 24, 'end');
+    });
+    svg.appendChild(svgEl('line', { x1: 150, y1: 562, x2: 1640, y2: 562, stroke: C.dim, 'stroke-width': 3 }));
+    const yearsShown = [[2016], [2016, 2018], [2016, 2018, 2019, 2020, 2021], [2016, 2018, 2019, 2020, 2021, 2022], [2016, 2018, 2019, 2020, 2021, 2022, 2024], null, null][st];
+    const curYears = [[2016], [2018], [2019, 2020, 2021], [2022], [2024], [2025], []][st];
+    Object.entries(YX).forEach(([y, x]) => T(svg, x, 586, y, curYears.includes(+y) ? C.gold : (y === '2017' || y === '2023' ? C.dim : C.t2), 24, 'middle', curYears.includes(+y)));
+    if (st >= 3) {
+      svg.appendChild(svgEl('rect', { x: 880, y: 52, width: 330, height: 44, rx: 8, fill: 'rgba(255,255,255,.03)', stroke: C.dim, 'stroke-width': 2, 'stroke-dasharray': '6 6' }));
+      T(svg, 1045, 74, '币安 2019 · FTX：见 EP17', C.t2, 24);
+    }
+    CASES.forEach(([yr, nm, v, lab, side, dx, p]) => {
+      if (!(yearsShown === null || yearsShown.includes(yr))) return;
+      const up = nm.startsWith('Upbit');
+      const cur = curYears.includes(yr) || (st === 6 && (nm === 'Bybit' || up));
+      const fade = st === 6 && !cur ? .35 : 1;
+      const x = YX[yr] + dx, y = ly(v), col = PCOL[p];
+      const r = nm === 'Bybit' ? 16 : 11;
+      if (p === 'data') svg.appendChild(svgEl('rect', { x: x - 10, y: y - 10, width: 20, height: 20, transform: `rotate(45 ${x} ${y})`, fill: 'none', stroke: col, 'stroke-width': 3, opacity: fade }));
+      else svg.appendChild(svgEl('circle', { cx: x, cy: y, r, fill: col, opacity: fade }));
+      if (st === 6 && up) svg.appendChild(svgEl('circle', { cx: x, cy: y, r: 20, fill: 'none', stroke: C.gold, 'stroke-width': 3 }));
+      const fs = cur ? 26 : 24, tc = cur ? C.text : C.t2;
+      if (side === 'right') T(svg, x + r + 10, y, lab, tc, fs, 'start', cur && nm === 'Bybit', fade);
+      else if (side === 'left') T(svg, x - r - 10, y, lab, tc, fs, 'end', false, fade);
+      else if (side === 'above') T(svg, x, y - r - 18, lab, tc, fs, 'middle', false, fade);
+      else T(svg, x, y + r + 18, lab, tc, fs, 'middle', false, fade);
+    });
+    const L = [['P1 热钱包', C.gold], ['P2 签名', C.sell], ['P9 供应商', C.warn], ['P3 P4 人员', C.info], ['P5 账户', C.buy], ['P7 价格', C.vio]];
+    L.forEach(([s, c], i) => { const x = 170 + i * 190; svg.appendChild(svgEl('circle', { cx: x, cy: 18, r: 9, fill: c })); T(svg, x + 18, 18, s, C.t2, 24, 'start'); });
+    if (st === 6) {
+      svg.appendChild(svgEl('rect', { x: 1400, y: 140, width: 236, height: 82, rx: 12, fill: '#2a1418', stroke: C.sell, 'stroke-width': 3 }));
+      T(svg, 1518, 166, '一起 > 其他之和', C.sell, 26, 'middle', true); T(svg, 1518, 200, '据公开报道', C.t2, 22);
+      curve(svg, `M${YX[2019] + 14},${ly(50) + 18} Q ${(YX[2019] + YX[2025]) / 2},640 ${YX[2025] - 40},${ly(30.4) + 10}`, C.gold, true, 3);
+      T(svg, 975, 526, 'Upbit 两次热钱包被盗', C.gold, 26, 'middle', true);
+    }
+  }
+
+  // 4: Coincheck chain
+  function ckStep(el, st) { kStep(el, st); }
+
+  // 5: signing manipulation sequence
+  function sigStep(el, st) {
+    const svg = el.querySelector('#sig'); svg.innerHTML = '';
+    const P = [['攻击者'], ['签名前端', '供应商'], ['签名人', '交易所'], ['硬件钱包'], ['区块链']];
+    const X = i => 100 + i * 215;
+    P.forEach((p, i) => {
+      box(svg, X(i) - 98, 0, 196, 84, p, { stroke: i === 0 ? C.sell : i === 1 ? C.warn : C.info, fs: 28 });
+      svg.appendChild(svgEl('line', { x1: X(i), y1: 80, x2: X(i), y2: 590, stroke: C.line, 'stroke-width': 3, 'stroke-dasharray': '8 8' }));
+    });
+    const M = [
+      [1, 0, 1, '入侵电脑或前端', C.sell],
+      [1, 2, 1, '发起正常转账', C.t2],
+      [2, 1, 2, '界面：正常转账', C.buy],
+      [2, 1, 3, '实际：被替换的交易', C.sell],
+      [3, 3, 2, '只显示哈希', C.warn],
+      [3, 2, 3, '按惯例确认 · 盲签', C.warn],
+      [4, 3, 4, '广播恶意交易', C.sell],
+      [4, 4, 0, '控制权或资产转移', C.sell],
+    ];
+    const show = Math.min(st, 4);
+    M.forEach(([k, a, b, t, c], i) => {
+      if (k > show) return;
+      const y = 128 + i * 58, cur = k === st;
+      arrow(svg, X(a) + (b > a ? 6 : -6), y, X(b) + (b > a ? -8 : 8), y, c, i === 7, cur ? 5 : 3);
+      T(svg, (X(a) + X(b)) / 2, y - 20, t, c, 26, 'middle', cur);
+    });
+    if (st === 2 || st >= 5) {
+      svg.appendChild(svgEl('rect', { x: X(1) - 10, y: 196, width: 480, height: 122, rx: 10, fill: 'none', stroke: C.gold, 'stroke-width': 3, 'stroke-dasharray': '8 6' }));
+      if (st === 2) T(svg, X(2), 346, '界面和实际交易分离', C.gold, 28, 'middle', true);
+    }
+    if (st === 3) T(svg, X(3), 480, '共同弱点：盲签', C.gold, 30, 'middle', true);
+    el.querySelectorAll('.sgA').forEach(n => { n.style.display = st <= 4 ? '' : 'none'; n.classList.toggle('cur', st === 0); });
+    el.querySelectorAll('.sgB').forEach(n => { n.style.display = st >= 5 ? '' : 'none'; n.classList.toggle('cur', st === 5); });
+    el.querySelectorAll('.sgC').forEach(n => { n.style.display = st >= 5 ? '' : 'none'; n.style.opacity = st >= 6 ? 1 : .12; n.classList.toggle('cur', st === 6); });
+  }
+
+  // 6: people chain
+  function hrStep(el, st) {
+    kStep(el.querySelector('.facts'), st);
+    const svg = el.querySelector('#hr'); svg.innerHTML = '';
+    const N = {
+      r1: [0, 150, 280, 100, ['员工权限', '大于岗位所需'], C.sell, 0],
+      r2: [340, 150, 260, 100, ['贿赂或', '社会工程'], C.sell, 0],
+      r3: [660, 150, 300, 100, ['员工凭证或数据', '被外部控制'], C.sell, 1],
+      i1: [1030, 20, 330, 110, ['A 客户数据外泄', '→ 诈骗用户 · Coinbase'], C.warn, 1],
+      i2: [1030, 270, 330, 110, ['B 运营账户被转出', 'CoinDCX'], C.warn, 4],
+      f1: [1420, 20, 220, 110, ['最小权限', '访问量基线'], C.buy, 5],
+      f3: [1420, 145, 220, 110, ['终端管控', '兼职申报'], C.buy, 5],
+      f2: [1420, 270, 220, 110, ['运营账户', '按热钱包管'], C.buy, 5],
+    };
+    const curK = { 0: ['r1', 'r2'], 1: ['r3', 'i1'], 2: ['i1'], 3: ['i1'], 4: ['i2'], 5: ['f1', 'f2', 'f3'] }[st] || [];
+    const on = k => st >= N[k][6];
+    const E = [['r1', 'r2'], ['r2', 'r3'], ['r3', 'i1'], ['r3', 'i2'], ['i1', 'f1'], ['i2', 'f2'], ['f1', 'f3'], ['f2', 'f3']];
+    E.forEach(([a, b]) => {
+      const A = N[a], B = N[b], vis = on(a) && on(b);
+      if (a.startsWith('f')) { const x = A[0] + A[2] / 2; arrow(svg, x, a === 'f1' ? A[1] + A[3] : A[1], x, a === 'f1' ? B[1] - 4 : B[1] + B[3] + 4, C.buy, false, 3, vis ? 1 : .1); return; }
+      arrow(svg, A[0] + A[2], A[1] + A[3] / 2, B[0] - 6, B[1] + B[3] / 2, vis ? C.t2 : C.line, false, 3, vis ? 1 : .15);
+    });
+    Object.entries(N).forEach(([k, [x, y, w, h, t, c]]) => {
+      const cur = curK.includes(k);
+      box(svg, x, y, w, h, t, { stroke: cur ? C.gold : c, fill: cur ? '#221e10' : C.panel, sw: cur ? 5 : 3, op: on(k) ? 1 : .12, bold: cur });
+    });
+    if (st === 3) T(svg, 1195, 175, '平台账本无差异', C.gold, 26, 'middle', true);
+  }
+
+  // 7: Mango + FTX
+  function mfStep(el, st) {
+    kStep(el, st);
+    el.querySelector('#mgC').style.opacity = st >= 4 ? .45 : 1;
+    el.querySelector('#ftC').style.opacity = st >= 4 ? 1 : .2;
+    el.querySelector('#mgC').style.borderColor = st <= 3 ? 'var(--vio, #b07cff)' : '';
+    el.querySelector('#ftC').style.borderColor = st >= 4 ? 'var(--sell)' : '';
+    const svg = el.querySelector('#mg'); svg.innerHTML = '';
+    const base = 270, unit = 17;
+    const mult = st >= 1 ? 14 : 1;
+    svg.appendChild(svgEl('line', { x1: 0, y1: base, x2: 700, y2: base, stroke: C.dim, 'stroke-width': 2 }));
+    svg.appendChild(svgEl('rect', { x: 60, y: base - unit, width: 150, height: unit, fill: C.t2 }));
+    T(svg, 135, base - unit - 22, '原价 1×', C.t2, 26);
+    svg.appendChild(svgEl('rect', { x: 290, y: base - unit * mult, width: 150, height: unit * mult, fill: st >= 1 ? C.sell : C.t2, opacity: st >= 1 ? .85 : .4 }));
+    T(svg, 365, base - unit * mult - 22, st >= 1 ? '数分钟后 14×' : '?', st >= 1 ? C.sell : C.t2, 26, 'middle', true);
+    T(svg, 135, 290, 'MNGO', C.t2, 22); T(svg, 365, 290, 'MNGO', C.t2, 22);
+    if (st >= 1) { T(svg, 470, 120, '+1,300% 以上', C.sell, 34, 'start', true); T(svg, 470, 170, '1 + 13 = 14 倍', C.text, 28, 'start'); }
+    else { T(svg, 470, 150, '低流动性代币', C.t2, 28, 'start'); T(svg, 470, 196, '被当作抵押品', C.t2, 28, 'start'); }
+  }
+
+  // 8: counts and losses by path
+  const CNT = [
+    ['P1 热钱包密钥', 8, 13.3, C.gold, '13.3 亿$'], ['P2 签名与多签', 3, 17.6, C.sell, '17.6 亿$'], ['P9 供应商', 1, 3.1, C.warn, '3.1 亿$'],
+    ['P4 员工社工', 1, 0.44, C.info, '0.44 亿$'], ['P3 被收买员工', 1, null, C.info, '数据泄露 · 成本估计 1.8–4 亿$'], ['P5 账户接管', 1, 0.34, C.buy, '0.34 亿$'], ['P7 价格操纵', 1, 1.14, C.vio, '1.14 亿$'],
+  ];
+  function cntStep(el, st) {
+    const svg = el.querySelector('#cnt'); svg.innerHTML = '';
+    el.querySelector('#cntH').textContent = st <= 1 ? '按次数：热钱包占一半' : st <= 3 ? '按金额：签名操纵居首' : '次数和金额，讲的是两个故事';
+    T(svg, 290, 22, '案例数', C.t2, 26, 'start'); if (st >= 2) T(svg, 900, 22, '公开报道损失合计（约）', C.t2, 26, 'start');
+    CNT.forEach(([n, c, loss, col, lt], i) => {
+      const y = 80 + i * 72, op = st === 0 && i > 0 ? .25 : 1;
+      T(svg, 270, y, n, i === 0 && st <= 1 ? C.gold : C.text, 28, 'end', false, op);
+      svg.appendChild(svgEl('rect', { x: 290, y: y - 20, width: c * 62, height: 40, rx: 6, fill: col, opacity: op * (st >= 2 ? .45 : .9) }));
+      T(svg, 300 + c * 62, y, String(c), C.text, 28, 'start', true, op);
+      if (st >= 2) {
+        if (loss === null) T(svg, 900, y, lt, C.t2, 26, 'start');
+        else {
+          const w = loss * 34;
+          const hot = (st === 2 || st === 3) && i <= 1;
+          svg.appendChild(svgEl('rect', { x: 900, y: y - 20, width: w, height: 40, rx: 6, fill: col, opacity: hot ? 1 : .7, stroke: hot ? C.text : 'none', 'stroke-width': 2 }));
+          T(svg, 912 + w, y, lt, hot ? C.gold : C.text, 26, 'start', hot);
+        }
+      }
+    });
+    svg.appendChild(svgEl('line', { x1: 860, y1: 50, x2: 860, y2: 560, stroke: C.line, 'stroke-width': 2, opacity: st >= 2 ? 1 : 0 }));
+    if (st === 0) T(svg, 1100, 300, '8 / 16 = 一半', C.gold, 40, 'middle', true);
+    if (st === 3) {
+      svg.appendChild(svgEl('rect', { x: 380, y: 300, width: 460, height: 250, rx: 14, fill: '#221e10', stroke: C.gold, 'stroke-width': 3 }));
+      T(svg, 610, 340, '单起平均（粗算）', C.gold, 28, 'middle', true);
+      T(svg, 610, 395, 'P2：17.6 ÷ 3 ≈ 5.9 亿$', C.text, 30); T(svg, 610, 445, 'P1：13.3 ÷ 8 ≈ 1.7 亿$', C.text, 30);
+      T(svg, 610, 505, '→ 3 倍多', C.gold, 32, 'middle', true);
+    }
+    if (st === 4) {
+      svg.appendChild(svgEl('rect', { x: 380, y: 330, width: 460, height: 190, rx: 14, fill: '#2a2412', stroke: C.warn, 'stroke-width': 3 }));
+      T(svg, 610, 375, '样本 = 公开报道的大案', C.warn, 28, 'middle', true); T(svg, 610, 425, '比例只说明趋势', C.text, 28); T(svg, 610, 470, '不是发生概率', C.text, 28);
+    }
+  }
+
+  // 9: trend by period (stacked counts)
+  const PER = [
+    ['2016–2021', [['P1', 6], ['P2', 1]], '损失上限 = 热钱包余额'],
+    ['2022', [['P5', 1], ['P7', 1]], 'FTX、跨链桥见 EP17'],
+    ['2024–2025', [['P1', 2], ['P2', 2], ['P9', 1], ['P3', 1], ['P4', 1]], '目标：冷钱包与多签主钱包'],
+  ];
+  const TCOL = { P1: C.gold, P2: C.sell, P9: C.warn, P3: '#7fb2ff', P4: C.info, P5: C.buy, P7: C.vio };
+  const TNAME = { P1: 'P1 热钱包密钥', P2: 'P2 签名与多签', P9: 'P9 供应商', P3: 'P3 被收买员工', P4: 'P4 员工社工', P5: 'P5 账户接管', P7: 'P7 价格操纵' };
+  function trStep(el, st) {
+    const svg = el.querySelector('#tr'); svg.innerHTML = '';
+    const base = 500, u = 62, show = Math.min(st, 2);
+    svg.appendChild(svgEl('line', { x1: 20, y1: base, x2: 980, y2: base, stroke: C.dim, 'stroke-width': 3 }));
+    PER.forEach(([lab, parts, note], i) => {
+      const x = 70 + i * 310, on = i <= show || st >= 3, cur = i === st;
+      let y = base;
+      parts.forEach(([p, n]) => {
+        const h = n * u;
+        svg.appendChild(svgEl('rect', { x, y: y - h, width: 200, height: h - 3, rx: 6, fill: TCOL[p], opacity: on ? .9 : .08 }));
+        if (on) T(svg, x + 100, y - h / 2, p + ' × ' + n, '#0d0e10', 26, 'middle', true);
+        y -= h;
+      });
+      const tot = parts.reduce((a, [, n]) => a + n, 0);
+      T(svg, x + 100, base + 34, lab, cur ? C.gold : C.text, 28, 'middle', cur, on ? 1 : .25);
+      if (on) T(svg, x + 100, y - 24, tot + ' 起', C.t2, 26);
+      if (on) T(svg, x + 100, base + 76, note, cur ? C.gold : C.t2, 24, 'middle', false);
+    });
+    if (st === 3) {
+      svg.appendChild(svgEl('rect', { x: 330, y: 120, width: 340, height: 110, rx: 12, fill: '#221e10', stroke: C.gold, 'stroke-width': 3 }));
+      T(svg, 500, 158, '热钱包限额普及后', C.gold, 28, 'middle', true); T(svg, 500, 198, '→ 转向人和流程', C.text, 28);
+      arrow(svg, 282, 290, 688, 290, C.gold, true, 4);
+    }
+    const lg = el.querySelector('#trLegend');
+    lg.style.display = st <= 3 ? '' : 'none';
+    lg.innerHTML = '<h3>主路径图例</h3>' + Object.keys(TNAME).map(p => `<div style="display:flex;align-items:center;gap:14px;font-size:28px;line-height:1.55"><span style="display:inline-block;width:22px;height:22px;border-radius:5px;background:${TCOL[p]}"></span>${TNAME[p]}</div>`).join('');
+    el.querySelectorAll('.trD').forEach(n => { n.style.display = st >= 4 ? '' : 'none'; });
+    kStep(el.querySelector('.side'), st);
+  }
+
+  // 10: coverage matrix
+  const MX = [
+    ['P1', '热钱包密钥泄露', '101212'], ['P2', '签名界面操纵', '100202'], ['P3', '内部人员被收买', '211111'], ['P4', '员工社会工程', '201101'], ['P5', '账户批量接管', '022102'],
+    ['P6', '合约跨链桥漏洞', '001011'], ['P7', '价格操纵', '002011'], ['P8', '内部欺诈挪用', '100120'], ['P9', '第三方被入侵', '200202'], ['P10', 'DNS BGP 劫持', '121001'],
+  ];
+  const LAY = [['L0', '人员供应商'], ['L1', '账户'], ['L2', '提币风控'], ['L3', '密钥签名'], ['L4', '对账'], ['L5', '承受恢复']];
+  const SYM = ['○', '◐', '●'];
+  function mxStep(el, st) {
+    const t = el.querySelector('#mx');
+    const focusRows = [[], ['P1'], ['P2'], ['P3', 'P4'], ['P8'], []][st];
+    const focusCols = [[], [3, 5], [1, 2, 3], [0], [4], [5]][st];
+    let h = '<tr><th></th>' + LAY.map(([a, b], j) => `<th class="${focusCols.includes(j) ? 'lit' : ''}"><b>${a}</b>${b}</th>`).join('') + '</tr>';
+    MX.forEach(([id, nm, s]) => {
+      const fr = focusRows.includes(id);
+      const off = st > 0 && st < 5 && !fr;
+      h += `<tr class="${off ? 'off' : ''}"><td class="lbl"><b>${id}</b>${nm}</td>`;
+      [...s].forEach((v, j) => {
+        let lit = '';
+        if ((fr && focusCols.includes(j)) || (st === 5 && j === 5)) lit = v === '2' ? 'lit' : v === '1' ? 'lit1' : 'lit0';
+        if (st === 3 && fr && j === 0) lit = 'lit';
+        h += `<td class="s${v} ${lit}">${SYM[+v]}</td>`;
+      });
+      h += '</tr>';
+    });
+    t.innerHTML = h;
+    const notes = [
+      '<b>读法</b><br>每一行是一类路径，每一列是一层防线。',
+      '<b>P1 · Coincheck</b><br>L3 ●：热钱包限额封顶<br>L5 ●：储备决定赔付',
+      '<b>P2 · WazirX、Bybit</b><br>L3 ●：意图校验<br>L1、L2 ○：基本无效',
+      '<b>P3、P4 · 人员</b><br>L0 ●：近年最常被突破<br>DMM、CoinDCX、Coinbase 2025',
+      '<b>P8 · FTX 式挪用</b><br>只有 L4 ●：对账与外部审计',
+      '<b>L5 · 承受与恢复</b><br>不防攻击，决定结局：用户无损，或破产清算',
+    ];
+    el.querySelector('#mxNote').innerHTML = notes[st];
+  }
+
+  // 11: checklist
+  function ckl(el, st) {
+    const rows = el.querySelectorAll('#cklT tr');
+    const focus = [[], [1], [2], [3], [4, 5]][st];
+    rows.forEach((r, i) => { if (!i) return; r.classList.toggle('on', focus.includes(i)); r.classList.toggle('dimr', st > 0 && !focus.includes(i)); });
+    const C2 = [
+      '<div class="muted" style="font-family:var(--sans);font-size:30px">5 条规则<br>都来自真实案例<br><br>阈值是示例，<br>要按自家数据校准</div>',
+      '一天提币 2,000 万$<br>× 1.5<br>= 热钱包上限 <span class="hl">3,000 万$</span><br><span class="down">被盗最多 3,000 万$</span>',
+      '链 A ↓35%<br>链 B ↓40%<br>链 C ↓32%<br>3 条链 · 10 分钟内<br>→ <span class="down">暂停全部提币</span>',
+      '改认证流程<br>→ 跑回归：无 2FA 提币?<br>→ 必须失败<br><span class="hl">新地址冷却 24 小时</span>',
+      '8.5 小时 = 510 分钟<br>510 ÷ 5 ≈ <span class="hl">100 倍</span><br><br>客服 &gt; 20 份/小时<br>→ <span class="down">告警</span>',
+    ];
+    el.querySelector('#cklC').innerHTML = C2[st];
+  }
+
+  // 12: outcomes
+  const OUT = [
+    ['全额兜底', C.buy, ['Coincheck', 'Zaif', 'Upbit 19', 'KuCoin', 'Liquid', 'BitMart', 'Crypto.com', 'DMM', 'BingX', 'Bybit']],
+    ['延迟或间接全额', C.info, ['Bitfinex', 'Mango']],
+    ['按比例重组', C.warn, ['WazirX']],
+    ['承诺赔付，结果未核实', C.dim, ['Phemex']],
+    ['无用户资产损失', C.t2, ['CoinDCX', 'Coinbase']],
+  ];
+  function ocStep(el, st) {
+    const svg = el.querySelector('#oc'); svg.innerHTML = '';
+    const w = 88, gap = 4;
+    let x = 30;
+    const showG = [0, 1, 2, 4, 4][st];
+    const curG = [[0], [1], [2], [3, 4], []][st];
+    OUT.forEach(([lab, col, names], g) => {
+      const x0 = x, on = g <= showG, cur = curG.includes(g) || st === 4;
+      names.forEach(n => {
+        svg.appendChild(svgEl('rect', { x, y: 60, width: w, height: 160, rx: 8, fill: col, opacity: on ? (cur ? .9 : .45) : .07 }));
+        svg.appendChild(svgEl('text', { x: x + w / 2, y: 140, fill: '#0d0e10', 'text-anchor': 'middle', 'dominant-baseline': 'middle', transform: `rotate(-90 ${x + w / 2} 140)`, opacity: on ? 1 : .2, style: 'font-size:24px;font-weight:700' }, n));
+        x += w + gap;
+      });
+      if (on) T(svg, (x0 + x - gap) / 2, 32, names.length + ' 起', curG.includes(g) ? C.gold : C.text, 28, 'middle', true);
+      x += 24;
+    });
+    // legend row
+    let lx = 30;
+    OUT.forEach(([lab, col], g) => {
+      const on = g <= showG, cur = curG.includes(g);
+      svg.appendChild(svgEl('rect', { x: lx, y: 254, width: 24, height: 24, rx: 5, fill: col, opacity: on ? 1 : .15 }));
+      T(svg, lx + 34, 267, lab, cur ? C.gold : C.t2, 26, 'start', cur, on ? 1 : .3);
+      lx += 34 + lab.length * 26 + 50;
+    });
+    const card = el.querySelector('#ocC');
+    const txt = [
+      '<b class="up">10 / 16</b> 由平台或股东全额兜底：Coincheck 用法币赔付，KuCoin 约 84% 追回或冻结、余下由保险基金覆盖，Bybit 未暂停提币、借款补足缺口。',
+      '<b style="color:var(--info)">Bitfinex · 损失按约 36% 分摊</b><br><span class="mono">示例：10 BTC × (1 − 36%) = 6.4 BTC</span> · 差额记成 BFX 代币，2017 年 4 月前全部赎回或转股。',
+      '<b style="color:var(--warn)">WazirX · 2025-10 新加坡高等法院批准重组</b><br><span class="mono">示例：10,000$ × 85.5% ≈ 8,550$</span> 先行分配，其余以恢复代币形式承诺。',
+      '<b>Phemex</b>：承诺赔付，<span style="color:var(--warn)">结果未核实</span>。<br><b>CoinDCX</b>：客户钱包未受影响。<b>Coinbase</b>：数据泄露，对被骗客户自愿赔付。',
+      '同样是热钱包被盗：有储备的平台全额兜底；没有储备时，用户承担损失。<span class="hl">储备与保险基金，是第 5 层防线。</span>',
+    ];
+    card.innerHTML = txt[st];
+    card.className = 'card ' + ['buy', 'info', 'warn', '', 'gold'][st];
+  }
+
+  // 14: finale
+  function endStep(el, st) {
+    el.querySelectorAll('[data-p]').forEach(n => { const k = +n.dataset.p; n.style.opacity = st >= k ? 1 : (st === 0 && k <= 3 ? .45 : .12); n.classList.toggle('cur', st === k); });
+    el.querySelector('#thx').style.opacity = st >= 5 ? 1 : 0;
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

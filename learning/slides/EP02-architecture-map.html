@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP02 一张图看懂交易所架构</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .qa { display: flex; gap: 28px; margin-top: 12px; }
+  .qa .card { flex: 1; font-size: 34px; }
+  .src { display: inline-block; font-size: 22px; padding: 2px 12px; border-radius: 999px; margin-left: 10px; vertical-align: middle; font-weight: 600; }
+  .src.bn { background: var(--gold-soft); color: var(--gold); }
+  .src.ind { background: var(--info-soft); color: var(--info); }
+  .src.ex { background: var(--panel-2); color: var(--text-2); border: 1px solid var(--line); }
+  .road .card { min-height: 240px; }
+  .road .num { font-family: var(--mono); font-size: 56px; color: var(--gold); font-weight: 700; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px; }
+  .meta .card { padding: 16px 24px; font-size: 30px; display: flex; align-items: center; gap: 16px; }
+  .meta .card .a { flex: 0 0 300px; }
+  .meta .card .to { color: var(--gold); }
+  .meta .card .b { font-weight: 700; }
+  .meta .card .b small { display: block; font-weight: 400; font-size: 24px; color: var(--text-2); font-family: var(--mono); }
+  .split-note { font-size: 32px; }
+  table.t.sp td, table.t.sp th { padding: 11px 18px; }
+  table.t.sp td:first-child { font-weight: 700; white-space: nowrap; }
+  .facts .card { padding: 18px 26px; font-size: 30px; }
+  .facts .card b { font-family: var(--mono); color: var(--gold); font-size: 40px; }
+  .teaser { display: flex; gap: 24px; align-items: center; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP02" data-title="一张图看懂交易所架构">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解 · 第 2 集</div>
+    <h1>一张图看懂<span class="hl">交易所架构</span></h1>
+    <div class="qa">
+      <div class="card info" data-step="1">几百个用户：一个程序 + 一个数据库就够了。<br>为什么要拆成<b class="hl">十几个服务</b>？</div>
+      <div class="card gold" data-step="2">交易所不是一个大程序，<br>而是一组围绕<span class="hl">资金正确性</span>拆开的服务。</div>
+    </div>
+    <ol class="say">
+      <li>欢迎回到交易所系统技术讲解。上一集我们说，交易所做三件事：托管、记账、撮合。</li>
+      <li>那么问题来了。只有几百个用户的交易所，一个程序加一个数据库就够了。为什么大交易所要拆成十几个服务？</li>
+      <li>答案藏在一句话里。交易所不是一个大程序，而是一组围绕资金正确性拆开的服务。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">本集路线图</div>
+    <h2>从一个程序，到六层架构</h2>
+    <div class="grid4 road">
+      <div class="card" data-step="0"><div class="num">01</div>为什么要拆<br><span class="muted">三个矛盾</span></div>
+      <div class="card gold" data-step="1"><div class="num">02</div>六层架构<br><span class="muted">每层管什么</span></div>
+      <div class="card" data-step="2"><div class="num">03</div>快与对<br><span class="muted">每层的要求</span></div>
+      <div class="card" data-step="3"><div class="num">04</div>单点与热点<br><span class="muted">弱点在哪里</span></div>
+    </div>
+    <p class="lead" data-step="3">配套交互实验：architecture-explorer，可以在节点上注入故障。</p>
+    <ol class="say">
+      <li>这一集分四段。第一段，看规模变大以后，为什么必须拆。</li>
+      <li>第二段，画出六层架构，看每一层管什么，以及三条最关键的连线。</li>
+      <li>第三段，看每一层对速度和一致性的要求，再用示例数字算一笔延迟账。</li>
+      <li>第四段，找出架构里的单点和热点。本集的图，可以在交互实验 architecture-explorer 里点一点。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="三个矛盾" data-onstep="splitStep">
+    <div class="kicker">为什么要拆</div>
+    <h2>规模变大后，三个矛盾逼着我们拆分</h2>
+    <svg id="split" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>想象一个只有几百个用户的交易所。一个程序，加一个数据库，就能跑起来。所有逻辑在一个进程里，所有数据在一个库里，开发起来最简单。</li>
+      <li>规模变大以后，第一个矛盾出现：速度和正确。撮合要在微秒内完成，账本写入却要等数据库事务提交。</li>
+      <li>两件事放在一个程序里，快的会被慢的拖住。所以撮合引擎和账本必须分开。</li>
+      <li>第二个矛盾是在线和离线。链上确认要几秒到几十分钟，用户下单却要毫秒级响应。所以链上层全部改成异步。</li>
+      <li>第三个矛盾是用户和员工。用户接口要扛高并发，运营后台要强权限和审计。所以两者也要分开。</li>
+      <li>但拆分有代价，叫分布式一致性。一笔交易跨 5 个服务，任何一个失败，都需要补偿。这是下一集的重点。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="银行网点比喻">
+    <div class="kicker">打个比方</div>
+    <h2>交易所像一家大型银行网点</h2>
+    <div class="meta">
+      <div class="card" data-step="0"><span class="a">保安和叫号机</span><span class="to">→</span><span class="b">接入层<small>api-gateway</small></span></div>
+      <div class="card" data-step="1"><span class="a">柜员</span><span class="to">→</span><span class="b">订单服务<small>order-service</small></span></div>
+      <div class="card" data-step="1"><span class="a">风控主管</span><span class="to">→</span><span class="b">风控服务<small>risk-service</small></span></div>
+      <div class="card gold" data-step="2"><span class="a">会计室，两支笔</span><span class="to">→</span><span class="b">账本<small>ledger-service</small></span></div>
+      <div class="card" data-step="3"><span class="a">拍卖师，只喊价</span><span class="to">→</span><span class="b">撮合引擎<small>matching-engine</small></span></div>
+      <div class="card" data-step="3"><span class="a">金库和押运车</span><span class="to">→</span><span class="b">钱包和链上层<small>wallet · custody</small></span></div>
+    </div>
+    <div class="row">
+      <div class="card gold col" data-step="4">拍卖师喊得再快，也要等会计室记完账，钱才算换了手。</div>
+      <div class="card warn col" data-step="5">不成立之处：真实服务靠网络和消息通信，任何一段都可能慢或断。</div>
+    </div>
+    <ol class="say">
+      <li>先打个比方。交易所像一家大型银行网点。门口的保安和叫号机是接入层，检查身份，控制人流。</li>
+      <li>柜员是订单服务，接收你的申请。风控主管站在柜员旁边。金额太大或者行为可疑，他就喊停。</li>
+      <li>会计室是账本。每一笔钱的进出，都用借方和贷方两支笔，同时记在总账上。</li>
+      <li>交易大厅的拍卖师是撮合引擎，他只喊价、配对，不碰钱。金库和押运车，是钱包和链上层。后台办公室，就是运营后台。</li>
+      <li>记住一句话。拍卖师喊得再快，也要等会计室记完账，钱才算真正换了手。</li>
+      <li>比喻在哪里不成立？网点里大家在同一栋楼，喊一声就听见。真实系统靠网络和消息通信，任何一段都可能变慢或中断。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="六层架构" data-onstep="archStep">
+    <div class="kicker">系统视角 · 六层架构 <span class="src ind">业界通用做法</span></div>
+    <h2 id="archTitle">六层架构全景</h2>
+    <svg id="arch" viewBox="0 0 1640 590" width="1640" height="590"></svg>
+    <ol class="say">
+      <li>来看全景。币安没有公开完整架构，我们用业界通用的六层模型。服务名取自本系列的教学仓库。从上到下，越往下越靠近钱。</li>
+      <li>第一层是接入层。用户前端和量化程序，都先打到 API 网关。网关负责鉴权、限流，还有 WebSocket 长连接。</li>
+      <li>第二层是交易核心。订单服务管订单的生命周期，风控做下单前检查。撮合引擎在内存里配对，结算服务把成交写成账。</li>
+      <li>第三层是资金层。账本是双分录记账，钱包管充值和提币的单据，身份服务管用户、2FA 和 KYC。</li>
+      <li>第四层是链上层。索引器扫描区块，数确认数。托管适配器负责签名和广播。它们直接和区块链节点打交道。</li>
+      <li>第五层是数据层。PostgreSQL 存账，Redis 做缓存和限流。Kafka 是事件总线，ClickHouse 存行情历史。行情服务也放在这一层。</li>
+      <li>最后是第六层，运营后台。员工在这里审核提币、做对账、处理故障恢复。它能调用钱包、账本和订单服务。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="三条关键连线" data-onstep="edgeStep">
+    <div class="kicker">读图要点</div>
+    <h2>这张图里，最值得记住的三条连线</h2>
+    <svg id="edges" viewBox="0 0 1640 450" width="1640" height="450"></svg>
+    <div class="card warn" data-step="4">局限：图里省略了监控、配置中心、服务发现，以及合规、客服、清算对账等十几个系统。</div>
+    <ol class="say">
+      <li>这张图里，有三条连线最值得记住。第一条，撮合引擎不直接写账本。成交结果先交给结算服务，再由结算写账本。</li>
+      <li>为什么？撮合只负责配对，就像拍卖师只喊价，不碰钱。钱的变化，必须经过账本的校验和记录。如果撮合直接改余额，它就要同时追求快和对，两头都做不好。</li>
+      <li>第二条，账本是全图唯一的资金事实源。其他服务里看到的余额，都只是缓存或者副本。比如网关缓存的余额只用来快速展示，真正扣款时以账本为准。</li>
+      <li>第三条，链上层只和钱包服务打交道。交易核心完全不碰区块链。所以链再慢，也拖不垮交易。</li>
+      <li>这张图也有局限。它省略了监控、配置中心和服务发现。真实交易所还有合规、客服、清算对账等十几个系统。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="每层的快与对" data-onstep="latStep">
+    <div class="kicker">每层的性能与一致性 <span class="src ex">示例目标</span></div>
+    <h2>越靠近用户越快，越靠近资金越对</h2>
+    <svg id="lat" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>每一层对速度和一致性的要求，差别非常大。我们把延迟目标画在对数坐标上，这些都是示例目标。</li>
+      <li>最快的是撮合，小于 1 毫秒，是微秒级。它要求确定性：同样的输入，必须得到同样的输出。</li>
+      <li>接入层和订单风控，目标在 10 毫秒以内。接入层本身无状态，订单状态则要强一致。</li>
+      <li>账本慢一些，小于 50 毫秒。但它的要求最严：强一致，而且可审计。</li>
+      <li>行情小于 100 毫秒，只要求最终一致。K 线晚一点出来，不影响任何人的钱。</li>
+      <li>钱包和运营后台是秒级。钱包要强一致和幂等，同一笔充值不能入账两次。链上层最慢，从几秒到几个小时，因为要等确认数。</li>
+      <li>规律是这样的。越靠近用户的层越追求快，越靠近资金的层越追求对。链上层最慢，但它可以暂停，不会拖垮交易。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="算一笔延迟账" data-onstep="budgetStep">
+    <div class="kicker">数字推演 <span class="src ex">示例</span></div>
+    <h2>一笔下单的同步链路，延迟上限是多少？</h2>
+    <svg id="budget" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>用表里的示例目标算一笔账。一笔下单，同步要经过网关、订单风控、账本冻结、撮合四段。用户要等这四段都走完，才能拿到响应。</li>
+      <li>网关 10 毫秒，订单和风控再加 10 毫秒，累计 20 毫秒。</li>
+      <li>账本冻结 50 毫秒，撮合不到 1 毫秒。加起来，上限大约 71 毫秒。</li>
+      <li>如果把行情推送也塞进同步链路，再加 100 毫秒，就变成 171 毫秒。延迟翻了一倍多。</li>
+      <li>如果把链上确认也放进来，一笔下单要等几分钟。所以行情和链上，都必须放在同步链路之外。这就是前面说的，链上层全部异步。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="单点">
+    <div class="kicker">故障与边界 · 单点</div>
+    <h2>拆完以后，弱点在哪里</h2>
+    <table class="t sp">
+      <tr><th>位置</th><th>问题</th><th>业界缓解办法</th></tr>
+      <tr data-step="0"><td>撮合引擎</td><td>单线程处理一个交易对</td><td>按交易对分片，热门交易对独占机器</td></tr>
+      <tr data-step="1"><td>撮合引擎</td><td>状态在内存，宕机丢订单簿</td><td>顺序日志 + 快照 + 重放</td></tr>
+      <tr data-step="2"><td>账本数据库</td><td>主库宕机，资金操作全停</td><td>主从切换，按用户分库</td></tr>
+      <tr data-step="3"><td>Kafka</td><td>消费者堆积，推送延迟</td><td>加分区、加消费者、告警</td></tr>
+      <tr data-step="4"><td>热钱包</td><td>私钥泄露，资产被盗</td><td>冷热分离、MPC、限额</td></tr>
+      <tr data-step="4"><td>网关</td><td>行情剧烈波动，请求暴增</td><td>限流、降级、排队</td></tr>
+    </table>
+    <ol class="say">
+      <li>拆分以后，我们来找系统的弱点。先看撮合引擎。它用单线程处理一个交易对，吞吐受 CPU 单核速度限制。办法是按交易对分片，热门交易对独占一台机器。</li>
+      <li>撮合的状态在内存里，宕机后订单簿就丢了。所以要写顺序日志，定期做快照，重启后重放日志恢复。</li>
+      <li>账本数据库的主库也是单点。主库一宕机，所有资金操作都停。办法是主从切换，再按用户分库。</li>
+      <li>Kafka 的消费者一旦堆积，余额和行情推送就会延迟。办法是加分区、加消费者，并设置告警。</li>
+      <li>热钱包的私钥一旦泄露，资产直接被盗。网关在行情剧烈波动时请求暴增，要靠限流、降级和排队扛住。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="热点账户" data-onstep="hotStep">
+    <div class="kicker">故障与边界 · 热点 <span class="src ex">示例数字</span></div>
+    <h2>手续费账户：所有成交都要写它</h2>
+    <svg id="hot" viewBox="0 0 1640 600" width="1640" height="600"></svg>
+    <ol class="say">
+      <li>再看热点。最典型的是手续费账户。每一笔成交，都要给手续费账户记一笔。</li>
+      <li>假设每秒 1 万笔成交，这是示例数字。1 万次写入，全都要锁同一行记录，只能一个一个排队。交易越活跃，队伍越长。</li>
+      <li>业界的做法是把它拆成多个子账户。拆成 16 个，每个子账户每秒只承担 625 次写入。</li>
+      <li>代价在对账。算手续费总收入时，要把 16 个子账户加起来。另一种缓解办法是批量记账，攒一批再写一次。</li>
+      <li>注意，热点不只出现在手续费账户。做市商账户、热门交易对的撮合线程，都可能成为热点。思路都一样：先找到被所有请求争抢的那一个点，再把它拆开。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="币安怎么做">
+    <div class="kicker">币安怎么做</div>
+    <h2>公开事实只有几条，其余是业界做法</h2>
+    <div class="row facts">
+      <div class="col">
+        <div class="card gold" data-step="0"><b>约 140 万笔/秒</b><br>撮合处理能力 <span class="src bn">币安早期公开宣传</span></div>
+        <div class="card gold" data-step="1"><b>约 10 倍</b><br>2020 年撮合引擎升级，用新语言重写 <span class="src bn">媒体报道</span></div>
+        <div class="card gold" data-step="2"><b>多地域</b><br>多个辖区持牌或注册；Binance.US 是独立公司</div>
+      </div>
+      <div class="col">
+        <div class="card info" data-step="3"><span class="src ind">业界通用做法</span><br>每个交易对固定一个撮合线程，按交易对分片</div>
+        <div class="card info" data-step="4">撮合主备热备：输入写顺序日志，备机重放</div>
+        <div class="card info" data-step="5">账本按用户分库；行情多级扇出；全球 CDN 接入</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>来看币安的公开信息。币安上线时宣称，撮合引擎每秒能处理约 140 万笔订单。这是早期公开宣传，多家媒体转述过。</li>
+      <li>2020 年，币安完成了一次大规模撮合引擎升级。据媒体报道，新引擎用新的编程语言重写，性能提升约 10 倍。</li>
+      <li>币安还在多个司法辖区持牌或注册，为部分地区提供独立站点。比如 Binance US，是一家独立公司。</li>
+      <li>下面是业界通用做法，币安没有完整公开。每个交易对固定到一个撮合线程，再按交易对分片到多台机器。一个交易对内部不用加锁，顺序天然确定。</li>
+      <li>撮合做主备热备。所有输入先写进顺序日志，备机重放日志，保持和主机一致。</li>
+      <li>账本按用户 ID 分库分表。行情走多级扇出，接入层用全球 CDN 和多地域网关。提醒一句，网上流传的币安架构图，大多是推测。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">按<span class="hl">资金正确性</span>拆服务：撮合求快，账本求对，钱包求安全。</li>
+      <li data-step="0">账本是<span class="hl">唯一资金事实源</span>；撮合不写账，链上只连钱包。</li>
+      <li data-step="2">越近用户越快，越近资金越对；单点靠分片和重放，热点靠拆账户。</li>
+    </ul>
+    <div class="card info teaser" data-step="3"><span class="chip info">下集 EP03</span>一笔订单的旅程：调用链、同步异步与故障补偿</div>
+    <ol class="say">
+      <li>小结一下。第一，交易所按资金正确性拆成服务。撮合求快，账本求对，钱包求安全。三个目标互相冲突，所以要拆开。</li>
+      <li>第二，六层架构里，账本是唯一的资金事实源。撮合不直接写账，链上层只和钱包打交道。</li>
+      <li>第三，越靠近用户越要快，越靠近资金越要对。单点靠分片和日志重放，热点靠拆子账户。</li>
+      <li>下一集，我们沿着这张图，走完下单、充值、提币三条完整调用链。再看看出了故障，系统怎么补偿。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const $ = (el, id) => el.querySelector('#' + id);
+  const box = (x, y, w, h, t, sub, o = {}) => {
+    const c = o.c || 'var(--line)', f = o.f || 'var(--panel)', op = o.op ?? 1;
+    let s = `<g opacity="${op}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12" fill="${f}" stroke="${c}" stroke-width="${o.sw || 2}"/>`;
+    if (sub) {
+      s += `<text x="${x + w / 2}" y="${y + h / 2 - 4}" text-anchor="middle" font-size="${o.fs || 30}" font-weight="700">${t}</text>`;
+      s += `<text x="${x + w / 2}" y="${y + h / 2 + 28}" text-anchor="middle" font-size="${o.ss || 21}" style="fill:var(--text-2);font-family:var(--mono)">${sub}</text>`;
+    } else s += `<text x="${x + w / 2}" y="${y + h / 2 + 11}" text-anchor="middle" font-size="${o.fs || 30}" font-weight="700" ${o.mono ? 'style="font-family:var(--mono)"' : ''}>${t}</text>`;
+    return s + '</g>';
+  };
+  const arrow = (x1, y1, x2, y2, c = 'var(--text-2)', dash = '', w = 4) => {
+    const a = Math.atan2(y2 - y1, x2 - x1), L = 16;
+    const p1 = [x2 - L * Math.cos(a - .45), y2 - L * Math.sin(a - .45)], p2 = [x2 - L * Math.cos(a + .45), y2 - L * Math.sin(a + .45)];
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="${w}" ${dash ? `stroke-dasharray="${dash}"` : ''}/><path d="M${x2} ${y2} L${p1[0]} ${p1[1]} L${p2[0]} ${p2[1]}z" fill="${c}"/>`;
+  };
+
+  function splitStep(el, st) {
+    let s = '';
+    const gold = 'var(--gold)', info = 'var(--info)', warn = 'var(--warn)';
+    if (st === 0) {
+      s += `<rect x="520" y="60" width="600" height="420" rx="20" fill="var(--panel)" stroke="var(--line)" stroke-width="3"/>`;
+      s += `<text x="820" y="130" text-anchor="middle" font-size="40" font-weight="700">一个程序</text>`;
+      ['撮合', '账本', '钱包与链上', '用户接口', '运营后台'].forEach((t, i) => s += box(600 + (i % 2) * 230, 170 + Math.floor(i / 2) * 100, 210, 76, t, '', { fs: 30 }));
+      s += `<text x="820" y="540" text-anchor="middle" font-size="32" style="fill:var(--text-2)">+ 一个数据库：几百个用户时完全够用</text>`;
+    } else {
+      // core box shrinks; pieces split out
+      const cuts = [st >= 2, st >= 3, st >= 4];
+      s += `<rect x="560" y="200" width="520" height="220" rx="20" fill="var(--panel)" stroke="var(--line)" stroke-width="3"/>`;
+      s += `<text x="820" y="250" text-anchor="middle" font-size="34" font-weight="700" style="fill:var(--text-2)">剩下的服务</text>`;
+      s += box(600, 280, 210, 76, '账本', '', { c: st === 1 ? gold : 'var(--line)' });
+      s += box(830, 280, 210, 76, '用户接口', '');
+      // 1: speed vs correct
+      const me = cuts[0] ? [80, 60] : [600, 120];
+      if (!cuts[0]) s += box(830, 120, 210, 66, '撮合', '', { c: gold }) + `<text x="820" y="560" text-anchor="middle" font-size="34" style="fill:var(--gold)">矛盾一：速度 vs 正确 —— 微秒级撮合 vs 等待事务提交</text>`;
+      if (cuts[0]) {
+        s += box(60, 60, 380, 130, '撮合引擎', '微秒级 · 内存', { c: gold, f: 'rgba(240,185,11,.12)', fs: 36, ss: 26 });
+        s += arrow(445, 140, 600, 300, gold);
+        s += `<text x="250" y="236" text-anchor="middle" font-size="28" style="fill:var(--gold)">成交交给结算，再写账</text>`;
+      }
+      if (cuts[1]) {
+        s += box(60, 420, 380, 130, '链上层', '秒到小时 · 异步', { c: info, f: 'rgba(91,156,255,.12)', fs: 36, ss: 26 });
+        s += arrow(445, 470, 600, 370, info, '12 8');
+        s += `<text x="300" y="400" font-size="28" style="fill:var(--info)">事件，异步</text>`;
+      }
+      if (cuts[2]) {
+        s += box(1200, 60, 380, 130, '运营后台', '强权限 · 审计', { c: warn, f: 'rgba(240,163,64,.12)', fs: 36, ss: 26 });
+        s += box(1200, 420, 380, 130, '用户网关', '高并发 · 无状态', { c: 'var(--buy)', f: 'rgba(46,189,133,.12)', fs: 36, ss: 26 });
+      }
+      if (st === 2) s += `<text x="820" y="560" text-anchor="middle" font-size="34" style="fill:var(--gold)">快的不能被慢的拖住：撮合与账本分开</text>`;
+      if (st === 3) s += `<text x="820" y="560" text-anchor="middle" font-size="34" style="fill:var(--info)">矛盾二：在线 vs 离线 —— 链上层全部异步</text>`;
+      if (st === 4) s += `<text x="820" y="160" text-anchor="middle" font-size="34" style="fill:var(--warn)">矛盾三：用户 vs 员工</text>`;
+      if (st >= 5) {
+        s += `<rect x="560" y="450" width="520" height="110" rx="16" fill="rgba(246,70,93,.14)" stroke="var(--sell)" stroke-width="3"/>`;
+        s += `<text x="820" y="500" text-anchor="middle" font-size="34" font-weight="700" style="fill:var(--sell)">代价：分布式一致性</text>`;
+        s += `<text x="820" y="542" text-anchor="middle" font-size="28">跨 5 个服务，任一失败都要补偿</text>`;
+      }
+    }
+    $(el, 'split').innerHTML = s;
+  }
+
+  // ---- six-layer architecture ----
+  const LAYERS = [
+    ['① 接入层', [['用户前端', 'trader-web', 240], ['API 客户端', '量化程序', 240], ['API 网关', 'api-gateway', 300]]],
+    ['② 交易核心', [['订单', 'order-service', 240], ['风控', 'risk-service', 220], ['撮合引擎', 'matching-engine', 250], ['结算', 'settlement-service', 260]]],
+    ['③ 资金层', [['账本', 'ledger-service', 260], ['钱包', 'wallet-service', 260], ['身份', 'identity-service', 260]]],
+    ['④ 链上层', [['索引器', 'blockchain-indexer', 270], ['托管适配', 'custody-adapter', 260], ['区块链节点', '', 240]]],
+    ['⑤ 数据层', [['PostgreSQL', '', 200], ['Redis', '', 150], ['Kafka', '', 170], ['ClickHouse', '', 200], ['行情服务', 'market-data-service', 260]]],
+  ];
+  const COLORS = ['var(--info)', 'var(--gold)', 'var(--buy)', '#a78bfa', 'var(--text-2)', 'var(--warn)'];
+  function archStep(el, st) {
+    const titles = ['六层架构全景', '① 接入层：鉴权、限流、长连接', '② 交易核心：订单、风控、撮合、结算', '③ 资金层：账本、钱包、身份', '④ 链上层：扫链和签名广播', '⑤ 数据层：存储、事件、行情', '⑥ 运营后台：审核、对账、恢复'];
+    $(el, 'archTitle').textContent = titles[st];
+    let s = '';
+    LAYERS.forEach(([name, svcs], i) => {
+      const y = i * 118, lit = st === 0 || st === i + 1, c = COLORS[i];
+      const op = lit ? 1 : .28;
+      s += `<g opacity="${op}"><rect x="0" y="${y}" width="1300" height="104" rx="14" fill="${st === i + 1 ? 'rgba(255,255,255,.04)' : 'transparent'}" stroke="${c}" stroke-width="${st === i + 1 ? 3 : 2}"/>`;
+      s += `<text x="24" y="${y + 64}" font-size="32" font-weight="700" style="fill:${c}">${name}</text></g>`;
+      let x = 228;
+      svcs.forEach(([t, sub, w]) => { s += box(x, y + 12, w, 80, t, sub, { op, c: st === i + 1 ? c : 'var(--line)', mono: !sub && /^[A-Za-z]/.test(t) }); x += w + 16; });
+    });
+    const lit6 = st === 0 || st === 6;
+    s += `<g opacity="${lit6 ? 1 : .28}"><rect x="1330" y="118" width="310" height="340" rx="14" fill="${st === 6 ? 'rgba(240,163,64,.10)' : 'transparent'}" stroke="var(--warn)" stroke-width="${st === 6 ? 3 : 2}"/>`;
+    s += `<text x="1485" y="175" text-anchor="middle" font-size="32" font-weight="700" style="fill:var(--warn)">⑥ 运营后台</text></g>`;
+    s += box(1360, 210, 250, 90, '运营控制台', 'ops-console', { op: lit6 ? 1 : .28, c: st === 6 ? 'var(--warn)' : 'var(--line)' });
+    s += `<text x="1485" y="350" text-anchor="middle" font-size="28" opacity="${lit6 ? 1 : .28}" style="fill:var(--text-2)">审核 · 对账</text><text x="1485" y="392" text-anchor="middle" font-size="28" opacity="${lit6 ? 1 : .28}" style="fill:var(--text-2)">故障恢复</text>`;
+    if (st === 6) [140, 258].forEach(y => s += arrow(1330, y + 210 - 118 + (y === 140 ? 0 : 0), 1250, y + 166, 'var(--warn)', '10 8'));
+    // side note for layer 1/4
+    s += `<text x="1485" y="530" text-anchor="middle" font-size="28" style="fill:var(--text-2)">上 → 下</text><text x="1485" y="568" text-anchor="middle" font-size="28" style="fill:var(--gold)">越来越靠近钱</text>`;
+    $(el, 'arch').innerHTML = s;
+  }
+
+  function edgeStep(el, st) {
+    let s = '';
+    const panelOp = i => (st >= 4 ? 1 : (i === [0, 0, 1, 2][st] ? 1 : .25));
+    const gold = 'var(--gold)', red = 'var(--sell)', info = 'var(--info)';
+    // panel 1: matching does not write ledger
+    let o = panelOp(0);
+    s += `<g opacity="${o}"><text x="260" y="36" text-anchor="middle" font-size="32" font-weight="700" style="fill:var(--gold)">① 撮合不直接写账</text>`;
+    s += box(110, 70, 300, 84, '撮合引擎', 'matching-engine', { c: gold });
+    s += box(110, 200, 300, 84, '结算服务', 'settlement-service', { c: gold });
+    s += box(110, 330, 300, 84, '账本', 'ledger-service', { c: 'var(--buy)', sw: 3 });
+    s += arrow(260, 156, 260, 196, gold) + arrow(260, 286, 260, 326, gold);
+    s += `<path d="M412 112 C 500 160, 500 330, 414 372" fill="none" stroke="${red}" stroke-width="4" stroke-dasharray="10 8"/><text x="490" y="250" font-size="44" font-weight="700" style="fill:${red}">✗</text>`;
+    if (st === 1) s += `<text x="40" y="440" font-size="28" style="fill:var(--text-2)">拍卖师只喊价，不碰钱</text>`;
+    s += `</g>`;
+    // panel 2: ledger single source of truth
+    o = panelOp(1);
+    s += `<g opacity="${o}"><text x="820" y="36" text-anchor="middle" font-size="32" font-weight="700" style="fill:var(--buy)">② 唯一资金事实源</text>`;
+    s += `<circle cx="820" cy="250" r="96" fill="rgba(46,189,133,.14)" stroke="var(--buy)" stroke-width="4"/><text x="820" y="244" text-anchor="middle" font-size="36" font-weight="700">账本</text><text x="820" y="286" text-anchor="middle" font-size="26" style="fill:var(--text-2)">事实源</text>`;
+    [['网关缓存', 640, 90], ['行情推送', 1000, 90], ['订单服务', 640, 410], ['运营报表', 1000, 410]].forEach(([t, x, y]) => {
+      s += box(x - 110, y - 36, 220, 72, t, '', { fs: 28 });
+      s += arrow(x + (x < 820 ? 80 : -80), y + (y < 250 ? 36 : -36), 820 + (x < 820 ? -60 : 60), 250 + (y < 250 ? -70 : 70), 'var(--text-2)', '8 6', 3);
+    });
+    s += `<text x="820" y="440" text-anchor="middle" font-size="28" style="fill:var(--text-2)">其余是副本</text></g>`;
+    // panel 3: chain only via wallet
+    o = panelOp(2);
+    s += `<g opacity="${o}"><text x="1380" y="36" text-anchor="middle" font-size="32" font-weight="700" style="fill:#a78bfa">③ 链上只连钱包</text>`;
+    s += box(1170, 70, 200, 72, '交易核心', '', { fs: 28 });
+    s += box(1400, 70, 200, 72, '钱包', '', { c: 'var(--buy)', fs: 28 });
+    s += box(1170, 210, 200, 72, '索引器', '', { c: '#a78bfa', fs: 28 });
+    s += box(1400, 210, 200, 72, '托管适配', '', { c: '#a78bfa', fs: 28 });
+    s += `<rect x="1170" y="350" width="430" height="64" rx="12" fill="rgba(91,156,255,.14)" stroke="${info}" stroke-width="2"/><text x="1385" y="393" text-anchor="middle" font-size="28" style="fill:${info}">区块链节点</text>`;
+    s += arrow(1300, 208, 1440, 146, '#a78bfa') + arrow(1500, 208, 1500, 146, '#a78bfa');
+    s += arrow(1270, 284, 1270, 348, info, '8 6', 3) + arrow(1500, 284, 1500, 348, info, '8 6', 3);
+    s += `<text x="1200" y="180" font-size="36" font-weight="700" style="fill:${red}">✗</text><text x="1235" y="180" font-size="24" style="fill:var(--text-2)">不碰链</text></g>`;
+    $(el, 'edges').innerHTML = s;
+  }
+
+  function latStep(el, st) {
+    // rows: name, minMs, maxMs, consistency, step shown
+    const rows = [
+      ['撮合', .005, 1, '确定性', 1, 'var(--gold)'],
+      ['接入层', .5, 10, '无状态', 2, 'var(--info)'],
+      ['订单 · 风控', .5, 10, '强一致', 2, 'var(--gold)'],
+      ['账本', 1, 50, '强一致 + 可审计', 3, 'var(--buy)'],
+      ['行情', 5, 100, '最终一致', 4, 'var(--text-2)'],
+      ['钱包', 1000, 10000, '强一致 + 幂等', 5, 'var(--buy)'],
+      ['运营后台', 1000, 10000, '强一致 + 审计', 5, 'var(--warn)'],
+      ['链上层', 3000, 7200000, '最终一致', 5, '#a78bfa'],
+    ];
+    const X0 = 230, X1 = 1180, lo = Math.log10(.001), hi = Math.log10(1e7);
+    const X = ms => X0 + (Math.log10(ms) - lo) / (hi - lo) * (X1 - X0);
+    let s = '';
+    [[.001, '1 μs'], [1, '1 ms'], [1000, '1 s'], [60000, '1 min'], [3600000, '1 h']].forEach(([v, t]) => {
+      s += `<line x1="${X(v)}" y1="30" x2="${X(v)}" y2="540" stroke="var(--line)" stroke-width="2"/><text x="${X(v)}" y="580" text-anchor="middle" font-size="26" style="fill:var(--text-2);font-family:var(--mono)">${t}</text>`;
+    });
+    s += `<text x="1220" y="22" font-size="26" style="fill:var(--text-2)">一致性要求</text>`;
+    rows.forEach(([n, a, b, cons, k, c], i) => {
+      const y = 40 + i * 62, show = st >= k || st === 0, focus = st === k || st === 6;
+      const op = st === 0 ? .25 : (show ? (focus ? 1 : .55) : 0);
+      s += `<g opacity="${op}"><text x="0" y="${y + 36}" font-size="30" font-weight="700">${n}</text>`;
+      s += `<rect x="${X(a)}" y="${y + 8}" width="${Math.max(X(b) - X(a), 20)}" height="38" rx="8" fill="${c}" opacity=".85"/>`;
+      s += `<text x="1220" y="${y + 36}" font-size="30" style="fill:${c}">${cons}</text></g>`;
+    });
+    if (st === 6) {
+      s += `<text x="${X(.05)}" y="30" font-size="26" style="fill:var(--info)">← 越近用户越快</text>`;
+    }
+    $(el, 'lat').innerHTML = s;
+  }
+
+  function budgetStep(el, st) {
+    const segs = [['网关', 10, 'var(--info)'], ['订单风控', 10, 'var(--gold)'], ['账本冻结', 50, 'var(--buy)'], ['撮合', 1, 'var(--sell)'], ['行情推送', 100, 'var(--text-2)']];
+    const shown = [0, 2, 4, 5, 4][st];
+    const scale = 7.6, X0 = 60, Y = 170, H = 110;
+    let s = `<text x="${X0}" y="36" font-size="34" font-weight="700">同步链路 · 延迟上限</text>`;
+    let x = X0, total = 0;
+    segs.forEach(([n, ms, c], i) => {
+      const vis = i < shown, w = ms * scale;
+      if (vis) {
+        const extra = i === 4;
+        s += `<rect x="${x}" y="${Y}" width="${Math.max(w, 10)}" height="${H}" fill="${c}" opacity="${extra ? .45 : .85}" ${extra ? 'stroke="var(--sell)" stroke-width="3" stroke-dasharray="10 6"' : ''}/>`;
+        const lx = x + Math.max(w, 10) / 2;
+        const lift = i === 0 || i === 3;
+        s += `<text x="${lift ? lx + (i === 3 ? 40 : 0) : lx + (i === 1 ? 40 : 0)}" y="${lift ? Y - 20 : Y + H + 46}" text-anchor="middle" font-size="30">${n}</text>`;
+        s += `<text x="${lift ? lx + (i === 3 ? 40 : 0) : lx + (i === 1 ? 40 : 0)}" y="${lift ? Y - 58 : Y + H + 86}" text-anchor="middle" font-size="30" style="font-family:var(--mono);fill:var(--text-2)">${ms === 1 ? '<1' : ms} ms</text>`;
+        x += Math.max(w, 10); total += ms;
+      } else {
+        s += `<rect x="${x}" y="${Y}" width="${ms * scale}" height="${H}" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="6 6" opacity="${i === 4 ? 0 : 1}"/>`;
+        x += ms * scale;
+      }
+    });
+    const tot = st === 3 ? 171 : (st >= 2 ? 71 : st >= 1 ? 20 : 0);
+    if (st >= 1) s += `<text x="1600" y="${Y + 72}" text-anchor="end" font-size="64" font-weight="700" style="font-family:var(--mono);fill:${st === 3 ? 'var(--sell)' : 'var(--gold)'}">${tot} ms</text>`;
+    if (st === 3) s += `<text x="1600" y="${Y + 130}" text-anchor="end" font-size="30" style="fill:var(--sell)">71 → 171，翻了一倍多</text>`;
+    if (st === 4) {
+      s += `<rect x="60" y="420" width="1540" height="120" rx="16" fill="rgba(246,70,93,.12)" stroke="var(--sell)" stroke-width="3"/>`;
+      s += `<text x="830" y="472" text-anchor="middle" font-size="34" style="fill:var(--sell)">链上确认放进同步链路：一笔下单要等几分钟</text>`;
+      s += `<text x="830" y="518" text-anchor="middle" font-size="30">行情、通知、链上确认 → 全部放到同步链路之外</text>`;
+      s += `<text x="1600" y="${Y + 130}" text-anchor="end" font-size="30" style="fill:var(--buy)">保留四段：上限约 71 ms</text>`;
+    }
+    $(el, 'budget').innerHTML = s;
+  }
+
+  function hotStep(el, st) {
+    let s = '';
+    const n = st >= 2 ? 16 : 1;
+    // incoming trades
+    s += `<text x="40" y="50" font-size="32" font-weight="700">成交流</text>`;
+    s += `<text x="40" y="92" font-size="30" style="fill:var(--gold);font-family:var(--mono)">${st >= 1 ? '10,000 笔/秒' : '每笔成交'}</text>`;
+    for (let i = 0; i < 6; i++) s += `<rect x="40" y="${130 + i * 66}" width="240" height="50" rx="8" fill="var(--panel)" stroke="var(--line)" stroke-width="2"/><text x="160" y="${163 + i * 66}" text-anchor="middle" font-size="26">成交 #${i + 1}</text>`;
+    if (n === 1) {
+      for (let i = 0; i < 6; i++) s += arrow(290, 155 + i * 66, 780, 290, 'var(--sell)', '', 3);
+      s += `<rect x="790" y="200" width="420" height="180" rx="16" fill="${st >= 1 ? 'rgba(246,70,93,.16)' : 'var(--panel)'}" stroke="${st >= 1 ? 'var(--sell)' : 'var(--gold)'}" stroke-width="4"/>`;
+      s += `<text x="1000" y="275" text-anchor="middle" font-size="36" font-weight="700">手续费账户</text><text x="1000" y="325" text-anchor="middle" font-size="28" style="fill:var(--text-2)">同一行记录</text>`;
+      if (st >= 1) {
+        s += `<text x="1000" y="440" text-anchor="middle" font-size="34" style="fill:var(--sell)">行锁竞争：只能排队</text>`;
+        for (let i = 0; i < 8; i++) s += `<circle cx="${1250 + i * 44}" cy="290" r="16" fill="var(--sell)" opacity="${1 - i * .1}"/>`;
+        s += `<text x="1420" y="250" text-anchor="middle" font-size="28" style="fill:var(--sell)">等待中…</text>`;
+      }
+    } else {
+      for (let i = 0; i < 6; i++) s += arrow(290, 155 + i * 66, 640, 120 + i * 70, 'var(--buy)', '', 3);
+      for (let i = 0; i < 16; i++) {
+        const cx = 660 + (i % 4) * 160, cy = 40 + Math.floor(i / 4) * 110;
+        s += `<rect x="${cx}" y="${cy}" width="140" height="90" rx="12" fill="rgba(46,189,133,.12)" stroke="var(--buy)" stroke-width="2"/>`;
+        s += `<text x="${cx + 70}" y="${cy + 38}" text-anchor="middle" font-size="26">子账户 ${i + 1}</text><text x="${cx + 70}" y="${cy + 74}" text-anchor="middle" font-size="26" style="font-family:var(--mono);fill:var(--buy)">625/s</text>`;
+      }
+      s += `<text x="1320" y="120" font-size="40" font-weight="700" style="font-family:var(--mono)">10,000 ÷ 16</text><text x="1320" y="180" font-size="48" font-weight="700" style="font-family:var(--mono);fill:var(--buy)">= 625</text>`;
+      if (st >= 3) {
+        s += `<rect x="1300" y="250" width="320" height="200" rx="16" fill="rgba(240,163,64,.12)" stroke="var(--warn)" stroke-width="3"/>`;
+        if (st >= 4) s += `<text x="660" y="540" font-size="32" style="fill:var(--warn)">其他热点：做市商账户、热门交易对的撮合线程</text>`;
+        s += `<text x="1460" y="300" text-anchor="middle" font-size="30" style="fill:var(--warn)">代价：对账</text><text x="1460" y="350" text-anchor="middle" font-size="28">总收入 =</text><text x="1460" y="392" text-anchor="middle" font-size="28">16 个子账户之和</text><text x="1460" y="432" text-anchor="middle" font-size="26" style="fill:var(--text-2)">或：批量记账</text>`;
+      }
+    }
+    $(el, 'hot').innerHTML = s;
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

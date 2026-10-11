@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP05 充值与确认数</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .tag { font-size: 22px; font-weight: 600; padding: 2px 12px; border-radius: 999px; background: var(--panel-2); color: var(--text-2); vertical-align: middle; margin-left: 10px; }
+  .tag.gold { background: var(--gold-soft); color: var(--gold); }
+  .tag.info { background: var(--info-soft); color: var(--info); }
+  .stack { position: relative; }
+  .stack > * { position: absolute; left: 0; right: 0; top: 0; }
+  .flow.tight .node { min-width: 0; padding: 18px 22px; }
+  .flow.tight .arrow { width: 56px; }
+  .roadmap { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+  .roadmap .rm { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 20px 14px; text-align: center; font-size: 30px; line-height: 1.35; }
+  .roadmap .rm b { display: block; font-family: var(--mono); color: var(--gold); font-size: 26px; margin-bottom: 6px; }
+  .phone { width: 520px; background: var(--panel); border: 2px solid var(--line); border-radius: 28px; padding: 30px; font-size: 30px; }
+  .phone .amt { font-family: var(--mono); font-size: 56px; font-weight: 700; margin: 10px 0; }
+  .bar { height: 18px; border-radius: 9px; background: var(--panel-2); overflow: hidden; margin-top: 14px; }
+  .bar i { display: block; height: 100%; background: var(--gold); }
+
+  /* derive */
+  .addrt td, .addrt th { font-size: 30px; }
+  .addrt .mono { font-size: 28px; }
+
+  /* blocks */
+  .chain { display: flex; gap: 18px; align-items: center; height: 170px; }
+  .blk { width: 190px; height: 150px; border-radius: 14px; border: 2px solid var(--line); background: var(--panel); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-family: var(--mono); font-size: 30px; transition: all .35s; }
+  .blk.new { border-color: var(--info); background: var(--info-soft); }
+  .blk.has { border-color: var(--gold); }
+  .blk .tx { font-size: 22px; padding: 2px 10px; border-radius: 8px; background: var(--gold); color: #000; font-weight: 700; }
+  .blk.ghost { border-style: dashed; opacity: .35; }
+  .mempool { width: 190px; height: 150px; border-radius: 14px; border: 2px dashed var(--text-2); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 26px; color: var(--text-2); gap: 8px; }
+  .meter { position: relative; height: 70px; margin-top: 8px; }
+  .meter .track { position: absolute; left: 0; right: 0; top: 18px; height: 16px; border-radius: 8px; background: var(--panel-2); }
+  .meter .fill { position: absolute; left: 0; top: 18px; height: 16px; border-radius: 8px; background: var(--buy); transition: width .4s; }
+  .meter .mk { position: absolute; top: 0; width: 4px; height: 52px; background: var(--gold); }
+  .meter .mk span { position: absolute; top: 54px; left: -80px; width: 160px; text-align: center; font-size: 24px; color: var(--gold); }
+  .state { display: inline-block; font-family: var(--mono); font-size: 40px; font-weight: 700; padding: 6px 22px; border-radius: 12px; background: var(--panel-2); }
+  .state.c { color: var(--info); background: var(--info-soft); }
+  .state.ok { color: var(--buy); background: var(--buy-soft); }
+  .state.bad { color: var(--sell); background: var(--sell-soft); }
+  .state.p { color: var(--text-2); }
+
+  svg .lbl { font-size: 28px; }
+  svg .sm { font-size: 24px; fill: var(--text-2); }
+  svg .mono { font-family: var(--mono); }
+
+  /* memo */
+  .txl { font-family: var(--mono); font-size: 28px; }
+  .txl .tr { display: grid; grid-template-columns: 1.2fr 1fr 1.1fr 1.2fr; gap: 10px; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line); margin-bottom: 10px; transition: all .3s; opacity: .25; }
+  .txl .tr.on { opacity: 1; }
+  .txl .tr.ok { border-color: var(--buy); background: var(--buy-soft); }
+  .txl .tr.bad { border-color: var(--sell); background: var(--sell-soft); }
+  .txl .hd { opacity: 1; color: var(--text-2); border: 0; font-family: var(--sans); font-size: 26px; }
+  .nets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .net { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 20px 24px; font-size: 30px; text-align: center; transition: all .3s; }
+  .net .m { font-family: var(--mono); font-size: 26px; color: var(--text-2); }
+  .net.listen { border-color: var(--buy); }
+  .net.sent { border-color: var(--sell); background: var(--sell-soft); }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP05" data-title="充值：地址、确认数与链重组">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解 · 第 5 集</div>
+    <h1>充值：钱转出去了，<br>为什么还<span class="hl">没到账</span>？</h1>
+    <div class="row" data-step="1" style="align-items:center">
+      <div class="phone"><div class="muted">充值记录 · 示例</div><div class="amt">+0.5 BTC</div><div>状态：<span class="blue">确认中 1/2</span></div><div class="bar"><i style="width:50%"></i></div></div>
+      <div class="card warn" data-step="2" style="flex:1">2020 年 ETC 多次遭 <b>51% 攻击</b>，部分交易所因确认数不足遭受损失 <span class="muted">· 公开报道</span><br>之后多家交易所把 ETC 确认数提到<b>数千</b></div>
+    </div>
+    <ol class="say">
+      <li>大家好，欢迎回到交易所系统技术讲解。上一集讲了账户安全，这一集讲充值。先问一个很多人都遇到过的问题。</li>
+      <li>你从钱包转了 0.5 个 BTC 到交易所，这是一个示例。链上已经能查到这笔交易了，可 App 还显示确认中。钱明明转出去了，交易所在等什么？</li>
+      <li>它在等区块确认。因为链上的交易，刚上链时并不是板上钉钉。根据公开报道，2020 年 ETC 多次遭受 51% 攻击。部分交易所因为确认数不够，遭受了损失。之后多家交易所，把 ETC 的确认数提高到数千。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="链上资产与账本">
+    <div class="kicker">本集路线图</div>
+    <h2>钱包系统：<span class="hl">链上资产</span> ⇄ <span class="blue">账本数字</span></h2>
+    <div class="flow" style="justify-content:center">
+      <div class="node gold" style="min-width:300px">区块链<small>真实资产</small></div>
+      <div class="arrow gold" style="width:120px"></div>
+      <div class="node" style="min-width:300px">钱包系统<small>充值 · 提币</small></div>
+      <div class="arrow" style="width:120px"></div>
+      <div class="node info" style="min-width:300px">账本<small>用户余额</small></div>
+    </div>
+    <div class="card" data-step="1">用户在交易所买卖时：<span class="hl">链上资产不动，只有账本在变</span>。链上资产只在<b>充值</b>和<b>提币</b>时移动。</div>
+    <div class="roadmap" data-step="2">
+      <div class="rm"><b>01</b>地址模型</div>
+      <div class="rm"><b>02</b>链上监听</div>
+      <div class="rm"><b>03</b>确认数</div>
+      <div class="rm"><b>04</b>链重组</div>
+      <div class="rm"><b>05</b>充错链<br>漏填 memo</div>
+    </div>
+    <ol class="say">
+      <li>先把位置摆清楚。钱包系统夹在区块链和账本中间。它负责链上的真实资产，和账本里的数字之间的转换。</li>
+      <li>注意一个关键事实。用户在交易所里买卖时，链上资产根本不动，只有账本在变。链上资产只在充值和提币时才移动。所以充值这一步，是把链上的真钱，变成账本里的数字。这一步记错了，后面所有交易都建立在错误的余额上。</li>
+      <li>这一集只讲充值这一半。先讲地址模型，交易所怎么知道是谁的钱。再讲链上监听和确认数。然后用动画看一次链重组。最后讲两类常见失败，充错链和漏填 memo。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="两种地址模型">
+    <div class="kicker">01 · 地址模型</div>
+    <h2>链上只认地址：怎样把一笔转账<span class="hl">归属到用户</span></h2>
+    <table class="t">
+      <tr><th style="width:20%">对比项</th><th>每用户独立地址</th><th>共用地址 + memo / tag</th></tr>
+      <tr data-step="0"><td>原理</td><td>每个用户派生专属地址</td><td>同一地址，附加字段区分用户</td></tr>
+      <tr data-step="1"><td>典型链</td><td>BTC、ETH、BSC 等 EVM 链</td><td>XRP、XLM、EOS、TON、ATOM</td></tr>
+      <tr data-step="1"><td>识别用户</td><td>按收款地址查</td><td>按 memo / tag 查</td></tr>
+      <tr data-step="2"><td>用户出错点</td><td class="down">选错网络</td><td class="down">漏填或填错 memo</td></tr>
+      <tr data-step="2"><td>归集成本</td><td class="down">高：资金分散</td><td class="up">低：天然集中</td></tr>
+      <tr data-step="3"><td>为什么</td><td>建地址免费、无最低余额</td><td>建账户要冻结储备金</td></tr>
+    </table>
+    <ol class="say">
+      <li>链上转账只认地址。交易所要把一笔转账归属到某个用户，有两种模式。第一种，给每个用户一个独立地址。第二种，所有人共用一个地址，再用附加字段区分。</li>
+      <li>独立地址常见于 BTC、ETH 和 BSC 这类链，按收款地址找用户。共用地址常见于 XRP、XLM 和 EOS，按 memo 或 tag 找用户。</li>
+      <li>两种模式的出错点不同。独立地址模式，用户容易选错网络。共用地址模式，用户容易漏填 memo。成本也不同。独立地址的资金很分散，后面要归集。共用地址的资金天然在一处。</li>
+      <li>为什么不统一？因为在 BTC 和 EVM 链上，创建地址免费。而 XRP 这类链，每个账户都要冻结一笔储备金。每人一个地址，成本太高。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="地址派生" data-onstep="deriveStep">
+    <div class="kicker">01 · 地址派生 <span class="tag">业界通用做法</span></div>
+    <h2>线上只放<span class="hl">主公钥</span>：能生成地址，不能花钱</h2>
+    <div class="row">
+      <div class="col" style="flex:.8">
+        <div class="card gold"><b>xpub 主公钥</b><br><span class="muted">在线 · BIP-32 / BIP-44</span></div>
+        <div class="card sell" data-step="3"><b>主私钥</b><br><span class="muted">离线保管，不在服务器上</span></div>
+      </div>
+      <div class="flow"><div class="arrow gold"></div></div>
+      <div class="col" style="flex:1.6">
+        <table class="t addrt" id="addr">
+          <tr><th>序号</th><th>派生地址 · 示例</th><th>用户 ID</th></tr>
+          <tr class="r" data-i="1"><td class="mono">1001</td><td class="mono">0x9a3f…c41e</td><td class="mono">U-58210</td></tr>
+          <tr class="r" data-i="2"><td class="mono">1002</td><td class="mono">0x27bd…08aa</td><td class="mono">U-58211</td></tr>
+          <tr class="r" data-i="2"><td class="mono">1003</td><td class="mono">0xe1c0…9f35</td><td class="mono">U-58212</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="card info" data-step="4">EVM 链：同一个私钥在 Ethereum、BSC、Base 上对应<b>同一个地址</b> → 埋下“充错链”的伏笔</div>
+    <ol class="say">
+      <li>独立地址是怎么来的？业界通常这样做。系统保管一个主公钥，叫 xpub。主私钥不放在线上。</li>
+      <li>有用户要充值，系统就按 BIP-32 和 BIP-44 规则派生地址。输入是主公钥加一个序号，输出是一个子地址。然后把地址和用户 ID，写进地址表。</li>
+      <li>下一个用户，序号加 1，再派生一个。地址表就这样一行一行长出来。监听服务以后就拿这张表，判断一笔转账属于谁。</li>
+      <li>关键在这里。线上服务手里只有公钥，所以它能生成地址，但不能花钱。就算服务器被攻破，攻击者也拿不到私钥。</li>
+      <li>再提一个细节。在 EVM 链上，同一个私钥在多条链上是同一个地址。比如 Ethereum、BSC 和 Base。这一点，后面讲充错链时会用到。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="链上监听与状态">
+    <div class="kicker">02 · 链上监听</div>
+    <h2>监听服务把链上交易，变成<span class="hl">内部事件</span></h2>
+    <div class="flow tight" style="justify-content:center">
+      <div class="node">链上节点</div><div class="arrow"></div>
+      <div class="node info">监听服务<small>Indexer</small></div><div class="arrow" data-step="2"></div>
+      <div class="node gold" data-step="2">钱包服务</div><div class="arrow gold" data-step="2"></div>
+      <div class="node buy" data-step="2">账本服务<small>加余额</small></div>
+    </div>
+    <div class="flow tight" data-step="1" style="justify-content:center">
+      <div class="node"><span class="mono">PENDING</span><small>已发现</small></div><div class="arrow"></div>
+      <div class="node info"><span class="mono">CONFIRMING</span><small>确认数 +1</small></div><div class="arrow" data-step="2"></div>
+      <div class="node buy" data-step="2"><span class="mono">CREDITED</span><small>已入账</small></div><div class="arrow" data-step="3"></div>
+      <div class="node gold" data-step="3"><span class="mono">UNLOCKED</span><small>可提币</small></div>
+    </div>
+    <div class="stack" style="height:110px">
+      <div class="card info" data-step="0" data-until="0" style="text-align:center">扫描每个新区块 → 每笔交易的收款地址去查<b>地址表</b> → 命中就是一笔充值</div>
+      <div class="card" data-step="1" data-until="2" style="text-align:center">方向：链上节点 → 监听服务 → <b>内部事件</b> → 钱包服务 → 账本</div>
+      <div class="formula" data-step="3" style="text-align:center">确认数 = 最新高度 − 交易所在高度 + 1</div>
+    </div>
+    <ol class="say">
+      <li>充值由区块链监听服务驱动，常叫 Indexer。它连着链上节点，不停扫描新区块。每个区块里的每笔交易，它都拿收款地址去查地址表。命中了，就是一笔转入交易所的充值。</li>
+      <li>发现一笔，就记一条充值记录，状态是已发现。交易进入区块后，每出一个新区块，确认数加 1，状态是确认中。</li>
+      <li>确认数达到入账阈值，监听服务通知钱包服务。钱包服务调用账本，给用户加余额，状态变成已入账。注意数据的方向。从链上节点来，经监听服务转成内部事件，最后才到账本。</li>
+      <li>很多交易所还设第二个阈值，叫解锁阈值，达到后才允许提币。确认数的算法很简单，最新高度减去交易所在高度，再加 1。刚上链时，确认数就是 1。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="确认数动画" data-onstep="confStep">
+    <div class="kicker">03 · 确认数 <span class="tag gold">示例阈值</span></div>
+    <h2>每出一个块，这笔充值就<span class="hl">更难被推翻</span></h2>
+    <div class="chain" id="chain"></div>
+    <div class="row" style="align-items:center">
+      <div class="stat card" style="flex:.8"><div class="k">确认数</div><div class="v" id="cn">0</div></div>
+      <div class="card" style="flex:1.2"><div class="muted" style="font-size:26px">状态</div><span class="state p" id="cs">PENDING</span></div>
+      <div class="card" style="flex:2"><div class="muted" style="font-size:26px">阈值进度：入账 3 · 解锁 6</div>
+        <div class="meter"><div class="track"></div><div class="fill" id="cf"></div><div class="mk" style="left:50%"><span>入账 3</span></div><div class="mk" style="left:calc(100% - 4px)"><span style="left:auto;right:-2px;text-align:right">解锁 6</span></div></div></div>
+    </div>
+    <div class="card info" id="cnote" style="font-size:30px;padding:18px 28px"></div>
+    <ol class="say">
+      <li>用动画看一遍。这里的阈值是示例，入账 3 个确认，解锁 6 个确认。用户刚广播交易，它还在内存池里，监听服务看到了，状态是已发现。</li>
+      <li>交易被打包进区块 101。最新高度是 101，确认数等于 101 减 101 加 1，也就是 1。状态变成确认中。</li>
+      <li>又出了 102 和 103 两个块。确认数是 103 减 101 加 1，等于 3，达到入账阈值。账本给用户加上 0.5 个 BTC，可以交易了。</li>
+      <li>继续出块到 106，确认数到 6，达到解锁阈值，这笔钱现在可以提走了。为什么要分两个阈值？因为能交易的钱，还困在交易所里。能提走的钱，一旦出错就追不回来。</li>
+      <li>根据币安公开资料，币安对 BTC 曾公开过一条规则。1 个确认入账，2 个确认可提币。具体参数会调整，以充值页面显示为准。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="链重组是什么">
+    <div class="kicker">04 · 链重组 Reorg</div>
+    <h2>节点发现<span class="hl">更长的链</span>，就丢掉自己的最后几个块</h2>
+    <svg viewBox="0 0 1640 200" width="1640" height="200">
+      <g font-family="var(--mono)" font-size="28">
+        <rect x="20" y="10" width="200" height="70" rx="12" fill="#16181c" stroke="#9ea3ad" stroke-width="3"/><text x="120" y="55" text-anchor="middle" class="mono">#100</text>
+        <line x1="220" y1="45" x2="300" y2="45" stroke="#9ea3ad" stroke-width="4"/>
+        <rect x="300" y="10" width="220" height="70" rx="12" fill="#16181c" stroke="#f0b90b" stroke-width="3"/><text x="410" y="55" text-anchor="middle" class="mono">#101 含充值</text>
+        <line x1="520" y1="45" x2="600" y2="45" stroke="#9ea3ad" stroke-width="4"/>
+        <rect x="600" y="10" width="200" height="70" rx="12" fill="#16181c" stroke="#2c3038" stroke-width="3"/><text x="700" y="55" text-anchor="middle" class="mono">#102</text>
+        <path d="M120,80 L120,155 L300,155" fill="none" stroke="#2ebd85" stroke-width="4"/>
+        <rect x="300" y="120" width="220" height="70" rx="12" fill="#16181c" stroke="#2ebd85" stroke-width="3"/><text x="410" y="165" text-anchor="middle" class="mono">#101' 不含</text>
+        <line x1="520" y1="155" x2="600" y2="155" stroke="#2ebd85" stroke-width="4"/>
+        <rect x="600" y="120" width="200" height="70" rx="12" fill="#16181c" stroke="#2ebd85" stroke-width="3"/><text x="700" y="165" text-anchor="middle" class="mono">#102'</text>
+        <line x1="800" y1="155" x2="880" y2="155" stroke="#2ebd85" stroke-width="4"/>
+        <rect x="880" y="120" width="200" height="70" rx="12" fill="rgba(46,189,133,.14)" stroke="#2ebd85" stroke-width="3"/><text x="980" y="165" text-anchor="middle" class="mono">#103'</text>
+      </g>
+      <text x="1120" y="55" class="lbl" style="fill:#9ea3ad">原链：被丢弃</text>
+      <text x="1120" y="165" class="lbl" style="fill:#2ebd85">新链更长：节点切换过来</text>
+    </svg>
+    <div class="grid2">
+      <div class="card info" data-step="1"><h3>常见：1 块重组</h3>两个矿工几乎同时出块，网络暂时分叉，很快收敛到一条</div>
+      <div class="card sell" data-step="2"><h3>危险：深度重组</h3>攻击者掌握大量算力，私下挖更长的链再公布，即 <b>51% 攻击</b></div>
+    </div>
+    <div class="card gold" data-step="3">比喻：两份草稿同时写到第 101 页，大家最终只认<b>更厚的那本</b>。<span class="muted">不成立处：草稿是诚实分歧，而深度重组往往是<b>故意</b>的。</span></div>
+    <ol class="say">
+      <li>确认数防的是什么？防的是链重组。链重组是指，节点发现了另一条更长，或者说更重的链。于是它丢掉自己原来的最后几个区块，切换到新链。被丢掉的区块里的交易，在新链上可能根本不存在。</li>
+      <li>重组为什么会发生？最常见的是，两个矿工几乎同时出块，网络暂时分叉。很快大家收敛到一条链，这是 1 块重组，很常见。</li>
+      <li>危险的是另一种。攻击者掌握大量算力，私下挖一条更长的链，然后突然公布。这就是 51% 攻击，可以造成深度重组。算力越低的小链，发动这种攻击的成本越低。</li>
+      <li>打个比方，两份草稿同时写到第 101 页，大家最终只认更厚的那本。但比喻有一处不成立。草稿分歧是无心的，而深度重组往往是攻击者故意制造的。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="重组让充值消失" data-onstep="reorgStep">
+    <div class="kicker">04 · 重组双花 <span class="tag gold">示例：入账阈值 2</span></div>
+    <h2>入账之后，这笔充值<span class="down">不见了</span></h2>
+    <div class="row">
+      <svg id="rg" viewBox="0 0 1100 470" width="1100" height="470" style="flex:0 0 1100px"></svg>
+      <div class="col">
+        <div class="card"><div class="muted" style="font-size:26px">充值状态</div><span class="state" id="rs">CREDITED</span></div>
+        <div class="stat card"><div class="k">账本余额</div><div class="v" id="rl" style="font-size:48px">+0.5</div></div>
+        <div class="stat card"><div class="k">链上实际到账</div><div class="v" id="rc" style="font-size:48px">0.5</div></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>现在用动画看重组怎样让一笔充值消失。假设入账阈值是 2，这是示例。用户的 0.5 个 BTC 在区块 101 里。102 出块后确认数到 2，账本已经入账。</li>
+      <li>与此同时，攻击者从区块 100 之后，私下挖另一条链。他的 101 撇里，没有这笔充值。</li>
+      <li>攻击者的链挖到 103 撇，比原链更长，然后公布出来。全网节点按规则，切换到更长的这条链。</li>
+      <li>原来的 101 和 102 被丢弃，充值在链上消失了。可账本已经加了余额。如果攻击者早就把余额卖掉提走，损失由交易所承担。这就是重组双花，状态记为入账后重组损失，要人工处理。</li>
+      <li>反过来看。如果阈值设成 6，重组发生时这笔充值还没入账。它只是被标记为丢弃，用户余额没变，交易所也没有损失。确认数阈值越高，攻击者要重写的块越多，成本越高。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="阈值怎么定">
+    <div class="kicker">03 · 阈值权衡 <span class="tag gold">示例，非币安当前参数</span></div>
+    <h2>安全与等待时间的<span class="hl">权衡</span></h2>
+    <table class="t">
+      <tr><th>链</th><th>出块时间 约</th><th>示例入账阈值</th><th>示例等待</th></tr>
+      <tr data-step="0"><td>BTC</td><td class="num">10 分钟</td><td class="num">1–2</td><td class="num">10–20 分钟</td></tr>
+      <tr data-step="0"><td>ETH</td><td class="num">12 秒</td><td class="num">6–64 或 finalized</td><td class="num">1–13 分钟</td></tr>
+      <tr data-step="1"><td>BSC</td><td class="num">3 秒以内</td><td class="num">15 左右</td><td class="num">1 分钟以内</td></tr>
+    </table>
+    <div class="grid2">
+      <div class="card info" data-step="2"><b>以太坊 Finality</b>：区块 finalize 后，推翻它要销毁至少 <b>1/3</b> 质押 ETH</div>
+      <div class="card buy" data-step="3"><b>防护</b>：小链高阈值 · 监控算力与重组深度，异常暂停充值 · 入账与解锁分开</div>
+    </div>
+    <ol class="say">
+      <li>阈值怎么定？来算两个示例。BTC 大约 10 分钟出一个块，阈值 2，就要等 20 分钟左右。ETH 大约 12 秒一个块。阈值 64，就是 64 乘以 12 秒，约 13 分钟。</li>
+      <li>BSC 出块在 3 秒以内，阈值 15 左右，1 分钟内就能到账。注意，这张表都是示例，不是币安当前参数，以充值页显示为准。</li>
+      <li>以太坊合并之后，有了最终确定性。区块被确定以后，推翻它要销毁至少三分之一的质押 ETH。所以在以太坊上，更合理的做法是等待确定状态，而不是只数区块。</li>
+      <li>防护上有三招。小市值、算力低的链，设更高的确认数。监控链的算力和重组深度，异常时暂停充值。还有就是入账和解锁分开设阈值。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="失败一：充错链" data-onstep="netStep">
+    <div class="kicker">05 · 常见失败 <span class="tag">业界通用情况</span></div>
+    <h2>同一个地址，<span class="down">选错了网络</span></h2>
+    <div class="nets" id="nets">
+      <div class="net"><b>Ethereum</b><div class="m">0x9a3f…c41e</div><div class="s muted"></div></div>
+      <div class="net"><b>BSC</b><div class="m">0x9a3f…c41e</div><div class="s muted"></div></div>
+      <div class="net"><b>Base</b><div class="m">0x9a3f…c41e</div><div class="s muted"></div></div>
+    </div>
+    <div class="stack" style="height:300px">
+      <div class="card" data-step="1" data-until="1">资产<b>确实到了</b>交易所控制的地址，但 Base 上没人在监听 → <span class="down">不会自动入账</span></div>
+      <div class="card warn" data-step="2" data-until="2">找回：交易所人工在 Base 上用<b>同一私钥</b>签名转出<br>冷钱包或 MPC 场景，操作成本很高</div>
+      <div class="card sell" data-step="3">若该地址是<b>合约钱包</b>，Base 上可能没有部署这个合约 → 资产可能<b>永久丢失</b><br><span class="hl">充值前：确认充值页网络 = 发送方网络</span></div>
+    </div>
+    <ol class="say">
+      <li>来看第一类常见失败，充错链。假设交易所只在 BSC 上，监听你的这个地址。前面说过，EVM 链之间地址相同。用户在发送方钱包里，却选了 Base 网络。</li>
+      <li>结果是，资产确实到了交易所控制的地址。但交易所在 Base 上没有监听它，系统不会自动入账。</li>
+      <li>能找回吗？可以试。交易所要人工在 Base 上，用同一个私钥签名把钱转出来。如果这把私钥在冷钱包或 MPC 里，操作成本很高。</li>
+      <li>更糟的情况是，目标地址是一个合约钱包。合约在 BSC 上部署了，在 Base 上却可能根本不存在。这时资产可能永久丢失。所以充值前，一定确认充值页的网络和发送方的网络一致。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="失败二：漏填 memo" data-onstep="memoStep">
+    <div class="kicker">05 · 常见失败 <span class="tag info">币安公开资料</span></div>
+    <h2>共用地址：<span class="hl">memo</span> 才是你的门牌号</h2>
+    <div class="txl" id="txl">
+      <div class="tr hd"><span>交易 · 示例</span><span>收款地址</span><span>memo</span><span>归属</span></div>
+      <div class="tr"><span>tx 8f1a…</span><span>rEx…共用</span><span>104857</span><span class="r">—</span></div>
+      <div class="tr"><span>tx 3c77…</span><span>rEx…共用</span><span>220391</span><span class="r">—</span></div>
+      <div class="tr"><span>tx b904…</span><span>rEx…共用</span><span class="down">空</span><span class="r">—</span></div>
+    </div>
+    <div class="flow tight" data-step="3">
+      <div class="node sell">无主充值队列</div><div class="arrow"></div>
+      <div class="node">用户提交 txHash</div><div class="arrow"></div>
+      <div class="node warn" style="border-color:var(--warn)">人工核实找回<small>不保证成功 · 可能收费</small></div>
+    </div>
+    <ol class="say">
+      <li>第二类常见失败，漏填 memo。在 XRP 这类共用地址的链上，所有用户的充值都打到同一个地址。系统只能靠 memo 来分辨是谁的。</li>
+      <li>第一笔交易带着 memo 104857，系统查表，找到对应用户，给他入账。</li>
+      <li>第二笔 memo 是 220391，同样找到用户。但第三笔没有 memo。钱到了交易所的地址，系统却不知道该记给谁。</li>
+      <li>这笔钱会进入无主充值队列。用户要提交交易哈希，申请人工找回。根据币安公开资料，需要 memo 的币种，充值页会强制提示。漏填后可以申请找回，但不保证成功，还可能收费。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">归属靠<span class="hl">地址或 memo</span>：线上只放公钥，能收钱不能花钱。</li>
+      <li data-step="0">确认数 = 推翻成本：<span class="hl">入账阈值</span>管能交易，<span class="hl">解锁阈值</span>管能提走。</li>
+      <li data-step="2">重组发生在入账前只是<span class="up">丢弃</span>，发生在入账后就是交易所的<span class="down">损失</span>。</li>
+    </ul>
+    <div class="card info" data-step="3"><div class="muted" style="font-size:26px">下集 EP06</div><b style="font-size:40px">提币、冷热钱包与储备金证明</b><br>钱怎样安全地流出去？交易所怎样证明自己真的有钱？</div>
+    <ol class="say">
+      <li>最后小结三点。第一，充值归属靠地址或 memo。线上只放公钥，能收钱，不能花钱。</li>
+      <li>第二，确认数代表推翻成本。入账阈值决定什么时候能交易，解锁阈值决定什么时候能提走。</li>
+      <li>第三，重组如果发生在入账前，只是丢弃一条记录。发生在入账后，就是交易所的真实损失。所以阈值要按链的安全性来定，小链要更保守。</li>
+      <li>下一集，我们讲另一半，提币。钱怎样经过层层关口安全流出，冷热钱包怎么分层，交易所又怎样证明自己真的有钱。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  function deriveStep(el, st) {
+    el.querySelectorAll('#addr tr.r').forEach(r => { const i = +r.dataset.i; r.style.opacity = st >= i ? 1 : 0; r.style.background = (st === i) ? 'var(--gold-soft)' : ''; });
+  }
+  function confStep(el, st) {
+    const top = [100, 101, 103, 106, 106][st];
+    const conf = st === 0 ? 0 : top - 101 + 1;
+    let h = '';
+    if (st === 0) h += '<div class="mempool">内存池<span class="blk-tx" style="font-size:22px;padding:2px 10px;border-radius:8px;background:var(--gold);color:#000;font-weight:700">0.5 BTC</span></div>';
+    const from = Math.max(100, top - 6);
+    for (let b = from; b <= Math.max(top, 101) && b <= 106; b++) {
+      if (b > top) { h += `<div class="blk ghost">#${b}</div>`; continue; }
+      const prevTop = [100, 100, 101, 103, 106][st];
+      const cls = ['blk', b === 101 && st >= 1 ? 'has' : '', b > prevTop && st > 0 && st < 4 ? 'new' : ''].join(' ');
+      h += `<div class="${cls}">#${b}${b === 101 && st >= 1 ? '<span class="tx">0.5 BTC</span>' : ''}</div>`;
+    }
+    el.querySelector('#chain').innerHTML = h;
+    el.querySelector('#cn').textContent = conf;
+    const cs = el.querySelector('#cs');
+    const S = [['PENDING', 'p'], ['CONFIRMING', 'c'], ['CREDITED', 'ok'], ['UNLOCKED', 'ok'], ['UNLOCKED', 'ok']][st];
+    cs.textContent = S[0]; cs.className = 'state ' + S[1];
+    el.querySelector('#cf').style.width = Math.min(100, conf / 6 * 100) + '%';
+    el.querySelector('#cnote').innerHTML = [
+      '交易在内存池，监听服务已发现 → <span class="mono">PENDING</span>',
+      '确认数 = 101 − 101 + 1 = <b class="hl">1</b>',
+      '确认数 = 103 − 101 + 1 = <b class="hl">3</b> → 账本 <span class="up">+0.5 BTC</span>，可交易',
+      '确认数 = 106 − 101 + 1 = <b class="hl">6</b> → 解锁，<span class="up">可提币</span>',
+      '币安对 BTC 曾公开：<b>1 个确认入账、2 个确认可提币</b>（以官网为准）',
+    ][st];
+  }
+  function reorgStep(el, st) {
+    const svg = el.querySelector('#rg');
+    const W = 190, H = 110;
+    const blk = (x, y, label, opt = {}) => {
+      const stroke = opt.stroke || '#2c3038', fill = opt.fill || '#16181c', op = opt.op ?? 1, dash = opt.dash ? 'stroke-dasharray="10 8"' : '';
+      let s = `<g opacity="${op}"><rect x="${x}" y="${y}" width="${W}" height="${H}" rx="14" fill="${fill}" stroke="${stroke}" stroke-width="3" ${dash}/>`;
+      s += `<text x="${x + W / 2}" y="${y + (opt.tx ? 48 : 66)}" text-anchor="middle" class="mono" style="font-size:32px">${label}</text>`;
+      if (opt.tx) s += `<rect x="${x + 35}" y="${y + 62}" width="120" height="34" rx="8" fill="#f0b90b"/><text x="${x + W / 2}" y="${y + 88}" text-anchor="middle" style="font-size:22px;fill:#000;font-weight:700">0.5 BTC</text>`;
+      if (opt.cross) s += `<line x1="${x + 10}" y1="${y + 10}" x2="${x + W - 10}" y2="${y + H - 10}" stroke="#f6465d" stroke-width="5"/><line x1="${x + W - 10}" y1="${y + 10}" x2="${x + 10}" y2="${y + H - 10}" stroke="#f6465d" stroke-width="5"/>`;
+      return s + '</g>';
+    };
+    const link = (x1, y1, x2, y2, c = '#9ea3ad', op = 1) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c}" stroke-width="4" opacity="${op}"/>`;
+    const X = [20, 290, 560, 830], Y1 = 70, Y2 = 300;
+    const orphan = st >= 3;
+    let h = '';
+    h += `<text x="20" y="40" class="sm">${orphan ? '原链（已被丢弃）' : '原链 · 节点当前认可'}</text>`;
+    h += blk(X[0], Y1, '#100', { stroke: '#9ea3ad' });
+    h += link(X[0] + W, Y1 + H / 2, X[1], Y1 + H / 2, '#9ea3ad', orphan ? .3 : 1);
+    h += blk(X[1], Y1, '#101', { tx: !orphan || st === 4 ? true : true, stroke: orphan ? '#f6465d' : '#f0b90b', op: orphan ? .45 : 1, cross: orphan });
+    h += link(X[1] + W, Y1 + H / 2, X[2], Y1 + H / 2, '#9ea3ad', orphan ? .3 : 1);
+    h += blk(X[2], Y1, '#102', { op: orphan ? .45 : 1, cross: orphan });
+    if (st >= 1) {
+      const pub = st >= 2;
+      h += `<text x="290" y="${Y2 - 20}" class="sm" style="fill:${pub ? '#2ebd85' : '#f6465d'}">${pub ? '新链 · 更长 → 全网切换' : '攻击者私下挖的链 · 未公布'}</text>`;
+      h += `<path d="M${X[0] + W / 2},${Y1 + H} L${X[0] + W / 2},${Y2 + H / 2} L${X[1]},${Y2 + H / 2}" fill="none" stroke="${pub ? '#2ebd85' : '#f6465d'}" stroke-width="4" ${pub ? '' : 'stroke-dasharray="10 8"'}/>`;
+      const c = pub ? '#2ebd85' : '#f6465d';
+      h += blk(X[1], Y2, "#101'", { stroke: c, dash: !pub });
+      h += link(X[1] + W, Y2 + H / 2, X[2], Y2 + H / 2, c);
+      h += blk(X[2], Y2, "#102'", { stroke: c, dash: !pub });
+      if (pub) { h += link(X[2] + W, Y2 + H / 2, X[3], Y2 + H / 2, c); h += blk(X[3], Y2, "#103'", { stroke: c, fill: 'rgba(46,189,133,.14)' }); }
+      h += `<text x="${X[1] + W / 2}" y="${Y2 + H + 40}" text-anchor="middle" class="sm">不含这笔充值</text>`;
+    }
+    if (st >= 2) h += `<text x="830" y="${Y1 + 66}" class="lbl" style="fill:#9ea3ad">高度 102</text><text x="${X[3] + W / 2}" y="${Y2 + H + 40}" text-anchor="middle" class="lbl" style="fill:#2ebd85">高度 103 更长</text>`;
+    svg.innerHTML = h;
+    const rs = el.querySelector('#rs'), rl = el.querySelector('#rl'), rc = el.querySelector('#rc');
+    const S = [['CREDITED', 'ok', '+0.5', '0.5'], ['CREDITED', 'ok', '+0.5', '0.5'], ['CREDITED', 'ok', '+0.5', '0.5'], ['REORG_LOSS', 'bad', '+0.5', '0'], ['阈值 6 → DROPPED', 'p', '0', '0']][st];
+    rs.textContent = S[0]; rs.className = 'state ' + S[1]; rs.style.fontSize = st === 4 ? '32px' : '';
+    rl.textContent = S[2]; rl.className = 'v ' + (st === 3 ? 'down' : '');
+    rc.textContent = S[3]; rc.className = 'v ' + (st >= 3 ? 'down' : 'up');
+  }
+  function netStep(el, st) {
+    const nets = el.querySelectorAll('.net');
+    nets.forEach((n, i) => {
+      n.classList.toggle('listen', i === 1);
+      n.classList.toggle('sent', i === 2 && st >= 0);
+      n.querySelector('.s').innerHTML = i === 1 ? '<span class="up">✓ 交易所监听</span>' : i === 2 ? '<span class="down">← 用户选了这里</span>' : '未监听';
+    });
+  }
+  function memoStep(el, st) {
+    const rows = el.querySelectorAll('#txl .tr:not(.hd)');
+    const R = [['U-58210 ✓', 'ok'], ['U-73002 ✓', 'ok'], ['无法归属 ✗', 'bad']];
+    rows.forEach((r, i) => {
+      const vis = st >= 1 ? (i === 0 ? st >= 1 : st >= 2) : false;
+      r.classList.toggle('on', vis || st === 0);
+      r.classList.remove('ok', 'bad');
+      r.querySelector('.r').textContent = vis ? R[i][0] : '—';
+      if (vis) r.classList.add(R[i][1]);
+    });
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

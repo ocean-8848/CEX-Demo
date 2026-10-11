@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP06 提币与储备金证明</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .tag { font-size: 22px; font-weight: 600; padding: 2px 12px; border-radius: 999px; background: var(--panel-2); color: var(--text-2); vertical-align: middle; margin-left: 10px; }
+  .tag.gold { background: var(--gold-soft); color: var(--gold); }
+  .tag.info { background: var(--info-soft); color: var(--info); }
+  .stack { position: relative; }
+  .stack > * { position: absolute; left: 0; right: 0; top: 0; }
+  .roadmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .roadmap .rm { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 18px 14px; text-align: center; font-size: 30px; line-height: 1.35; }
+  .roadmap .rm b { display: block; font-family: var(--mono); color: var(--gold); font-size: 26px; margin-bottom: 4px; }
+  .flow.tight .node { min-width: 0; padding: 16px 18px; }
+  .flow.tight .arrow { width: 40px; }
+
+  /* pipeline */
+  .pipe { display: grid; grid-template-columns: repeat(8, 1fr); gap: 12px; }
+  .pipe .stg { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 6px; text-align: center; font-size: 30px; line-height: 1.25; transition: all .3s; }
+  .pipe .stg small { display: block; font-size: 22px; color: var(--text-2); margin-top: 6px; }
+  .pipe .stg.done { border-color: #555b66; opacity: .7; }
+  .pipe .stg.on { border-color: var(--gold); background: var(--gold-soft); }
+  .pipe .stg.bad { border-color: var(--sell); background: var(--sell-soft); }
+  .pipe .stg.fut { opacity: .3; }
+  .bal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .bal .v { transition: color .3s; }
+  .note { font-size: 30px; }
+
+  /* tiers */
+  .tier td { font-size: 30px; }
+
+  svg .lbl { font-size: 28px; }
+  svg .sm { font-size: 24px; fill: var(--text-2); }
+  svg .mono { font-family: var(--mono); }
+  .flows .card { padding: 18px 24px; transition: all .3s; opacity: .35; }
+  .flows .card.on { opacity: 1; }
+
+  /* merkle */
+  .mk .n rect { fill: var(--panel); stroke: var(--line); stroke-width: 2; transition: all .3s; }
+  .mk .n.my rect { fill: rgba(240,185,11,.2); stroke: var(--gold); stroke-width: 4; }
+  .mk .n.sib rect { fill: rgba(91,156,255,.18); stroke: var(--info); stroke-width: 4; }
+  .mk .n.calc rect { fill: rgba(46,189,133,.2); stroke: var(--buy); stroke-width: 4; }
+  .mk .n.dim { opacity: .3; }
+  .mk .ed { stroke: #3a3f48; stroke-width: 3; }
+  .mk .ed.on { stroke: var(--buy); stroke-width: 5; }
+
+  /* zk */
+  .leaf { display: grid; grid-template-columns: 1.2fr 1fr .9fr; gap: 12px; align-items: center; padding: 14px 22px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel); font-size: 30px; margin-bottom: 12px; transition: all .3s; }
+  .leaf .mono { font-size: 30px; text-align: right; }
+  .leaf .ck { text-align: right; font-size: 26px; }
+  .leaf.fake { border-color: var(--sell); background: var(--sell-soft); }
+  .leaf.hide { opacity: 0; }
+  .leaf.ok { border-color: var(--buy); }
+  .safu { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  .safu .y { font-family: var(--mono); color: var(--gold); font-size: 30px; font-weight: 700; }
+  .safu .card { padding: 16px 16px; font-size: 28px; line-height: 1.35; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP06" data-title="提币、冷热钱包与储备金证明">
+
+  <!-- 1 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解 · 第 6 集</div>
+    <h1>提币：钱从<span class="hl">唯一的出口</span>流出去</h1>
+    <div class="row" data-step="1">
+      <div class="card sell" style="flex:1.4"><div class="muted" style="font-size:26px">2025 年 2 月 21 日 · Bybit · 公开报道</div>冷钱包多签操作被攻击，约 <b>15 亿美元</b>等值 ETH 被盗</div>
+      <div class="card" style="flex:1" data-step="2">攻击点<b>不是私钥</b>：签名界面被篡改，签了一笔<span class="hl">看不懂的交易</span></div>
+    </div>
+    <ol class="say">
+      <li>大家好，欢迎回到交易所系统技术讲解。上一集讲了充值，这一集讲另一半，提币。提币是资金流出交易所的唯一出口，所以关口最多。</li>
+      <li>先看一个真实案例。根据公开报道，2025 年 2 月 21 日，Bybit 的冷钱包出事了。它的多签操作被攻击。约 15 亿美元等值的 ETH 被盗，是史上最大的加密资产盗窃。</li>
+      <li>攻击点不是私钥本身。攻击者先入侵了多签服务商 Safe Wallet 一名开发者的电脑。再往它的网页里注入恶意代码。签名人看到的界面被篡改，签了一笔他们看不懂的交易。FBI 把此事归因于朝鲜 Lazarus 组织。所以，签什么和私钥怎么存，同样重要。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">本集路线图</div>
+    <h2>出口怎样守，家底怎样证明</h2>
+    <div class="roadmap">
+      <div class="rm" data-step="0"><b>01</b>提币流水线</div>
+      <div class="rm" data-step="0"><b>02</b>提币状态机</div>
+      <div class="rm" data-step="1"><b>03</b>冷热分层<br>与水位</div>
+      <div class="rm" data-step="1"><b>04</b>归集、Gas<br>与私钥保护</div>
+    </div>
+    <div class="roadmap" data-step="2">
+      <div class="rm"><b>05</b>储备金证明</div>
+      <div class="rm"><b>06</b>Merkle 证明路径</div>
+      <div class="rm"><b>07</b>zk-SNARK</div>
+      <div class="rm"><b>08</b>PoR 局限与 SAFU</div>
+    </div>
+    <ol class="say">
+      <li>本集分两半。前一半讲出口怎么守。先看一笔提币要过哪些关，再看它的状态机。</li>
+      <li>然后讲钱放在哪里。热钱包、温钱包、冷钱包怎么分层，水位怎样驱动调拨。再讲归集、Gas 费，以及私钥保护。</li>
+      <li>后一半讲信任。用户凭什么相信交易所真的有钱？我们会用动画走一遍 Merkle 证明路径，再讲 zk-SNARK 补上了什么。最后讲储备金证明的局限，和 SAFU 基金。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="提币流水线" data-onstep="wdStep">
+    <div class="kicker">01 · 提币流水线 <span class="tag gold">示例：提 1 BTC，手续费 0.0002</span></div>
+    <h2>先冻结，再放行，<span class="hl">确认后才扣</span></h2>
+    <div class="pipe" id="pipe">
+      <div class="stg">校验<small>地址 · 2FA</small></div>
+      <div class="stg">冻结<small>数量+手续费</small></div>
+      <div class="stg">风控<small>评分</small></div>
+      <div class="stg">审核<small>高风险转人工</small></div>
+      <div class="stg">签名<small>隔离服务</small></div>
+      <div class="stg">广播<small>txHash</small></div>
+      <div class="stg">确认<small>达阈值</small></div>
+      <div class="stg">消耗<small>正式扣减</small></div>
+    </div>
+    <div class="bal">
+      <div class="stat card"><div class="k">可用余额 BTC</div><div class="v" id="av">3.0000</div></div>
+      <div class="stat card"><div class="k">冻结 BTC</div><div class="v" id="fz">0</div></div>
+      <div class="stat card"><div class="k">链上</div><div class="v" id="ch" style="font-size:48px">—</div></div>
+    </div>
+    <div class="card note" id="wnote"></div>
+    <ol class="say">
+      <li>来看一笔提币的完整流程。举个示例，用户可用 3 个 BTC，要提 1 个，手续费 0.0002。用户提交地址、数量、网络和 2FA 码。钱包服务先校验地址格式、白名单、最小额和限额，再找身份服务校验 2FA。</li>
+      <li>校验通过，第一件事是冻结。冻结 1 加 0.0002，等于 1.0002 个 BTC。可用余额变成 1.9998。先冻结，用户就不能用同一笔钱，既提币又下单。</li>
+      <li>接着进入风控评估。看是不是新地址、新设备，金额多大，地址的风险评分怎样。低风险自动放行，高风险进入人工审核队列。</li>
+      <li>放行后，请求交给托管和签名服务。签名服务和业务服务隔离部署，业务服务被攻破，也拿不到私钥。签好的交易广播上链，返回交易哈希。</li>
+      <li>注意，广播后并不马上扣钱。监听服务跟踪确认数，达到阈值后，钱包服务才通知账本消耗冻结额。这时冻结归零，提币完成。</li>
+      <li>如果风控或审核拒绝了呢？钱包服务调用账本解冻，1.0002 个 BTC 回到可用，余额又是 3 个。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="提币状态机">
+    <div class="kicker">02 · 提币状态机</div>
+    <h2>每个终态，对应一个<span class="hl">账本动作</span></h2>
+    <div class="flow tight" style="justify-content:center">
+      <div class="node"><span class="mono" style="font-size:26px">REQUESTED</span></div><div class="arrow"></div>
+      <div class="node"><span class="mono" style="font-size:26px">RISK_CHECK</span></div><div class="arrow"></div>
+      <div class="node"><span class="mono" style="font-size:26px">APPROVED</span></div><div class="arrow"></div>
+      <div class="node"><span class="mono" style="font-size:26px">SIGNING</span></div><div class="arrow"></div>
+      <div class="node gold"><span class="mono" style="font-size:26px">BROADCASTED</span></div><div class="arrow"></div>
+      <div class="node buy"><span class="mono" style="font-size:26px">CONFIRMED</span></div>
+    </div>
+    <table class="t">
+      <tr><th>终态</th><th>账本动作</th></tr>
+      <tr data-step="0"><td class="mono up">CONFIRMED</td><td>消耗冻结额</td></tr>
+      <tr data-step="0"><td class="mono down">REJECTED · FAILED</td><td>解冻，回到可用</td></tr>
+    </table>
+    <div class="grid2">
+      <div class="card warn" data-step="1"><b>BROADCASTED 最难</b>：可能卡在内存池 → 用<b>同一 nonce</b> 提高手续费重发</div>
+      <div class="card sell" data-step="2"><b>最危险的 bug</b>：已广播未确认时错误解冻 → 交易后来上链，用户拿到<b>双份</b></div>
+    </div>
+    <ol class="say">
+      <li>把刚才的流程画成状态机。关键规律是，每个终态都对应一个账本动作。确认了，就消耗冻结额。被拒绝或签名失败，就解冻。</li>
+      <li>最难处理的是已广播这个状态。交易可能卡在内存池里，迟迟不被打包。这时要用同一个 nonce，提高手续费重发，把原交易替换掉。</li>
+      <li>这里藏着提币系统最危险的 bug。如果在已广播、未确认的时候，系统误判失败，把冻结额解冻了。后来原交易又上链了，用户就拿到了双份资产。所以只有确认交易确实失败，才能解冻。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="热温冷三层">
+    <div class="kicker">03 · 冷热分层 <span class="tag gold">比例为示例</span></div>
+    <h2>热钱包余额，就是<span class="down">被盗风险暴露量</span></h2>
+    <table class="t tier">
+      <tr><th>层级</th><th>私钥状态</th><th>签名速度</th><th>存放比例</th><th>用途</th></tr>
+      <tr data-step="0"><td class="down">热钱包</td><td>在线，自动签名</td><td>秒级</td><td class="num">2%–5%</td><td>日常小额提币</td></tr>
+      <tr data-step="1"><td class="hl">温钱包</td><td>在线，多方审批</td><td>分钟到小时</td><td class="num">5%–15%</td><td>补充热钱包</td></tr>
+      <tr data-step="1"><td class="blue">冷钱包</td><td>离线，物理隔离</td><td>小时到天</td><td class="num">80% 以上</td><td>长期储备</td></tr>
+    </table>
+    <div class="card gold" data-step="2">🏦 比喻：柜台抽屉 = 热钱包，后台保险柜 = 温钱包，城外金库 = 冷钱包。<span class="muted">不成立处：Bybit 说明“金库”也会被攻破，攻击点可能在签名流程。</span></div>
+    <ol class="say">
+      <li>钱放在哪里？业界通常分三层。热钱包私钥在线，系统可以自动签名，秒级出账。举个示例，只放百分之 2 到 5 的资产，用于日常小额提币。</li>
+      <li>温钱包也在线，但签名要多方审批，分钟到小时级，用来补充热钱包。冷钱包私钥离线、物理隔离，调钱要小时到天，存放百分之 80 以上的资产。</li>
+      <li>打个比方。热钱包像柜台抽屉，只放当天要用的现金。温钱包像后台保险柜，冷钱包像城外金库。但比喻有不成立的地方。Bybit 事件说明，金库也会被攻破，攻击点可能在签名流程上。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="水位管理" data-onstep="waterStep">
+    <div class="kicker">03 · 水位驱动调拨 <span class="tag gold">示例：上限 500，下限 100 BTC</span></div>
+    <h2>抽屉少了从保险柜补，多了送回金库</h2>
+    <div class="row">
+      <svg id="wt" viewBox="0 0 760 560" width="760" height="560" style="flex:0 0 760px"></svg>
+      <div class="col flows">
+        <div class="card" id="f0">用户提币 ↓ 热钱包余额下降</div>
+        <div class="card" id="f1">低于下限 → 发起补充：<b>多人审批 + 多签 / MPC</b> → 温钱包出账</div>
+        <div class="card" id="f2">充值归集 ↑ 热钱包余额上升</div>
+        <div class="card" id="f3">高于上限 → 归集到<b>冷钱包</b></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>热钱包放多少，靠水位来管。举个示例，上限 500 个 BTC，下限 100 个。现在热钱包有 300 个，在区间内，系统不动作。</li>
+      <li>提币高峰来了，热钱包一路降到 80 个，跌破下限。系统发起补充申请。这要经过多人审批，再用多签或 MPC 签名，从温钱包出账。</li>
+      <li>审批需要时间，所以补充有延迟。补完之后，热钱包回到 300 个。如果高峰来得太快，用户就会遇到提币排队。</li>
+      <li>反过来，大量充值被归集进来，热钱包涨到 560 个，超过上限。多出来的钱，归集到冷钱包，热钱包回到 300 个。</li>
+      <li>这里是一个权衡。上限越低，被盗时损失越小。下限越高，提币越不容易卡住，但热钱包长期放的钱也越多。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="归集与 Gas">
+    <div class="kicker">04 · 归集 Sweep 与 Gas 管理 <span class="tag">业界通用做法</span></div>
+    <h2>ERC-20 归集要<span class="hl">两笔交易</span></h2>
+    <div class="flow tight" style="justify-content:center">
+      <div class="node">扫描余额<small>超阈值的充值地址</small></div><div class="arrow" data-step="0"></div>
+      <div class="node gold" data-step="0">① 先打 ETH<small>作为 Gas</small></div><div class="arrow" data-step="0"></div>
+      <div class="node info" data-step="0">② 转出代币<small>到热钱包</small></div><div class="arrow" data-step="0"></div>
+      <div class="node buy" data-step="0">更新余额记录</div>
+    </div>
+    <div class="card" data-step="2">优化：Gas 便宜时<b>批量</b>归集 · 用<b>合约钱包</b>做充值地址统一转出 · <b>EIP-7702</b> 等账户抽象</div>
+    <div class="grid3" data-step="3">
+      <div class="card"><b>向用户收手续费</b><br><span class="muted">固定值，按拥堵定期调</span></div>
+      <div class="card"><b>备好原生币</b><br><span class="muted">ETH、BNB 付 Gas</span></div>
+      <div class="card"><b>处理拥堵</b><br><span class="muted">同 nonce 提价替换</span></div>
+    </div>
+    <div class="card sell" data-step="4">⚠ Gas 币耗尽 → <b>所有代币提币卡住</b> → Gas 币单独设水位告警</div>
+    <ol class="say">
+      <li>热钱包的钱，一部分来自归集。归集就是把分散在大量充值地址里的钱，集中到热钱包。系统先扫描，找出余额超过阈值的充值地址。</li>
+      <li>比如 USDT 这类 ERC-20 代币。充值地址里没有 ETH，付不了 Gas。所以系统先给它转一点 ETH，再把代币转到热钱包。一次归集要两笔交易，成本不低。</li>
+      <li>业界有几种优化。在 Gas 便宜时批量归集。用合约钱包做充值地址，由合约统一转出。或者用 EIP-7702 这类账户抽象方案。</li>
+      <li>顺便说 Gas 管理的三件事。向用户收提币手续费，通常是固定值，按拥堵定期调。给热钱包和充值地址备好原生币。交易卡住时，用同一 nonce 提价替换。</li>
+      <li>特别注意，热钱包的 Gas 币一旦耗尽，所有代币提币都会卡住。所以业界会给 Gas 币单独设水位告警。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="私钥保护">
+    <div class="kicker">04 · MPC · 多签 · HSM <span class="tag">业界通用做法</span></div>
+    <h2>私钥放哪里，签名怎样发生</h2>
+    <table class="t">
+      <tr><th style="width:16%">方案</th><th>原理</th><th style="width:26%">优点</th><th style="width:28%">局限</th></tr>
+      <tr data-step="0"><td>多签</td><td>链上规则，例如 2-of-3</td><td class="up">公开透明，链上可验证</td><td class="down">各链不同，手续费高</td></tr>
+      <tr data-step="1"><td>MPC</td><td>私钥分片，协同签名，完整私钥从不出现</td><td class="up">链无关，像普通签名</td><td class="down">协议复杂，看实现质量</td></tr>
+      <tr data-step="2"><td>HSM</td><td>私钥在防篡改硬件里，只能在内部签名</td><td class="up">私钥不可导出</td><td class="down">被授权调用时仍可滥用</td></tr>
+    </table>
+    <div class="card gold" data-step="3">组合：MPC 分片放在<b>不同机房的 HSM</b> 中，签名前再过<b>审批策略引擎</b>　·　Bybit 教训：<span class="hl">签什么</span>和怎么存同样重要</div>
+    <ol class="say">
+      <li>温钱包和冷钱包的私钥，怎么保护？业界有三种方案。第一种是多签，链上规则要求多把私钥共同签名，比如 3 把里要 2 把。规则公开，链上可验证。但每条链实现不同，手续费也更高。</li>
+      <li>第二种是 MPC，多方计算。私钥被拆成多个分片，多方协同算出签名，完整私钥从来不出现。它和链无关，链上看起来就是普通签名。代价是协议复杂，安全性取决于实现质量。</li>
+      <li>第三种是 HSM，硬件安全模块。私钥存在防篡改硬件里，只能在硬件内部签名，无法导出。但硬件被授权调用时，仍可能被滥用。</li>
+      <li>业界通常组合使用。比如 MPC 分片分别放在不同机房的 HSM 中，签名前还要经过审批策略引擎。再回想 Bybit，攻击发生在签名界面。所以审批时看清签的是什么，和私钥怎么存同样重要。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="储备金证明是什么">
+    <div class="kicker">05 · 储备金证明 PoR <span class="tag info">币安公开资料</span></div>
+    <h2>证明：<span class="hl">资产 ≥ 欠用户的负债</span></h2>
+    <div class="grid2">
+      <div class="card info"><h3>资产端</h3>公开钱包地址，任何人都能<b>上链查余额</b></div>
+      <div class="card gold" data-step="1"><h3>负债端 · 难点</h3>要让每个用户能核对，又<b>不能泄露</b>每个人的余额</div>
+    </div>
+    <div class="flow" data-step="2" style="justify-content:center">
+      <div class="node info" style="min-width:420px">2022 年 11 月<small>上线 Merkle 树 PoR</small></div>
+      <div class="arrow" style="width:140px"></div>
+      <div class="node gold" style="min-width:420px">2023 年 2 月<small>加入 zk-SNARK</small></div>
+    </div>
+    <ol class="say">
+      <li>前一半讲完了守门。现在换个问题。用户凭什么相信，交易所真的有钱？答案是储备金证明，简称 PoR。它要证明交易所持有的资产，大于等于欠用户的资产。它分成两半。资产端比较简单，交易所公开钱包地址，任何人都能上链查余额。</li>
+      <li>难点在负债端。交易所要证明所有用户余额的总和。既要让每个用户能核对自己被算进去了，又不能泄露每个人的余额。</li>
+      <li>根据币安公开资料，2022 年 11 月，币安上线 Merkle 树储备金证明。2023 年 2 月，又加入了 zk-SNARK。我们一个一个看。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene mk" data-title="Merkle 证明路径" data-onstep="merkleStep">
+    <div class="kicker">06 · Merkle 证明 <span class="tag gold">8 个用户的示例树</span></div>
+    <h2>只用 3 个兄弟哈希，算回公开的根</h2>
+    <svg id="mt" viewBox="0 0 1640 560" width="1640" height="560"></svg>
+    <ol class="say">
+      <li>先看 Merkle 树。币安把每个用户的用户 ID 哈希和各币种净余额，做成一个叶子。叶子两两哈希，一层层往上，最后得到一个根哈希。根哈希是公开的。</li>
+      <li>假设我是第 3 个叶子，L3。交易所给我一条证明路径，里面只有 3 个兄弟哈希。蓝色这三个，h4、h12 和 h5678。</li>
+      <li>我自己动手算。第一步，把我的叶子和 h4 拼起来哈希，得到 h34。</li>
+      <li>第二步，h12 和 h34 拼起来哈希，得到 h1234。</li>
+      <li>第三步，h1234 和 h5678 拼起来哈希，得到一个根。把它和公开的根比对，一致，说明我的余额被计入了负债。如果不一致，就是数据被篡改，或者我被漏掉了。</li>
+      <li>来算一下规模。8 个用户，树高是 3，只要 3 个兄弟哈希。100 万用户呢？2 的 20 次方约等于 105 万，所以只要约 20 个哈希。验证成本非常低。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="zk-SNARK 补上的缺口" data-onstep="zkStep">
+    <div class="kicker">07 · zk-SNARK <span class="tag gold">数字为示例</span></div>
+    <h2>Merkle 只证明“我在树里”，挡不住<span class="down">负余额假账户</span></h2>
+    <div class="row">
+      <div class="col" style="flex:1.3">
+        <div class="leaf" id="la"><span>用户 A</span><span class="mono">4,000</span><span class="ck"></span></div>
+        <div class="leaf" id="lb"><span>用户 B</span><span class="mono">3,500</span><span class="ck"></span></div>
+        <div class="leaf" id="lc"><span>用户 C</span><span class="mono">2,500</span><span class="ck"></span></div>
+        <div class="leaf fake hide" id="lx"><span>假账户 X</span><span class="mono down">−1,000</span><span class="ck"></span></div>
+      </div>
+      <div class="col">
+        <div class="stat card"><div class="k">公布负债 BTC</div><div class="v" id="zl">10,000</div></div>
+        <div class="stat card"><div class="k">链上储备 BTC</div><div class="v" id="zr">9,500</div></div>
+        <div class="card" id="zv" style="font-size:32px;font-weight:700"></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>但 Merkle 树有一个缺口。来看一个示例。3 个真实用户，余额合计 1 万个 BTC。交易所链上储备只有 9500 个，差了 500，资不抵债。</li>
+      <li>交易所在树里偷偷塞一个假账户，余额是负 1000。负债总额一下子变成 9000，储备 9500 看起来足额了。</li>
+      <li>用户能发现吗？每个真实用户都去验证自己的叶子，全部通过。没有人会去验证这个假账户。所以只靠 Merkle 证明，发现不了。</li>
+      <li>zk-SNARK 就是补这个缺口的。它不泄露任何人的余额，却能证明两件事。第一，每个叶子的余额都不是负数。第二，所有叶子的总和，等于公布的负债总额。假账户 X 过不了第一条。根据币安公开资料，验证代码已经开源。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="PoR 局限与 SAFU">
+    <div class="kicker">08 · 边界 <span class="tag info">SAFU：币安公开资料与报道</span></div>
+    <h2>PoR 证明不了什么</h2>
+    <div class="grid4">
+      <div class="card warn" data-step="0">只是<b>时点快照</b><br><span class="muted" style="font-size:26px">证明前借、证明后还</span></div>
+      <div class="card warn" data-step="0">不证明<b>负债完整</b><br><span class="muted" style="font-size:26px">没人验证的账户可能被漏</span></div>
+      <div class="card warn" data-step="1">不证明资产<b>没被抵押或借出</b></div>
+      <div class="card warn" data-step="1">不覆盖<b>链下负债</b><br><span class="muted" style="font-size:26px">如对机构的借款</span></div>
+    </div>
+    <div class="safu" data-step="2">
+      <div class="card"><div class="y">2018.7</div>设立 SAFU，注入手续费的 10%</div>
+      <div class="card"><div class="y">2019.5</div>热钱包被盗约 7000 BTC，SAFU 覆盖</div>
+      <div class="card"><div class="y">2022.1</div>补足到 10 亿美元</div>
+      <div class="card"><div class="y">2024</div>稳定币部分由 BUSD 换成 USDC</div>
+      <div class="card"><div class="y">2026 初</div>约 10 亿美元换成约 15000 BTC</div>
+    </div>
+    <div class="card sell" data-step="3">SAFU 是交易所<b>自己的承诺</b>，不是存款保险，没有第三方监管机构担保。</div>
+    <ol class="say">
+      <li>储备金证明也有边界。第一，它只是某一时刻的快照。交易所可以证明前借入资产，证明后再还回去。第二，它不证明负债完整，没人验证的账户可能被漏掉。</li>
+      <li>第三，它不证明资产没有被抵押或借出。第四，它不覆盖链下负债，比如对机构的借款。</li>
+      <li>真出了事怎么办？币安设有 SAFU，用户安全资产基金。根据公开资料，它在 2018 年 7 月设立，注入一部分交易手续费。2019 年被盗时，它覆盖了损失。2022 年补足到 10 亿美元。2024 年，稳定币部分从 BUSD 换成 USDC。2026 年初的报道说，约 10 亿美元储备换成了约 15000 个 BTC。</li>
+      <li>但要分清，SAFU 是交易所自己的承诺，不是存款保险，没有第三方监管机构担保。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">提币：<span class="hl">先冻结</span>，确认后<span class="hl">才消耗</span>；已广播未确认，<span class="down">绝不能解冻</span>。</li>
+      <li data-step="0">热钱包余额 = 风险暴露量，<span class="hl">水位</span>在安全和排队之间做权衡。</li>
+      <li data-step="2">Merkle 证明“我在树里”，<span class="hl">zk-SNARK</span> 证明无负余额且总和正确；PoR 仍只是快照。</li>
+    </ul>
+    <div class="card info" data-step="3"><div class="muted" style="font-size:26px">下集 EP07</div><b style="font-size:40px">账本：双分录与冻结</b><br>反复出现的“冻结、消耗、解冻”，在账本里到底怎么记？</div>
+    <ol class="say">
+      <li>最后小结三点。第一，提币先冻结，链上确认后才消耗。已广播但未确认的交易，绝不能随便解冻。</li>
+      <li>第二，热钱包余额就是风险暴露量。水位的上下限，是在安全和提币排队之间做权衡。</li>
+      <li>第三，Merkle 树证明我在树里，zk-SNARK 证明没有负余额、总和正确。但储备金证明仍然只是一张快照。</li>
+      <li>这两集里，冻结、消耗、解冻反复出现。它们在账本里到底怎么记？下一集，我们讲账本，双分录与冻结。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  function wdStep(el, st) {
+    // stage index status per step
+    const ON = [[0], [1], [2, 3], [4, 5], [6, 7], [2, 3]][st];
+    const done = [-1, 0, 1, 3, 5, 1][st];
+    el.querySelectorAll('#pipe .stg').forEach((g, i) => {
+      let c = ON.includes(i) ? (st === 5 ? 'bad' : 'on') : i <= done ? 'done' : 'fut';
+      g.className = 'stg ' + c;
+    });
+    const B = [['3.0000', '0', '—'], ['1.9998', '1.0002', '—'], ['1.9998', '1.0002', '—'], ['1.9998', '1.0002', '已广播'], ['1.9998', '0', '已确认'], ['3.0000', '0', '未上链']][st];
+    const av = el.querySelector('#av'), fz = el.querySelector('#fz'), ch = el.querySelector('#ch');
+    av.textContent = B[0]; fz.textContent = B[1]; ch.textContent = B[2];
+    av.className = 'v ' + (st === 5 ? 'up' : st >= 1 ? 'hl' : '');
+    fz.className = 'v ' + (B[1] !== '0' ? 'hl' : '');
+    ch.className = 'v ' + (st === 4 ? 'up' : st === 3 ? 'blue' : 'muted');
+    el.querySelector('#wnote').innerHTML = [
+      '校验：地址格式 · 白名单 · 最小额 · 限额 · 2FA',
+      '冻结 1 + 0.0002 = <b class="hl">1.0002</b>，可用 3 − 1.0002 = <b class="hl">1.9998</b>',
+      '风控：新地址？新设备？金额？地址风险评分？→ 低风险自动放行 / 高风险人工审核',
+      '签名服务与业务服务<b>隔离部署</b> → 广播上链，返回 txHash',
+      '确认数达标 → 账本<b class="up">消耗</b>冻结额 1.0002 → 冻结归零',
+      '<span class="down">风控或审核拒绝</span> → 账本<b>解冻</b> → 可用回到 3.0000',
+    ][st];
+  }
+  function waterStep(el, st) {
+    const lvl = [300, 80, 300, 560, 300][st];
+    const svg = el.querySelector('#wt');
+    const top = 30, bot = 500, max = 700;
+    const Y = v => bot - v / max * (bot - top);
+    const x0 = 140, w = 260;
+    let h = `<rect x="${x0}" y="${top}" width="${w}" height="${bot - top}" rx="18" fill="#16181c" stroke="#2c3038" stroke-width="3"/>`;
+    const col = lvl < 100 ? '#f6465d' : lvl > 500 ? '#f0a340' : '#2ebd85';
+    h += `<rect x="${x0 + 6}" y="${Y(lvl)}" width="${w - 12}" height="${bot - 6 - Y(lvl)}" rx="12" fill="${col}" opacity=".55"/>`;
+    h += `<line x1="${x0 - 30}" y1="${Y(500)}" x2="${x0 + w + 30}" y2="${Y(500)}" stroke="#f0a340" stroke-width="4" stroke-dasharray="12 8"/>`;
+    h += `<text x="${x0 + w + 40}" y="${Y(500) + 10}" class="lbl" style="fill:#f0a340">上限 500</text>`;
+    h += `<line x1="${x0 - 30}" y1="${Y(100)}" x2="${x0 + w + 30}" y2="${Y(100)}" stroke="#f6465d" stroke-width="4" stroke-dasharray="12 8"/>`;
+    h += `<text x="${x0 + w + 40}" y="${Y(100) + 10}" class="lbl" style="fill:#f6465d">下限 100</text>`;
+    h += `<text x="${x0 + w / 2}" y="${Math.min(Y(lvl) - 16, Y(100) - 24)}" text-anchor="middle" class="mono" style="font-size:44px;font-weight:700;fill:${col}">${lvl}</text>`;
+    h += `<text x="${x0 + w / 2}" y="${bot + 44}" text-anchor="middle" class="lbl" style="fill:#9ea3ad">热钱包 · BTC</text>`;
+    const tip = [['区间内', '不动作'], ['跌破下限', '发起补充'], ['补充有延迟', '可能排队'], ['超过上限', '送回冷钱包'], ['上限低：损失小', '下限高：不易卡']][st];
+    h += `<text x="${x0 + w + 40}" y="${Y(300) - 10}" class="lbl" style="fill:#eceae4">${tip[0]}</text><text x="${x0 + w + 40}" y="${Y(300) + 30}" class="lbl" style="fill:#eceae4">${tip[1]}</text>`;
+    svg.innerHTML = h;
+    const on = [[], [0, 1], [1], [2, 3], [0, 1, 2, 3]][st];
+    for (let i = 0; i < 4; i++) el.querySelector('#f' + i).classList.toggle('on', on.includes(i));
+  }
+  function merkleStep(el, st) {
+    const svg = el.querySelector('#mt');
+    const W = 170, H = 76, lx = i => 30 + i * 205;
+    const leafC = i => lx(i) + W / 2;
+    const L = { y: 440, nodes: ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8'].map((n, i) => [n, leafC(i)]) };
+    const c1 = [0, 1, 2, 3].map(i => (leafC(2 * i) + leafC(2 * i + 1)) / 2);
+    const c2 = [0, 1].map(i => (c1[2 * i] + c1[2 * i + 1]) / 2);
+    const cr = (c2[0] + c2[1]) / 2;
+    const levels = [
+      { y: 440, nodes: L.nodes },
+      { y: 300, nodes: [['h12', c1[0]], ['h34', c1[1]], ['h56', c1[2]], ['h78', c1[3]]] },
+      { y: 160, nodes: [['h1234', c2[0]], ['h5678', c2[1]]] },
+      { y: 20, nodes: [['Root', cr]] },
+    ];
+    const my = st >= 1 ? ['L3'] : [];
+    const sib = st >= 1 ? ['L4', 'h12', 'h5678'] : [];
+    const calc = [[], [], ['h34'], ['h34', 'h1234'], ['h34', 'h1234', 'Root'], ['h34', 'h1234', 'Root']][st];
+    const pos = {};
+    levels.forEach(lv => lv.nodes.forEach(([n, c]) => pos[n] = [c, lv.y]));
+    const parent = { L1: 'h12', L2: 'h12', L3: 'h34', L4: 'h34', L5: 'h56', L6: 'h56', L7: 'h78', L8: 'h78', h12: 'h1234', h34: 'h1234', h56: 'h5678', h78: 'h5678', h1234: 'Root', h5678: 'Root' };
+    let h = '';
+    for (const [c, p] of Object.entries(parent)) {
+      const [x1, y1] = pos[c], [x2, y2] = pos[p];
+      const on = calc.includes(p) && (calc.includes(c) || my.includes(c) || sib.includes(c));
+      h += `<line class="ed ${on ? 'on' : ''}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2 + H}"/>`;
+    }
+    for (const [n, [c, y]] of Object.entries(pos)) {
+      let cls = my.includes(n) ? 'my' : sib.includes(n) ? 'sib' : calc.includes(n) ? 'calc' : (st >= 1 ? 'dim' : '');
+      const w = n === 'Root' ? 260 : W;
+      const label = n === 'L4' && st >= 1 ? 'h4' : n;
+      h += `<g class="n ${cls}"><rect x="${c - w / 2}" y="${y}" width="${w}" height="${H}" rx="12"/><text x="${c}" y="${y + 50}" text-anchor="middle" class="mono" style="font-size:30px;font-weight:700">${label}</text></g>`;
+    }
+    h += `<text x="${pos.L3[0]}" y="${440 + H + 36}" text-anchor="middle" style="font-size:26px;fill:#f0b90b">我的叶子</text>`;
+    if (st === 0) h += `<text x="${cr + 150}" y="66" class="lbl" style="fill:#f0b90b">← 根哈希公开</text>`;
+    const fx = 30, fy = 60;
+    const F = ['叶子 = hash(UID 哈希, 各币种净余额)', '证明路径 = [h4, h12, h5678]', 'h34 = H(L3 ‖ h4)', 'h1234 = H(h12 ‖ h34)', 'Root′ = H(h1234 ‖ h5678) = 公开根 ✓', '8 用户 → 3 个哈希；100 万 → 约 20 个'][st];
+    h += `<text x="${fx}" y="${fy}" class="lbl" style="fill:${st >= 2 && st <= 4 ? '#2ebd85' : '#eceae4'}">${F}</text>`;
+    svg.innerHTML = h;
+  }
+  function zkStep(el, st) {
+    const x = el.querySelector('#lx');
+    x.classList.toggle('hide', st < 1);
+    ['#la', '#lb', '#lc'].forEach(id => { const r = el.querySelector(id); r.classList.toggle('ok', st >= 2); r.querySelector('.ck').innerHTML = st >= 3 ? '<span class="up">≥0 ✓</span>' : st >= 2 ? '<span class="up">Merkle ✓</span>' : ''; });
+    x.querySelector('.ck').innerHTML = st >= 3 ? '<span class="down">&lt;0 ✗</span>' : st >= 2 ? '<span class="muted">没人验证</span>' : '';
+    el.querySelector('#zl').textContent = st >= 1 ? '9,000' : '10,000';
+    const v = el.querySelector('#zv');
+    v.innerHTML = [
+      '<span class="down">9,500 &lt; 10,000 → 缺口 500</span>',
+      '<span class="hl">9,500 ≥ 9,000 → 看起来足额？</span>',
+      '<span class="hl">每人只验自己的叶子 → 发现不了</span>',
+      '<span class="up">zk：叶子全非负 + 总和 = 公布负债 → 揭穿</span>',
+    ][st];
+    v.className = 'card ' + (st === 0 ? 'sell' : st === 3 ? 'buy' : 'warn');
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

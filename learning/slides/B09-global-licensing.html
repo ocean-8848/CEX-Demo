@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B09 全球监管与牌照</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; padding: 22px 30px; }
+  .num-card { padding: 30px 32px; } .num-card .muted { font-size: 26px; display: inline-block; margin-top: 8px; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .stack { position: relative; height: 600px; }
+  .stack > div { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-direction: column; gap: 22px; }
+  .map-row { display: grid; grid-template-columns: 1fr 90px 1fr; align-items: center; gap: 0; }
+  .map-row .card { padding: 18px 28px; font-size: 32px; }
+  .map-row .to { text-align: center; font-size: 40px; color: var(--gold); }
+  .map-row .card.ex { border-color: var(--gold); }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="B09" data-title="全球监管与牌照：一家交易所怎样分区经营">
+
+  <!-- 1 -->
+  <section class="scene" data-title="开场：7 月 1 日" data-onstep="hookStep">
+    <div class="kicker">CEX 交易所系统 · 幕后核心 · B09 · 据公开报道</div>
+    <h2>2026 年 7 月 1 日：一张开关表变了</h2>
+    <svg id="hook" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>2026年7月1日，欧盟 MiCA 的过渡期结束了。先看这一天前后，币安在欧盟发生了什么。</li>
+      <li>据公开报道，ESMA 在6月23日发声明，要求未获授权者有序退出。6月24日前后，币安撤回了希腊的 MiCA 申请。</li>
+      <li>7月1日以后，法国、意大利、西班牙、波兰等国用户收到通知。新注册、充值、部分现货下单和理财暂停，提币保留。</li>
+      <li>撮合引擎没变，钱包也没变。变的是一张开关表，按地区关掉了几类动作。</li>
+      <li>这就是本集的问题。你有没有资格，在这个地方，向这个人，卖这个产品？</li>
+      <li>先说明，本集内容不构成法律意见。监管规则变化快，以监管机构原文为准。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2 id="rm-h">本集路线图</h2>
+    <div class="stack">
+      <div data-step="0" data-until="1">
+        <div class="grid2">
+          <div class="card num-card" data-step="0"><span class="n">1</span><div>监管地图与七个辖区<br><span class="muted">美国 · 欧盟 · 英国 · 新加坡 · 香港 · 日本 · 阿联酋</span></div></div>
+          <div class="card num-card" data-step="0"><span class="n">2</span><div>一家交易所怎样分区经营<br><span class="muted">多实体 · 地理围栏 · 产品矩阵 · 分区开户</span></div></div>
+          <div class="card num-card" data-step="1"><span class="n">3</span><div>合规组织与上币<br><span class="muted">三道防线 · 证券属性 · 上下架状态机</span></div></div>
+          <div class="card num-card" data-step="1"><span class="n">4</span><div>横向对照 · 案例 · 权衡<br><span class="muted">MiCA 截止日 · 日本事故史</span></div></div>
+        </div>
+        <div class="card gold" data-step="0" style="font-size:34px"><b>核心问题</b>　有没有资格：在这个地方 · 向这个人 · 卖这个产品</div>
+        <div class="card" data-step="1" style="font-size:28px;color:var(--text-2)">本集不重复 AML 细节（见 B01），只讲 AML 之上的一层：牌照、实体、产品开关</div>
+      </div>
+      <div data-step="2">
+        <div class="kicker">打个比方 · 国际连锁药房</div>
+        <div class="map-row"><div class="card">总部一套进货系统</div><div class="to">→</div><div class="card ex">共用的撮合与钱包</div></div>
+        <div class="map-row"><div class="card">每国门店单独领执照</div><div class="to">→</div><div class="card ex">本地牌照</div></div>
+        <div class="map-row" data-step="3"><div class="card">同一种药：直接卖 · 要处方 · 禁售</div><div class="to">→</div><div class="card ex">产品可用性矩阵</div></div>
+        <div class="map-row" data-step="3"><div class="card">收银台扫身份证</div><div class="to">→</div><div class="card ex">KYC 国家 → 实体路由</div></div>
+        <div class="card warn" data-step="4">比喻不成立之处：门店各有库存，交易所却共用撮合和钱包 → 资产和账本必须按实体隔离</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>本集分四段。第一，监管地图和七个辖区。第二，一家交易所怎样分区经营。</li>
+      <li>第三，三道防线和上币合规。第四，横向对照、案例和权衡。</li>
+      <li>打个比方，全球交易所像国际连锁药房。总部一套进货系统，每国门店单独领执照。</li>
+      <li>同一种药，有的国家直接卖，有的要处方，有的禁售。收银台扫身份证，决定你能买什么。</li>
+      <li>比喻也有局限。门店各有库存，交易所却共用撮合和钱包。所以资产和账本必须按实体隔离。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="监管地图：三层与七地" data-onstep="mapStep">
+    <div class="kicker">Regulatory Map · 截至 2026 年 10 月公开资料</div>
+    <h2 id="map-h">监管要求的三层结构</h2>
+    <svg id="map" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>先看规则从哪来。最上面是国际标准层，FATF、巴塞尔委员会和 IOSCO。</li>
+      <li>国际标准不直接约束企业。各辖区写进本地法后，交易所才有义务。这一层决定要哪种牌照。</li>
+      <li>最下面是产品规则层，决定能卖什么、卖给谁。最后都落到交易所的产品开关和实体路由上。</li>
+      <li>本集对照七个辖区。每格写着主监管机构和需要的许可。</li>
+      <li>再点亮币安的状态。据公开资料，日本和阿联酋有登记或持牌实体。欧盟、英国、新加坡和香港都没有相应牌照。</li>
+      <li>美国比较特殊。币安主站不服务美国，Binance.US 是独立实体。牌照状态以官网牌照页和登记册为准。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="美国：双层结构与立法时间线" data-onstep="usStep">
+    <div class="kicker">United States · 公开资料</div>
+    <h2 id="us-h">美国：没有一张统一的交易所牌照</h2>
+    <svg id="us" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>先看美国。美国没有统一牌照，要同时满足四类要求。第一，向 FinCEN 注册为货币服务业务。</li>
+      <li>第二，各州的汇款牌照。第三，纽约的 BitLicense，2015年生效。第四，OFAC 制裁，不论金额。</li>
+      <li>争议的核心是，代币算证券还是商品。2023年6月，SEC 起诉币安。2025年5月29日，SEC 撤诉。</li>
+      <li>2025年7月17日，众议院通过 CLARITY 法案。次日，GENIUS 法案签署成为法律。</li>
+      <li>9月2日，SEC 和 CFTC 工作人员发联合声明。注册交易所可以提供部分现货加密产品。</li>
+      <li>2026年7月18日，GENIUS 的一年制规期限届满，最终规则没有全部发布。</li>
+      <li>9月15日，参议院对 CLARITY 的程序性投票是49比50，没到60票。GENIUS 最迟在2027年1月18日生效。</li>
+      <li>GENIUS 规定，只有许可发行方能发支付型稳定币，储备1比1。生效后，美国用户的稳定币要来自许可发行方或获认可的外国制度。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene" data-title="欧盟：MiCA" data-onstep="micaStep">
+    <div class="kicker">European Union · MiCA (EU) 2023/1114</div>
+    <h2>欧盟 MiCA：一张授权，走遍全欧</h2>
+    <svg id="mica" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>再看欧盟。MiCA 的核心是护照。在一个成员国获授权，通知后就能服务全欧盟。</li>
+      <li>最低资本分三档，5万、12.5万和15万欧元。或者取固定开支的四分之一，两者取高。</li>
+      <li>算个示例。某平台在15万这一档，年固定开支80万欧元。四分之一是20万，所以最低资本是20万。</li>
+      <li>MiCA 在2024年12月30日全面适用。旧注册机构最长过渡到2026年7月1日，也就是开场那一天。</li>
+      <li>上架代币要有白皮书。平台还要监控市场滥用，报告可疑订单和交易。</li>
+      <li>稳定币分 EMT 和 ART 两类，都不得付息。衍生品不归 MiCA 管，适用 MiFID II。</li>
+      <li>Travel Rule 没有最低金额。向自托管地址转账超过1000欧元，要核实地址归属。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="英国、新加坡、香港、日本、阿联酋" data-onstep="fiveStep">
+    <div class="kicker">UK · SG · HK · JP · UAE · 公开资料</div>
+    <h2 id="five-h">另外五个辖区</h2>
+    <svg id="five" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>英国现在只要求在 FCA 做反洗钱登记。2023年10月8日起，推广加密资产要由授权机构发布或批准。</li>
+      <li>新制度的最终规则在2026年6月30日发布，预计2027年10月25日生效。零售加密衍生品，2021年起就禁了。</li>
+      <li>新加坡要求客户资产以法定信托隔离，每日对账。不得向零售提供借贷、质押、信贷和杠杆。</li>
+      <li>2025年6月30日起，只服务海外的新加坡服务商须持 DTSP 牌照。没有过渡期。</li>
+      <li>香港要求交易平台持 SFC 牌照，至少98%的客户虚拟资产要冷存储。</li>
+      <li>补偿安排覆盖冷存储的50%，热存储的100%。示例：冷存98亿港元，热存2亿，补偿至少51亿。</li>
+      <li>2026年2月起，香港持牌平台可以设计永续合约方案，但只面向专业投资者。</li>
+      <li>日本至少95%的客户资产存冷钱包。热钱包里的部分，平台要用等额自有资产在冷钱包备付。</li>
+      <li>示例：客户有1000个 BTC，热钱包最多50个，平台再备50个自有 BTC。个人杠杆上限是2倍。</li>
+      <li>迪拜 VARA 按活动发牌。Binance FZE 在2024年4月拿到完整牌照。衍生品和保证金只给合格投资者和机构。</li>
+      <li>阿布扎比 ADGM 在2025年12月授权了币安三个实体。币安公告称，2026年1月5日起主站服务迁入。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene" data-title="分区经营：多实体与地理围栏" data-onstep="routeStep">
+    <div class="kicker">Multi-Entity · Geofencing · Entity Routing</div>
+    <h2>一个撮合引擎，多个持牌实体</h2>
+    <svg id="route" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>回到系统。全球交易所不是找最宽松的规则，而是拆成多个本地持牌实体。</li>
+      <li>请求先过地理围栏，看 IP、GPS 和 SIM 卡国家。示例用户 A 来自受制裁地区，直接拒绝。</li>
+      <li>然后由 KYC 判定法律上的居住地。IP 只能辅助，不能单独决定实体。</li>
+      <li>路由器把居住地映射到法人实体。示例用户 B 住在日本，就进日本实体，资产和报表都挂在这里。</li>
+      <li>没有可用实体，只能拒绝，或只开放提币。迁移实体，等于迁移客户合同。</li>
+      <li>各实体共享撮合、账本、钱包和风控。但客户资产和账本必须按实体隔离。</li>
+      <li>局限是，VPN、双重国籍和出差会让信号失真。通常把 IP 和 KYC 叠加，冲突时取严。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="产品矩阵与分区开户" data-onstep="matrixStep">
+    <div class="kicker" id="mx-k">Product Availability Matrix · 示例结构</div>
+    <h2 id="mx-h">产品可用性矩阵：实体 × 产品 × 客户类别</h2>
+    <svg id="mx" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>实体选定后，看产品可用性矩阵。行是实体，列是产品。这是示例结构，不代表币安的真实配置。</li>
+      <li>假设欧盟实体持有 MiCA 授权。现货可以做，合约要 MiFID II 牌照，杠杆现货不提供。</li>
+      <li>日本实体，P2P 和卡不提供。阿联酋实体的合约和杠杆，只给合格投资者。全球主平台大多开放。</li>
+      <li>注意，开关必须在后端判断。前端隐藏按钮不算合规，API 用户可以绕过前端。</li>
+      <li>再看开户。前端先查 IP 国家，受限就拒绝。身份服务根据证件和居住地，给出 KYC 国家和客户类别。</li>
+      <li>路由选定实体，展示该实体的条款。系统记下用户同意了哪个实体、哪版条款。</li>
+      <li>有的实体还要知识测试和冷静期。最后按实体和客户类别读取开关，返回可见产品。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="合规组织：三道防线" data-onstep="linesStep">
+    <div class="kicker">Three Lines of Defense · 业界通用做法</div>
+    <h2>牌照拿到以后，谁来保证天天合规</h2>
+    <svg id="lines" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>业界通常用三道防线。第一道是业务自己。产品团队做零售不能开合约的开关，就是在执行控制。</li>
+      <li>第二道是风险与合规。CCO 管政策和牌照，MLRO 签发可疑交易报告。它们制定规则，挑战业务。</li>
+      <li>关键是汇报线。CCO 和 MLRO 要能直通董事会，避免被业务指标压制。</li>
+      <li>第三道是内部审计，直接向董事会报告，检查前两道是否有效。</li>
+      <li>防线之外，还有外部监察员和监管检查，比如2023年和解后的监察员。他们的报告通常不公开。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="上币合规：证券属性与上下架" data-onstep="listStep">
+    <div class="kicker" id="ls-k">Listing Compliance</div>
+    <h2 id="ls-h">第一问：这个代币是不是证券</h2>
+    <svg id="list" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>再看上币。第一步是法律分类，它是不是证券？美国常用 Howey 测试，来自1946年的判例。</li>
+      <li>满足四点就是投资合同。投入金钱，投入共同事业，期待利润，利润主要来自他人努力。</li>
+      <li>欧盟先判断是不是 MiFID II 金融工具，不是才进 MiCA。香港区分证券型和非证券型代币。</li>
+      <li>法律分类放在状态机最前面。分类错了代价最高，上架未注册证券，可能构成无牌经营。</li>
+      <li>然后是尽调、白皮书核对和上币委员会。批准时，写入每个辖区的可用性。</li>
+      <li>所以一个代币可以在 A 实体上架，在 B 实体不上。出现风险信号，就进入观察期。</li>
+      <li>下架不是一刀切。先公告，期满停止交易，只允许提币。提币窗口结束，才算走完。</li>
+      <li>MiCA 下，没有白皮书，申请上架的平台要自己起草并负责。下架要按公开规则，提前告知客户。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="横向对照：同一要求，七种答案" data-onstep="crossStep">
+    <div class="kicker">Cross-Jurisdiction Requirements · 公开资料</div>
+    <h2>同一项要求，七种答案</h2>
+    <svg id="cross" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>把七个辖区横着比。冷存储比例，只有香港和日本写了数字，分别是至少98%和至少95%。</li>
+      <li>客户资产隔离几乎都是必须。英国新制度和新加坡，用法定信托式隔离。</li>
+      <li>储备证明在多数地方不是法定要求。迪拜 VARA 要求储备覆盖100%客户负债。</li>
+      <li>差异最大的是零售衍生品。英国禁止，新加坡禁止杠杆。香港永续只给专业投资者，日本杠杆上限2倍。</li>
+      <li>Travel Rule 门槛，美国3000美元，新加坡1500新元。香港8000港元，阿联酋3500迪拉姆。欧盟和日本没有最低金额。</li>
+      <li>同一规则，方向可能相反。新加坡禁止零售杠杆，迪拜允许合格投资者用杠杆。开关必须细到实体、产品和客户类别。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene" data-title="真实案例：MiCA 截止日与日本" data-onstep="caseStep">
+    <div class="kicker">Case · 据公开报道 · 分析部分已标注</div>
+    <h2 id="case-h">案例一：MiCA 过渡期结束</h2>
+    <svg id="case" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>回到开场案例。币安在欧盟靠各国旧有登记经营，但 MiCA 要求拿到授权。希腊申请撤回，7月1日起就限制新业务。</li>
+      <li>我们的分析是，过渡期是倒计时。实体路由不变，产品矩阵一次性关掉充值、新开户和理财，只留提币。</li>
+      <li>开关要能按辖区、按动作批量关闭，同时生效。据报道，部分限制在8月仍未完全落实，执行也要验证。</li>
+      <li>再看日本。2014年 Mt.Gox 倒闭，推动了登记制。2018年 Coincheck 被盗约580亿日元的 NEM，推动了冷钱包要求。</li>
+      <li>2024年5月31日，DMM Bitcoin 约4502个 BTC 被盗。集团筹资补足客户资产，平台停业，客户迁往 SBI VC Trade。</li>
+      <li>启示有两个。冷钱包比例不等于安全，这次出事在签名流程。补足靠母公司财力，不是制度兜底。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene" data-title="权衡与指标" data-onstep="tradeStep">
+    <div class="kicker" id="tr-k">Trade-offs · 业界通用做法</div>
+    <h2 id="tr-h">每一个选择都有代价</h2>
+    <svg id="trade" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>单一平台流动性集中、成本低，多实体合规但流动性分散。常见做法是本地实体，加获批的共享订单簿。</li>
+      <li>按 IP 判定实时，按 KYC 判定准确但滞后。常见做法是两者叠加，冲突时取严。</li>
+      <li>退出市场时，常见做法是有序退出，只开放提币。证券分类拿不准，就按辖区分别上架。</li>
+      <li>运营上看几个示例指标。实体错配率超过0.1%告警。受限产品越权下单，大于0就告警。</li>
+      <li>牌照到期少于90天告警。下架后仍有挂单，也要告警。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">Summary</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets" style="font-size:42px;gap:40px;margin-top:20px">
+      <li data-step="0">全球经营 = <span class="hl">多个本地持牌实体</span> + 地理围栏 + 按 KYC 居住地路由。</li>
+      <li data-step="1">产品开关细到<span class="hl">实体 × 产品 × 客户类别</span>，在后端判断；上币先做法律分类，下架保留提币窗口。</li>
+      <li data-step="2"><span class="hl">过渡期是倒计时</span>：开关要能按辖区批量关闭、同时生效，并验证执行。</li>
+    </ul>
+    <div class="card gold" data-step="3"><h3>下一集 · B10 税务报送与数据隐私</h3>交易所也是信息报送人 · CARF · DAC8 · 1099-DA · 隐私法与反洗钱留存的冲突</div>
+    <ol class="say">
+      <li>小结三点。第一，全球经营靠多个本地持牌实体，加地理围栏，再按 KYC 居住地路由。</li>
+      <li>第二，开关细到实体、产品和客户类别，在后端判断。上币先做法律分类，下架保留提币窗口。</li>
+      <li>第三，过渡期是倒计时。开关要能批量关闭、同时生效，还要验证执行。</li>
+      <li>下一集是 B10 税务报送与数据隐私。交易所也是信息报送人，我们看 CARF 和 DAC8 要报什么。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10', done: '#5a5f6a' };
+  const SOFT = { gold: 'rgba(240,185,11,.16)', buy: 'rgba(46,189,133,.16)', sell: 'rgba(246,70,93,.16)', info: 'rgba(91,156,255,.16)', warn: 'rgba(240,163,64,.16)' };
+  function svgEl(svg, html) { svg.innerHTML = html.replace(/<(text|tspan)([^>]*?) fill="([^"]+)"/g, '<$1$2 style="fill:$3"'); }
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 28}" text-anchor="${o.anchor || 'start'}" fill="${o.fill || C.text}"${o.bold ? ' font-weight="700"' : ''}${o.mono ? ' font-family="JetBrains Mono, SF Mono, Menlo, monospace"' : ''}${o.plain === false ? ` stroke="${C.bg}" stroke-width="8" paint-order="stroke"` : ''}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.op !== undefined ? ` opacity="${o.op}"` : ''}/>`;
+  function A(x1, y1, x2, y2, o = {}) {
+    const col = o.col || C.t2, w = o.w || 4, a = Math.atan2(y2 - y1, x2 - x1), h = 18;
+    const p = d => `${(x2 - h * Math.cos(a + d)).toFixed(1)},${(y2 - h * Math.sin(a + d)).toFixed(1)}`;
+    return `<line x1="${x1}" y1="${y1}" x2="${x2 - 10 * Math.cos(a)}" y2="${y2 - 10 * Math.sin(a)}" stroke="${col}" stroke-width="${w}"${o.dash ? ' stroke-dasharray="12 9"' : ''}/><polygon points="${x2},${y2} ${p(0.42)} ${p(-0.42)}" fill="${col}"/>`;
+  }
+  const PL = (pts, col, w = 4, dash) => `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="${w}"${dash ? ' stroke-dasharray="12 9"' : ''}/>`;
+  const ST = { on: [SOFT.gold, C.gold, C.text], done: [C.panel, C.done, C.text], off: [C.panel, C.line, C.t2], bad: [SOFT.sell, C.sell, C.text], ok: [SOFT.buy, C.buy, C.text], info: [SOFT.info, C.info, C.text], warn: [SOFT.warn, C.warn, C.text] };
+  function B(x, y, w, h, title, sub, st = 'done', o = {}) {
+    const m = ST[st], ts = o.size || 30;
+    let s = R(x, y, w, h, { fill: m[0], stroke: m[1], sw: st === 'off' ? 2 : 3, dash: o.dash });
+    if (sub) s += T(x + w / 2, y + h / 2 - 4, title, { anchor: 'middle', size: ts, bold: true, fill: m[2] }) + T(x + w / 2, y + h / 2 + 32, sub, { anchor: 'middle', size: o.subSize || 24, fill: o.subCol || C.t2, bold: !!o.subBold });
+    else s += T(x + w / 2, y + h / 2 + ts * 0.36, title, { anchor: 'middle', size: ts, bold: true, fill: m[2] });
+    return s;
+  }
+  // multi-line text block
+  const ML = (x, y, lines, o = {}) => lines.map((l, i) => T(x, y + i * (o.lh || 44), l, o)).join('');
+  const banner = (y, text, kind = 'gold', size = 32, h = 86) => R(0, y, 1640, h, { fill: SOFT[kind], stroke: C[kind] }) + T(820, y + h / 2 + size * 0.36, text, { anchor: 'middle', size, bold: true });
+
+  /* 1 hook */
+  function hookStep(el, st) {
+    const svg = el.querySelector('#hook');
+    let h = '';
+    h += R(0, 0, 720, 150, { fill: st === 0 ? SOFT.gold : C.panel, stroke: st === 0 ? C.gold : C.line });
+    h += T(30, 50, 'MiCA 过渡期截止日', { size: 28, fill: C.t2 });
+    h += T(30, 128, '2026-07-01', { size: 72, bold: true, mono: true, fill: C.gold });
+    const ev = [['2026-06-23', 'ESMA 发布声明', '未获授权者须有序退出'], ['06-24 前后', '币安撤回希腊申请', 'MiCA 申请 · 据公开报道'], ['2026-07-01', '过渡期结束', '旧有国内登记不再有效']];
+    ev.forEach(([d, t, s], i) => {
+      const y = 172 + i * 106, on = st >= 1 && (i < 2 || st >= 2), cur = (st === 1 && i < 2) || (st === 2 && i === 2);
+      h += R(0, y, 720, 94, { fill: cur ? SOFT.gold : C.panel, stroke: cur ? C.gold : (on ? C.done : C.line), sw: 2 });
+      h += T(24, y + 56, d, { size: 26, mono: true, fill: on ? C.gold : C.t2 });
+      if (on) { h += T(250, y + 42, t, { size: 30, bold: true }); h += T(250, y + 80, s, { size: 24, fill: C.t2 }); }
+      else h += T(250, y + 56, '……', { size: 28, fill: C.t2 });
+    });
+    // switch panel
+    h += R(780, 0, 860, 482, { fill: C.panel, stroke: st === 2 ? C.sell : C.line });
+    h += T(810, 52, '欧盟用户 · 服务开关', { size: 30, bold: true }) + T(1610, 52, '示意', { size: 24, fill: C.t2, anchor: 'end' });
+    ['新注册', '充值', '部分现货下单', '理财', '提币'].forEach((n, i) => {
+      const y = 82 + i * 78, off = st >= 2 && i < 4;
+      h += R(800, y, 820, 66, { fill: C.panel2, stroke: C.line, sw: 1, rx: 10 });
+      h += T(830, y + 44, n, { size: 30, fill: off ? C.t2 : C.text });
+      h += `<rect x="1450" y="${y + 9}" width="140" height="48" rx="24" fill="${off ? SOFT.sell : SOFT.buy}" stroke="${off ? C.sell : C.buy}" stroke-width="3"/>`;
+      h += `<circle cx="${off ? 1476 : 1564}" cy="${y + 33}" r="17" fill="${off ? C.sell : C.buy}"/>`;
+      h += T(off ? 1540 : 1500, y + 43, off ? '关' : '开', { size: 26, bold: true, anchor: 'middle', fill: off ? C.sell : C.buy });
+      if (st >= 2 && i === 4) h += T(1430, y + 44, '保留', { size: 26, bold: true, anchor: 'end', fill: C.buy });
+    });
+    if (st <= 3) {
+      ['法国', '意大利', '西班牙', '波兰 等'].forEach((n, i) => { const x = i * 182; h += R(x, 506, 168, 84, { fill: st >= 2 ? SOFT.sell : C.panel, stroke: st >= 2 ? C.sell : C.line, sw: 2 }) + T(x + 84, 560, n, { size: 30, bold: true, anchor: 'middle', fill: st >= 2 ? C.text : C.t2 }); });
+    }
+    if (st === 3) {
+      [['撮合引擎', '未变', 'done'], ['钱包', '未变', 'done'], ['开关表', '按地区关闭', 'on']].forEach(([t, s, k], i) => { h += B(780 + i * 295, 500, 270, 96, t, s, k, { size: 30, subSize: 24, subCol: k === 'on' ? C.gold : C.t2, subBold: true }); });
+    }
+    if (st === 4) h += banner(506, '有没有资格：在这个地方 · 向这个人 · 卖这个产品', 'gold', 36);
+    if (st === 5) h += banner(506, '不构成法律意见 · 规则变化快 · 以监管机构原文为准 · 核对至 2026-10', 'warn', 30);
+    svgEl(svg, h);
+  }
+
+  /* 3 map */
+  function mapStep(el, st) {
+    const svg = el.querySelector('#map');
+    let h = '';
+    if (st <= 2) {
+      const layers = [
+        ['国际标准层', '只给方向', [['FATF R.15 / R.16', 'VASP 监管 · Travel Rule'], ['巴塞尔委员会', '银行持有加密资产的审慎规则'], ['IOSCO', '市场诚信 · 投资者保护']]],
+        ['司法辖区层', '要哪种牌照', [['美国', '联邦 + 州'], ['欧盟', 'MiCA'], ['英国', 'FCA'], ['新加坡', 'MAS'], ['香港', 'SFC · HKMA'], ['日本', 'FSA'], ['阿联酋', 'VARA · ADGM']]],
+        ['产品规则层', '能卖什么、卖给谁', [['现货', ''], ['衍生品 · 杠杆', ''], ['理财 · 质押', ''], ['稳定币', ''], ['P2P · 卡 · 支付', '']]],
+      ];
+      layers.forEach(([name, sub, items], li) => {
+        const y = li * 165, on = li === st, seen = li <= st;
+        h += R(0, y, 250, 140, { fill: on ? SOFT.gold : C.panel, stroke: on ? C.gold : C.done });
+        h += T(125, y + 62, name, { size: 30, bold: true, anchor: 'middle', fill: seen ? C.text : C.t2 });
+        h += T(125, y + 104, sub, { size: 24, anchor: 'middle', fill: on ? C.gold : C.t2 });
+        const n = items.length, gap = 14, w = (1640 - 280 - (n - 1) * gap) / n;
+        items.forEach(([t, s], j) => { const x = 280 + j * (w + gap); h += B(x, y, w, 140, t, s, on ? 'on' : seen ? 'done' : 'off', { size: n > 5 ? 28 : 30, subSize: n > 5 ? 22 : 24 }); });
+        if (li < 2) h += A(125, y + 142, 125, y + 163, { col: seen ? C.gold : C.line });
+      });
+      h += R(0, 500, 1640, 96, { fill: st === 2 ? SOFT.gold : C.panel, stroke: st === 2 ? C.gold : C.line });
+      const note = ['标准本身不直接约束企业', '各辖区写进本地法后，交易所才承担义务', '最终落到：交易所的产品开关 + 实体路由'][st];
+      h += T(820, 560, note, { size: 32, bold: true, anchor: 'middle', fill: st === 2 ? C.gold : C.text });
+    } else {
+      const J = [
+        ['美国', 'FinCEN · 各州 · SEC/CFTC · OFAC', ['MSB 注册 + 州汇款牌照', '纽约 BitLicense'], 'info', ['Binance.com 不服务美国', 'Binance.US 为独立实体']],
+        ['欧盟', '各国主管机关 + ESMA/EBA', ['MiCA CASP 授权', '一国授权 · 全欧护照'], 'bad', ['未持有 MiCA 授权', '2026-07 起限制服务']],
+        ['英国', 'FCA', ['当前：MLR 登记', '2027-10-25 起：FSMA 授权'], 'bad', ['未登记', '不接受新英国用户 · 据报道']],
+        ['新加坡', 'MAS', ['PSA 下 DPT 服务牌照', '仅服务海外：DTSP 牌照'], 'bad', ['未持牌', '2021 年撤回申请 · 据报道']],
+        ['香港', 'SFC 交易平台 · HKMA 稳定币', ['SFC VATP 牌照', 'SFO 第 1、7 类 + AMLO'], 'bad', ['未列入 SFC', '持牌 VATP 名单']],
+        ['日本', 'FSA', ['资金结算法登记', '加密资产交换业者'], 'ok', ['Binance Japan 已登记', 'PayPay 持股 40%']],
+        ['阿联酋', '迪拜 VARA · 阿布扎比 FSRA', ['VARA VASP 牌照', 'ADGM 交易所 · 清算 · 经纪'], 'ok', ['FZE 持 VARA 牌照 · 2024', '主平台 2026-01 迁入 ADGM']],
+      ];
+      J.forEach(([n, reg, lic, k, stat], i) => {
+        const x = (i % 4) * 415, y = Math.floor(i / 4) * 310, w = 395;
+        const lit = (st === 4 && i > 0) || st === 5, cur = st === 5 && i === 0;
+        const kk = lit ? k : 'done';
+        h += R(x, y, w, 290, { fill: cur ? SOFT.info : C.panel, stroke: lit ? C[{ info: 'info', bad: 'sell', ok: 'buy' }[k]] : (st === 3 ? C.gold : C.done) });
+        h += T(x + 22, y + 48, n, { size: 36, bold: true });
+        h += T(x + 22, y + 86, reg, { size: 20, fill: C.t2 });
+        h += T(x + 22, y + 130, lic[0], { size: 27 });
+        h += T(x + 22, y + 168, lic[1], { size: 27, fill: st === 3 ? C.gold : C.text });
+        if (lit) {
+          h += R(x + 12, y + 192, w - 24, 86, { fill: ST[kk][0], stroke: ST[kk][1], sw: 2, rx: 10 });
+          h += T(x + 28, y + 228, stat[0], { size: 25, bold: true }) + T(x + 28, y + 264, stat[1], { size: 23, fill: C.text });
+        }
+      });
+      const x = 3 * 415, y = 310;
+      h += R(x, y, 395, 290, { fill: C.panel2, stroke: C.line, sw: 2 });
+      if (st === 3) { h += ML(x + 24, y + 60, ['七个辖区', '主监管机构', '需要的许可'], { size: 30, bold: true, lh: 50 }); h += T(x + 24, y + 250, '截至 2026 年 10 月', { size: 24, fill: C.t2 }); }
+      else {
+        h += T(x + 24, y + 48, '币安状态 · 公开资料', { size: 26, bold: true, fill: C.gold });
+        [['buy', '登记或持牌实体'], ['sell', '主平台无相应牌照'], ['info', '独立实体安排']].forEach(([c, t], i) => { h += `<rect x="${x + 24}" y="${y + 78 + i * 52}" width="28" height="28" rx="6" fill="${C[c]}"/>` + T(x + 66, y + 102 + i * 52, t, { size: 26 }); });
+        h += T(x + 24, y + 262, '以官网牌照页和登记册为准', { size: 24, fill: st === 5 ? C.warn : C.t2, bold: st === 5 });
+      }
+    }
+    el.querySelector('#map-h').textContent = st <= 2 ? '监管要求的三层结构' : (st === 3 ? '七个辖区：机构与许可' : '七个辖区：币安的状态');
+    svgEl(svg, h);
+  }
+
+  /* 4 US */
+  function usStep(el, st) {
+    const svg = el.querySelector('#us');
+    let h = '';
+    if (st <= 6) {
+      const reqs = [['FinCEN MSB 注册', ['货币服务业务 · 联邦', 'BSA/AML 计划 · SAR']], ['州汇款牌照 MTL', ['几乎每个州单独发牌', '担保金 · 净资产 · 审计']], ['纽约 BitLicense', ['NYDFS · 2015 年生效', '网络安全 · 资本 · 上币审批']], ['OFAC 制裁', ['严格责任', '不论金额']]];
+      reqs.forEach(([t, s], i) => {
+        const y = i * 150, on = (st === 0 && i === 0) || (st === 1 && i > 0), seen = st >= 1 || i === 0;
+        h += R(0, y, 520, 136, { fill: on ? SOFT.gold : C.panel, stroke: on ? C.gold : (seen ? C.done : C.line) });
+        h += T(24, y + 46, (i + 1) + ' · ' + t, { size: 30, bold: true, fill: seen ? C.text : C.t2 });
+        if (seen) h += T(24, y + 88, s[0], { size: 25, fill: on ? C.text : C.t2 }) + T(24, y + 122, s[1], { size: 25, fill: on ? C.text : C.t2 });
+      });
+    } else {
+      h += R(0, 0, 520, 586, { fill: SOFT.gold, stroke: C.gold });
+      h += T(24, 52, 'GENIUS 法案要点', { size: 32, bold: true, fill: C.gold });
+      h += ML(24, 110, ['只有许可支付稳定币发行方', 'PPSI 能发行支付型稳定币', '储备 1:1 · 美元现金、短期国债', '联邦和州两条许可路径'], { size: 27, lh: 46 });
+      h += `<line x1="24" y1="318" x2="496" y2="318" stroke="${C.gold}" stroke-width="2"/>`;
+      h += T(24, 366, '对交易所的影响', { size: 30, bold: true, fill: C.gold });
+      h += ML(24, 416, ['生效后，向美国用户提供的稳定币', '须来自许可发行方', '或获认可的外国制度', '细则以最终规则为准'], { size: 27, lh: 44, fill: C.text });
+    }
+    const ev = [['2023-06', 'SEC 起诉币安及相关实体', 2], ['2025-05-29', 'SEC 以有偏见驳回方式撤诉', 2], ['2025-07-17', '众议院通过 CLARITY 法案', 3], ['2025-07-18', 'GENIUS 法案签署成为法律', 3], ['2025-09-02', 'SEC 与 CFTC 工作人员联合声明', 4], ['2026-04', 'FinCEN、OFAC 发布稳定币拟议规则', 5], ['2026-07-18', '一年制规期限届满 · 最终规则未全部发布', 5], ['2026-09-15', '参议院程序性投票 49:50 · 未达 60 票', 6], ['2027-01-18', 'GENIUS 最迟生效日', 6]];
+    h += T(580, 32, 'SEC 与 CFTC：证券还是商品？', { size: 28, bold: true, fill: st >= 2 ? C.gold : C.t2 });
+    h += `<line x1="794" y1="60" x2="794" y2="580" stroke="${C.line}" stroke-width="4"/>`;
+    ev.forEach(([d, t, k], i) => {
+      const y = 82 + i * 58, seen = st >= k, cur = st === k || (st === 7 && (i === 3 || i === 8));
+      if (cur) h += R(570, y - 36, 1070, 52, { fill: SOFT.gold, stroke: 'none', rx: 8, sw: 0 });
+      h += T(580, y, d, { size: 25, mono: true, fill: seen ? C.gold : C.done });
+      h += `<circle cx="794" cy="${y - 9}" r="${cur ? 11 : 8}" fill="${seen ? (cur ? C.gold : C.t2) : C.line}"/>`;
+      if (seen) h += T(822, y, t, { size: 27, bold: cur, fill: cur ? C.text : C.t2 });
+    });
+    if (st <= 1) h += R(570, 100, 1070, 480, { fill: C.bg, stroke: 'none', op: 0.55, sw: 0 });
+    el.querySelector('#us-h').textContent = st <= 1 ? '美国：没有一张统一的交易所牌照' : st <= 6 ? '美国：立法与执法时间线' : '美国：GENIUS 法案对交易所意味着什么';
+    svgEl(svg, h);
+  }
+
+  /* 5 MiCA */
+  function micaStep(el, st) {
+    const svg = el.querySelector('#mica');
+    let h = '';
+    const rows = [['CASP 授权', '一国授权 · 护照通知 · 服务全欧盟'], ['最低资本', '5 万 / 12.5 万 / 15 万欧元，或固定开支 1/4，取高'], ['过渡期', '2024-12-30 全面适用 · 旧注册最长到 2026-07-01'], ['白皮书', '上架须有白皮书 · 市场滥用监控与报告 STOR'], ['稳定币', 'EMT 与 ART · 均不得向持有人付息'], ['衍生品', 'MiCA 不涵盖 · 适用 MiFID II'], ['Travel Rule', 'TFR 同日适用 · 无最低金额']];
+    const rowStep = [0, 1, 3, 4, 5, 5, 6];
+    rows.forEach(([k, v], i) => {
+      const y = i * 85, seen = st >= rowStep[i], cur = st === rowStep[i] || (st === 2 && i === 1);
+      h += R(0, y, 960, 74, { fill: cur ? SOFT.gold : C.panel, stroke: cur ? C.gold : C.line, sw: 2 });
+      h += T(20, y + 48, k, { size: 28, bold: true, fill: seen ? (cur ? C.gold : C.text) : C.t2 });
+      if (seen) h += T(210, y + 48, v, { size: 26, fill: cur ? C.text : C.t2 });
+    });
+    const X = 1010, W = 630;
+    h += R(X, 0, W, 590, { fill: C.panel, stroke: C.line });
+    if (st === 0) {
+      h += T(X + 30, 52, '护照机制', { size: 30, bold: true, fill: C.gold });
+      const cx = X + W / 2, cy = 300;
+      for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 - Math.PI / 2, x = cx + 220 * Math.cos(a), y = cy + 175 * Math.sin(a); h += A(cx + 80 * Math.cos(a), cy + 70 * Math.sin(a), x - 34 * Math.cos(a), y - 30 * Math.sin(a), { col: C.gold, w: 3 }); h += R(x - 34, y - 28, 68, 56, { fill: SOFT.buy, stroke: C.buy, sw: 2, rx: 8 }); }
+      h += `<circle cx="${cx}" cy="${cy}" r="72" fill="${SOFT.gold}" stroke="${C.gold}" stroke-width="3"/>` + T(cx, cy - 4, '授权国', { size: 28, bold: true, anchor: 'middle' }) + T(cx, cy + 30, '一次授权', { size: 22, anchor: 'middle', fill: C.gold });
+      h += T(X + W / 2, 575, '其他成员国：通知即可', { size: 24, anchor: 'middle', fill: C.t2 });
+    } else if (st <= 2) {
+      h += T(X + 30, 52, st === 1 ? '三档最低资本' : '示例计算', { size: 30, bold: true, fill: C.gold });
+      const base = 470, sc = 1.5;
+      const bars = st === 1 ? [['档 1', 5], ['档 2', 12.5], ['档 3', 15]] : [['档位要求', 15], ['固定开支 1/4', 20]];
+      bars.forEach(([n, v], i) => { const bw = st === 1 ? 120 : 180, x = X + 60 + i * (st === 1 ? 190 : 280), hh = v * sc * 10; const win = st === 2 && i === 1; h += `<rect x="${x}" y="${base - hh}" width="${bw}" height="${hh}" rx="6" fill="${win ? C.gold : C.info}" opacity="${win ? .9 : .7}"/>` + T(x + bw / 2, base - hh - 14, v + ' 万', { size: 28, bold: true, anchor: 'middle', mono: true }) + T(x + bw / 2, base + 40, n, { size: 24, anchor: 'middle', fill: C.t2 }); });
+      h += `<line x1="${X + 30}" y1="${base}" x2="${X + W - 30}" y2="${base}" stroke="${C.t2}" stroke-width="2"/>`;
+      if (st === 2) { h += T(X + 30, 100, '年固定开支 80 万 × 1/4 = 20 万', { size: 26, mono: true }); h += T(X + 30, 560, '最低资本 = max(15, 20) = 20 万欧元 · 示例', { size: 24, bold: true, fill: C.gold }); }
+      else h += T(X + 30, 560, '单位：万欧元 · 按服务类别', { size: 24, fill: C.t2 });
+    } else if (st === 3) {
+      h += T(X + 30, 52, '时间线', { size: 30, bold: true, fill: C.gold });
+      const pts = [['2024-12-30', '全面适用', C.info], ['2026-06-23', 'ESMA 声明：有序退出', C.warn], ['2026-07-01', '过渡期结束', C.sell]];
+      h += `<line x1="${X + 70}" y1="120" x2="${X + 70}" y2="520" stroke="${C.line}" stroke-width="4"/>`;
+      pts.forEach(([d, t, c], i) => { const y = 140 + i * 170; h += `<circle cx="${X + 70}" cy="${y}" r="14" fill="${c}"/>` + T(X + 104, y + 10, d, { size: 30, mono: true, bold: true, fill: c }) + T(X + 104, y + 56, t, { size: 28 }); });
+      h += R(X + 100, 210, 480, 60, { fill: SOFT.warn, stroke: C.warn, sw: 2, rx: 8 }) + T(X + 120, 250, '旧国内法注册 · 过渡期', { size: 26 });
+    } else if (st === 4) {
+      h += T(X + 30, 52, '上架与市场监控', { size: 30, bold: true, fill: C.gold });
+      ['代币申请上架', '白皮书 · 通知主管机关并公开', '上架交易', '市场滥用监控', '可疑订单与交易报告 STOR'].forEach((t, i) => { const y = 90 + i * 98; h += B(X + 40, y, W - 80, 72, t, '', i === 1 || i === 4 ? 'on' : 'done', { size: 28 }); if (i < 4) h += A(X + W / 2, y + 74, X + W / 2, y + 96, { col: C.done }); });
+    } else if (st === 5) {
+      h += T(X + 30, 52, '稳定币与衍生品', { size: 30, bold: true, fill: C.gold });
+      h += B(X + 30, 90, 270, 130, 'EMT', '挂钩单一法币', 'info') + B(X + 330, 90, 270, 130, 'ART', '资产参考 · 单独授权', 'info');
+      h += T(X + W / 2, 270, '两者都不得向持有人付息', { size: 28, bold: true, anchor: 'middle', fill: C.sell });
+      h += B(X + 30, 320, W - 60, 120, '加密衍生品', '不归 MiCA · 适用 MiFID II', 'warn');
+      h += T(X + W / 2, 500, '需要投资公司牌照', { size: 28, bold: true, anchor: 'middle', fill: C.warn });
+    } else {
+      h += T(X + 30, 52, 'TFR · 自托管地址', { size: 30, bold: true, fill: C.gold });
+      h += B(X + 30, 110, 250, 110, 'CASP', '欧盟平台', 'done') + B(X + 350, 110, 250, 110, '自托管地址', '用户钱包', 'warn');
+      h += A(X + 282, 165, X + 346, 165, { col: C.gold });
+      h += T(X + W / 2, 290, '转账 > 1,000 欧元', { size: 34, bold: true, mono: true, anchor: 'middle', fill: C.gold });
+      h += B(X + 30, 330, W - 60, 110, '核实地址归属', '证明地址属于用户本人', 'on');
+      h += T(X + W / 2, 510, 'CASP 之间：无最低金额', { size: 28, anchor: 'middle', fill: C.t2 });
+    }
+    svgEl(svg, h);
+  }
+
+  /* 6 five jurisdictions */
+  function fiveStep(el, st) {
+    const svg = el.querySelector('#five');
+    let h = '';
+    const tabs = [['英国', 'FCA', [0, 1]], ['新加坡', 'MAS', [2, 3]], ['香港', 'SFC · HKMA', [4, 5, 6]], ['日本', 'FSA', [7, 8]], ['阿联酋', 'VARA · ADGM', [9, 10]]];
+    tabs.forEach(([n, r, ss], i) => {
+      const y = i * 120, cur = ss.includes(st), past = st > ss[ss.length - 1];
+      h += R(0, y, 300, 106, { fill: cur ? SOFT.gold : C.panel, stroke: cur ? C.gold : (past ? C.done : C.line) });
+      h += T(26, y + 50, n, { size: 34, bold: true, fill: cur || past ? C.text : C.t2 });
+      h += T(26, y + 88, r, { size: 24, fill: cur ? C.gold : C.t2 });
+    });
+    const X = 340, W = 1300;
+    h += R(X, 0, W, 586, { fill: C.panel, stroke: C.line });
+    const head = (t, sub) => T(X + 36, 60, t, { size: 34, bold: true, fill: C.gold }) + (sub ? T(X + W - 36, 60, sub, { size: 24, anchor: 'end', fill: C.t2 }) : '');
+    const bullets = (y0, ls, lh = 66) => ls.map(([t, c], i) => `<rect x="${X + 40}" y="${y0 + i * lh - 22}" width="14" height="14" rx="3" fill="${c || C.gold}"/>` + T(X + 72, y0 + i * lh, t, { size: 30, fill: C.text })).join('');
+    if (st === 0) {
+      h += head('英国 · 当前制度', 'MLR 2017');
+      h += bullets(140, [['当前：在 FCA 做反洗钱登记'], ['2023-10-08 起：推广须由授权机构发布或批准'], ['首次投资：24 小时冷静期 · 适当性测试'], ['禁止推荐奖励类激励', C.sell]], 80);
+      h += T(X + 36, 540, '币安：未登记，不接受新英国用户 · 据公开报道', { size: 26, fill: C.t2 });
+    } else if (st === 1) {
+      h += head('英国 · 新制度时间表', 'FSMA 加密授权');
+      const pts = [['2026-06-30', '最终规则发布', C.info], ['2026-09-30', '申请窗口开启 · 预计', C.gold], ['2027-02-28', '申请窗口关闭 · 预计', C.gold], ['2027-10-25', '新制度生效 · 预计', C.buy]];
+      h += `<line x1="${X + 120}" y1="200" x2="${X + W - 120}" y2="200" stroke="${C.line}" stroke-width="5"/>`;
+      pts.forEach(([d, t, c], i) => { const x = X + 120 + i * (W - 240) / 3; h += `<circle cx="${x}" cy="200" r="16" fill="${c}"/>` + T(x, 150, d, { size: 27, mono: true, bold: true, anchor: 'middle', fill: c }) + T(x, 256, t, { size: 26, anchor: 'middle' }); });
+      h += T(X + 36, 350, '新受监管活动：交易平台 · 交易 · 托管 · 质押 · 发行合格稳定币', { size: 28 });
+      h += R(X + 36, 400, W - 72, 120, { fill: SOFT.sell, stroke: C.sell });
+      h += T(X + 64, 452, '零售加密衍生品与 ETN：2021 年 1 月起禁止', { size: 30, bold: true });
+      h += T(X + 64, 496, '2025 年 10 月起零售可买认可交易所上市的加密 ETN · 未核实细节', { size: 24, fill: C.t2 });
+    } else if (st === 2) {
+      h += head('新加坡 · PSA 下 DPT 服务牌照', 'MAS 2023 年起分阶段加强');
+      h += bullets(150, [['客户资产：法定信托隔离 · 每日对账'], ['零售：禁止借贷、质押、信贷和杠杆交易', C.sell], ['须做风险认知评估'], ['Travel Rule 门槛 1,500 新元']], 84);
+      h += T(X + 36, 540, '币安：未持牌，2021 年撤回申请 · 据公开报道', { size: 26, fill: C.t2 });
+    } else if (st === 3) {
+      h += head('新加坡 · DTSP 新规', 'FSMA 第 9 部分 · 2025-06-30 起');
+      h += B(X + 60, 130, 360, 130, '新加坡设点', '只服务海外客户', 'warn');
+      ['海外客户', '海外客户', '海外客户'].forEach((t, i) => { const y = 100 + i * 70; h += A(X + 424, 195, X + 700, y + 25, { col: C.sell, dash: true }) + R(X + 704, y, 220, 52, { fill: C.panel2, stroke: C.line, sw: 2, rx: 8 }) + T(X + 814, y + 36, t, { size: 24, anchor: 'middle', fill: C.t2 }); });
+      h += B(X + 980, 130, 280, 130, '须持 DTSP', '否则停业', 'bad');
+      h += bullets(360, [['MAS：只在极其有限的情况下发牌'], ['没有过渡期', C.sell]], 64);
+      h += R(X + 36, 470, W - 72, 90, { fill: SOFT.gold, stroke: C.gold });
+      h += T(X + W / 2, 528, '新加坡不再是在此设点、服务全球的离岸基地', { size: 32, bold: true, anchor: 'middle' });
+    } else if (st === 4 || st === 5) {
+      h += head(st === 4 ? '香港 · SFC VATP 牌照' : '香港 · 补偿安排示例', '2023-06-01 起须持牌');
+      // custody bar
+      const bx = X + 60, bw = W - 120, by = 130;
+      h += `<rect x="${bx}" y="${by}" width="${bw * .98}" height="80" fill="${C.info}" opacity=".75"/><rect x="${bx + bw * .98}" y="${by}" width="${bw * .02}" height="80" fill="${C.warn}"/>`;
+      h += T(bx + 24, by + 52, st === 5 ? '冷存储 98 亿港元 · 示例' : '冷存储 ≥ 98%', { size: 30, bold: true });
+      h += T(bx + bw, by + 120, st === 5 ? '热存储 2 亿' : '热存储及其他 ≤ 2%', { size: 26, anchor: 'end', fill: C.warn });
+      if (st === 4) {
+        h += bullets(330, [['至少 98% 客户虚拟资产冷存储'], ['补偿安排：冷存储资产的 50%'], ['补偿安排：热存储及其他存储的 100%']], 70);
+        h += T(X + 36, 548, '币安：未列入 SFC 持牌 VATP 名单', { size: 26, fill: C.t2 });
+      } else {
+        h += R(X + 60, 300, 520, 110, { fill: C.panel2, stroke: C.info, sw: 2 }) + T(X + 84, 345, '冷存储 98 亿 × 50%', { size: 28 }) + T(X + 556, 390, '49 亿', { size: 34, mono: true, bold: true, anchor: 'end', fill: C.info });
+        h += R(X + 620, 300, 520, 110, { fill: C.panel2, stroke: C.warn, sw: 2 }) + T(X + 644, 345, '热存储 2 亿 × 100%', { size: 28 }) + T(X + 1116, 390, '2 亿', { size: 34, mono: true, bold: true, anchor: 'end', fill: C.warn });
+        h += R(X + 60, 440, 1080, 110, { fill: SOFT.gold, stroke: C.gold }) + T(X + 84, 508, '补偿安排至少覆盖', { size: 30, bold: true }) + T(X + 1116, 512, '51 亿港元', { size: 44, mono: true, bold: true, anchor: 'end', fill: C.gold });
+      }
+    } else if (st === 6) {
+      h += head('香港 · 新动向', '公开资料');
+      const ev = [['2025-08-01', '稳定币条例生效 · 须持 HKMA 牌照'], ['2025-11-03', '通函：可接入海外关联平台共享订单簿 · 须事先批准'], ['2026-02-11', '通函：永续合约框架 · 仅面向专业投资者'], ['2026-04-10', 'HKMA 发出首批两张稳定币发行人牌照']];
+      ev.forEach(([d, t], i) => { const y = 150 + i * 100, cur = i === 2; h += R(X + 36, y - 46, W - 72, 76, { fill: cur ? SOFT.gold : C.panel2, stroke: cur ? C.gold : C.line, sw: 2 }) + T(X + 60, y + 4, d, { size: 27, mono: true, bold: true, fill: C.gold }) + T(X + 300, y + 4, t, { size: 28 }); });
+      h += T(X + 36, 560, '零售准入：大市值等条件 · 知识评估 · 集中度限制', { size: 26, fill: C.t2 });
+    } else if (st === 7 || st === 8) {
+      h += head(st === 7 ? '日本 · 加密资产交换业者登记' : '日本 · 冷钱包备付示例', '资金结算法');
+      const bx = X + 60, bw = W - 120, by = 120;
+      h += `<rect x="${bx}" y="${by}" width="${bw * .95}" height="80" fill="${C.info}" opacity=".75"/><rect x="${bx + bw * .95}" y="${by}" width="${bw * .05}" height="80" fill="${C.warn}"/>`;
+      h += T(bx + 24, by + 52, st === 8 ? '客户资产冷钱包 ≥ 950 BTC · 示例' : '客户资产冷钱包 ≥ 95%', { size: 30, bold: true });
+      h += T(bx + bw, by + 120, st === 8 ? '热钱包 ≤ 50 BTC' : '热钱包 ≤ 5%', { size: 26, anchor: 'end', fill: C.warn });
+      if (st === 7) {
+        h += bullets(320, [['热钱包里的客户资产：等额自有资产在冷钱包备付'], ['个人杠杆上限 2 倍 · 2020 年内阁府令'], ['2026-04-10 内阁批准修法：拟纳入金融商品，引入内幕交易禁令']], 68);
+        h += T(X + 36, 548, '币安：Binance Japan 已登记 · PayPay 2025 年 10 月宣布持股 40%', { size: 26, fill: C.t2 });
+      } else {
+        h += R(bx + bw * .62, 290, bw * .38, 110, { fill: SOFT.buy, stroke: C.buy }) + T(bx + bw * .62 + 24, 340, '平台自有 BTC', { size: 28, bold: true }) + T(bx + bw - 24, 382, '50 · 冷钱包', { size: 30, mono: true, bold: true, anchor: 'end', fill: C.buy });
+        h += A(bx + bw * .975, 262, bx + bw * .9, 288, { col: C.buy });
+        h += T(bx, 340, '热钱包有多少客户资产', { size: 28 }) + T(bx, 384, '就在冷钱包备多少自有资产', { size: 28, bold: true, fill: C.gold });
+        h += R(X + 36, 440, W - 72, 110, { fill: C.panel2, stroke: C.line, sw: 2 }) + T(X + 64, 490, '热钱包被盗时，平台有能力补足客户损失', { size: 30, bold: true }) + T(X + 64, 530, '数字为示例', { size: 24, fill: C.t2 });
+      }
+    } else if (st === 9) {
+      h += head('阿联酋 · 迪拜 VARA', '按活动发牌');
+      h += B(X + 60, 110, 520, 120, '2023-07', 'Binance FZE 获 MVP 牌照', 'done', { size: 32, subSize: 26 });
+      h += A(X + 584, 170, X + 690, 170, { col: C.gold });
+      h += B(X + 694, 110, 540, 120, '2024-04', '获完整 VASP 牌照', 'ok', { size: 32, subSize: 26 });
+      h += bullets(320, [['衍生品与保证金：仅合格投资者和机构', C.warn], ['合格投资者门槛之一：净资产 350 万迪拉姆'], ['客户资产 100% 储备 · Travel Rule 门槛 3,500 迪拉姆']], 76);
+    } else {
+      h += head('阿联酋 · 阿布扎比 ADGM FSRA', '按传统金融框架发牌');
+      [['Nest Exchange', '认可投资交易所 · MTF'], ['Nest Clearing and Custody', '认可清算所 + 托管'], ['Nest Trading', '经纪交易商']].forEach(([t, s], i) => { h += B(X + 40 + i * 410, 120, 390, 150, t, s, 'ok', { size: 27, subSize: 24 }); });
+      h += T(X + 36, 340, '2025 年 12 月：三个实体获 FSRA 授权', { size: 30, bold: true });
+      h += R(X + 36, 390, W - 72, 120, { fill: SOFT.gold, stroke: C.gold });
+      h += T(X + 64, 440, '币安公告：2026-01-05 起', { size: 28, fill: C.t2 }) + T(X + 64, 488, 'Binance.com 服务迁入这三个实体', { size: 32, bold: true });
+    }
+    el.querySelector('#five-h').textContent = ['英国：登记制走向授权制', '英国：登记制走向授权制', '新加坡：零售保护与 DTSP', '新加坡：零售保护与 DTSP', '香港：冷存储与补偿安排', '香港：冷存储与补偿安排', '香港：衍生品与稳定币', '日本：事故推动的严格托管', '日本：事故推动的严格托管', '阿联酋：迪拜与阿布扎比两套体系', '阿联酋：迪拜与阿布扎比两套体系'][st];
+    svgEl(svg, h);
+  }
+
+  /* 7 routing */
+  function routeStep(el, st) {
+    const svg = el.querySelector('#route');
+    let h = '';
+    const k = (cond, a = 'on') => cond ? a : 'done';
+    const ys = [10, 120, 230, 340];
+    const ents = [['欧盟实体', 'MiCA CASP'], ['日本实体', 'FSA 登记'], ['阿联酋实体', 'VARA · ADGM'], ['全球主平台', '其他地区']];
+    // edges
+    const g = st === 0 ? C.gold : C.done;
+    h += A(202, 315, 246, 315, { col: st <= 3 && st !== 1 ? C.gold : C.done });
+    h += A(492, 315, 536, 315, { col: st === 2 || st === 3 ? C.gold : C.done });
+    h += A(802, 315, 846, 315, { col: st === 3 ? C.gold : C.done });
+    ents.forEach((e, i) => { const hot = st === 3 && i === 1; h += A(1112, 315, 1168, ys[i] + 48, { col: hot ? C.gold : C.done, w: hot ? 5 : 3 }); h += A(1402, ys[i] + 48, 1438, 250, { col: hot ? C.gold : C.done, w: 3 }); });
+    h += PL('370,372 370,462', st === 1 ? C.sell : C.done, st === 1 ? 5 : 3) + A(370, 450, 370, 466, { col: st === 1 ? C.sell : C.done });
+    h += PL('980,372 980,440 524,440 524,525 510,525', st === 4 ? C.sell : C.done, st === 4 ? 5 : 3, true) + A(512, 525, 494, 525, { col: st === 4 ? C.sell : C.done });
+    h += A(1540, 342, 1540, 482, { col: st === 5 ? C.gold : C.done });
+    h += A(1118, 530, 1086, 530, { col: st === 5 ? C.gold : C.done });
+    // nodes
+    h += B(0, 260, 200, 110, '用户请求', '', k(st === 0), { size: 30 });
+    h += B(248, 260, 244, 110, '地理围栏', 'IP · GPS · SIM', k(st === 1 || st === 6), {});
+    h += B(538, 260, 264, 110, 'KYC 国家判定', '证件国籍 + 居住地', k(st === 2 || st === 6), { size: 28 });
+    h += B(848, 260, 264, 110, '实体路由器', '居住地 → 法人实体', k(st === 3 || st === 4), {});
+    ents.forEach(([t, s], i) => { h += B(1170, ys[i], 232, 96, t, s, k(st === 3 && i === 1), { size: 28, subSize: 22 }); });
+    h += B(1440, 160, 200, 180, '产品矩阵', '实体×产品×类别', k(st === 0), { size: 28, subSize: 20 });
+    h += B(248, 470, 244, 110, '拒绝服务', st === 4 ? '或只开放提币' : '', k(st === 1 || st === 4, 'bad'), { size: 30 });
+    h += B(1120, 486, 520, 96, '共享基础设施', '撮合 · 账本 · 钱包 · 风控', k(st === 5, 'info'), { size: 28, subSize: 22 });
+    h += B(560, 486, 524, 96, '按实体隔离', '客户资产账户 · 账本 · 报表', k(st === 5, 'on'), { size: 28, subSize: 22 });
+    // notes (top-left area)
+    const notes = [
+      ['不是找最宽松的规则', '拆成多个本地持牌实体 · 用户限定在所属实体', C.gold],
+      ['示例用户 A · IP 在受制裁地区', '地理围栏先拦 → 拒绝服务', C.sell],
+      ['法律上的居住地由 KYC 判定', 'IP 只能辅助，不能单独决定实体', C.gold],
+      ['示例用户 B · 居住地日本', '→ 日本实体 · 资产与报表都挂在这个实体下', C.gold],
+      ['无可用实体', '拒绝，或只开放提币 · 迁移实体 = 迁移客户合同', C.sell],
+      ['共享降低成本', '但客户资产和账本必须按实体隔离', C.info],
+      ['局限：VPN · 双重国籍 · 出差', 'IP 与 KYC 叠加判断，冲突时取严', C.warn],
+    ][st];
+    h += R(0, 10, 1110, 200, { fill: C.panel, stroke: notes[2] });
+    h += T(30, 82, notes[0], { size: 34, bold: true, fill: notes[2] });
+    h += T(30, 150, notes[1], { size: 29 });
+    if (st === 1 || st === 3) { const ux = st === 1 ? 300 : 980; h += `<circle cx="${ux}" cy="238" r="16" fill="${st === 1 ? C.sell : C.gold}"/>` + T(ux + 26, 246, st === 1 ? '用户 A' : '用户 B', { size: 24, bold: true, fill: st === 1 ? C.sell : C.gold }); }
+    svgEl(svg, h);
+  }
+
+  /* 8 matrix + onboarding */
+  function matrixStep(el, st) {
+    const svg = el.querySelector('#mx');
+    let h = '';
+    if (st <= 3) {
+      const P = ['现货', '永续 · 期货', '杠杆现货', '理财 · 质押', 'P2P', '卡'];
+      const E = [
+        ['欧盟实体', '假设持 MiCA', [['ok'], ['no', '需 MiFID II'], ['no'], ['cond', '按托管或代理评估'], ['cond'], ['cond', '需 EMI 合作']]],
+        ['日本实体', '', [['ok'], ['cond', '需第一类金融|商品交易业'], ['cond'], ['cond', '借贷类有限'], ['no'], ['no']]],
+        ['阿联酋 VARA', '', [['ok'], ['cond', '仅合格投资者'], ['cond', '仅合格投资者'], ['ok', '借贷牌照内'], ['cond'], ['cond']]],
+        ['全球主平台', '', [['ok'], ['ok', '受限地区除外'], ['ok'], ['ok'], ['ok'], ['cond']]],
+      ];
+      const lw = 290, cw = (1640 - lw) / 6;
+      P.forEach((p, j) => { h += T(lw + j * cw + cw / 2, 36, p, { size: 28, bold: true, anchor: 'middle', fill: C.t2 }); });
+      const shownRows = st === 0 ? 0 : st === 1 ? 1 : 4;
+      const M = { ok: ['允许', C.buy, SOFT.buy], cond: ['有条件', C.warn, SOFT.warn], no: ['不提供', C.sell, SOFT.sell] };
+      E.forEach(([n, sub, cells], i) => {
+        const y = 54 + i * 122, cur = (st === 1 && i === 0) || (st === 2 && i > 0);
+        h += R(0, y, 1640, 116, { fill: cur ? 'rgba(255,255,255,.03)' : C.panel, stroke: cur ? C.gold : C.line, sw: 2 });
+        h += T(22, y + (sub ? 48 : 64), n, { size: 30, bold: true });
+        if (sub) h += T(22, y + 86, sub, { size: 22, fill: C.t2 });
+        if (i < shownRows) cells.forEach(([s, note], j) => {
+          const cx = lw + j * cw + cw / 2, m = M[s];
+          h += `<rect x="${cx - 74}" y="${y + 12}" width="148" height="48" rx="24" fill="${m[2]}" stroke="${m[1]}" stroke-width="2"/>` + T(cx, y + 46, m[0], { size: 27, bold: true, anchor: 'middle', fill: m[1] });
+          if (note) note.split('|').forEach((l, q) => { h += T(cx, y + 86 + q * 24, l, { size: 22, anchor: 'middle', fill: C.t2 }); });
+        });
+        else h += T(lw + 3 * cw, y + 64, i === 0 && st === 0 ? '逐格标注：允许 · 有条件 · 不提供' : '', { size: 26, anchor: 'middle', fill: C.t2 });
+      });
+      if (st === 3) h += banner(546, '开关在后端判断：前端隐藏按钮 ≠ 合规 · API 用户可以绕过前端', 'sell', 30, 54);
+      else h += T(0, 590, '示例结构，不代表币安的真实配置 · 交互页逐格标注公开来源', { size: 24, fill: C.t2 });
+    } else {
+      const S = [
+        ['注册', ['前端查询 IP 国家'], 4], ['受限地区？', ['命中则拒绝开户'], 4], ['提交证件', ['证件 + 居住地'], 4], ['身份服务输出', ['KYC 国家 · 客户类别'], 4],
+        ['实体路由', ['居住地 → 法人实体'], 5], ['条款服务', ['记录：哪个实体', '哪一版条款'], 5], ['适当性 · 视实体', ['知识测试 · 冷静期'], 6], ['产品配置', ['实体 × 客户类别', '→ 可见产品列表'], 6],
+      ];
+      S.forEach(([t, ls, s2], i) => {
+        const x = (i % 4) * 420, y = Math.floor(i / 4) * 250, cur = st === s2, seen = st >= s2;
+        const gold = i === 5 && cur;
+        h += R(x, y, 380, 200, { fill: cur ? (gold ? SOFT.gold : SOFT.info) : C.panel, stroke: cur ? (gold ? C.gold : C.info) : (seen ? C.done : C.line) });
+        h += T(x + 24, y + 56, String(i + 1), { size: 42, bold: true, mono: true, fill: seen ? C.gold : C.done });
+        h += T(x + 76, y + 54, t, { size: 32, bold: true, fill: seen ? C.text : C.t2 });
+        if (seen) ls.forEach((l, q) => { h += T(x + 24, y + 116 + q * 44, l, { size: 28, fill: cur ? C.text : C.t2 }); });
+        if (i % 4 < 3) h += A(x + 382, y + 100, x + 416, y + 100, { col: seen ? C.gold : C.line });
+      });
+      h += PL('1570,202 1570,226 190,226 190,240', st >= 5 ? C.gold : C.line, 4) + A(190, 232, 190, 248, { col: st >= 5 ? C.gold : C.line });
+      if (st === 1 + 5) h += banner(510, '用户搬家 → 居住地变化 → 触发复审与实体迁移', 'warn', 30, 80);
+      else if (st === 5) h += banner(510, '日后监管查询或实体迁移，都靠这条同意记录', 'gold', 30, 80);
+      else h += banner(510, '居住地以 KYC 为准 · IP 只做前置拦截', 'info', 30, 80);
+    }
+    el.querySelector('#mx-h').textContent = st <= 3 ? '产品可用性矩阵：实体 × 产品 × 客户类别' : '分区开户：从 IP 到可见产品';
+    el.querySelector('#mx-k').textContent = st <= 3 ? 'Product Availability Matrix · 示例结构' : 'Regional Onboarding · 业界通用做法';
+    svgEl(svg, h);
+  }
+
+  /* 9 three lines */
+  function linesStep(el, st) {
+    const svg = el.querySelector('#lines');
+    let h = '';
+    const k = c => c ? 'on' : 'done';
+    h += B(560, 0, 520, 96, '董事会', '风险与合规委员会', k(st === 2 || st === 3 || st === 4), { size: 30 });
+    h += B(620, 150, 400, 80, 'CEO 与管理层', '', 'done', { size: 28 });
+    h += A(820, 98, 820, 146, { col: C.done });
+    h += B(0, 0, 460, 120, '外部 · 独立监察员', '审计师 · 监管检查', st === 4 ? 'warn' : 'off', { size: 28, dash: '10 8' });
+    h += A(462, 50, 556, 50, { col: st === 4 ? C.warn : C.line, dash: true });
+    // three columns
+    const cols = [
+      [0, '第一道 · 业务', ['产品 · 上币 · 运营', '拥有风险 · 执行控制'], 0],
+      [570, '第二道 · 风险与合规', ['CCO 首席合规官', 'MLRO 反洗钱报告官 · 风险管理部'], 1],
+      [1140, '第三道 · 内部审计', ['检查前两道是否有效', '不参与日常决策'], 3],
+    ];
+    cols.forEach(([x, t, ls, s]) => {
+      const on = st === s || (s === 1 && st === 2);
+      h += R(x, 290, 500, 190, { fill: on ? SOFT.gold : C.panel, stroke: on ? C.gold : C.done });
+      h += T(x + 24, 340, t, { size: 32, bold: true, fill: on ? C.gold : C.text });
+      h += T(x + 24, 396, ls[0], { size: 27 }) + T(x + 24, 446, ls[1], { size: 25, fill: C.t2 });
+    });
+    h += A(720, 232, 250, 286, { col: C.done }) + A(820, 232, 820, 286, { col: C.done });
+    // L2 -> L1 challenge
+    h += A(568, 360, 504, 360, { col: st === 1 ? C.gold : C.done });
+    if (st === 1) h += T(536, 280, '挑战', { size: 24, bold: true, anchor: 'middle', fill: C.gold });
+    // L2 -> board independent line
+    h += PL('1050,288 1050,120', st === 2 ? C.gold : C.done, st === 2 ? 5 : 3) + A(1050, 130, 1050, 100, { col: st === 2 ? C.gold : C.done });
+    if (st === 2) h += T(1066, 210, '独立汇报', { size: 26, bold: true, fill: C.gold, plain: false });
+    // IA -> board
+    h += PL('1390,288 1390,48 1100,48', st === 3 ? C.gold : C.done, st === 3 ? 4 : 3) + A(1110, 48, 1082, 48, { col: st === 3 ? C.gold : C.done });
+    if (st === 3) h += T(1410, 180, '直接报告', { size: 24, bold: true, fill: C.gold, plain: false });
+    // note strip
+    const notes = [
+      ['例：零售不能开合约的开关', '产品团队设计并执行 = 第一道防线的控制', C.gold],
+      ['CCO：政策、牌照、监管沟通', 'MLRO：签发 SAR / STR · 制定规则并挑战业务', C.gold],
+      ['CCO 和 MLRO 直通董事会', '避免被业务指标压制', C.gold],
+      ['内审直接向董事会报告', '检查第一道和第二道，不参与日常决策', C.gold],
+      ['例：2023 年和解后的 DOJ、FinCEN 监察员', '局限：监察报告通常不公开，外界只看到结论', C.warn],
+    ][st];
+    h += R(0, 500, 1640, 96, { fill: C.panel2, stroke: notes[2] });
+    h += T(24, 558, notes[0], { size: 30, bold: true, fill: notes[2] }) + T(1616, 558, notes[1], { size: 26, anchor: 'end' });
+    if (st === 0) h += `<rect x="380" y="306" width="96" height="44" rx="22" fill="${SOFT.sell}" stroke="${C.sell}" stroke-width="3"/><circle cx="402" cy="328" r="14" fill="${C.sell}"/>` + T(446, 337, '关', { size: 22, bold: true, anchor: 'middle', fill: C.sell });
+    svgEl(svg, h);
+  }
+
+  /* 10 listing */
+  function listStep(el, st) {
+    const svg = el.querySelector('#list');
+    let h = '';
+    if (st <= 2) {
+      h += R(0, 0, 1640, 80, { fill: C.panel, stroke: st === 0 ? C.gold : C.line });
+      h += T(30, 52, 'Howey 测试 · 1946 年美国最高法院判例', { size: 32, bold: true, fill: C.gold }) + T(1610, 52, '满足四点 = 投资合同 = 证券', { size: 28, anchor: 'end' });
+      ['投入了金钱', '投入共同事业', '期待获得利润', '利润主要来自他人的努力'].forEach((t, i) => {
+        const x = i * 415, on = st >= 1;
+        h += R(x, 110, 395, 170, { fill: st === 1 ? SOFT.gold : C.panel, stroke: on ? C.gold : C.line });
+        h += T(x + 28, 172, String(i + 1), { size: 48, bold: true, mono: true, fill: on ? C.gold : C.done });
+        h += T(x + 28, 246, on ? t : '？', { size: i === 3 ? 26 : 30, bold: true, fill: on ? C.text : C.t2 });
+      });
+      if (st === 1) h += T(820, 400, '四点同时满足 → 投资合同 → 属于证券', { size: 38, bold: true, anchor: 'middle', fill: C.gold });
+      if (st === 0) h += T(820, 380, '法律分类决定：能不能上、在哪个实体上', { size: 34, bold: true, anchor: 'middle', fill: C.t2 });
+      if (st >= 2) {
+        [['欧盟', '先判断是否 MiFID II 金融工具', '不是，才进入 MiCA'], ['香港', '证券型代币', '非证券型代币'], ['日本', '2026 年修法', '拟把加密资产整体纳入金融商品']].forEach(([n, a, b], i) => {
+          const x = i * 553;
+          h += R(x, 320, 533, 270, { fill: SOFT.info, stroke: C.info });
+          h += T(x + 28, 376, n, { size: 34, bold: true, fill: C.info }) + T(x + 28, 448, a, { size: 28 }) + T(x + 28, 504, b, { size: 28, fill: C.t2 });
+        });
+      }
+    } else {
+      // state machine
+      const N = { APPLY: [0, 80, 190, '申请'], LAW: [240, 80, 220, '法律分类'], DD: [510, 80, 300, '尽调与技术审查'], WP: [860, 80, 230, '白皮书核对'], CM: [1140, 80, 240, '上币委员会'], LIVE: [1100, 270, 280, '按辖区上架'], WATCH: [1430, 270, 210, '观察期'], NOTICE: [740, 270, 280, '下架公告'], WD: [360, 270, 300, '只允许提币'], END: [80, 270, 200, '结束'] };
+      const act = { 3: ['APPLY', 'LAW'], 4: ['DD', 'WP', 'CM', 'LIVE'], 5: ['LIVE', 'WATCH'], 6: ['NOTICE', 'WD', 'END'], 7: ['WP', 'WD'] }[st];
+      const E = [['APPLY', 'LAW', 3], ['LAW', 'DD', 4], ['DD', 'WP', 4], ['WP', 'CM', 4], ['CM', 'LIVE', 4], ['LIVE', 'WATCH', 5], ['LIVE', 'NOTICE', 6], ['NOTICE', 'WD', 6], ['WD', 'END', 6]];
+      const ctr = n => [N[n][0] + N[n][2] / 2, N[n][1] + 45];
+      E.forEach(([a, b, s]) => {
+        const [x1, y1] = ctr(a), [x2, y2] = ctr(b), col = st === s ? C.gold : C.done;
+        if (y1 === y2) { const dir = x2 > x1 ? 1 : -1; h += A(x1 + dir * N[a][2] / 2 + dir * 2, y1, x2 - dir * N[b][2] / 2 - dir * 2, y2, { col }); }
+        else h += A(x1, y1 + 47, x2 + 0, y2 - 47, { col });
+      });
+      // watch back
+      h += A(1430, 336, 1384, 336, { col: st === 5 ? C.buy : C.done, w: 3 });
+      // rejections
+      [['LAW', '证券且无相应牌照'], ['DD', '发现重大风险'], ['CM', '否决']].forEach(([n, t]) => { const [x] = ctr(n), red = (st === 3 && n === 'LAW') || (st === 4 && n !== 'LAW'); h += A(x, 78, x, 44, { col: red ? C.sell : C.line, w: 3 }); h += T(x, 30, '✕ ' + t, { size: 22, anchor: 'middle', fill: red ? C.sell : C.done }); });
+      Object.entries(N).forEach(([key, [x, y, w, t]]) => { const on = act.includes(key); h += B(x, y, w, 90, t, '', on ? (key === 'WD' || key === 'NOTICE' ? 'warn' : key === 'END' ? 'done' : 'on') : 'done', { size: 28 }); });
+      const notes = {
+        3: [['法律分类放在最前面', C.gold], ['分类错误代价最高：上架未注册证券，可能构成无牌经营交易所', C.text]],
+        4: [['合约 · 团队 · 流动性 → 白皮书 → 委员会', C.gold], ['批准时写入每个辖区的可用性', C.text]],
+        5: [['同一个代币：A 实体上架，B 实体不上', C.gold], ['触发观察条件进入观察期 · 风险解除回到上架', C.text]],
+        6: [['下架不是一刀切', C.gold], ['提前公告 → 停止交易 → 保留提币窗口 → 窗口结束', C.text]],
+      }[st];
+      if (notes) { h += R(0, 420, 1640, 170, { fill: C.panel, stroke: C.line }); notes.forEach(([t, c], i) => { h += T(30, 480 + i * 60, t, { size: i ? 28 : 32, bold: !i, fill: c }); }); }
+      if (st === 7) {
+        h += R(0, 400, 1640, 196, { fill: SOFT.info, stroke: C.info });
+        h += T(24, 440, 'MiCA 上币义务 · 简化', { size: 26, bold: true, fill: C.info });
+        ['不属于金融工具、电子货币或存款', '无白皮书：平台自己起草并负责', '白皮书通知主管机关并公开', '书面上币规则 · 技术与洗钱风险', '上架后监控市场滥用并报告', '下架按公开规则 · 提前告知'].forEach((t, i) => { h += T(24 + (i % 2) * 820, 488 + Math.floor(i / 2) * 42, (i + 1) + '. ' + t, { size: 26, fill: i === 1 ? C.gold : C.text, bold: i === 1 }); });
+      }
+    }
+    el.querySelector('#ls-h').textContent = st <= 2 ? '第一问：这个代币是不是证券' : st <= 6 ? '上币与下架状态机' : 'MiCA 下的上币义务';
+    el.querySelector('#ls-k').textContent = st <= 2 ? 'Listing Compliance · 证券属性分析' : 'Listing State Machine · 业界通用做法';
+    svgEl(svg, h);
+  }
+
+  /* 11 cross table */
+  function crossStep(el, st) {
+    const svg = el.querySelector('#cross');
+    let h = '';
+    const H = ['美国', '欧盟', '英国', '新加坡', '香港', '日本', '阿联酋 VARA'];
+    const rows = [
+      ['冷存储比例', ['无统一数字', '无统一数字', '无统一数字', '无统一数字', '≥ 98%', '≥ 95%', '无统一数字|未核实']],
+      ['客户资产隔离', ['州法要求', '必须', '法定信托式|新制度', '法定信托', '必须|经信托子公司', '必须', '必须']],
+      ['储备证明', ['非法定', '非法定', '非法定', '非法定', '非法定', '非法定', '储备 100%|客户负债']],
+      ['零售衍生品', ['仅 CFTC|注册场所', 'MiFID II|适当性', '禁止', '禁止杠杆', '永续仅|专业投资者', '杠杆上限|2 倍', '仅合格|投资者']],
+      ['Travel Rule', ['3,000 美元', '无最低金额', '无最低金额|低额简化未核实', '1,500 新元', '8,000 港元', '无最低金额', '3,500 迪拉姆']],
+    ];
+    const hot = { 0: [[0, 4], [0, 5]], 1: [[1, 2], [1, 3]], 2: [[2, 6]], 3: [[3, 2], [3, 3], [3, 4], [3, 5]], 4: [[4, 0], [4, 3], [4, 4], [4, 6]], 5: [[3, 3], [3, 6]] }[st];
+    const lw = 240, cw = (1640 - lw) / 7;
+    H.forEach((n, j) => { h += T(lw + j * cw + cw / 2, 38, n, { size: 28, bold: true, anchor: 'middle', fill: C.t2 }); });
+    rows.forEach(([n, cells], i) => {
+      const y = 56 + i * 96, seen = i <= st, cur = i === st;
+      h += R(0, y, 1640, 88, { fill: cur ? 'rgba(255,255,255,.03)' : C.panel, stroke: cur ? C.gold : C.line, sw: 2 });
+      h += T(20, y + 54, n, { size: 28, bold: true, fill: seen ? (cur ? C.gold : C.text) : C.t2 });
+      if (!seen) return;
+      cells.forEach((c, j) => {
+        const x = lw + j * cw, isHot = hot.some(([a, b]) => a === i && b === j);
+        if (isHot) h += R(x + 6, y + 6, cw - 12, 76, { fill: st === 5 ? (j === 3 ? SOFT.sell : SOFT.buy) : SOFT.gold, stroke: st === 5 ? (j === 3 ? C.sell : C.buy) : C.gold, sw: 2, rx: 8 });
+        const ls = c.split('|');
+        ls.forEach((l, q) => { const un = l.includes('未核实'); h += T(x + cw / 2, y + (ls.length === 1 ? 54 : 38 + q * 32), l, { size: ls.length === 1 ? 26 : (un ? 18 : 24), anchor: 'middle', fill: un ? C.warn : (isHot || cur ? C.text : C.t2), bold: isHot }); });
+      });
+    });
+    if (st === 5) h += banner(538, '新加坡禁止零售杠杆 · 迪拜允许合格投资者杠杆 → 开关细到实体 × 产品 × 客户类别', 'gold', 28, 64);
+    else h += T(0, 588, ['只有香港、日本写了冷存储数字', '英国新制度与新加坡：法定信托式隔离', '储备证明：2022 年 FTX 倒闭后的行业自愿做法', '这一列差异最大，是全球交易所做产品开关的主要原因', '欧盟、日本：无最低金额 · 各地门槛不同'][st], { size: 28, fill: C.gold, bold: true });
+    svgEl(svg, h);
+  }
+
+  /* 12 cases */
+  function caseStep(el, st) {
+    const svg = el.querySelector('#case');
+    let h = '';
+    if (st <= 2) {
+      const r1 = [['各国旧有登记', '国内法下经营'], ['MiCA 2024 年底适用', '过渡期最长到 07-01'], ['须在一个成员国', '获 CASP 授权'], ['希腊申请', '2026-06 撤回']];
+      r1.forEach(([t, s], i) => { const x = i * 420; h += B(x, 0, 380, 120, t, s, st === 0 ? (i === 3 ? 'bad' : 'on') : 'done', { size: 28, subSize: 24 }); if (i < 3) h += A(x + 382, 60, x + 416, 60, { col: st === 0 ? C.gold : C.done }); });
+      h += PL('1450,122 1450,150', st === 0 ? C.gold : C.done) + A(1450, 140, 1450, 168, { col: st === 0 ? C.gold : C.done });
+      h += B(1060, 170, 580, 110, '2026-07-01 起', '限制新业务 · 保留提币', st <= 1 ? 'bad' : 'done', { size: 30, subSize: 26 });
+      h += B(0, 170, 480, 110, '用户迁往已获授权平台', '', 'done', { size: 26 }) + B(520, 170, 480, 110, '寻求其他成员国授权', '', 'done', { size: 26 });
+      h += A(1058, 225, 1004, 225, { col: C.done });
+      h += PL('1060,262 1040,300 240,300 240,282', C.done, 3);
+      if (st === 0) { h += R(0, 330, 1640, 260, { fill: C.panel, stroke: C.line }); h += T(30, 390, '据公开报道 · 受影响用户：法国、意大利、西班牙、波兰等', { size: 30, bold: true, fill: C.gold }); h += T(30, 450, '暂停：新注册 · 充值 · 部分现货下单 · 理财', { size: 30 }); h += T(30, 510, '保留：提币', { size: 30, fill: C.buy, bold: true }); h += T(30, 566, 'ESMA 2026-06-23 声明：未获授权的 CASP 须有序退出', { size: 26, fill: C.t2 }); }
+      if (st === 1) {
+        h += R(0, 330, 1640, 260, { fill: C.panel, stroke: C.gold });
+        h += T(30, 384, '分析 · 系统动作', { size: 30, bold: true, fill: C.gold });
+        h += B(30, 420, 330, 130, '实体路由', '不变', 'done', { size: 30, subSize: 26 });
+        [['充值', 0], ['新开户', 0], ['理财', 0], ['提币', 1]].forEach(([t, ok], i) => { const x = 420 + i * 300; h += R(x, 420, 270, 130, { fill: ok ? SOFT.buy : SOFT.sell, stroke: ok ? C.buy : C.sell }) + T(x + 135, 478, t, { size: 32, bold: true, anchor: 'middle' }) + T(x + 135, 526, ok ? '保留' : '一次性关闭', { size: 26, anchor: 'middle', fill: ok ? C.buy : C.sell }); });
+      }
+      if (st === 2) {
+        h += R(0, 330, 1640, 260, { fill: C.panel, stroke: C.warn });
+        h += T(30, 392, '开关要求', { size: 30, bold: true, fill: C.gold });
+        [['按辖区', C.gold], ['按动作', C.gold], ['批量关闭', C.gold], ['同一时刻生效', C.gold]].forEach(([t, c], i) => { h += R(30 + i * 300, 416, 270, 70, { fill: SOFT.gold, stroke: C.gold, sw: 2 }) + T(165 + i * 300, 462, t, { size: 30, bold: true, anchor: 'middle' }); });
+        h += T(30, 548, '据报道：第三方测试发现部分限制在 8 月仍未完全落实 → 执行也要验证', { size: 28, fill: C.warn, bold: true });
+      }
+    } else {
+      const cols = [['2014', 'Mt.Gox 倒闭', '2017 资金结算法', '引入交易所登记制', 3], ['2018', 'Coincheck NEM 被盗', '约 580 亿日元', '强化资产分离 · 冷钱包 95%', 3], ['2024-05-31', 'DMM Bitcoin', '约 4,502 BTC · 约 482 亿日元', '集团补足 · 停业 · 2025-03 迁至 SBI VC Trade', 4], ['2025', '资金结算法修订', '资产保全命令等', '2026-04 内阁批准金商法修法', 4]];
+      cols.forEach(([y, a, b, r, s], i) => {
+        const x = i * 415, on = st === s, seen = st >= s;
+        h += R(x, 0, 395, 190, { fill: on ? SOFT.sell : C.panel, stroke: on ? C.sell : (seen ? C.done : C.line) });
+        h += T(x + 24, 52, y, { size: 30, bold: true, mono: true, fill: seen ? C.gold : C.done });
+        if (seen) h += T(x + 24, 104, a, { size: 28, bold: true }) + T(x + 24, 150, b, { size: 23, fill: C.t2 });
+        h += A(x + 197, 194, x + 197, 236, { col: seen ? C.gold : C.line });
+        h += R(x, 240, 395, 150, { fill: on ? SOFT.gold : C.panel, stroke: on ? C.gold : C.line });
+        if (seen) { const ws = r.split(' · '); ws.forEach((l, q) => { h += T(x + 24, 290 + q * 38, l, { size: 24, fill: C.text }); }); }
+      });
+      if (st === 3) h += T(0, 450, '每次大事故都推动一轮规则升级 · 冷钱包比例是事故的直接产物', { size: 30, bold: true, fill: C.gold });
+      if (st === 4) h += T(0, 450, '日本用户未直接受损：热钱包部分须备等额自有资产 · 分析', { size: 30, bold: true, fill: C.gold });
+      if (st === 5) {
+        h += R(0, 420, 800, 170, { fill: SOFT.sell, stroke: C.sell }) + T(24, 476, '冷钱包比例 ≠ 安全', { size: 32, bold: true }) + T(24, 530, '被盗环节在签名流程 · 见 B11、B12', { size: 27, fill: C.t2 });
+        h += R(840, 420, 800, 170, { fill: SOFT.warn, stroke: C.warn }) + T(864, 476, '补足靠母公司财力', { size: 32, bold: true }) + T(864, 530, '不是制度兜底', { size: 27, fill: C.t2 });
+      }
+    }
+    el.querySelector('#case-h').textContent = st <= 2 ? '案例一：MiCA 过渡期结束' : '案例二：日本，从 Mt.Gox 到 DMM Bitcoin';
+    svgEl(svg, h);
+  }
+
+  /* 13 trade-offs + metrics */
+  function tradeStep(el, st) {
+    const svg = el.querySelector('#trade');
+    let h = '';
+    if (st <= 2) {
+      const rows = [['单一平台 vs 多实体', '流动性集中，成本低', '牌照合规，流动性分散', '本地实体 + 获批的共享订单簿'], ['先开展 vs 先申请', '抢市场', '合规，但慢', '过渡期到期是硬约束'], ['按 IP vs 按 KYC', '实时，开户前拦截', '准确，但滞后', '两者叠加，冲突时取严'], ['统一 vs 本地化产品', '开发成本低', '满足零售限制', '后端矩阵 + 前端动态渲染'], ['退出 vs 坚持申请', '止损', '保住用户，风险持续', '有序退出：只开放提币'], ['证券分类 保守 vs 激进', '上币少，竞争力弱', '监管风险', '按辖区分别上架']];
+      const xs = [0, 360, 720, 1080];
+      ['权衡', '一侧', '另一侧', '常见做法'].forEach((t, j) => { h += T(xs[j] + 20, 34, t, { size: 26, fill: C.t2 }); });
+      rows.forEach((r, i) => {
+        const y = 56 + i * 92, cur = Math.floor(i / 2) === st, seen = Math.floor(i / 2) <= st;
+        h += R(0, y, 1640, 84, { fill: cur ? SOFT.gold : C.panel, stroke: cur ? C.gold : C.line, sw: 2 });
+        h += T(20, y + 54, r[0], { size: 28, bold: true, fill: seen ? C.text : C.t2 });
+        if (seen) { h += T(380, y + 54, r[1], { size: 27, fill: C.t2 }); h += T(740, y + 54, r[2], { size: 27, fill: C.t2 }); h += T(1100, y + 54, r[3], { size: 28, bold: cur, fill: cur ? C.gold : C.text }); }
+      });
+    } else {
+      const rows = [['实体错配率', 'KYC 居住地与所属实体不一致', '> 0.1%'], ['受限产品越权访问', '开关为关、但成功下单', '> 0'], ['牌照到期倒计时', '距最近一次续期截止', '< 90 天'], ['法规变更未评估', '已发布、未完成影响评估', '> 0 且超 30 天'], ['白皮书缺失代币', 'MiCA 实体上架但无白皮书', '> 0'], ['下架后仍有挂单', '只允许提币状态下的订单', '> 0']];
+      h += T(20, 34, '指标', { size: 26, fill: C.t2 }) + T(420, 34, '定义', { size: 26, fill: C.t2 }) + T(1620, 34, '告警条件 · 示例', { size: 26, fill: C.t2, anchor: 'end' });
+      rows.forEach(([a, b, c], i) => {
+        const y = 56 + i * 92, cur = (st === 3 && i < 2) || (st === 4 && (i === 2 || i === 5)), seen = st === 4 || i < 2;
+        h += R(0, y, 1640, 84, { fill: cur ? SOFT.gold : C.panel, stroke: cur ? C.gold : C.line, sw: 2 });
+        h += T(20, y + 54, a, { size: 29, bold: true, fill: seen ? C.text : C.t2 });
+        if (seen) { h += T(420, y + 54, b, { size: 27, fill: C.t2 }); h += T(1620, y + 56, c, { size: 32, bold: true, mono: true, anchor: 'end', fill: cur ? C.sell : C.text }); }
+      });
+    }
+    el.querySelector('#tr-h').textContent = st <= 2 ? '每一个选择都有代价' : '合规运营指标';
+    el.querySelector('#tr-k').textContent = st <= 2 ? 'Trade-offs · 业界通用做法' : 'Compliance Ops Metrics · 示例阈值';
+    svgEl(svg, h);
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

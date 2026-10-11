@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>迷你账本实验</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .ops { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .op { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--surface-2); min-width: 0; }
+  .op h3 { margin: 0 0 4px; font-size: 14px; }
+  .op .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .op label { margin-top: 6px; }
+  .op .btn-row button { font-size: 13px; padding: 6px 10px; }
+  .toggle { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--text); margin: 6px 0; cursor: pointer; }
+  .toggle input { margin-top: 4px; accent-color: var(--accent); }
+  .bug .toggle { color: var(--sell); }
+  .checks { list-style: none; padding: 0; margin: 0; }
+  .checks li { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .checks li:last-child { border-bottom: 0; }
+  .checks .detail { font-family: var(--mono); font-size: 12px; color: var(--text-2); word-break: break-all; }
+  .banner { border-radius: 8px; padding: 10px 14px; font-weight: 600; margin: 0 0 12px; }
+  .banner.ok { background: var(--buy-soft); color: var(--buy); }
+  .banner.err { background: var(--sell-soft); color: var(--sell); border: 1px solid var(--sell); }
+  tr.bad td { background: var(--sell-soft); }
+  tr.jstart td { border-top: 2px solid var(--border); }
+  td.neg { color: var(--sell); font-weight: 700; }
+  td.key { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+  .kv { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; }
+  .kv b { font-family: var(--mono); }
+  .tier-row.cur td { background: var(--accent-soft); font-weight: 600; }
+  .stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin: 12px 0; }
+  ol.try li, ol.howto li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <h1>迷你账本实验</h1>
+  </header>
+  <p class="lead">一个只有两个用户、两种资产的双分录账本。每个按钮生成一组借/贷分录。"余额与恒等式"区块实时告诉你账是否平。打开"制造 bug"开关，看对账如何发现错误。配套章节：<a href="../05-ledger.md">05 账本</a>、<a href="../07-clearing-settlement-fees.md">07 清算结算与手续费</a>。</p>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="howto small">
+      <li>点"A 充值 USDT"和"B 充值 BTC"。热钱包资产和用户负债同时增加。</li>
+      <li>点"A 挂买单"。系统冻结 USDT：可用减少，冻结增加。</li>
+      <li>输入数量，点"B 吃单成交"。可以分多次部分成交。</li>
+      <li>撤单或提币，观察每一步的分录和恒等式。</li>
+      <li>打开一个 bug 开关，重复上面的操作，找到变红的检查项。</li>
+    </ol>
+    <p class="small muted">全部金额用 BigInt 按 10<sup>-8</sup> 为最小单位计算，没有浮点误差。手续费向下取整。</p>
+  </div>
+
+  <h2>1. 操作台</h2>
+  <div class="card">
+    <div class="ops">
+      <div class="op">
+        <h3>充值（链上到账）</h3>
+        <div class="row">
+          <div><label for="depA">A 充值 USDT</label><input id="depA" type="text" inputmode="decimal" value="10000"></div>
+          <div><label for="depB">B 充值 BTC</label><input id="depB" type="text" inputmode="decimal" value="1"></div>
+        </div>
+        <div class="btn-row">
+          <button class="primary" id="btnDepA">A 充值 USDT</button>
+          <button class="primary" id="btnDepB">B 充值 BTC</button>
+        </div>
+      </div>
+
+      <div class="op">
+        <h3>A 挂买单（Maker）</h3>
+        <div class="row">
+          <div><label for="ordPrice">价格 USDT</label><input id="ordPrice" type="text" inputmode="decimal" value="60000"></div>
+          <div><label for="ordQty">数量 BTC</label><input id="ordQty" type="text" inputmode="decimal" value="0.1"></div>
+        </div>
+        <div class="btn-row">
+          <button class="buy" id="btnOrder">A 挂买单（冻结）</button>
+          <button id="btnCancel">撤单（解冻）</button>
+        </div>
+      </div>
+
+      <div class="op">
+        <h3>B 卖出吃单（Taker）</h3>
+        <label for="takeQty">成交数量 BTC（可部分成交）</label>
+        <input id="takeQty" type="text" inputmode="decimal" value="0.04">
+        <div class="btn-row">
+          <button class="sell" id="btnTake">B 吃单成交</button>
+          <button id="btnReplay" title="模拟消息队列把同一个成交事件再投递一次">重投最近成交事件</button>
+        </div>
+      </div>
+
+      <div class="op">
+        <h3>A 提币</h3>
+        <div class="row">
+          <div><label for="wdAsset">资产</label>
+            <select id="wdAsset"><option value="USDT">USDT</option><option value="BTC">BTC</option></select></div>
+          <div><label for="wdAmt">数量</label><input id="wdAmt" type="text" inputmode="decimal" value="1000"></div>
+        </div>
+        <div class="btn-row">
+          <button id="btnWdApply">提币申请</button>
+          <button class="buy" id="btnWdOk">链上成功</button>
+          <button class="sell" id="btnWdFail">失败退回</button>
+        </div>
+      </div>
+
+      <div class="op">
+        <h3>手续费设置（示例）</h3>
+        <label for="tierSel">费率等级</label>
+        <select id="tierSel"></select>
+        <label class="toggle"><input type="checkbox" id="bnbToggle"> 开启 BNB 抵扣（费率 × 75%）</label>
+        <div class="kv"><span>A（Maker）费率 <b id="rateMaker"></b></span><span>B（Taker）费率 <b id="rateTaker"></b></span></div>
+        <p class="small muted">本页简化：BNB 抵扣只改变费率，手续费仍从收到的资产中扣。真实币安从 BNB 余额扣。</p>
+      </div>
+
+      <div class="op bug">
+        <h3>制造 bug</h3>
+        <label class="toggle"><input type="checkbox" id="bugNoFee"> 成交时忘记记手续费分录</label>
+        <label class="toggle"><input type="checkbox" id="bugNoIdem"> 关闭幂等（重复消费同一事件）</label>
+        <label class="toggle"><input type="checkbox" id="bugNoWdLedger"> 提币上链成功，但账本漏记</label>
+        <div class="btn-row"><button id="btnReset">全部重置</button></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>2. 余额与恒等式</h2>
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>账户余额（由流水回放得出）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>账户</th><th>类型</th><th class="num">BTC</th><th class="num">USDT</th></tr></thead>
+        <tbody id="balBody"></tbody>
+      </table></div>
+      <h3>A 的挂单</h3>
+      <div id="orderBox" class="small"></div>
+      <h3>提币单</h3>
+      <div id="wdBox" class="small"></div>
+    </div>
+    <div class="card">
+      <div id="banner" class="banner ok">全部检查通过</div>
+      <ul class="checks" id="checkList"></ul>
+    </div>
+  </div>
+
+  <h2>3. 流水（只追加，最新在上）</h2>
+  <div class="card">
+    <div class="table-wrap"><table>
+      <thead><tr><th>#</th><th>业务唯一键</th><th>说明</th><th>账户</th><th>资产</th><th class="num">借</th><th class="num">贷</th></tr></thead>
+      <tbody id="jBody"></tbody>
+    </table></div>
+    <h3>事件日志</h3>
+    <div class="log" id="log"></div>
+  </div>
+
+  <h2>4. 试一试</h2>
+  <div class="card">
+    <ol class="try">
+      <li><b>部分成交：</b>A 挂 0.1 BTC 买单，B 分 0.03、0.03、0.04 三次吃完。A 的 USDT 冻结是否回到 0？清算中间户是否始终为 0？</li>
+      <li><b>漏记手续费：</b>打开"忘记记手续费分录"，成交一次。哪两项检查变红？在流水表中找到红色的 journal。</li>
+      <li><b>重复消费：</b>先保持幂等开启，点"重投最近成交事件"，看日志如何跳过。再关闭幂等，重投一次。每个 journal 都平衡，资产负债也平衡。哪一项检查发现了问题？</li>
+      <li><b>账链不一致：</b>打开"提币上链成功，但账本漏记"，完成一次提币。借贷平衡和资产负债检查仍然通过，账链对账和冻结对账变红。这就是需要多方对账的原因。</li>
+    </ol>
+  </div>
+
+  <h2>5. 手续费计算器</h2>
+  <div class="callout warn small">示例，以官网为准。等级门槛和费率取自币安现货费率页（截至 2026 年公开资料）。币安会调整参数。</div>
+  <div class="grid cols-2">
+    <div class="card">
+      <label for="volR">过去 30 天现货交易量（USD）</label>
+      <div class="range-row"><input type="range" id="volR" min="0" max="1000" value="400"><output id="volO"></output></div>
+      <label for="bnbR">BNB 持仓</label>
+      <div class="range-row"><input type="range" id="bnbR" min="0" max="1000" value="300"><output id="bnbO"></output></div>
+      <label for="mkR">Maker 成交占比</label>
+      <div class="range-row"><input type="range" id="mkR" min="0" max="100" value="40"><output id="mkO"></output></div>
+      <label for="ruleSel">等级判定规则</label>
+      <select id="ruleSel">
+        <option value="and">交易量 与 BNB 同时满足（官网费率页写法）</option>
+        <option value="or">交易量 或 BNB 满足任一（对比用）</option>
+      </select>
+      <label for="kbSel">推荐码返现（示例）</label>
+      <select id="kbSel">
+        <option value="0">无推荐码</option>
+        <option value="10">返现 10%</option>
+        <option value="20">返现 20%</option>
+      </select>
+      <label class="toggle"><input type="checkbox" id="calcBnb"> 开启 BNB 抵扣（费率 × 75%）</label>
+    </div>
+    <div class="card">
+      <div class="stats">
+        <div class="stat"><span class="k">当前等级</span><span class="v" id="cTier"></span></div>
+        <div class="stat"><span class="k">Maker / Taker</span><span class="v" id="cRate" style="font-size:16px"></span></div>
+        <div class="stat"><span class="k">月手续费（USD）</span><span class="v" id="cFee"></span></div>
+        <div class="stat"><span class="k">综合费率</span><span class="v" id="cBlend" style="font-size:16px"></span></div>
+      </div>
+      <p class="small" id="cNext"></p>
+      <p class="small muted">月手续费 = 30 天交易量 ×（Maker 占比 × Maker 费率 + Taker 占比 × Taker 费率）×（1 − 返现比例）。按 1 个月 ≈ 30 天估算。</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="table-wrap"><table>
+      <thead><tr><th>等级</th><th class="num">30 天交易量 ≥（USD）</th><th class="num">BNB ≥</th><th class="num">Maker</th><th class="num">Taker</th><th class="num">Maker（BNB）</th><th class="num">Taker（BNB）</th></tr></thead>
+      <tbody id="tierBody"></tbody>
+    </table></div>
+  </div>
+
+  <footer class="note">本页为教学模型。账户、费率、规则均为简化示例，不代表币安内部实现。对应本仓库：services/ledger-service（双分录、幂等、冻结状态机）与 services/settlement-service（成交结算、手续费入账）。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  // ---------- 精确算术：全部金额为 BigInt，单位 10^-8 ----------
+  var SCALE = 100000000n;      // 1 单位 = 1e-8
+  var RATE_SCALE = 10000000n;  // 费率单位 1e-7，例如 0.1% = 10000
+
+  function parseAmt(s) {
+    s = String(s).trim();
+    if (!/^\d+(\.\d{1,8})?$/.test(s)) return null;
+    var parts = s.split('.');
+    var frac = (parts[1] || '').padEnd(8, '0');
+    return BigInt(parts[0]) * SCALE + BigInt(frac);
+  }
+  function fmtFixed(v, decimals, minDec) {
+    var neg = v < 0n; if (neg) v = -v;
+    var base = 10n ** BigInt(decimals);
+    var w = (v / base).toString();
+    var f = (v % base).toString().padStart(decimals, '0').replace(/0+$/, '');
+    while (f.length < (minDec || 0)) f += '0';
+    return (neg ? '-' : '') + w.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (f ? '.' + f : '');
+  }
+  function fmt(v) { return fmtFixed(v, 8, 0); }
+  function fmtRate(r) { return fmtFixed(r, 5, 3) + '%'; } // r 单位 1e-7 → 百分比 = r / 1e5
+
+  // ---------- 费率表（截至 2026 年公开资料，示例） ----------
+  var TIERS = [
+    { name: '普通', vol: 0n, bnb: 0n, m: 10000n, t: 10000n },
+    { name: 'VIP 1', vol: 1000000n, bnb: 5n, m: 9000n, t: 10000n },
+    { name: 'VIP 2', vol: 5000000n, bnb: 25n, m: 8000n, t: 10000n },
+    { name: 'VIP 3', vol: 20000000n, bnb: 100n, m: 4000n, t: 6000n },
+    { name: 'VIP 4', vol: 75000000n, bnb: 500n, m: 4000n, t: 5200n },
+    { name: 'VIP 5', vol: 150000000n, bnb: 1000n, m: 2500n, t: 3100n },
+    { name: 'VIP 6', vol: 400000000n, bnb: 1750n, m: 2000n, t: 2900n },
+    { name: 'VIP 7', vol: 800000000n, bnb: 3000n, m: 1900n, t: 2800n },
+    { name: 'VIP 8', vol: 2000000000n, bnb: 4500n, m: 1600n, t: 2500n },
+    { name: 'VIP 9', vol: 4000000000n, bnb: 5500n, m: 1100n, t: 2300n }
+  ];
+  function disc(r, on) { return on ? r * 75n / 100n : r; }
+
+  // ---------- 账户 ----------
+  var ASSETS = ['BTC', 'USDT'];
+  var ACCTS = [
+    { id: 'A_av', name: '用户A-可用', type: 'L', label: '负债' },
+    { id: 'A_fz', name: '用户A-冻结', type: 'L', label: '负债' },
+    { id: 'B_av', name: '用户B-可用', type: 'L', label: '负债' },
+    { id: 'B_fz', name: '用户B-冻结', type: 'L', label: '负债' },
+    { id: 'FEE', name: '平台手续费收入', type: 'E', label: '收入' },
+    { id: 'CLR', name: '清算中间户', type: 'M', label: '中间' },
+    { id: 'HOT', name: '热钱包资产', type: 'A', label: '资产' }
+  ];
+  var NAME = {}; ACCTS.forEach(function (a) { NAME[a.id] = a.name; });
+
+  var $ = function (id) { return document.getElementById(id); };
+  var S;
+  function reset() {
+    S = { journals: [], processed: {}, seq: 0, order: null, oSeq: 0, tSeq: 0, dSeq: 0, wSeq: 0,
+          lastTrade: null, wd: null, matched: 0n, chain: { BTC: 0n, USDT: 0n }, logs: [] };
+    log('note', '账本已重置。');
+    render();
+  }
+  function log(cls, msg) {
+    S.logs.unshift({ cls: cls, msg: '[' + (S.logs.length + 1) + '] ' + msg });
+  }
+  function D(acct, asset, amt) { return { acct: acct, asset: asset, dir: 'D', amt: amt }; }
+  function C(acct, asset, amt) { return { acct: acct, asset: asset, dir: 'C', amt: amt }; }
+
+  // 记账入口：幂等检查 → 追加 journal（只追加，不修改）
+  function post(key, desc, entries) {
+    if (!$('bugNoIdem').checked && S.processed[key]) {
+      log('note', '幂等命中：' + key + ' 已处理，跳过，不再记账。');
+      return false;
+    }
+    entries = entries.filter(function (e) { return e.amt > 0n; });
+    var sums = {};
+    entries.forEach(function (e) {
+      sums[e.asset] = sums[e.asset] || { D: 0n, C: 0n };
+      sums[e.asset][e.dir] += e.amt;
+    });
+    var balanced = Object.keys(sums).every(function (a) { return sums[a].D === sums[a].C; });
+    S.seq += 1;
+    S.journals.push({ no: S.seq, key: key, desc: desc, entries: entries, balanced: balanced });
+    S.processed[key] = true;
+    if (balanced) log('ok', 'J' + S.seq + ' ' + key + '：' + desc);
+    else log('err', 'J' + S.seq + ' ' + key + '：借贷不平衡！真实账本会在写入时拒绝它（本页为演示放行）。');
+    return true;
+  }
+
+  // 由流水回放出余额（快照可重建）
+  function balances() {
+    var b = {};
+    ACCTS.forEach(function (a) { b[a.id] = { BTC: 0n, USDT: 0n }; });
+    S.journals.forEach(function (j) {
+      j.entries.forEach(function (e) {
+        var debitNormal = e.acct === 'HOT';
+        var sign = (e.dir === 'D') === debitNormal ? 1n : -1n;
+        b[e.acct][e.asset] += sign * e.amt;
+      });
+    });
+    return b;
+  }
+
+  function fail(msg) { log('err', '拒绝：' + msg); render(); }
+  function rates() {
+    var t = TIERS[Number($('tierSel').value)], on = $('bnbToggle').checked;
+    return { m: disc(t.m, on), t: disc(t.t, on) };
+  }
+
+  // ---------- 操作 ----------
+  function deposit(user, asset, inputId) {
+    var amt = parseAmt($(inputId).value);
+    if (amt === null || amt === 0n) return fail('数量格式错误（最多 8 位小数，必须大于 0）。');
+    S.dSeq += 1;
+    var key = 'dep:tx' + S.dSeq + ':0';
+    S.chain[asset] += amt;
+    post(key, user + ' 充值 ' + fmt(amt) + ' ' + asset + '（链上确认）',
+      [D('HOT', asset, amt), C(user + '_av', asset, amt)]);
+    render();
+  }
+
+  function placeOrder() {
+    if (S.order && S.order.status === 'open') return fail('A 已有一笔挂单。先撤单或等它成交完。');
+    var price = parseAmt($('ordPrice').value), qty = parseAmt($('ordQty').value);
+    if (!price || !qty) return fail('价格或数量格式错误。');
+    var freeze = price * qty / SCALE;
+    if (freeze === 0n) return fail('冻结金额为 0。');
+    var bal = balances();
+    if (bal.A_av.USDT < freeze) return fail('A 的 USDT 可用余额不足（需要 ' + fmt(freeze) + '）。这一步由风控在下单前检查。');
+    S.oSeq += 1;
+    var id = 'O' + S.oSeq;
+    S.order = { id: id, price: price, qty: qty, filled: 0n, frozenLeft: freeze, status: 'open' };
+    post(id + ':freeze', 'A 挂买单 ' + fmt(qty) + ' BTC @ ' + fmt(price) + '，冻结 ' + fmt(freeze) + ' USDT',
+      [D('A_av', 'USDT', freeze), C('A_fz', 'USDT', freeze)]);
+    render();
+  }
+
+  function cancelOrder() {
+    var o = S.order;
+    if (!o || o.status !== 'open') return fail('没有可撤的挂单。');
+    o.status = 'cancelled';
+    var left = o.frozenLeft; o.frozenLeft = 0n;
+    post(o.id + ':cancel', '撤单，解冻剩余 ' + fmt(left) + ' USDT',
+      [D('A_fz', 'USDT', left), C('A_av', 'USDT', left)]);
+    render();
+  }
+
+  function take() {
+    var o = S.order;
+    if (!o || o.status !== 'open') return fail('簿上没有 A 的挂单。B 的卖单无法成交。');
+    var q = parseAmt($('takeQty').value);
+    if (!q) return fail('成交数量格式错误。');
+    var remain = o.qty - o.filled;
+    if (q > remain) q = remain;
+    var bal = balances();
+    if (bal.B_av.BTC < q) return fail('B 的 BTC 可用余额不足。');
+    // 撮合：更新订单状态，产生成交事件
+    var quote = o.price * q / SCALE;
+    var r = rates();
+    S.tSeq += 1;
+    var ev = { id: 'T' + S.tSeq, order: o.id, price: o.price, qty: q, quote: quote,
+               feeA: q * r.m / RATE_SCALE, feeB: quote * r.t / RATE_SCALE, rm: r.m, rt: r.t };
+    o.filled += q; o.frozenLeft -= quote; S.matched += q;
+    S.lastTrade = ev;
+    log('note', '撮合产生成交事件 ' + ev.id + '：' + fmt(q) + ' BTC × ' + fmt(o.price) + ' = ' + fmt(quote) + ' USDT');
+    settle(ev);
+    if (o.filled === o.qty) {
+      o.status = 'filled';
+      if (o.frozenLeft > 0n) {
+        var dust = o.frozenLeft; o.frozenLeft = 0n;
+        post(o.id + ':release-dust', '订单全部成交，释放取整尾差 ' + fmt(dust) + ' USDT',
+          [D('A_fz', 'USDT', dust), C('A_av', 'USDT', dust)]);
+      }
+    }
+    render();
+  }
+
+  // 结算：把成交事件翻译成两组 journal（与本仓库 settlement-service 一致：base / quote 分开）
+  function settle(ev) {
+    var noFee = $('bugNoFee').checked;
+    var netA = ev.qty - ev.feeA, netB = ev.quote - ev.feeB;
+    var base = [D('B_av', 'BTC', ev.qty), C('CLR', 'BTC', ev.qty), D('CLR', 'BTC', ev.qty), C('A_av', 'BTC', netA)];
+    if (!noFee) base.push(C('FEE', 'BTC', ev.feeA));
+    var quote = [D('A_fz', 'USDT', ev.quote), C('CLR', 'USDT', ev.quote), D('CLR', 'USDT', ev.quote), C('B_av', 'USDT', netB)];
+    if (!noFee) quote.push(C('FEE', 'USDT', ev.feeB));
+    post(ev.id + ':base', '结算 BTC：B 交出 ' + fmt(ev.qty) + '，A 收到 ' + fmt(netA) + '，Maker 费 ' + fmt(ev.feeA) + (noFee ? '（漏记！）' : ''), base);
+    post(ev.id + ':quote', '结算 USDT：扣 A 冻结 ' + fmt(ev.quote) + '，B 收到 ' + fmt(netB) + '，Taker 费 ' + fmt(ev.feeB) + (noFee ? '（漏记！）' : ''), quote);
+  }
+
+  function replay() {
+    if (!S.lastTrade) return fail('还没有成交事件可以重投。');
+    log('note', '消息队列重投成交事件 ' + S.lastTrade.id + '（至少一次投递）。');
+    settle(S.lastTrade);
+    render();
+  }
+
+  function wdApply() {
+    if (S.wd && S.wd.status === 'pending') return fail('已有一笔提币在处理中。');
+    var asset = $('wdAsset').value, amt = parseAmt($('wdAmt').value);
+    if (!amt) return fail('提币数量格式错误。');
+    if (balances().A_av[asset] < amt) return fail('A 的 ' + asset + ' 可用余额不足。');
+    S.wSeq += 1;
+    S.wd = { id: 'W' + S.wSeq, asset: asset, amt: amt, status: 'pending' };
+    post(S.wd.id + ':freeze', 'A 申请提币 ' + fmt(amt) + ' ' + asset + '，冻结',
+      [D('A_av', asset, amt), C('A_fz', asset, amt)]);
+    render();
+  }
+  function wdDone(ok) {
+    var w = S.wd;
+    if (!w || w.status !== 'pending') return fail('没有处理中的提币单。');
+    if (ok) {
+      w.status = 'done';
+      S.chain[w.asset] -= w.amt;
+      if ($('bugNoWdLedger').checked) {
+        log('err', w.id + ' 链上已转出 ' + fmt(w.amt) + ' ' + w.asset + '，但账本漏记！');
+      } else {
+        post(w.id + ':done', '提币上链成功：扣 A 冻结，热钱包减少 ' + fmt(w.amt) + ' ' + w.asset,
+          [D('A_fz', w.asset, w.amt), C('HOT', w.asset, w.amt)]);
+      }
+    } else {
+      w.status = 'failed';
+      post(w.id + ':fail', '提币失败：解冻退回 A 可用 ' + fmt(w.amt) + ' ' + w.asset,
+        [D('A_fz', w.asset, w.amt), C('A_av', w.asset, w.amt)]);
+    }
+    render();
+  }
+
+  // ---------- 渲染 ----------
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function render() {
+    var bal = balances();
+    // 余额表
+    $('balBody').innerHTML = ACCTS.map(function (a) {
+      return '<tr><td>' + a.name + '</td><td><span class="pill ' +
+        ({ L: 'info', E: 'accent', M: 'warn', A: 'buy' }[a.type]) + '">' + a.label + '</span></td>' +
+        ASSETS.map(function (as) {
+          var v = bal[a.id][as];
+          return '<td class="num' + (v < 0n ? ' neg' : '') + '">' + fmt(v) + '</td>';
+        }).join('') + '</tr>';
+    }).join('') + '<tr><td>链上热钱包地址（外部数据）</td><td><span class="pill">链上</span></td>' +
+      ASSETS.map(function (as) { return '<td class="num">' + fmt(S.chain[as]) + '</td>'; }).join('') + '</tr>';
+
+    // 订单 / 提币
+    var o = S.order;
+    $('orderBox').innerHTML = o ? ('<span class="mono">' + o.id + '</span> 买 ' + fmt(o.qty) + ' BTC @ ' + fmt(o.price) +
+      '，已成交 ' + fmt(o.filled) + '，剩余冻结 ' + fmt(o.frozenLeft) + ' USDT，状态 <span class="pill ' +
+      (o.status === 'open' ? 'info' : o.status === 'filled' ? 'buy' : 'warn') + '">' +
+      ({ open: '挂单中', filled: '全部成交', cancelled: '已撤单' }[o.status]) + '</span>') : '<span class="muted">无</span>';
+    var w = S.wd;
+    $('wdBox').innerHTML = w ? ('<span class="mono">' + w.id + '</span> ' + fmt(w.amt) + ' ' + w.asset + '，状态 <span class="pill ' +
+      (w.status === 'pending' ? 'info' : w.status === 'done' ? 'buy' : 'warn') + '">' +
+      ({ pending: '处理中（已冻结）', done: '已上链', failed: '已失败退回' }[w.status]) + '</span>') : '<span class="muted">无</span>';
+
+    // 恒等式检查
+    var checks = [];
+    ASSETS.forEach(function (as) {
+      var d = 0n, c = 0n;
+      S.journals.forEach(function (j) { j.entries.forEach(function (e) { if (e.asset === as) { if (e.dir === 'D') d += e.amt; else c += e.amt; } }); });
+      checks.push({ ok: d === c, title: as + '：Σ借 = Σ贷', detail: 'Σ借 ' + fmt(d) + ' / Σ贷 ' + fmt(c) });
+    });
+    ASSETS.forEach(function (as) {
+      var liab = bal.A_av[as] + bal.A_fz[as] + bal.B_av[as] + bal.B_fz[as];
+      var rhs = liab + bal.FEE[as] + bal.CLR[as];
+      checks.push({ ok: bal.HOT[as] === rhs, title: as + '：资产 = 用户负债 + 平台收入',
+        detail: '热钱包 ' + fmt(bal.HOT[as]) + ' vs 负债 ' + fmt(liab) + ' + 收入 ' + fmt(bal.FEE[as]) + ' + 清算户 ' + fmt(bal.CLR[as]) });
+    });
+    ASSETS.forEach(function (as) {
+      checks.push({ ok: bal.CLR[as] === 0n, title: as + '：清算中间户归零', detail: '余额 ' + fmt(bal.CLR[as]) });
+    });
+    var negs = [];
+    ACCTS.forEach(function (a) { ASSETS.forEach(function (as) { if (bal[a.id][as] < 0n) negs.push(a.name + ' ' + as + ' ' + fmt(bal[a.id][as])); }); });
+    checks.push({ ok: negs.length === 0, title: '没有负余额', detail: negs.length ? negs.join('；') : '全部 ≥ 0' });
+    ASSETS.forEach(function (as) {
+      checks.push({ ok: bal.HOT[as] === S.chain[as], title: as + '：账链对账（账本热钱包 = 链上余额）',
+        detail: '账本 ' + fmt(bal.HOT[as]) + ' vs 链上 ' + fmt(S.chain[as]) });
+    });
+    var settledBtc = 0n;
+    S.journals.forEach(function (j) { j.entries.forEach(function (e) { if (e.acct === 'CLR' && e.asset === 'BTC' && e.dir === 'C') settledBtc += e.amt; }); });
+    checks.push({ ok: settledBtc === S.matched, title: '撮合 vs 结算对账：成交量 = 结算量',
+      detail: '撮合成交 ' + fmt(S.matched) + ' BTC vs 结算记账 ' + fmt(settledBtc) + ' BTC' });
+    ASSETS.forEach(function (as) {
+      var expect = 0n;
+      if (as === 'USDT' && S.order && S.order.status === 'open') expect += S.order.frozenLeft;
+      if (S.wd && S.wd.status === 'pending' && S.wd.asset === as) expect += S.wd.amt;
+      checks.push({ ok: bal.A_fz[as] === expect, title: as + '：冻结对账（账本 A 冻结 = 挂单 + 提币占用）',
+        detail: '账本 ' + fmt(bal.A_fz[as]) + ' vs 业务单据 ' + fmt(expect) });
+    });
+    var bad = checks.filter(function (c) { return !c.ok; }).length;
+    $('checkList').innerHTML = checks.map(function (c) {
+      return '<li><span class="pill ' + (c.ok ? 'buy' : 'sell') + '">' + (c.ok ? '通过' : '失败') + '</span><div><div>' +
+        esc(c.title) + '</div><div class="detail">' + esc(c.detail) + '</div></div></li>';
+    }).join('');
+    var bn = $('banner');
+    bn.className = 'banner ' + (bad ? 'err' : 'ok');
+    bn.textContent = bad ? '对账告警：' + bad + ' 项检查失败。真实交易所此时会暂停相关币种提币并人工排查。' : '全部检查通过：账是平的。';
+
+    // 流水
+    var rows = [];
+    S.journals.slice().reverse().forEach(function (j) {
+      j.entries.forEach(function (e, i) {
+        var cls = (j.balanced ? '' : 'bad ') + (i === 0 ? 'jstart' : '');
+        rows.push('<tr class="' + cls + '">' +
+          (i === 0 ? '<td rowspan="' + j.entries.length + '" class="mono">J' + j.no + (j.balanced ? '' : '<br><span class="pill sell">不平衡</span>') + '</td>' +
+            '<td rowspan="' + j.entries.length + '" class="key">' + esc(j.key) + '</td>' +
+            '<td rowspan="' + j.entries.length + '">' + esc(j.desc) + '</td>' : '') +
+          '<td>' + NAME[e.acct] + '</td><td>' + e.asset + '</td>' +
+          '<td class="num">' + (e.dir === 'D' ? fmt(e.amt) : '') + '</td>' +
+          '<td class="num">' + (e.dir === 'C' ? fmt(e.amt) : '') + '</td></tr>');
+      });
+    });
+    $('jBody').innerHTML = rows.length ? rows.join('') : '<tr><td colspan="7" class="muted">还没有流水。先点"A 充值 USDT"。</td></tr>';
+    $('log').innerHTML = S.logs.map(function (l) { return '<div class="' + l.cls + '">' + esc(l.msg) + '</div>'; }).join('');
+
+    var r = rates();
+    $('rateMaker').textContent = fmtRate(r.m);
+    $('rateTaker').textContent = fmtRate(r.t);
+  }
+
+  // ---------- 手续费计算器 ----------
+  function volFromPos(p) { // 0..1000 → 1 万 .. 100 亿 USD（对数刻度，取 2 位有效数字）
+    var v = Math.pow(10, 4 + p * 6 / 1000);
+    var mag = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+    return BigInt(Math.round(v / mag) * mag);
+  }
+  function bnbFromPos(p) { // 0..1000 → 0 .. 10000 BNB
+    if (p === 0) return 0n;
+    var v = Math.pow(10, p * 4 / 1000);
+    if (v < 10) return BigInt(Math.round(v));
+    var mag = Math.pow(10, Math.floor(Math.log10(v)) - 1);
+    return BigInt(Math.round(v / mag) * mag);
+  }
+  function tierOf(vol, bnb, rule) {
+    var idx = 0;
+    TIERS.forEach(function (t, i) {
+      var ok = rule === 'and' ? (vol >= t.vol && bnb >= t.bnb) : (vol >= t.vol || bnb >= t.bnb);
+      if (ok) idx = i;
+    });
+    return idx;
+  }
+  function calc() {
+    var vol = volFromPos(Number($('volR').value));
+    var bnb = bnbFromPos(Number($('bnbR').value));
+    var mk = BigInt($('mkR').value);
+    var rule = $('ruleSel').value, on = $('calcBnb').checked, kb = BigInt($('kbSel').value);
+    $('volO').textContent = '$' + fmtFixed(vol, 0);
+    $('bnbO').textContent = fmtFixed(bnb, 0) + ' BNB';
+    $('mkO').textContent = mk + '%';
+    var i = tierOf(vol, bnb, rule), t = TIERS[i];
+    var m = disc(t.m, on), tk = disc(t.t, on);
+    var blend = mk * m + (100n - mk) * tk;              // 单位：1e-7 × 100
+    // 月手续费（美分）= vol × (blend / 100 / 1e7) × (100 - kb) / 100 × 100
+    var feeCents = vol * blend * (100n - kb) / (100n * RATE_SCALE);
+    $('cTier').textContent = t.name;
+    $('cRate').textContent = fmtRate(m) + ' / ' + fmtRate(tk);
+    $('cFee').textContent = '$' + fmtFixed(feeCents, 2, 2);
+    $('cBlend').textContent = fmtFixed(blend * (100n - kb) / 100n, 7, 3) + '%';
+    var next = TIERS[i + 1];
+    if (next) {
+      var needV = next.vol > vol ? next.vol - vol : 0n, needB = next.bnb > bnb ? next.bnb - bnb : 0n;
+      var parts = [];
+      if (needV > 0n) parts.push('交易量再多 $' + fmtFixed(needV, 0));
+      if (needB > 0n) parts.push('BNB 再多 ' + fmtFixed(needB, 0) + ' 枚');
+      $('cNext').textContent = '升到 ' + next.name + '：' + (rule === 'and' ? parts.join('，并且') : parts.join('，或者')) + '。';
+    } else {
+      $('cNext').textContent = '已经是最高等级。';
+    }
+    $('tierBody').innerHTML = TIERS.map(function (x, k) {
+      return '<tr class="tier-row' + (k === i ? ' cur' : '') + '"><td>' + x.name + '</td><td class="num">' + fmtFixed(x.vol, 0) +
+        '</td><td class="num">' + fmtFixed(x.bnb, 0) + '</td><td class="num">' + fmtRate(x.m) + '</td><td class="num">' + fmtRate(x.t) +
+        '</td><td class="num">' + fmtRate(disc(x.m, true)) + '</td><td class="num">' + fmtRate(disc(x.t, true)) + '</td></tr>';
+    }).join('');
+  }
+
+  // ---------- 绑定 ----------
+  $('tierSel').innerHTML = TIERS.map(function (t, i) { return '<option value="' + i + '">' + t.name + '（示例）</option>'; }).join('');
+  $('btnDepA').onclick = function () { deposit('A', 'USDT', 'depA'); };
+  $('btnDepB').onclick = function () { deposit('B', 'BTC', 'depB'); };
+  $('btnOrder').onclick = placeOrder;
+  $('btnCancel').onclick = cancelOrder;
+  $('btnTake').onclick = take;
+  $('btnReplay').onclick = replay;
+  $('btnWdApply').onclick = wdApply;
+  $('btnWdOk').onclick = function () { wdDone(true); };
+  $('btnWdFail').onclick = function () { wdDone(false); };
+  $('btnReset').onclick = reset;
+  ['tierSel', 'bnbToggle'].forEach(function (id) { $(id).addEventListener('change', render); });
+  ['bugNoFee', 'bugNoIdem', 'bugNoWdLedger'].forEach(function (id) {
+    $(id).addEventListener('change', function () {
+      log($(id).checked ? 'err' : 'note', ($(id).checked ? '已打开 bug：' : '已关闭 bug：') + $(id).parentNode.textContent.trim());
+      render();
+    });
+  });
+  ['volR', 'bnbR', 'mkR', 'ruleSel', 'kbSel', 'calcBnb'].forEach(function (id) {
+    $(id).addEventListener('input', calc); $(id).addEventListener('change', calc);
+  });
+  reset();
+  calc();
+})();
+</script>
+</body>
+</html>

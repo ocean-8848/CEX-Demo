@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B10 税务报送与数据隐私：交易所也是信息报送人</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .scene.tight { gap: 24px; }
+  .s1 .stack > .layer { gap: 16px; } .s1 .grid2 .card { padding: 20px 30px; }
+  .stack { position: relative; flex: 1; min-height: 0; }
+  .stack > .layer { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-direction: column; gap: 24px; }
+  .ttl { font-size: 72px; line-height: 1.2; }
+  .chips { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  .chips .chip { font-size: 30px; padding: 8px 22px; }
+  .chips .lab { font-size: 30px; font-weight: 700; margin-right: 6px; }
+  .dir { margin-top: 8px; font-size: 32px; padding: 6px 18px; border-radius: 10px; background: var(--panel-2); }
+  .card .k { color: var(--text-2); }
+  .note { font-size: 30px; padding: 16px 26px; }
+  /* timeline */
+  .map > * { white-space: nowrap; }
+  .map { display: flex; align-items: center; gap: 18px; font-size: 30px; padding: 16px 26px; }
+  .map .pill { padding: 6px 18px; border-radius: 10px; background: var(--panel-2); font-weight: 700; }
+  .tl { position: relative; width: 1640px; height: 440px; }
+  .tl .axis { position: absolute; left: 0; right: 0; top: 218px; height: 4px; background: var(--line); }
+  .tl .dot { position: absolute; top: 208px; width: 24px; height: 24px; border-radius: 50%; background: var(--panel-2); border: 3px solid var(--line); transform: translateX(-12px); transition: all .3s; }
+  .tl .dot.on { background: var(--gold); border-color: var(--gold); }
+  .tl .stem { position: absolute; width: 3px; background: var(--line); transform: translateX(-1px); }
+  .tl .ev { position: absolute; width: 350px; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 10px 16px; transition: all .35s; }
+  .tl .ev b { display: block; font-size: 30px; }
+  .tl .ev span { display: block; font-size: 28px; line-height: 1.35; color: var(--text-2); }
+  .tl .ev.off { opacity: 0; }
+  .tl .ev.old { opacity: .55; }
+  .tl .ev.cur { border-color: var(--gold); background: var(--gold-soft); }
+  .tl .ev.cur b { color: var(--gold); }
+  /* rules */
+  .rules { display: grid; grid-template-columns: 300px 1fr; gap: 28px; }
+  .tabs { display: flex; flex-direction: column; gap: 16px; }
+  .tab { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 18px 22px; font-size: 32px; font-weight: 700; transition: all .3s; }
+  .tab small { display: block; font-size: 24px; font-weight: 400; color: var(--text-2); }
+  .tab.on { border-color: var(--gold); background: var(--gold-soft); color: var(--gold); }
+  .kv { display: grid; grid-template-columns: 250px 1fr; gap: 10px 24px; font-size: 30px; line-height: 1.45; }
+  .kv > .k { color: var(--text-2); }
+  .tx3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 8px; }
+  .tx3 > div { background: var(--panel-2); border-radius: 12px; padding: 12px 16px; font-size: 30px; text-align: center; }
+  /* self-cert flow */
+  .sflow { display: flex; align-items: center; }
+  .sflow .n { flex: 1; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 8px; font-size: 30px; text-align: center; opacity: .35; transition: all .3s; }
+  .sflow .n small { display: block; font-size: 24px; color: var(--text-2); }
+  .sflow .n.on { opacity: 1; border-color: var(--gold); background: var(--gold-soft); }
+  .sflow .n.red { opacity: 1; border-color: var(--sell); background: var(--sell-soft); }
+  .sflow .a { width: 34px; height: 4px; background: var(--text-2); flex: 0 0 auto; margin: 0 4px; position: relative; }
+  .sflow .a::after { content: ""; position: absolute; right: -2px; top: -7px; border: 9px solid transparent; border-left: 12px solid var(--text-2); border-right: 0; }
+  .chk { display: grid; grid-template-columns: 260px 1fr 160px; gap: 8px 20px; font-size: 30px; align-items: center; }
+  .chk > div { padding: 8px 14px; border-radius: 10px; background: var(--panel); }
+  .chk .bad { background: var(--sell-soft); color: var(--sell); text-align: center; font-weight: 700; }
+  .chk .ok { background: var(--buy-soft); color: var(--buy); text-align: center; font-weight: 700; }
+  .steps { display: flex; align-items: center; gap: 12px; font-size: 30px; }
+  .steps > span { padding: 10px 18px; border-radius: 12px; background: var(--panel-2); }
+  .steps > span.red { background: var(--sell); color: #0d0e10; font-weight: 700; }
+  .steps > i { font-style: normal; color: var(--text-2); }
+  /* classification grid */
+  .dm { font-family: var(--mono); font-size: 28px; padding: 12px 22px; }
+  .cg { display: grid; grid-template-columns: 380px 270px 340px 1fr; gap: 6px; font-size: 30px; }
+  .cg > div { background: var(--panel); border-radius: 8px; padding: 4px 14px; min-height: 46px; line-height: 1.25; display: flex; align-items: center; transition: all .3s; }
+  .cg .hd { background: transparent; color: var(--text-2); font-size: 26px; min-height: 36px; }
+  .cg .blank { color: transparent; }
+  .cg .cur { background: var(--gold-soft); }
+  .cg .unk { background: var(--sell-soft); color: var(--sell); }
+  /* fifo */
+  .ff { display: grid; grid-template-columns: 800px 1fr; gap: 28px; }
+  .lots { display: flex; flex-direction: column; gap: 14px; }
+  .lot { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 12px 18px; font-size: 30px; }
+  .lot .top { display: flex; justify-content: space-between; }
+  .lot .top span:last-child { font-family: var(--mono); }
+  .lot .bar { height: 26px; border-radius: 8px; background: var(--buy-soft); margin-top: 8px; position: relative; overflow: hidden; }
+  .lot .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--sell); transition: width .4s; }
+  .lot.unk { border-color: var(--sell); border-style: dashed; }
+  .lot h4 { margin: 0 0 4px; font-size: 28px; color: var(--text-2); font-weight: 500; }
+  .calc { display: flex; flex-direction: column; gap: 10px; font-size: 30px; }
+  .calc .r { display: flex; justify-content: space-between; padding: 8px 16px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); }
+  .calc .r span:last-child { font-family: var(--mono); }
+  .calc .r.tot { border-color: var(--gold); background: var(--gold-soft); font-weight: 700; }
+  .calc .r.bad { border-color: var(--sell); background: var(--sell-soft); }
+  .calc .r.good { border-color: var(--buy); background: var(--buy-soft); }
+  .calc h3 { font-size: 34px; margin: 0; }
+  /* svg */
+  svg .box { fill: #16181c; stroke: #2c3038; stroke-width: 2; }
+  svg .box.on { fill: rgba(240,185,11,.16); stroke: #f0b90b; stroke-width: 4; }
+  svg .box.red { fill: rgba(246,70,93,.16); stroke: #f6465d; stroke-width: 4; }
+  svg .box.grn { fill: rgba(46,189,133,.14); stroke: #2ebd85; stroke-width: 4; }
+  svg .box.blu { fill: rgba(91,156,255,.14); stroke: #5b9cff; stroke-width: 4; }
+  svg .ln { stroke: #9ea3ad; stroke-width: 3; fill: none; }
+  svg .ln.dim { opacity: .2; } svg .ln.hi { stroke: #f0b90b; stroke-width: 5; }
+  svg text.t { font-size: 30px; } svg text.s { font-size: 24px; fill: #9ea3ad; }
+  /* recon */
+  .eq2 { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .side { display: flex; flex-direction: column; gap: 8px; }
+  .side h3 { font-size: 34px; margin: 0 0 4px; }
+  .side .r { display: flex; justify-content: space-between; padding: 6px 18px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); font-size: 30px; }
+  .side .r span:last-child { font-family: var(--mono); }
+  .side .r.ok { border-color: var(--buy); background: var(--buy-soft); font-weight: 700; }
+  .side .r.bad { border-color: var(--sell); background: var(--sell-soft); font-weight: 700; }
+  /* law cards */
+  .laws { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .laws .card { padding: 18px 26px; font-size: 30px; }
+  .laws .card h3 { font-size: 34px; margin-bottom: 6px; }
+  /* kyc record */
+  .rec { display: grid; grid-template-columns: 470px 1fr; gap: 28px; }
+  .lv { display: flex; flex-direction: column; gap: 12px; font-size: 28px; }
+  .lvl { font-size: 28px; padding: 6px 14px; border-radius: 10px; font-weight: 700; display: inline-block; min-width: 64px; text-align: center; }
+  .lvl.l4 { background: var(--sell-soft); color: var(--sell); } .lvl.l3 { background: var(--warn-soft); color: var(--warn); } .lvl.l2 { background: var(--info-soft); color: var(--info); }
+  .rt { display: grid; grid-template-columns: 180px 80px 1fr 1fr; gap: 6px; font-size: 30px; }
+  .rt > div { background: var(--panel); border-radius: 8px; padding: 6px 12px; min-height: 54px; display: flex; align-items: center; transition: all .3s; }
+  .rt .hd { background: transparent; color: var(--text-2); font-size: 26px; min-height: 36px; }
+  .rt .pl { color: var(--sell); }
+  .rt .enc { color: var(--info); font-family: var(--mono); font-size: 28px; }
+  .rt .tok { color: var(--gold); font-family: var(--mono); font-size: 28px; }
+  .rt .msk { color: var(--buy); font-family: var(--mono); font-size: 28px; }
+  .rt .gr { color: var(--text-2); }
+  .rt .lvc { justify-content: center; padding: 0; }
+  /* case */
+  .flowc { display: grid; grid-template-columns: 1fr 50px 1fr 50px 1fr; row-gap: 44px; align-items: center; }
+  .cn { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 14px; font-size: 30px; text-align: center; opacity: .25; transition: all .35s; position: relative; }
+  .cn.cause { opacity: 1; border-color: var(--warn); background: var(--warn-soft); }
+  .cn.hit { opacity: 1; border-color: var(--sell); background: var(--sell-soft); }
+  .cn.base { opacity: 1; }
+  .cn .fix { display: none; position: absolute; left: 50%; transform: translateX(-50%); bottom: -26px; white-space: nowrap; font-size: 26px; padding: 2px 14px; border-radius: 999px; background: var(--buy); color: #0d0e10; font-weight: 700; }
+  .cn.fixed .fix { display: block; }
+  .ca { height: 4px; background: var(--text-2); position: relative; margin: 0 8px; }
+  .ca::after { content: ""; position: absolute; right: -2px; top: -8px; border: 10px solid transparent; border-left: 14px solid var(--text-2); border-right: 0; }
+  /* decision path */
+  .path { display: flex; align-items: center; }
+  .path .p { background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 8px 14px; font-size: 28px; text-align: center; opacity: .3; transition: all .3s; flex: 1; }
+  .path .p.on { opacity: 1; border-color: var(--gold); background: var(--gold-soft); }
+  .path .p.red { opacity: 1; border-color: var(--sell); background: var(--sell-soft); }
+  .path .p.grn { opacity: 1; border-color: var(--buy); background: var(--buy-soft); }
+  .path .p.blu { opacity: 1; border-color: var(--info); background: var(--info-soft); }
+  .path .a { width: 26px; height: 4px; background: var(--text-2); flex: 0 0 auto; margin: 0 4px; }
+  table.t td, table.t th { padding: 10px 16px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="B10" data-title="税务报送与数据隐私：交易所也是信息报送人">
+
+  <!-- 1 -->
+  <section class="scene s1" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 幕后核心</div>
+    <h1 class="ttl">税务报送与数据隐私：<span class="hl">交易所也是信息报送人</span></h1>
+    <div class="stack">
+      <div class="layer" data-step="0" data-until="1">
+        <div class="grid2">
+          <div class="card info"><h3>① 用户的交易结果</h3>按人汇总，交给税务机关<div class="dir">税务报送：<b class="blue">多留、多报</b></div></div>
+          <div class="card gold"><h3>② 用户的身份资料</h3>证件、住址、税号、证件照<div class="dir">数据隐私：<b class="hl">少收、早删</b></div></div>
+        </div>
+        <div class="card" data-step="0" style="font-size:30px;padding:16px 28px">B01 讲“认人和看钱” → 本集讲之后：这些数据<b class="hl">如何报送</b>、<b class="hl">如何保护</b></div>
+        <div class="card warn" data-step="1" style="padding:16px 28px">⚠ 本集不构成税务或法律意见 · 以官方原文为准 · 阈值除标注“公开资料”外均为示例</div>
+        <div class="chips" data-step="1"><span class="lab blue">A 税务报送</span><span class="chip info">CARF · DAC8 · 1099-DA</span><span class="chip info">自我证明</span><span class="chip info">分类与成本</span><span class="chip info">年度流水线</span></div>
+        <div class="chips" data-step="1"><span class="lab hl">B 数据隐私</span><span class="chip gold">法规与冲突</span><span class="chip gold">分级 · 加密 · 掩码</span><span class="chip gold">Coinbase 案例</span><span class="chip gold">DSR</span><span class="chip gold">留存化解</span></div>
+      </div>
+      <div class="layer" data-step="2">
+        <div class="grid3">
+          <div class="card info"><h3>🏛 税务局</h3>每年交一份清单：谁存了什么、卖了什么、赚了多少<br><span class="k">= 税务报送</span></div>
+          <div class="card gold"><h3>🔒 客户</h3>不偷看箱子，不复印钥匙，不用的箱子要销毁<br><span class="k">= 数据隐私</span></div>
+          <div class="card sell"><h3>📒 反洗钱</h3>销毁箱子前，开户登记簿必须<b>再留 5 年</b><br><span class="k">= 留存义务</span></div>
+        </div>
+        <div class="card buy" data-step="3">办法：登记簿锁进<b>另一个房间</b> → 只有特别授权能开 → <b>到期自动粉碎</b></div>
+        <div class="card warn" data-step="3">比喻不准：账本流水<b>只追加</b>，不能粉碎 → 靠<b>假名化</b>：只销毁身份映射</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>大家好。交易所手里有两类敏感信息，用户的交易结果和身份资料。税务报送要求多留多报，数据隐私要求少收早删。两件事方向相反。</li>
+      <li>先说明，本集内容不构成税务或法律意见。规则会变，请以官方原文为准。阈值除标明公开资料外，都是示例。前半讲税务报送，后半讲隐私，最后讲冲突怎样化解。</li>
+      <li>打个比方。交易所像兼任税务代扣点的保管库。税务局要它每年交清单，客户要它别偷看箱子。反洗钱规定又要求，销毁箱子前，登记簿还得再留 5 年。</li>
+      <li>它的办法是，登记簿锁进另一个房间，只有特别授权才能开，到期自动粉碎。比喻不准的是，账本不能粉碎，只能靠假名化，后面会讲。</li>
+    </ol>
+  </section>
+
+  <!-- 2 -->
+  <section class="scene tight" data-title="为什么是交易所" data-onstep="tlStep">
+    <div class="kicker">A · 税务报送 · 时间线为公开资料</div>
+    <h2 id="tlH">交易所为什么成了第三方报送方</h2>
+    <div class="card map" id="tlMap">
+      <span class="muted">链上只看到</span><span class="pill mono">0x7a3f…9c1</span><span class="down">这是谁？</span>
+      <span class="muted">→ 交易所 KYC 掌握</span><span class="pill">地址</span>↔<span class="pill">身份</span>↔<span class="pill">交易</span>
+    </div>
+    <div class="tl" id="tl"></div>
+    <ol class="say">
+      <li>税务机关为什么找上交易所？它很难从链上地址看出这是谁。交易所做了 KYC，掌握地址、身份和交易的映射。所以它像银行和券商一样，成了第三方报送方。</li>
+      <li>看时间线，都是公开资料。2014 年的 CRS 不覆盖直接持有的加密资产。2022 年，OECD 发布 CARF 填补缺口。2023 年，欧盟通过 DAC8，把 CARF 写进欧盟法律。</li>
+      <li>2024 年，美国发布经纪商最终法规，新增 Form 1099-DA。它覆盖 2025 年起的交易，首批表格 2026 年初发出。DAC8 从 2026 年 1 月 1 日起适用。</li>
+      <li>OECD 在 2025 年 6 月 17 日更新了清单。52 个辖区承诺 2027 年首次交换。另有 17 个辖区承诺 2028 年，包括美国、新加坡、香港和阿联酋。</li>
+    </ol>
+  </section>
+
+  <!-- 3 -->
+  <section class="scene" data-title="三套规则报什么" data-onstep="ruleStep">
+    <div class="kicker">A · 税务报送规则速览 · 截至 2026 年公开资料</div>
+    <h2 id="ruleH">CARF：按用户、按资产的年度汇总</h2>
+    <div class="rules">
+      <div class="tabs" id="tabs">
+        <div class="tab" data-k="carf">OECD CARF<small>加密资产报告框架</small></div>
+        <div class="tab" data-k="dac8">欧盟 DAC8<small>指令 2023/2226</small></div>
+        <div class="tab" data-k="uk">英国 CARF<small>英国 RCASP</small></div>
+        <div class="tab" data-k="us">美国 1099-DA<small>托管型经纪商</small></div>
+      </div>
+      <div class="card" id="ruleD"></div>
+    </div>
+    <ol class="say">
+      <li>报什么？CARF 的报送方叫 RCASP，按每个用户、每种资产报年度汇总。可报送交易有三类，加密换法币，加密换加密，以及转账。零售支付超过 50000 美元，付款客户也要报送。</li>
+      <li>DAC8 内容与 CARF 一致。在欧盟提供服务就要报，不论有无 MiCA 授权。首份报告在 2027 年 9 月 30 日前完成。英国首报 2027 年 5 月 31 日到期，错报每个用户最高罚 300 英镑。</li>
+      <li>美国 1099-DA 由托管型经纪商报送。2025 年起的交易报总收入。2026 年起取得的受管资产，再报成本基础。稳定币和 NFT 有小额规则。质押奖励不在这张表上报。</li>
+      <li>注意，承诺清单会更新。据 2026 年 2 月公开报道，部分欧盟成员国没按时完成 DAC8 转化。所以辖区生效日和首报日要做成配置，不能写死在代码里。</li>
+    </ol>
+  </section>
+
+  <!-- 4 -->
+  <section class="scene" data-title="自我证明融入 KYC" data-onstep="kycStep">
+    <div class="kicker">A · 税务居民自我证明 Self-Certification</div>
+    <h2 id="kycH">先知道用户是哪里的税务居民</h2>
+    <div class="sflow" id="sflow">
+      <div class="n" data-k="u">用户<small>证件 · 住址</small></div><div class="a"></div>
+      <div class="n" data-k="id">身份服务<small>开户流程</small></div><div class="a"></div>
+      <div class="n" data-k="kyc">KYC 供应商<small>核验 · 活体</small></div><div class="a"></div>
+      <div class="n" data-k="tax">税务资料服务<small>格式 · 合理性</small></div><div class="a"></div>
+      <div class="n" data-k="v">令牌保险库<small>TIN → 令牌</small></div><div class="a"></div>
+      <div class="n" data-k="r">限制开关<small>可报送交易</small></div>
+    </div>
+    <div id="kycP"></div>
+    <ol class="say">
+      <li>报送前，先要知道用户是哪里的税务居民。这靠自我证明，用户自己声明税务居民辖区和 TIN。系统把它嵌进 KYC。证件核验返回姓名、国籍和住址，再弹出自我证明表。</li>
+      <li>税务资料服务先校验 TIN 格式，再做合理性检查。示例，用户声明只在 A 国纳税，住址和手机号却在 B 国。系统要求补充说明，不直接拒绝。通过后，TIN 存进令牌保险库，换回令牌。</li>
+      <li>时限是公开资料。存量用户要在 2026 年 12 月 31 日前取得。DAC8 规定，两次提醒且满 60 天仍未提供，必须阻止可报送交易。局限是，系统只能查是否自洽，不能确认 TIN 属于本人。</li>
+    </ol>
+  </section>
+
+  <!-- 5 -->
+  <section class="scene tight" data-title="交易分类" data-onstep="clsStep">
+    <div class="kicker">A · 交易分类 · 业界通用做法，分录为示例</div>
+    <h2 id="clsH">每条账本分录，映射成一个税务事件</h2>
+    <div class="card dm">LEDGER_JOURNAL <span class="hl">─derived_from→</span> TAX_EVENT { event_type, asset, quantity, fiat_value, <span class="hl">fx_source</span> }</div>
+    <div class="cg" id="cg"></div>
+    <ol class="say">
+      <li>税务事件从账本分录派生，不由业务服务直接写入，这样才能对账。来看几条分录，示例。欧元买 BTC 是取得，只建成本批次。卖 BTC 得欧元是处置，1099-DA 报总收入。</li>
+      <li>ETH 换 BTC，算一次处置加一次取得。提币到外部是转出，外部充值是转入，CARF 都归为转账。转入的成本未知。质押和空投是收入，不在 1099-DA 报。手续费币种也要估值。</li>
+      <li>注意稳定币。USDT 在 CARF 下属于加密资产。所以 BTC 换 USDT 是加密换加密，不是法币兑换。</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="scene" data-title="成本基础与 FIFO" data-onstep="fifoStep">
+    <div class="kicker">A · 成本基础 Cost Basis · 价格均为示例，单位美元</div>
+    <h2 id="ffH">FIFO：先卖最早买入的批次</h2>
+    <div class="ff">
+      <div class="lots" id="lots"></div>
+      <div class="calc" id="calc"></div>
+    </div>
+    <ol class="say">
+      <li>处置收入减成本基础，就是损益。美国对托管资产默认用 FIFO，先卖最早的批次。示例，用户 A 在 1 月花 30000 美元买 1 BTC。3 月又花 50000 再买 1 BTC。</li>
+      <li>6 月，他按 60000 美元卖出 1.5 BTC，收入 90000。FIFO 先用 1 月批次，成本 30000。再用 3 月批次的一半，成本 25000。损益是 90000 减 55000，等于 35000 美元。</li>
+      <li>再看用户 B。他在别处买了 1 BTC，充值进来，9 月按 60000 卖出。链上只看到数量和时间，交易所不知道成本。如果按 0 填，报表会显示盈利 60000，远高于真实值。</li>
+      <li>所以报表必须标注成本未知。1099-DA 也只对受管资产报成本。受管资产是 2026 年起取得，买卖都在同一经纪商账户。美国还要求按钱包分别算成本，不能混算。</li>
+    </ol>
+  </section>
+
+  <!-- 7 -->
+  <section class="scene tight" data-title="年度报送流水线" data-onstep="pipeStep">
+    <div class="kicker">A · 年度报送状态机 · 业界通用做法</div>
+    <h2 id="pipeH">从账本到税务机关的一条流水线</h2>
+    <svg viewBox="0 0 1640 470" width="1640" height="470">
+      <defs>
+        <marker id="p1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9ea3ad"/></marker>
+        <marker id="p2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f0b90b"/></marker>
+      </defs>
+      <g id="pipe"></g>
+    </svg>
+    <div class="card note" id="pipeN"></div>
+    <ol class="say">
+      <li>每年的报送是一台状态机。次年 1 月 1 日冻结数据。引擎读账本的只读副本，按 business_type 分类，匹配成本批次。再补成交时刻的法币汇率，固定一个来源，写进说明。</li>
+      <li>然后与账本对账，这是硬闸门。差异为 0 才生成报文。不为 0，就修分类规则或补价数据，整批重跑。不手工改单条事件，否则无法复现。</li>
+      <li>报文经合规复核后提交。格式或 TIN 校验失败，会被退回重做。已接受也不是终点。账本冲正、补交自我证明，都会引发更正报送。用户有两个税务居民辖区，就要报两份。</li>
+    </ol>
+  </section>
+
+  <!-- 8 -->
+  <section class="scene" data-title="与账本对账" data-onstep="reconStep">
+    <div class="kicker">A · 数据质量闸门 · 数值为示例</div>
+    <h2 id="rcH">数量守恒：期初 + 流入 − 流出 = 期末</h2>
+    <div class="eq2">
+      <div class="side" id="uC"></div>
+      <div class="side" id="uD"></div>
+    </div>
+    <div class="card note" id="rcN"></div>
+    <ol class="say">
+      <li>对账查的是数量守恒。按用户、按资产，期初加流入减流出，要等于期末。示例，用户 C 的 ETH 期初 2 个，流入 3 个，流出 1.5 个。期末快照 3.5 个，差异为 0。</li>
+      <li>用户 D 期初 0，流入 5，流出 2，应该剩 3 个。快照却是 4 个，差 1 个 ETH。说明有业务类型没映射，比如一笔空投。另外还要查覆盖率、估值和自我证明是否完整。</li>
+      <li>这和 B04 的对账不平就停提币，是同一个思路。用户侧，业界通常提供已实现损益和成本未知清单。据公开报道，币安 2023 年 2 月推出免费的 Binance Tax 工具。它先在法国试点。</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="scene" data-title="隐私法规与冲突">
+    <div class="kicker">B · 数据隐私 · 法规条款为公开资料</div>
+    <h2>隐私法、反洗钱、税务：三方要求互相拉扯</h2>
+    <div class="stack">
+      <div class="layer" data-step="0" data-until="1">
+        <div class="laws">
+          <div class="card info"><h3>欧盟 GDPR</h3>6(1)(c)：法定义务可作处理依据<br>17(3)：<b>法定留存优先于删除权</b><br>33：泄露 72 小时内通知监管</div>
+          <div class="card gold"><h3>欧盟 AMLR · 条例 2024/1624</h3>第 77 条：尽调与交易记录<br>业务关系结束后<b>保留 5 年</b>，之后删除<br>2027-07-10 起直接适用</div>
+          <div class="card warn" data-step="1"><h3>中国 PIPL</h3>生物识别、金融账户 = <b>敏感个人信息</b><br>出境：安全评估 / 标准合同 / 认证之一<br>2024 年 3 月跨境流动规定调整门槛</div>
+          <div class="card sell" data-step="1"><h3>中国反洗钱法 · 2024 修订</h3>客户身份资料和交易记录<br>最短保存 <b>10 年</b>（原为 5 年）<br>2025-01-01 施行</div>
+        </div>
+      </div>
+      <div class="layer" data-step="2">
+        <table class="t" style="table-layout:fixed">
+          <tr><th style="width:330px">冲突</th><th style="width:680px">两方要求</th><th>系统化解 · 业界通用做法</th></tr>
+          <tr><td class="hl">删除权 ↔ 留存</td><td>GDPR 17 条删除 ↔ AMLR 77 条留 5 年</td><td>法律保全；停用只存；到期删</td></tr>
+          <tr><td class="hl">删除权 ↔ 账本</td><td>要删交易记录 ↔ 流水只追加</td><td>账本只存假名 ID</td></tr>
+          <tr><td class="hl">最小化 ↔ Travel Rule</td><td>少传 ↔ 随转账传姓名、账号</td><td>只传法定最小字段</td></tr>
+          <tr><td class="hl">最小化 ↔ 税务</td><td>少收 ↔ 出生日期、出生地、TIN</td><td>税务字段单独建域</td></tr>
+          <tr><td class="hl">访问权 ↔ 不得泄密</td><td>GDPR 15 条 ↔ 禁止透露“已被报告”</td><td>导出时过滤 SAR 字段</td></tr>
+          <tr><td class="hl">通知 ↔ 调查保密</td><td>72 小时通知 ↔ 执法要求暂缓公开</td><td>先通知监管，再定用户通知</td></tr>
+        </table>
+      </div>
+    </div>
+    <ol class="say">
+      <li>下半场，数据隐私。公开资料里，GDPR 第 17 条第 3 款规定，法定留存义务优先于删除权。欧盟 AMLR 第 77 条要求，关系结束后再留 5 年。它从 2027 年 7 月 10 日起直接适用。</li>
+      <li>中国 PIPL 把生物识别和金融账户列为敏感信息。出境要过安全评估、标准合同或认证之一。中国反洗钱法 2024 年修订，保存期从 5 年延长到 10 年。新法 2025 年 1 月 1 日施行。</li>
+      <li>冲突就出现了。删除权对反洗钱留存，删除权对只追加的账本。Travel Rule 要传姓名账号，CARF 要出生日期和 TIN。两者都和最小化冲突。访问权还会撞上不得透露已被报告。</li>
+    </ol>
+  </section>
+
+  <!-- 10 -->
+  <section class="scene" data-title="分级、加密与掩码" data-onstep="recStep">
+    <div class="kicker">B · 数据清单 · 分级 · 加密 · 访问控制 · 示例数据</div>
+    <h2 id="recH">一条 KYC 记录，被一层层保护</h2>
+    <div class="rec">
+      <div class="lv" id="recL"></div>
+      <div class="rt" id="recT"></div>
+    </div>
+    <ol class="say">
+      <li>防护从数据清单开始，没有清单，就答不出删除要删哪些表。再分级，示例。L4 是人脸模板、证件照、证件号和税号。L3 是姓名、地址、电话和交易。L2 是登录 IP 和设备指纹。</li>
+      <li>看一条 KYC 记录。静态加密保护磁盘和备份，只防偷硬盘。字段级加密在应用层加密姓名、地址和电话，数据库管理员只看到密文。</li>
+      <li>证件号和 TIN 走令牌化，明文只在令牌保险库。每个数据域有独立的数据密钥，由 KMS 或 HSM 里的主密钥保护。销毁映射，令牌就无法还原，这叫加密粉碎。</li>
+      <li>一线客服看到的是掩码，证件号只显示后 4 位。看完整证件照，要关联工单、主管审批，30 分钟后失效。1 小时内查看超过 50 个用户就告警。外包客服不开放批量视图。</li>
+    </ol>
+  </section>
+
+  <!-- 11 -->
+  <section class="scene" data-title="案例：Coinbase 2025" data-onstep="caseStep">
+    <div class="kicker">真实案例 · 据 Coinbase SEC 8-K 文件与公开报道</div>
+    <h2 id="caseH">客服在权限内逐条查看：加密挡不住</h2>
+    <div class="flowc">
+      <div class="cn" data-i="1">外包客服可查看<br>完整资料与余额<span class="fix">PV-06 外包隔离 · PV-01 掩码</span></div><div class="ca"></div>
+      <div class="cn" data-i="2">攻击者收买<br>美国境外客服人员</div><div class="ca"></div>
+      <div class="cn" data-i="3">客服在权限内<br>逐条收集资料<span class="fix">PV-02 即时授权</span></div>
+      <div class="cn" data-i="4">最早 2024-12-26<br>4 个多月未被发现<span class="fix">PV-03 批量告警</span></div><div class="ca"></div>
+      <div class="cn" data-i="5">冒充平台社工诈骗<br>2025-05-11 勒索邮件</div><div class="ca"></div>
+      <div class="cn" data-i="6">8-K 估算成本<br>1.8–4 亿美元</div>
+    </div>
+    <div class="card note" id="caseN"></div>
+    <ol class="say">
+      <li>来看真实案例，依据 Coinbase 的 SEC 8-K 文件和公开报道。2025 年 5 月 11 日，Coinbase 收到勒索邮件。攻击者声称持有客户数据，索要赎金。</li>
+      <li>原因是，攻击者收买了美国境外从事客服工作的多名外包人员或员工。他们用工作权限，从内部系统收集资料。不当访问最早追溯到 2024 年 12 月 26 日，4 个多月没被发现。</li>
+      <li>影响是，69461 人的姓名、地址、证件照片、余额和交易记录泄露。密码、私钥和资金没有泄露。资料被用来冒充平台诈骗。8-K 估计成本 1.8 亿到 4 亿美元。</li>
+      <li>Coinbase 拒付赎金，设立 2000 万美元悬赏。它开设美国境内客服中心，加强内部威胁检测。注意，根因不在加密失效，客服本来有权看明文。掩码、即时授权、批量告警、外包隔离，各管一环。</li>
+    </ol>
+  </section>
+
+  <!-- 12 -->
+  <section class="scene tight" data-title="DSR 与泄露通知" data-onstep="dsrStep">
+    <div class="kicker">B · 数据主体请求 DSR · 时限为公开资料</div>
+    <h2 id="dsrH">删除请求，先过留存规则检查</h2>
+    <div class="stack">
+      <div class="layer" id="dsrA">
+        <svg viewBox="0 0 1640 440" width="1640" height="440">
+          <defs>
+            <marker id="q1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9ea3ad"/></marker>
+            <marker id="q2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f0b90b"/></marker>
+          </defs>
+          <g id="dsr"></g>
+        </svg>
+        <div class="card note" id="dsrN"></div>
+      </div>
+      <div class="layer" id="dsrB">
+        <table class="t" style="table-layout:fixed">
+          <tr><th style="width:360px">法规</th><th style="width:400px">通知对象</th><th>时限 · 公开资料</th></tr>
+          <tr><td class="hl">GDPR 第 33 条</td><td>监管机构</td><td>无不当延迟，可行时 <b>≤ 72 小时</b>；超时须说明理由</td></tr>
+          <tr><td class="hl">PIPL 第 57 条</td><td>履职部门与个人</td><td><b>立即</b>采取补救措施并通知</td></tr>
+          <tr><td class="hl">美国上市公司</td><td>投资者 · SEC 8-K 第 1.05 项</td><td>认定重大后 <b>4 个工作日</b>内</td></tr>
+        </table>
+        <div class="card warn note">冲突：执法机构要求暂缓公开 → <b>先通知监管</b>，按监管意见决定通知用户的时间</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>用户的访问、删除等请求，叫数据主体请求，简称 DSR。GDPR 一般要求 1 个月内答复。第一步用强认证核验身份，攻击者常冒充用户骗资料。再按数据清单定位，清单缺一张表，删除就漏一张表。</li>
+      <li>访问请求导出前，要过滤可疑交易报告相关字段，避免泄密。删除请求先查留存规则。没有留存义务和法律保全，就全部删除。否则部分删除，其余保全，并告知理由和到期日。</li>
+      <li>泄露通知也有时限。GDPR 第 33 条要求 72 小时内通知监管。PIPL 第 57 条要求立即补救并通知。美国上市公司认定重大后，4 个工作日内披露。执法要求暂缓时，先通知监管，再定何时通知用户。</li>
+    </ol>
+  </section>
+
+  <!-- 13 -->
+  <section class="scene tight" data-title="冲突化解与权衡" data-onstep="retStep">
+    <div class="kicker">局限与权衡 · 欧盟用户示例 · 年份为示例</div>
+    <h2 id="retH">删除请求撞上留存义务</h2>
+    <div class="stack">
+      <div class="layer" id="retA">
+        <svg viewBox="0 0 1640 430" width="1640" height="430"><g id="ret"></g></svg>
+        <div class="path" id="retP">
+          <div class="p" data-k="q1">法律保全？</div><div class="a"></div>
+          <div class="p" data-k="q2">反洗钱留存满？</div><div class="a"></div>
+          <div class="p" data-k="q3">税务留存满？</div><div class="a"></div>
+          <div class="p" data-k="sh">销毁映射与密钥</div>
+        </div>
+      </div>
+      <div class="layer" id="retB">
+        <table class="t" style="table-layout:fixed">
+          <tr><th style="width:330px">权衡</th><th style="width:600px">两端</th><th>常见做法 · 业界通用做法</th></tr>
+          <tr><td class="hl">客服效率 vs 隐私</td><td>全量资料处理快 ↔ 内部泄露风险高</td><td>默认掩码，按工单即时授权</td></tr>
+          <tr><td class="hl">全球统一 vs 驻留</td><td>一个数据湖分析方便 ↔ 违反出境规定</td><td>按辖区分区，跨境只传令牌或聚合</td></tr>
+          <tr><td class="hl">成本基础 vs 责任</td><td>报转入成本有用 ↔ 来源不可靠</td><td>只报受管资产，其余标“成本未知”</td></tr>
+          <tr><td class="hl">加密 vs 查询</td><td>全字段加密 ↔ 无法按证件号去重</td><td>盲索引：带密钥哈希做等值查询</td></tr>
+        </table>
+        <div class="card info note">假名化 ≠ 匿名化：GDPR 认为假名数据<b>仍是个人数据</b>；加密粉碎是否等于法律上的删除，需法务评估</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>冲突怎样化解？看一个欧盟用户，示例。他 2026 年关户，AMLR 要求再留 5 年，到 2031 年。第 2 年他要求删除。系统先查法律保全，假设没有。再查反洗钱留存，还没满。</li>
+      <li>于是 KYC 资料停止使用，移入冷存储，只保留存储。营销偏好没有留存义务，直接删除。如果合规正在调查他，就加法律保全，全部保留，到期也不删。</li>
+      <li>留存全部到期后，先只保留税务字段，最后销毁身份映射和密钥。账本只关联假名 ID，映射一销毁，流水就认不出人，账本仍然完整。留存计划按数据类别和辖区配置。</li>
+      <li>再看几组权衡。客服效率对隐私，做法是默认掩码、按工单授权。全字段加密对查询能力，可以用盲索引。还要记住，GDPR 认为假名数据仍是个人数据。</li>
+    </ol>
+  </section>
+
+  <!-- 14 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">交易所掌握<span class="hl">地址 ↔ 身份 ↔ 交易</span>，所以成了报送方；CARF、DAC8、1099-DA 的日期做成<span class="hl">配置</span>。</li>
+      <li data-step="0">报送从<span class="hl">账本派生</span>：自我证明进 KYC，分类和成本整批重跑；对账不平不出报文；转入资产标“成本未知”。</li>
+      <li data-step="1">加密挡不住有权限的人：<span class="hl">掩码、即时授权、批量告警</span>；删除遇到留存 → 停用、保全、到期销毁映射。</li>
+    </ul>
+    <div class="card info" data-step="2"><b>下集 B11 · 安全工程</b>：把安全做进研发与运营</div>
+    <ol class="say">
+      <li>小结三点。第一，交易所掌握身份和交易的映射，所以成了报送方，规则日期要做成配置。第二，报送从账本派生，对账不平不出报文，转入资产标成本未知。</li>
+      <li>第三，加密挡不住有权限的人，要靠掩码、即时授权和批量告警。删除遇到留存，就停用、保全，到期销毁映射。</li>
+      <li>我们反复提到密钥、权限和检测。它们怎样做进研发和运营的每一步？下一集 B11，安全工程。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  function tlStep(el, st) {
+    const EV = [
+      ['2014 · OECD CRS', '交换非居民金融账户信息；不覆盖直接持有的加密资产', 1],
+      ['2022 · OECD 发布 CARF', '加密资产报告框架，填补缺口', 1],
+      ['2023 · 欧盟通过 DAC8', '10 月 17 日；把 CARF 写入欧盟法律', 1],
+      ['2024 · 美国 T.D. 10000', '经纪商最终法规，新增 Form 1099-DA', 2],
+      ['2025 · 1099-DA 起算', '覆盖 2025 年起的交易', 2],
+      ['2026-01-01 DAC8 适用', '英国开始收集；年初首批 1099-DA 发出', 2],
+      ['2027 · 52 个辖区', '首次交换；DAC8 首报 9-30 前', 3],
+      ['2028 · 17 个辖区', '首次交换；含美国、新加坡、香港、阿联酋', 3],
+    ];
+    let h = '<div class="axis"></div>';
+    EV.forEach(([t, d, k], i) => {
+      const x = 195 + i * 179, up = i % 2 === 0;
+      const left = Math.max(0, Math.min(1640 - 350, x - 175));
+      const cls = st < k ? 'off' : st === k ? 'cur' : 'old';
+      h += `<div class="dot ${st >= k ? 'on' : ''}" style="left:${x}px"></div>`;
+      if (st >= k) h += `<div class="stem" style="left:${x}px;top:${up ? 196 : 232}px;height:14px"></div>`;
+      h += `<div class="ev ${cls}" style="left:${left}px;${up ? 'bottom:244px' : 'top:244px'}"><b>${t}</b><span>${d}</span></div>`;
+    });
+    if (st === 0) h += `<div class="card" style="position:absolute;left:330px;top:290px;width:980px;text-align:center;font-size:30px">银行报送利息 · 券商报送股票卖出收入 → <b class="hl">交易所报送加密资产交易</b></div>`;
+    el.querySelector('#tl').innerHTML = h;
+    el.querySelector('#tlMap').style.opacity = st === 0 ? 1 : .55;
+    el.querySelector('#tlH').textContent = ['交易所为什么成了第三方报送方', 'CRS 留下缺口，CARF 和 DAC8 填上', '美国 1099-DA，欧盟 DAC8 开始落地', '2027、2028：首次交换'][st];
+  }
+  function ruleStep(el, st) {
+    const on = [['carf'], ['dac8', 'uk'], ['us'], ['carf', 'dac8', 'uk', 'us']][st];
+    el.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', on.includes(t.dataset.k)));
+    const D = [
+      `<div class="kv"><div class="k">谁报送</div><div>RCASP · 加密资产服务商</div><div class="k">报什么</div><div>每个用户、每种资产的<b class="hl">年度汇总</b></div><div class="k">数据来源</div><div>自我证明：税务居民辖区、TIN、出生日期、出生地</div></div>
+       <div style="margin-top:18px;font-size:30px" class="muted">三类可报送交易 Reportable Transactions</div>
+       <div class="tx3"><div>① 加密 ↔ 法币</div><div>② 加密 ↔ 加密</div><div>③ 加密资产转账</div></div>
+       <div class="card warn" style="margin-top:16px;padding:12px 20px">零售支付交易 &gt; 50,000 美元：商户的<b>付款客户</b>也要识别和报送</div>`,
+      `<div class="kv"><div class="k">DAC8 谁报</div><div>在欧盟提供服务的 RCASP，<b>无论有无 MiCA 授权</b></div><div class="k">报什么</div><div>与 CARF 一致；覆盖欧盟境内居民</div><div class="k">时间</div><div>2023-10-17 通过 · 2026-01-01 适用 · 首报 <b class="hl">2027-09-30 前</b></div></div>
+       <div class="kv" style="margin-top:22px;padding-top:18px;border-top:1px solid var(--line)"><div class="k">英国 CARF</div><div>同 CARF，并含英国居民</div><div class="k">时间</div><div>2026-01-01 收集 · 首报 <b class="hl">2027-05-31</b> 到期</div><div class="k">罚则</div><div>错报每个用户最高 <b class="down">300 英镑</b></div></div>`,
+      `<div class="kv"><div class="k">谁报送</div><div>托管型数字资产经纪商 Broker</div><div class="k">2025 年起交易</div><div>总收入 Gross Proceeds</div><div class="k">2026 年起取得</div><div>“受管资产”再报 <b class="hl">成本基础</b></div><div class="k">小额规则</div><div>合格稳定币 &lt; 10,000 美元 · 特定 NFT &lt; 600 美元：汇总处理或豁免逐笔</div><div class="k">不报</div><div>质押奖励不在 1099-DA 报送</div><div class="k">已废除</div><div>DeFi 经纪商规则：2025-04-10 经《国会审查法》决议废除</div></div>`,
+      `<div class="code" style="font-size:25px"># 示例：辖区规则是配置，不是代码
+EU-XX: { rule: DAC8,    transposed: <span class="down">待确认</span>, first_report: 2027-09-30 }
+GB:    { rule: CARF,    collect_from: 2026-01-01, first_report: 2027-05-31 }
+US:    { rule: 1099-DA, proceeds_from: 2025, basis_from: 2026 }
+SG:    { rule: CARF,    first_exchange: 2028 }</div>
+       <div class="card warn" style="margin-top:18px;padding:14px 22px">据 2026 年 2 月公开报道：部分欧盟成员国<b>未按时完成 DAC8 转化</b>；承诺清单也会更新</div>`,
+    ];
+    el.querySelector('#ruleD').innerHTML = D[st];
+    el.querySelector('#ruleH').textContent = ['CARF：按用户、按资产的年度汇总', 'DAC8 与英国 CARF：日期和罚则', '美国 1099-DA：先报收入，再报成本', '生效日和首报日：做成配置'][st];
+  }
+  function kycStep(el, st) {
+    const M = [{ u: 'on', id: 'on', kyc: 'on' }, { tax: 'on', v: 'on' }, { r: 'red', tax: 'on' }][st];
+    el.querySelectorAll('#sflow .n').forEach(n => { n.className = 'n' + (M[n.dataset.k] ? ' ' + M[n.dataset.k] : ''); });
+    const P = [
+      `<div class="grid2"><div class="card info"><h3>KYC 返回的身份事实</h3>姓名 · 国籍 · 住址<br><span class="k">证件核验 + 活体检测</span></div>
+       <div class="card gold"><h3>自我证明表</h3>税务居民辖区 · TIN<br><span class="k">CRS 早已使用，CARF 沿用</span></div></div>
+       <div class="card note" style="margin-top:22px">两者<b>共用一份身份事实</b>：这就是“自我证明融入 KYC”</div>`,
+      `<div class="chk">
+         <div>声明税务居民</div><div>只在 <b>A 国</b> 纳税</div><div class="ok">—</div>
+         <div>TIN 格式</div><div>符合 A 国规则</div><div class="ok">✓</div>
+         <div>住址国 · KYC</div><div><b>B 国</b></div><div class="bad">矛盾</div>
+         <div>电话区号</div><div><b>B 国</b></div><div class="bad">矛盾</div>
+       </div>
+       <div class="card warn note" style="margin-top:18px">示例：要求<b>补充说明或修正</b>，不直接拒绝 → 通过后 TIN 存入保险库，换回 <span class="mono hl">tin_token</span></div>`,
+      `<div class="kv" style="margin-bottom:16px"><div class="k">新用户</div><div>开户完成前取得</div><div class="k">存量用户</div><div><b class="hl">2026-12-31</b> 前取得</div></div>
+       <div class="steps"><span>DAC8：提醒 1</span><i>→</i><span>提醒 2</span><i>→</i><span>满 60 天</span><i>→</i><span class="red">阻止可报送交易</span></div>
+       <div class="card note" style="margin-top:18px">局限：只能查“是否自洽”，不能确认 TIN 属于本人；部分辖区有 TIN 校验接口，多数没有</div>`,
+    ];
+    el.querySelector('#kycP').innerHTML = P[st];
+    el.querySelector('#kycH').textContent = ['先知道用户是哪里的税务居民', '合理性检查：声明和身份事实是否自洽', '存量用户、提醒与限制'][st];
+  }
+  function clsStep(el, st) {
+    const R = [
+      ['用欧元买 BTC', '取得', '加密 ↔ 法币', '不报送；建立成本批次', 0],
+      ['卖 BTC 得欧元', '处置', '加密 ↔ 法币', '报送总收入', 0],
+      ['用 ETH 换 BTC', '处置 + 取得', '加密 ↔ 加密', '按处置 ETH 报送', 1],
+      ['提币到外部地址', '转出', '转账', '不作为销售', 1],
+      ['外部充值', '转入', '转账', '成本未知', 1],
+      ['质押奖励、空投', '收入', '按辖区规则', '不在 1099-DA 报送', 1],
+      ['交易手续费', '费用', '计入交易对价', '调整收入或成本', 1],
+      ['BTC 换 USDT', '处置 + 取得', '加密 ↔ 加密', '非法币兑换；稳定币另有小额规则', 2],
+    ];
+    let h = '<div class="hd">账本分录 · 示例</div><div class="hd">税务事件</div><div class="hd">CARF 归类</div><div class="hd">1099-DA</div>';
+    R.forEach(([a, b, c, d, k]) => {
+      const show = st >= k, cur = st === k;
+      const cc = (cur ? ' cur' : '');
+      h += `<div class="${cc}">${a}</div>`;
+      [b, c, d].forEach((v, j) => {
+        const unk = show && v === '成本未知';
+        h += `<div class="${!show ? 'blank' : unk ? 'unk' : cc}">${show ? v : '·'}</div>`;
+      });
+    });
+    el.querySelector('#cg').innerHTML = h;
+    el.querySelector('#clsH').textContent = ['每条账本分录，映射成一个税务事件', '兑换、转账、收入、费用', 'USDT 是加密资产：BTC 换 USDT 不是法币兑换'][st];
+  }
+  function fifoStep(el, st) {
+    const lot = (h, t, v, used, unk) => `<div class="lot ${unk ? 'unk' : ''}"><h4>${h}</h4><div class="top"><span>${t}</span><span>${v}</span></div><div class="bar"><i style="width:${used}%"></i></div></div>`;
+    let L = '<div class="muted" style="font-size:30px">用户 A · 交易所内买入 · 成本已知</div>';
+    L += lot('批次 1', '1 月 买入 1 BTC', '成本 30,000', st >= 1 ? 100 : 0);
+    L += lot('批次 2', '3 月 买入 1 BTC', st >= 1 ? '剩 0.5 · 成本 25,000' : '成本 50,000', st >= 1 ? 50 : 0);
+    if (st >= 2) {
+      L += '<div class="muted" style="font-size:30px;margin-top:6px">用户 B · 外部充值转入</div>';
+      L += lot('批次 X · 转入', '充值 1 BTC · 链上只见数量和时间', '成本 ?', 100, true);
+    }
+    el.querySelector('#lots').innerHTML = L;
+    const C = [
+      `<h3>三种方法</h3><div class="r tot"><span>FIFO 先进先出</span><span>美国默认</span></div><div class="r"><span>具体识别</span><span>允许 · 有过渡宽限</span></div><div class="r"><span>平均成本</span><span>如英国资产池</span></div><div class="card note">损益 = 处置收入 − 成本基础</div>`,
+      `<h3>6 月卖出 1.5 BTC × 60,000</h3><div class="r"><span>收入</span><span>90,000</span></div><div class="r"><span>批次 1 · 1 BTC</span><span>30,000</span></div><div class="r"><span>批次 2 · 0.5 BTC</span><span>25,000</span></div><div class="r"><span>成本合计</span><span>55,000</span></div><div class="r tot"><span>损益 90,000 − 55,000</span><span>35,000</span></div>`,
+      `<h3>用户 B · 9 月卖出 1 BTC × 60,000</h3><div class="r"><span>收入</span><span>60,000</span></div><div class="r"><span>成本</span><span class="down">交易所不知道</span></div><div class="r bad"><span>✗ 成本按 0 填 → 盈利</span><span>60,000</span></div><div class="card sell note">远高于真实值，不能当事实展示</div>`,
+      `<h3>正确做法</h3><div class="r good"><span>✓ 报表标注</span><span>成本未知</span></div><div class="card note"><b class="hl">受管资产</b>：2026 年起取得，且买到卖都在<b>同一经纪商账户</b> → 报成本；转入 = 非受管</div><div class="card note">2025 年起按<b>账户或钱包</b>分别计算，不能跨钱包混算</div>`,
+    ];
+    el.querySelector('#calc').innerHTML = C[st];
+    el.querySelector('#ffH').textContent = ['FIFO：先卖最早买入的批次', 'FIFO 算一遍：损益 35,000', '转入资产：交易所不知道成本', '标注“成本未知”，只报受管资产'][st];
+  }
+  function pipeStep(el, st) {
+    const B = {
+      FREEZE: [0, 50, '数据冻结', '次年 1 月 1 日'], EXTRACT: [347, 50, '抽取与分类', '只读副本'], PRICE: [694, 50, '估值补价', 'fx_source'], RECON: [1041, 50, '与账本对账', '硬闸门'], BUILD: [1388, 50, '生成报文', 'XML'],
+      FIX: [694, 210, '差异处理', '改规则 · 补价'], REJECT: [1041, 210, '税务机关退回', '格式或 TIN'], REVIEW: [1388, 210, '合规复核', '签发'],
+      CORRECT: [694, 370, '更正报送', '冲正 · 补交'], ACCEPT: [1041, 370, '已接受', '回执'], SUBMIT: [1388, 370, '已提交', '按辖区格式'],
+    };
+    const E = [
+      ['e1', 'M250 88 L345 88'], ['e2', 'M597 88 L692 88'], ['e3', 'M944 88 L1039 88'], ['e4', 'M1291 88 L1386 88', '差异为 0', 1339, 40],
+      ['e5', 'M1080 126 L948 232', '差异不为 0', 880, 166], ['e6', 'M694 240 L560 128', '整批重跑', 520, 206],
+      ['e7', 'M1513 126 L1513 208'], ['e8', 'M1513 286 L1513 368'], ['e9', 'M1400 370 L1262 288', '退回', 1290, 345], ['e10', 'M1270 210 L1400 128'],
+      ['e11', 'M1386 408 L1293 408'], ['e12', 'M1039 408 L946 408'], ['e13', 'M819 446 L819 462 L1513 462 L1513 448'],
+    ];
+    const hn = [['FREEZE', 'EXTRACT', 'PRICE'], ['RECON', 'FIX', 'BUILD'], ['BUILD', 'REVIEW', 'SUBMIT', 'REJECT', 'ACCEPT', 'CORRECT']][st];
+    const he = [['e1', 'e2'], ['e3', 'e4', 'e5', 'e6'], ['e7', 'e8', 'e9', 'e10', 'e11', 'e12', 'e13']][st];
+    let g = '';
+    E.forEach(([id, d, lab, lx, ly]) => {
+      const on = he.includes(id);
+      g += `<path class="ln ${on ? 'hi' : 'dim'}" d="${d}" marker-end="url(#${on ? 'p2' : 'p1'})"/>`;
+      if (lab) g += `<text class="s" x="${lx}" y="${ly}" text-anchor="middle" style="${on ? 'fill:#f0b90b' : 'opacity:.35'}">${lab}</text>`;
+    });
+    for (const [k, [x, y, t, s]] of Object.entries(B)) {
+      const on = hn.includes(k);
+      const cls = !on ? '' : (k === 'FIX' || k === 'REJECT') ? 'red' : (k === 'ACCEPT') ? 'grn' : (k === 'RECON') ? 'blu' : 'on';
+      g += `<g style="opacity:${on ? 1 : .35}"><rect class="box ${cls}" x="${x}" y="${y}" width="250" height="76" rx="14"/><text class="t" x="${x + 125}" y="${y + 36}" text-anchor="middle">${t}</text><text class="s" x="${x + 125}" y="${y + 64}" text-anchor="middle">${s}</text></g>`;
+    }
+    el.querySelector('#pipe').innerHTML = g;
+    const n = el.querySelector('#pipeN');
+    n.className = 'card note ' + ['info', 'sell', 'buy'][st];
+    n.innerHTML = [
+      '读账本<b>只读副本</b>，不给交易主链加负载 · 汇率来源不同金额就不同 → 固定一个来源，写入 <span class="mono">fx_source</span> 和报表说明',
+      '对账是<b>硬闸门</b>：差异 ≠ 0 不能生成报文 · 只改分类规则或补价数据，<b>整批重跑</b>；不手工改单条事件',
+      '“已接受”不是终点：账本冲正、补交自我证明 → <b>更正报送</b> · 两个税务居民辖区 → 同一批事件报<b>两份</b>',
+    ][st];
+    el.querySelector('#pipeH').textContent = ['冻结、抽取、估值', '对账：差异不为 0 就不出报文', '复核、提交、退回与更正'][st];
+  }
+  function reconStep(el, st) {
+    const side = (t, rows, res) => `<h3>${t}</h3>` + rows.map(r => `<div class="r"><span>${r[0]}</span><span>${r[1]}</span></div>`).join('') + `<div class="r ${res[2]}"><span>${res[0]}</span><span>${res[1]}</span></div>`;
+    el.querySelector('#uC').innerHTML = side('用户 C · ETH', [['期初余额', '2'], ['+ 年内流入', '3'], ['− 年内流出', '1.5'], ['= 计算期末', '3.5'], ['期末快照', '3.5']], ['差异', '0 ✓', 'ok']);
+    el.querySelector('#uD').innerHTML = st === 0
+      ? side('用户 D · ETH', [['期初余额', '…'], ['+ 年内流入', '…'], ['− 年内流出', '…'], ['= 计算期末', '…'], ['期末快照', '…']], ['差异', '?', ''])
+      : side('用户 D · ETH', [['期初余额', '0'], ['+ 年内流入', '5'], ['− 年内流出', '2'], ['= 计算期末', '3'], ['期末快照', '4']], ['差异 · 漏映射一笔空投？', '1 ✗', 'bad']);
+    const n = el.querySelector('#rcN');
+    n.className = 'card note ' + ['buy', 'warn', 'info'][st];
+    n.innerHTML = [
+      '按<b>用户 × 资产</b>：期初 + Σ流入 − Σ流出 − 期末 = 0 → 不平就<b>阻断报文生成</b>',
+      '其他检查：覆盖率 已映射 journal ÷ 全部 = <b>100%</b> · 法币金额为空的事件 = <b>0</b> · 有可报送交易却无有效自我证明的用户 → 报“未提供”或限制',
+      '同 B04 思路：对账不平就停 · 用户报表：已实现损益、收入、明细 CSV、“成本未知”清单 · 据公开报道：币安 2023 年 2 月推出免费 <b>Binance Tax</b>，先在法国试点',
+    ][st];
+    el.querySelector('#rcH').textContent = ['数量守恒：期初 + 流入 − 流出 = 期末', '差 1 个 ETH：分类引擎漏了一种业务', '对账闸门 + 用户侧报表'][st];
+  }
+  function recStep(el, st) {
+    const F = [
+      ['姓名', 'l3', '张三', 'enc:9f3a…e1', 'enc:9f3a…e1', '张*'],
+      ['电话', 'l3', '138 0000 1234', 'enc:41bc…07', 'enc:41bc…07', '138****1234'],
+      ['地址', 'l3', '示例市示例路 8 号', 'enc:d2e8…5a', 'enc:d2e8…5a', '示例市****'],
+      ['证件号', 'l4', 'E12345678', 'E12345678', 'tok_7QX2…', '*****5678'],
+      ['TIN', 'l4', '9876543210', '9876543210', 'tok_K91m…', '******3210'],
+      ['证件照', 'l4', 'passport.jpg', 'passport.jpg', '独立存储 · 加密', '不可预览'],
+      ['余额交易', 'l3', '用户 张三', '用户 张三', '假名 u_51c…', '单条 · 无批量'],
+    ];
+    let h = `<div class="hd">字段</div><div class="hd">等级</div><div class="hd">数据库里存的</div><div class="hd">一线客服看到</div>`;
+    F.forEach(([f, lv, p, e, t, m]) => {
+      const v = st === 0 ? p : st === 1 ? e : t;
+      const cls = st === 0 ? 'pl' : v.startsWith('enc') ? 'enc' : v.startsWith('tok') || v.startsWith('假名') ? 'tok' : (st === 1 ? 'pl' : 'gr');
+      h += `<div>${f}</div><div class="lvc"><span class="lvl ${lv}" style="opacity:${st >= 0 ? 1 : 0}">${lv.toUpperCase()}</span></div><div class="${cls}">${v}</div><div class="${st >= 3 ? 'msk' : 'gr'}">${st >= 3 ? m : '—'}</div>`;
+    });
+    el.querySelector('#recT').innerHTML = h;
+    const L = [
+      `<div class="card gold" style="padding:16px 22px"><h3>数据清单</h3>每类个人数据：位置、用途、法律依据、留存期</div>
+       <div><span class="lvl l4">L4</span> 生物识别、证件、证件号、税号</div><div><span class="lvl l3">L3</span> 姓名、地址、电话、交易余额</div><div><span class="lvl l2">L2</span> 登录 IP、设备指纹 · 示例 2 年</div>`,
+      `<div class="card info" style="padding:16px 22px"><h3>① 传输 TLS · 静态加密</h3>磁盘与备份整体加密<br><span class="k">防偷硬盘，不防有权限的查询</span></div>
+       <div class="card info" style="padding:16px 22px"><h3>② 字段级加密</h3>应用层加密后再写库<br><span class="k">DBA 只看到密文</span></div>`,
+      `<div class="card gold" style="padding:16px 22px"><h3>③ 令牌化</h3>明文只在<b>令牌保险库</b></div>
+       <div class="card" style="padding:16px 22px"><h3>④ 密钥分层</h3>每个数据域独立数据密钥<br>主密钥在 KMS / HSM</div>
+       <div class="card sell" style="padding:12px 22px">销毁映射 → 无法还原<br>= 加密粉碎 Crypto-Shredding</div>`,
+      `<div class="card buy" style="padding:14px 20px;font-size:30px"><b>PV-01</b> 掩码 · 只露后 4 位<br><b>PV-02</b> 证件照：工单 + 主管<br>　　　 审批 · 30 分钟失效<br><b>PV-03</b> 1 小时 &gt; 50 人 → 告警<br><b>PV-05</b> 导出 &gt; 100 行 → 双人<br><b>PV-06</b> 外包无批量视图<br><span class="k">阈值均为示例</span></div>`,
+    ];
+    el.querySelector('#recL').innerHTML = L[st];
+    el.querySelector('#recH').textContent = ['先有清单，再分级', '静态加密 + 字段级加密', '令牌化与密钥分层', '客服默认只看到掩码'][st];
+  }
+  function caseStep(el, st) {
+    el.querySelectorAll('.cn').forEach(n => {
+      const i = +n.dataset.i;
+      let c = 'cn';
+      if (st === 0 && i === 5) c += ' hit';
+      if (st >= 1 && i <= 4) c += ' cause';
+      if (st >= 2 && i >= 5) c += ' hit';
+      if (st >= 3 && [1, 3, 4].includes(i)) c += ' fixed';
+      n.className = c;
+    });
+    const n = el.querySelector('#caseN');
+    n.className = 'card note ' + ['sell', 'warn', 'sell', 'buy'][st];
+    n.innerHTML = [
+      '2025-05-11：Coinbase 收到<b>勒索邮件</b>，攻击者声称持有客户数据、索要赎金',
+      '<span style="color:var(--warn)">原因</span>：收买美国境外客服外包人员或员工 → 用<b>工作权限</b>收集资料 · 不当访问最早 2024-12-26',
+      '<span class="down">影响</span>：<b>69,461 人</b>（缅因州通知）· 姓名、地址、电话、邮箱、SSN 后 4 位、掩码银行账号、证件照、余额与交易 · 密码、私钥、资金<b>未泄露</b>',
+      '<span class="up">修复</span>：拒付赎金 · 2,000 万美元悬赏 · 美国境内客服中心 · 内部威胁检测<br>根因不在加密失效：<b>客服本来有权看明文</b>，加密层不起作用',
+    ][st];
+    el.querySelector('#caseH').textContent = ['2025 年 5 月：一封勒索邮件', '原因：被收买的客服，在权限内逐条收集', '影响：资料被用于冒充平台诈骗', '修复：每条访问控制规则，管住一个环节'][st];
+  }
+  function dsrStep(el, st) {
+    el.querySelector('#dsrA').style.display = st < 2 ? 'flex' : 'none';
+    el.querySelector('#dsrB').style.display = st >= 2 ? 'flex' : 'none';
+    el.querySelector('#dsrH').textContent = ['DSR：先核验身份，再定位数据', '删除请求，先过留存规则检查', '泄露通知：每部法规都有时限'][st];
+    if (st >= 2) return;
+    const B = {
+      RCV: [0, 170, 220, '已受理', '1 个月内答复'], VERIFY: [280, 170, 220, '身份核验', '强认证'], LOCATE: [560, 170, 220, '数据定位', '依赖数据清单'],
+      EXPORT: [840, 40, 230, '导出', '过滤 SAR 字段'], CHECK: [840, 300, 230, '留存规则检查', '留存 · 保全'],
+      ERASE: [1150, 230, 270, '全部删除', '无留存、无保全'], PARTIAL: [1150, 345, 270, '部分删除 其余保全', '告知理由和到期日'],
+      DONE: [1450, 170, 190, '已答复', ''],
+    };
+    const E = [
+      ['RCV-V', 'M220 208 L278 208', 0], ['V-L', 'M500 208 L558 208', 0], ['L-E', 'M780 190 L838 92', 1, '访问', 790, 120], ['L-C', 'M780 226 L838 320', 1, '删除', 790, 300],
+      ['E-D', 'M1070 78 L1545 78 L1545 168', 1], ['C-E', 'M1070 328 L1148 276', 1], ['C-P', 'M1070 350 L1148 380', 1],
+      ['ER-D', 'M1420 268 L1500 268 L1500 248', 1], ['P-D', 'M1420 400 L1595 400 L1595 248', 1],
+    ];
+    const hn = [['RCV', 'VERIFY', 'LOCATE'], ['LOCATE', 'EXPORT', 'CHECK', 'ERASE', 'PARTIAL', 'DONE']][st];
+    let g = '';
+    E.forEach(([id, d, k, lab, lx, ly]) => {
+      const on = st === k;
+      g += `<path class="ln ${on ? 'hi' : 'dim'}" d="${d}" marker-end="url(#${on ? 'q2' : 'q1'})"/>`;
+      if (lab) g += `<text class="s" x="${lx}" y="${ly}" text-anchor="end" style="${on ? 'fill:#f0b90b' : 'opacity:.35'}">${lab}</text>`;
+    });
+    for (const [k, [x, y, w, t, s]] of Object.entries(B)) {
+      const on = hn.includes(k);
+      const cls = !on ? '' : k === 'PARTIAL' ? 'blu' : k === 'ERASE' || k === 'DONE' ? 'grn' : 'on';
+      g += `<g style="opacity:${on ? 1 : .35}"><rect class="box ${cls}" x="${x}" y="${y}" width="${w}" height="76" rx="14"/><text class="t" x="${x + w / 2}" y="${y + (s ? 36 : 48)}" text-anchor="middle">${t}</text>${s ? `<text class="s" x="${x + w / 2}" y="${y + 64}" text-anchor="middle">${s}</text>` : ''}</g>`;
+    }
+    g += `<text x="390" y="290" text-anchor="middle" style="font-size:26px;fill:#f6465d;opacity:${st === 0 ? 1 : .35}">核验失败 → 拒绝并说明</text>`;
+    el.querySelector('#dsr').innerHTML = g;
+    const n = el.querySelector('#dsrN');
+    n.className = 'card note ' + ['info', 'gold'][st];
+    n.innerHTML = [
+      '攻击者常<b>冒充用户</b>发起访问请求骗取资料 → 必须强认证 · 清单缺一张表，删除就漏一张表',
+      '导出前过滤与可疑交易报告相关的字段（B01 Tipping-off 禁令）· 有反洗钱、税务留存或法律保全 → <b>部分删除</b>',
+    ][st];
+  }
+  function retStep(el, st) {
+    el.querySelector('#retA').style.display = st < 3 ? 'flex' : 'none';
+    el.querySelector('#retB').style.display = st >= 3 ? 'flex' : 'none';
+    el.querySelector('#retH').textContent = ['删除请求撞上留存义务', '停用、冷存储，或者法律保全', '到期：只留税务字段，再销毁映射', '权衡：没有免费的隐私'][st];
+    if (st >= 3) return;
+    const X = y => 330 + (y - 2026) * 128;
+    let g = '';
+    for (let y = 2026; y <= 2036; y++) g += `<text x="${X(y)}" y="26" text-anchor="middle" style="font-size:24px;fill:#9ea3ad">${y}</text><line x1="${X(y)}" y1="36" x2="${X(y)}" y2="430" style="stroke:#2c3038;stroke-width:1"/>`;
+    const rows = ['营销偏好', 'KYC 证件资料', '税务字段', '身份映射 · 密钥', '账本流水', '登录日志 · 示例'];
+    const Y = i => 52 + i * 62;
+    rows.forEach((r, i) => { g += `<text x="0" y="${Y(i) + 32}" style="font-size:28px;fill:#eceae4">${r}</text>`; });
+    const C = { use: ['rgba(46,189,133,.22)', '#2ebd85'], cold: ['rgba(91,156,255,.22)', '#5b9cff'], tax: ['rgba(240,185,11,.2)', '#f0b90b'], del: ['rgba(246,70,93,.2)', '#f6465d'], pseudo: ['rgba(158,163,173,.2)', '#9ea3ad'] };
+    const bar = (i, a, b, k, t, dash) => { const [f, s] = C[k]; g += `<rect x="${X(a)}" y="${Y(i)}" width="${X(b) - X(a)}" height="44" rx="8" style="fill:${f};stroke:${s};stroke-width:2${dash ? ';stroke-dasharray:8 6' : ''}"/><text x="${X(a) + 12}" y="${Y(i) + 31}" style="font-size:24px;fill:${s}">${t}</text>`; };
+    const mark = (i, a, t, col) => { g += `<text x="${X(a) + 10}" y="${Y(i) + 31}" style="font-size:24px;fill:${col}">${t}</text>`; };
+    // markers
+    g += `<line x1="${X(2026)}" y1="36" x2="${X(2026)}" y2="430" style="stroke:#eceae4;stroke-width:3"/>`;
+    g += `<line x1="${X(2027)}" y1="36" x2="${X(2027)}" y2="430" style="stroke:#f0b90b;stroke-width:3;stroke-dasharray:8 6;opacity:.45"/>`;
+    if (st === 0) {
+      bar(0, 2026, 2027, 'use', '使用中');
+      bar(1, 2026, 2031, 'use', 'AMLR 第 77 条：关系结束后再留 5 年');
+      bar(2, 2026, 2034, 'tax', '至税法留存期满 · 按辖区', true);
+      bar(3, 2026, 2034, 'use', '映射到期随最后一类数据');
+      bar(4, 2026, 2036, 'pseudo', '只追加 · 只关联假名 ID');
+      bar(5, 2026, 2028, 'use', '2 年');
+      mark(5, 2028, '→ 到期自动删除', '#9ea3ad');
+      g += `<text x="${X(2027) + 10}" y="${Y(0) + 31}" style="font-size:24px;fill:#f0b90b">← 关户 2026 · 删除请求 2027</text>`;
+    } else if (st === 1) {
+      mark(0, 2026, '✗ 删除 · 无留存义务', '#f6465d');
+      bar(1, 2026, 2027, 'use', '使用');
+      bar(1, 2027, 2033, 'cold', '停用 · 冷存储 · 只保留存储');
+      g += `<text x="${X(2033) + 12}" y="${Y(1) + 31}" style="font-size:24px;fill:#f6465d">← 法律保全 · 示例</text>`;
+      bar(2, 2026, 2034, 'tax', '税法留存 · 按辖区', true);
+      bar(3, 2026, 2034, 'use', '保留');
+      bar(4, 2026, 2036, 'pseudo', '只追加 · 假名 ID');
+      bar(5, 2026, 2028, 'use', '2 年');
+      g += `<rect x="${X(2027)}" y="${Y(1) - 8}" width="${X(2033) - X(2027)}" height="${62 * 3 + 2}" rx="10" style="fill:none;stroke:#f6465d;stroke-width:4;stroke-dasharray:12 8"/>`;
+    } else {
+      mark(0, 2026, '✗ 已删除', '#f6465d');
+      bar(1, 2026, 2033, 'cold', '停用 · 冷存储');
+      mark(1, 2033, '✗ 删除', '#f6465d');
+      bar(2, 2026, 2033, 'tax', '保留');
+      bar(2, 2033, 2034, 'tax', '只留');
+      mark(2, 2034, '✗ 删除', '#f6465d');
+      bar(3, 2026, 2034, 'use', '保留到最后');
+      mark(3, 2034, '✂ 销毁映射与密钥', '#f6465d');
+      bar(4, 2026, 2034, 'pseudo', '可关联到人');
+      bar(4, 2034, 2036, 'pseudo', 'u_51c… 不可再识别');
+      mark(5, 2026, '✗ 2028 已按计划删除', '#9ea3ad');
+    }
+    el.querySelector('#ret').innerHTML = g;
+    const P = [{ q1: 'grn', q2: 'blu' }, { q1: 'red', q2: 'blu' }, { q1: 'grn', q2: 'grn', q3: 'on', sh: 'red' }][st];
+    el.querySelectorAll('#retP .p').forEach(p => { p.className = 'p' + (P[p.dataset.k] ? ' ' + P[p.dataset.k] : ''); });
+    const T = [['q1', '法律保全？否'], ['q2', '反洗钱留存满？未满 → 停用 · 冷存储'], ['q3', '税务留存满？未满 → 只留税务字段'], ['sh', '销毁映射与密钥']];
+    const T1 = { q1: ['法律保全？否', '法律保全？是 → 全部保留', '保全解除'][st], q2: ['反洗钱留存满？否 → 冷存储', '反洗钱留存满？否', '反洗钱留存满？是'][st], q3: ['税务留存满？', '税务留存满？', '税务未满 → 只留税务字段'][st], sh: '销毁映射与密钥' };
+    el.querySelectorAll('#retP .p').forEach(p => { p.textContent = T1[p.dataset.k]; });
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

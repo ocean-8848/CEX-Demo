@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P01 杠杆与借贷</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .num-card { display: flex; gap: 22px; align-items: flex-start; }
+  .num-card .n { font-family: var(--mono); font-size: 54px; color: var(--gold); font-weight: 700; line-height: 1; }
+  .tight { padding: 18px 26px; font-size: 30px; }
+  .lines { display: flex; flex-direction: column; gap: 14px; }
+  .lines .ln { font-family: var(--mono); font-size: 30px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 24px; }
+  .lines .ln.gold { border-color: var(--gold); background: var(--gold-soft); }
+  .lines .ln small { font-family: var(--sans); font-size: 26px; color: var(--text-2); margin-left: 14px; }
+  table.t td, table.t th { padding: 12px 18px; }
+  table.t tr { transition: background .3s, opacity .3s; }
+  table.t tr.cur td { background: var(--gold-soft); }
+  .scene > h2 { font-size: 60px; }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="P01" data-title="杠杆与借贷：钱从哪来，利率怎么定">
+
+  <!-- 1 开场 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 产品深潜 · P01</div>
+    <h1>杠杆与借贷：<span class="hl">钱从哪来</span></h1>
+    <div class="grid3" style="max-width:1640px">
+      <div class="card col" data-step="0"><div class="stat"><div class="k">点一下借币 · 示例</div><div class="v">2,000 <span style="font-size:34px">USDT</span></div></div><span class="muted">这笔钱是谁的？</span></div>
+      <div class="card warn col" data-step="1"><div class="stat"><div class="k">同一个资金池的借款年化 · 示例</div><div class="v">6.25% → <span class="down">52%</span></div></div><span class="muted">利率为什么会跳？</span></div>
+      <div class="card sell col" data-step="2"><div class="stat"><div class="k">卖光抵押物还不够 · 示例</div><div class="v down">−80</div></div><span class="muted">坏账最后谁兜底？</span></div>
+    </div>
+    <div class="card warn" data-step="2" style="max-width:1640px;padding:16px 28px">仅讲系统设计，不构成投资建议 · 借币会放大亏损 · 除标注公开资料外均为示例</div>
+    <ol class="say">
+      <li>你在杠杆账户里点一下借币，2000 USDT 马上到账。这笔钱是谁的？它不是平台凭空印出来的。</li>
+      <li>再看利率。示例里，同一个资金池，借款年化可以从6.25%跳到52%。利率是谁定的，为什么会跳？</li>
+      <li>这一集，我们拆开三个借贷产品，最后看坏账谁兜底。先说明，本集内容不构成投资建议。借币会放大亏损，除了公开资料，数字都是示例。</li>
+    </ol>
+  </section>
+
+  <!-- 2 路线图 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">Roadmap</div>
+    <h2>三个产品，一个资金池</h2>
+    <div class="grid2">
+      <div class="card num-card" data-step="0"><span class="n">1</span><div>杠杆账户<br><span class="muted">全仓 · 逐仓 · 保证金水平 ML</span></div></div>
+      <div class="card num-card" data-step="0"><span class="n">2</span><div>质押借币 Binance Loans<br><span class="muted">抵押率 LTV · 三条线</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">3</span><div>VIP 机构借贷<br><span class="muted">人在环中 · 宽限期</span></div></div>
+      <div class="card num-card" data-step="1"><span class="n">4</span><div>资金池与拐点利率<br><span class="muted">利差 · 强平 · 坏账</span></div></div>
+    </div>
+    <div class="card gold tight" data-step="1">共同本质：押一部分资产，从资金池借出另一部分 · 平台持续计算押的够不够还</div>
+    <ol class="say">
+      <li>本集分四段。第一，杠杆账户，核心指标是保证金水平 ML。第二，质押借币 Binance Loans，核心指标是抵押率 LTV。</li>
+      <li>第三，VIP 机构借贷。第四，三个产品共用的资金池和拐点利率。它们本质是一件事：押一部分资产，借出另一部分，平台持续计算押的够不够还。</li>
+    </ol>
+  </section>
+
+  <!-- 3 杠杆账户：用户看到什么 -->
+  <section class="scene" data-title="杠杆账户：用户看到什么">
+    <div class="kicker">Margin · 截至 2026 年币安公开资料</div>
+    <h2>杠杆账户：全仓、逐仓与保证金水平</h2>
+    <div class="row">
+      <div class="col" style="flex:0 0 600px">
+        <div class="card info tight" data-step="0"><b>全仓</b>：账户内全部资产<br>共同担保全部负债</div>
+        <div class="card tight" data-step="0"><b>逐仓</b>：每个交易对一个账户<br>亏损只限于这个账户</div>
+        <div class="card warn tight" data-step="3">ML <b>越低越危险</b>，1.1 强平<br>合约保证金率越高越危险</div>
+      </div>
+      <div class="col">
+        <div class="formula" data-step="1" style="font-size:34px;padding:20px 28px">ML = 总资产价值 ÷ (总负债 + 未还利息)</div>
+        <table class="t" data-step="2" id="mlTable">
+          <tr><th>全仓经典</th><th>正常</th><th>追保 · 禁止新借</th><th>强平</th></tr>
+          <tr><td>3x</td><td class="mono up">&gt; 1.3</td><td class="mono" style="color:#f0a340">1.1 – 1.3</td><td class="mono down">≤ 1.1</td></tr>
+          <tr><td>5x</td><td class="mono up">&gt; 1.16</td><td class="mono" style="color:#f0a340">1.1 – 1.16</td><td class="mono down">≤ 1.1</td></tr>
+        </table>
+        <div class="muted" data-step="2" style="font-size:26px">逐仓：ML 低于 2 禁止转出 · 强平线随杠杆档变化，本集示例用 1.1 · 以官网为准</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>先看杠杆账户。根据币安公开资料，它有两种模式。全仓杠杆，账户里全部资产共同担保全部负债。逐仓杠杆，每个交易对一个独立账户，亏损只限于这个账户。</li>
+      <li>衡量风险的指标叫保证金水平，简称 ML。它等于总资产价值，除以总负债加未还利息。意思是资产能覆盖几倍负债。</li>
+      <li>以全仓经典模式的3倍档为例。ML 大于1.3算正常。降到1.3及以下进入追保，不能再借新款。降到1.1及以下，停止交易并强平。5倍档的追保线是1.16，强平线同样是1.1。</li>
+      <li>注意方向。保证金水平越低越危险。主线讲过的合约保证金率，是越高越危险。两个指标别搞反。</li>
+    </ol>
+  </section>
+
+  <!-- 4 资金流 -->
+  <section class="scene" data-title="杠杆买入的资金流" data-onstep="mFlowStep">
+    <div class="kicker">Money Flow · 示例数字</div>
+    <h2 id="mflow-h">一笔杠杆买入：钱怎么走</h2>
+    <svg id="mflow" width="1640" height="560" viewBox="0 0 1640 560"></svg>
+    <ol class="say">
+      <li>来看一笔具体的杠杆买入，数字都是示例。第一步，用户把1000 USDT 本金，从现货账户划进杠杆账户。</li>
+      <li>第二步，从借贷资金池借出2000 USDT。资金池里的钱，主要来自理财用户的活期存款。这两笔都是账本内划转，不上链。</li>
+      <li>第三步，用3000 USDT 在50000的价格，买入0.06个 BTC。杠杆买入走的是同一个现货撮合引擎。买到的是真实的币，不是合约头寸。</li>
+      <li>第四步，按小时计息，利息先记进应收利息账户。示例年化8%，2000乘8%再除以8760，每小时约0.0183。持有30天，大约13.15 USDT。</li>
+      <li>第五步，还本付息。利息一部分分给理财用户，剩下的利差进入平台收入。</li>
+      <li>服务层面，业界通常这样拆。借款前，风控检查可借额度和 ML。借款、计息、还款都是账本分录，借款单号做幂等键，网络重试也不会借两次。</li>
+    </ol>
+  </section>
+
+  <!-- 5 ML 推演 -->
+  <section class="scene" data-title="追保价、强平价与破产价" data-onstep="mlStep">
+    <div class="kicker">Margin Level · 示例：本金 1,000 · 借 2,000 · 0.06 BTC</div>
+    <h2>价格下跌，ML 一路走向 1.1</h2>
+    <svg id="ml" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>现在算三条价格线。示例仓位是：本金1000，借2000，持有0.06个 BTC。开仓时总资产3000，负债2000，ML 等于1.5。</li>
+      <li>忽略利息和折算率，总资产就是持币数量乘以价格。追保价等于1.3乘以负债，再除以持币数量。1.3乘2000除以0.06，约43333.33，下跌约13.3%。</li>
+      <li>强平价是1.1乘2000除以0.06，约36666.67，下跌约26.7%。</li>
+      <li>再往下是破产价，资产正好等于负债。2000除以0.06，约33333.33。强平线1.1和破产线1.0之间，留了10%的缓冲，给系统卖出抵押物。</li>
+      <li>如果价格跳空呢？示例里，价格从40000直接跳到30000。0.06个 BTC 只值1800，负债是2000。缺口200 USDT，就成了坏账。</li>
+    </ol>
+  </section>
+
+  <!-- 6 状态机 -->
+  <section class="scene" data-title="杠杆账户状态机" data-onstep="smStep">
+    <div class="kicker">State Machine</div>
+    <h2>杠杆账户的六个状态</h2>
+    <svg id="sm" width="1640" height="590" viewBox="0 0 1640 590"></svg>
+    <ol class="say">
+      <li>把这些线串成状态机。用户划入本金，状态是无负债。一借币，进入正常状态。还清借款，又回到无负债。</li>
+      <li>ML 降到1.3及以下，进入追保。根据币安公开规则，追保时不能新借款，这是第一道闸。用户补保证金、还款，或者价格回升，就回到正常。</li>
+      <li>ML 降到1.1及以下，进入强平中。系统撤掉挂单，卖出资产还债。足额还清，就是已结清。</li>
+      <li>再看这条红色虚线。价格跳空时，账户会从正常直接进入强平中，用户没有追保窗口。卖光资产还不够，就进入坏账。业界通常由平台兜底，不转嫁给理财用户。</li>
+    </ol>
+  </section>
+
+  <!-- 7 Binance Loans -->
+  <section class="scene" data-title="质押借币与 LTV" data-onstep="ltvStep">
+    <div class="kicker">Binance Loans · 截至 2026 年公开资料 + 示例</div>
+    <h2>质押借币：盯住抵押率 LTV</h2>
+    <div class="row">
+      <div class="col" style="flex:0 0 560px">
+        <div class="card tight" data-step="0">质押一种币，借出另一种币<br><span class="muted">每个币对独立仓位 ≈ 逐仓</span></div>
+        <div class="card info tight" data-step="1">活期：利息<b>每分钟</b>累计<br>质押物自动申购活期理财</div>
+        <div class="formula" data-step="2" style="font-size:30px;padding:18px 24px">LTV = (借款 + 未还利息)<br>　　　÷ 质押物价值</div>
+      </div>
+      <svg id="ltv" width="1050" height="590" viewBox="0 0 1050 590"></svg>
+    </div>
+    <ol class="say">
+      <li>第二个产品，质押借币 Binance Loans。根据币安公开资料，用户质押一种币，借出另一种币。每个币对是一个独立仓位，相当于逐仓。</li>
+      <li>活期借贷随借随还，利息每分钟累计，利率每分钟更新。还有一个设计：质押物会自动申购活期理财，借款期间继续拿收益。</li>
+      <li>衡量风险的指标是抵押率 LTV。它等于借款本金加未还利息，除以质押物价值。本集示例用三条线：初始65%，追保85%，强平91%。</li>
+      <li>举个示例。质押1个 BTC，指数价60000。借出39000 USDT，LTV 正好65%。按示例年化6%，30天利息约192.33。</li>
+      <li>价格跌到45882.35，LTV 到85%，触发追保。这是39000除以0.85算出来的，下跌约23.5%。</li>
+      <li>跌到42857.14，LTV 到91%，触发强平，下跌约28.6%。对单一仓位，ML 等于 LTV 的倒数。LTV 91%约等于 ML 1.099，两条强平线几乎一样。</li>
+    </ol>
+  </section>
+
+  <!-- 8 Loans 资金流与强平 -->
+  <section class="scene" data-title="质押物的双重身份" data-onstep="loanFlowStep">
+    <div class="kicker">Loans Money Flow · 业界通用做法</div>
+    <h2>质押物：既是抵押，又是存款</h2>
+    <div class="row">
+      <svg id="lflow" width="1060" height="590" viewBox="0 0 1060 590"></svg>
+      <div class="col" id="lnotes"></div>
+    </div>
+    <ol class="say">
+      <li>再看资金流。和杠杆账户不同，借到的 USDT 直接进入现货账户，用户可以自由使用。质押物冻结在一个独立子账户里。</li>
+      <li>注意质押物的双重身份。它被冻结作抵押，同时又在理财池里，算作资金池的存款。业界通常要区分可赎回余额和已质押余额。</li>
+      <li>强平的调用顺序是这样的。强平引擎按指数价重算 LTV。达到91%，借贷服务先从理财里赎回质押物，再卖出还债。赎回受限，强平就会变慢。</li>
+      <li>业界通常只卖够还债的部分。扣掉示例的清算费，剩下的质押物退回用户。</li>
+      <li>风险在哪？一是强平螺旋。很多人用同一种币质押，币价下跌，强平卖单集中出现，价格继续下跌，又触发更多强平。</li>
+      <li>二是期限错配。根据公开报道，2022年 Celsius 把存款拿去做高风险出借和质押。挤兑之后，它暂停提现并破产。</li>
+    </ol>
+  </section>
+
+  <!-- 9 VIP 借贷 -->
+  <section class="scene" data-title="VIP 机构借贷" data-onstep="vipStep">
+    <div class="kicker">VIP Loan · 截至 2026 年币安公开资料</div>
+    <h2>VIP 借贷：人在环中</h2>
+    <table class="t" id="vipT" data-step="0">
+      <tr><th></th><th>Binance Loans</th><th>VIP 借贷</th></tr>
+      <tr><td>准入</td><td>KYC 用户</td><td class="hl">VIP 机构 · 首笔 ≥ 50 万美元</td></tr>
+      <tr><td>质押物</td><td>冻结在子账户</td><td class="hl">留在现货钱包，可交易</td></tr>
+      <tr><td>资产范围</td><td>单一币对</td><td class="hl">跨账户聚合</td></tr>
+      <tr><td>计息与费用</td><td>活期每分钟累计</td><td class="hl">活期按小时 · 定期 30/60 天按日 · 逾期 3 倍 · 清算费 2%</td></tr>
+    </table>
+    <svg id="vip" width="1640" height="170" viewBox="0 0 1640 170"></svg>
+    <ol class="say">
+      <li>第三个产品，VIP 借贷，面向机构。根据币安公开资料，它只对 VIP 用户开放，首笔借款不低于50万美元。</li>
+      <li>它和 Binance Loans 有两点关键不同。第一，质押物留在现货钱包，只要 LTV 和风险率达标，还能自由交易。第二，可以跨账户聚合资产。</li>
+      <li>计息规则也公开了。活期按小时计算和累计。定期有30天和60天，按日计息。逾期按三倍日利率计息，触发强平收2%清算费。</li>
+      <li>它还支持延迟强平和定制化追保。状态机多了一个宽限期。追保以后先由客户经理沟通，宽限期内补仓就回到正常。宽限期结束，才走系统强平。</li>
+      <li>体验更好，代价是平台在跳空行情里多担风险。根据公开报道，2022年三箭资本违约。多家机构借贷平台对它放了大额低抵押贷款，最后形成巨额坏账。教训是，信用借贷要有抵押、有集中度上限、有实时风险视图。</li>
+    </ol>
+  </section>
+
+  <!-- 10 资金池与拐点利率 -->
+  <section class="scene" data-title="资金池与拐点利率" data-onstep="kinkStep">
+    <div class="kicker">Lending Pool · Kink Model · 业界通用做法 + 示例参数</div>
+    <h2 id="kink-h">钱从哪来，利率怎么定</h2>
+    <svg id="kink" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>现在回答开头的问题：钱从哪来。根据币安公开资料，理财资金用于杠杆借贷、流动性提供和机构借贷，由抵押物担保。业界通常再用平台自有资金作补充。</li>
+      <li>关键变量是利用率 U，等于已借出除以总存款。U 越高，闲置余额越少。而存款人赎回，只能用闲置余额来支付。</li>
+      <li>利率怎么定？币安内部模型没有公开。业界通用做法来自链上借贷协议，叫拐点利率模型。U 在拐点以下，利率缓慢上升。超过拐点，斜率突然变陡。</li>
+      <li>代入示例参数。基础利率1%，斜率一6%，拐点80%。斜率二60%，平台抽成10%。U 等于70%时，借款利率6.25%，存款利率约3.94%。</li>
+      <li>U 到拐点80%，借款利率7%，存款利率5.04%。</li>
+      <li>U 到95%，借款利率跳到52%，存款利率约44.46%。这就是开头那个跳变。</li>
+    </ol>
+  </section>
+
+  <!-- 11 挤兑推演 -->
+  <section class="scene" data-title="挤兑推演" data-onstep="runStep">
+    <div class="kicker">Bank Run · 示例</div>
+    <h2 id="run-h">当铺的大水缸</h2>
+    <svg id="run" width="1640" height="600" viewBox="0 0 1640 600"></svg>
+    <ol class="say">
+      <li>打个比方。资金池像当铺后面的大水缸。存款人往缸里倒水，借款人拿抵押物来舀水。缸快见底时，舀一瓢水的价格会突然翻几倍。</li>
+      <li>来推演一次挤兑，数字是示例。资金池存款1亿 USDT，借出7000万，U 是70%。</li>
+      <li>存款人取走2000万。存款剩8000万，U 升到87.5%。借款利率等于7%加上60%乘0.375，也就是29.5%。</li>
+      <li>再取走500万。存款剩7500万，U 约93.3%，借款利率约47%。闲置只剩500万，更大的赎回请求，无法立即满足。</li>
+      <li>高利率本来是负反馈：借款人还款，新存款进来，U 回落。但比喻在这里不成立。真实借款人如果被锁在亏损仓位里，利率再高也还不了款，回路就失效了。</li>
+    </ol>
+  </section>
+
+  <!-- 12 平台利差 -->
+  <section class="scene" data-title="平台怎么赚钱" data-onstep="spreadStep">
+    <div class="kicker">Net Interest Margin · 示例：U = 70% · D = 1 亿</div>
+    <h2>平台的利差：借款利息 × 平台抽成</h2>
+    <div class="formula" data-step="0" style="font-size:32px;padding:18px 28px">平台利息收入 = R × B − S × D = R × B × 平台抽成</div>
+    <svg id="spread" width="1640" height="440" viewBox="0 0 1640 440"></svg>
+    <ol class="say">
+      <li>平台从借贷里怎么赚钱？利差公式是：借款利率乘以已借出，减去存款利率乘以总存款。化简后，等于借款利率乘已借出，再乘平台抽成。</li>
+      <li>用 U 等于70%、存款1亿来算。借款人每年付6.25%乘7000万，等于437.5万。</li>
+      <li>存款人每年拿3.94%乘1亿，约394万。平台留下约43.75万，正好是437.5万的10%。</li>
+      <li>存款利率比借款利率低很多，不等于平台克扣。存款里只有 U 的比例被借出，闲置部分不产生利息。另外，平台还收杠杆交易手续费，以及强平清算费。</li>
+    </ol>
+  </section>
+
+  <!-- 13 强平与坏账 -->
+  <section class="scene" data-title="强平到坏账" data-onstep="badStep">
+    <div class="kicker">Liquidation → Bad Debt · 业界通用做法</div>
+    <h2>强平到坏账：谁来兜底</h2>
+    <svg id="bad" width="1640" height="335" viewBox="0 0 1640 335"></svg>
+    <table class="t" id="badT" data-step="1">
+      <tr><th>示例 · 负债 2,000 · 0.06 BTC</th><th>强平成交价</th><th>卖出所得</th><th>还债后</th></tr>
+      <tr><td>正常强平</td><td class="num">36,600</td><td class="num">2,196</td><td class="num up">+196 退回用户</td></tr>
+      <tr><td>跳空</td><td class="num">32,000</td><td class="num">1,920</td><td class="num down">−80 坏账</td></tr>
+    </table>
+    <ol class="say">
+      <li>最后看最坏情况。指数价下跌，ML 到1.1，或者 LTV 到强平线。系统先撤销账户挂单，再卖出抵押物。</li>
+      <li>卖出所得够还负债加利息，扣掉清算费，剩下的退回用户。示例，强平成交价36600，卖得2196，还掉2000后剩196。</li>
+      <li>不够还，差额就是坏账。示例，跳空到32000才成交，卖得1920，缺口80 USDT。</li>
+      <li>坏账谁来补？业界通常先用杠杆保险基金，不够再由平台自有资金核销。杠杆借贷没有合约那样的自动减仓，最终兜底方是平台自己。</li>
+      <li>估价也会出事。根据公开报道，2025年10月10日，三种抵押资产在币安的价格短时偏离。币安称向受影响的合约、杠杆、借贷用户补偿约2.83亿美元。教训是，抵押物估价必须引用多个外部来源。</li>
+    </ol>
+  </section>
+
+  <!-- 14 小结 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">ML <span class="hl">越低越危险</span>，LTV <span class="hl">越高越危险</span>；单一仓位里 ML = 1 / LTV。</li>
+      <li data-step="1">借出的钱来自<span class="hl">理财存款</span>；拐点利率是负反馈，借款人被锁仓时失效。</li>
+      <li data-step="2">平台赚<span class="hl">利差和清算费</span>；缓冲被跳空打穿，最终由平台兜底。</li>
+    </ul>
+    <div class="grid3">
+      <div class="card gold col" data-step="0"><div class="stat"><div class="k">强平线 · 示例</div><div class="v" style="font-size:40px">ML 1.1 ≈ LTV 91%</div></div></div>
+      <div class="card warn col" data-step="1"><div class="stat"><div class="k">拐点利率 · 示例</div><div class="v" style="font-size:40px">U 95% → 52%</div></div></div>
+      <div class="card sell col" data-step="2"><div class="stat"><div class="k">跳空强平 · 示例</div><div class="v down" style="font-size:40px">坏账 −80</div></div></div>
+    </div>
+    <div class="card info" data-step="3" style="font-size:32px;padding:16px 28px">下一集 P02 · 闪兑与 OTC：平台给你一个确定价格，然后自己扛价格风险</div>
+    <ol class="say">
+      <li>小结三点。第一，杠杆账户看保证金水平 ML，越低越危险。质押借币看抵押率 LTV，越高越危险。单一仓位里，两者互为倒数。</li>
+      <li>第二，借出去的钱来自理财存款。拐点利率用高利率劝退借款人、吸引存款人。但借款人被锁仓时，这个回路会失效。</li>
+      <li>第三，平台赚的是利差和清算费。强平线和破产线之间的缓冲，用来防坏账。跳空打穿缓冲，最后由平台兜底。</li>
+      <li>下一集，我们看闪兑与 OTC。平台给你一个确定价格，自己承担价格风险。它怎么报价，又会被谁薅羊毛？</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const C = { gold: '#f0b90b', buy: '#2ebd85', sell: '#f6465d', info: '#5b9cff', warn: '#f0a340', line: '#2c3038', text: '#eceae4', t2: '#9ea3ad', dim: '#5a5f6a', panel: '#16181c', panel2: '#1e2127', bg: '#0d0e10' };
+  const fmt = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 30}" text-anchor="${o.anchor || 'start'}" style="fill:${o.fill || C.text};${o.mono ? 'font-family:JetBrains Mono,SF Mono,Menlo,monospace;' : ''}${o.halo ? `stroke:${C.bg};stroke-width:8px;paint-order:stroke;` : ''}"${o.bold ? ' font-weight="700"' : ''}>${s}</text>`;
+  const R = (x, y, w, h, o = {}) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.rx ?? 12}" fill="${o.fill || C.panel}" stroke="${o.stroke || C.line}" stroke-width="${o.sw || 3}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+  function arrow(x1, y1, x2, y2, o = {}) {
+    const col = o.col || C.t2, w = o.w || 4, a = Math.atan2(y2 - y1, x2 - x1), hl = 20;
+    const bx = x2 - hl * Math.cos(a), by = y2 - hl * Math.sin(a), px = Math.sin(a) * 11, py = -Math.cos(a) * 11;
+    return `<line x1="${x1}" y1="${y1}" x2="${bx}" y2="${by}" stroke="${col}" stroke-width="${w}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/><polygon points="${x2},${y2} ${bx + px},${by + py} ${bx - px},${by - py}" fill="${col}"/>`;
+  }
+  // box: {x,y,w,h}; lines: array of strings
+  function box(b, lines, o = {}) {
+    const size = o.size || 30, lh = size * 1.3;
+    let s = R(b.x, b.y, b.w, b.h, { fill: o.fill || C.panel, stroke: o.stroke || C.line, sw: o.sw || 3, dash: o.dash });
+    lines.forEach((t, i) => {
+      const y = b.y + b.h / 2 - (lines.length - 1) * lh / 2 + size * 0.36 + i * lh;
+      s += T(b.x + b.w / 2, y, t, { anchor: 'middle', size: i ? (o.sub || size - 4) : size, bold: !i && o.bold !== false, fill: i ? (o.subFill || C.t2) : (o.fill2 || C.text) });
+    });
+    return s;
+  }
+  function clip(b, tx, ty) {
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2, dx = tx - cx, dy = ty - cy;
+    const s = Math.min((b.w / 2 + 6) / Math.abs(dx || 1e-9), (b.h / 2 + 6) / Math.abs(dy || 1e-9));
+    return [cx + dx * s, cy + dy * s];
+  }
+  // edge between boxes with optional perpendicular offset and label
+  function edge(b1, b2, o = {}) {
+    const c1 = [b1.x + b1.w / 2, b1.y + b1.h / 2], c2 = [b2.x + b2.w / 2, b2.y + b2.h / 2];
+    const a = Math.atan2(c2[1] - c1[1], c2[0] - c1[0]), off = o.off || 0, ox = -Math.sin(a) * off, oy = Math.cos(a) * off;
+    const p1 = clip(b1, c2[0], c2[1]), p2 = clip(b2, c1[0], c1[1]);
+    let s = arrow(p1[0] + ox, p1[1] + oy, p2[0] + ox, p2[1] + oy, o);
+    if (o.label) {
+      const mx = (p1[0] + p2[0]) / 2 + ox + (o.lx || 0), my = (p1[1] + p2[1]) / 2 + oy + (o.ly || 0);
+      s += T(mx, my, o.label, { anchor: o.anchor || 'middle', size: o.size || 26, fill: o.lcol || o.col || C.t2, halo: true, bold: o.bold });
+    }
+    return s;
+  }
+  const on = (a, c = C.gold) => a ? { stroke: c, fill: 'rgba(240,185,11,.12)' } : {};
+
+  function mFlowStep(el, st) {
+    const svg = el.querySelector('#mflow');
+    const N = {
+      spot: { x: 30, y: 30, w: 330, h: 130 }, mar: { x: 600, y: 20, w: 440, h: 170 }, me: { x: 1280, y: 30, w: 330, h: 130 },
+      pool: { x: 30, y: 300, w: 330, h: 140 }, int: { x: 600, y: 300, w: 440, h: 130 }, earn: { x: 1280, y: 230, w: 330, h: 90 }, fee: { x: 1280, y: 350, w: 330, h: 90 },
+    };
+    const bal = ['USDT 1,000', 'USDT 3,000 · 负债 2,000', 'BTC 0.06 · 负债 2,000', 'BTC 0.06 · 负债 + 利息', '负债已还清', 'BTC 0.06 · 负债 2,000'][st];
+    const ec = k => st === k ? C.gold : st > k ? C.t2 : null;
+    let h = '';
+    const E = (k, b1, b2, o) => { const c = ec(k); return c ? edge(b1, b2, { ...o, col: c, w: st === k ? 5 : 3 }) : ''; };
+    h += E(0, N.spot, N.mar, { label: '① 本金 1,000', ly: -14 });
+    h += E(1, N.pool, N.mar, { label: '② 借 2,000', off: -26, lx: -80 });
+    h += E(2, N.mar, N.me, { label: '③ 买 0.06 BTC', off: -16, ly: -16 });
+    h += E(2, N.me, N.mar, { off: -16 });
+    h += E(3, N.mar, N.int, { label: '④ 每小时计息', lx: 110 });
+    h += E(4, N.mar, N.pool, { label: '⑤ 还本付息', off: -26, lx: 110 });
+    h += E(4, N.int, N.earn, { label: '利息分成', ly: -16 });
+    h += E(4, N.int, N.fee, { label: '利差', ly: 30 });
+    const act = [['spot', 'mar'], ['pool', 'mar'], ['mar', 'me'], ['mar', 'int'], ['int', 'earn', 'fee', 'pool'], []][st];
+    h += box(N.spot, ['现货账户', '用户'], on(act.includes('spot')));
+    h += box(N.mar, ['杠杆账户', bal], { ...on(act.includes('mar')), sub: 28, subFill: C.gold });
+    h += box(N.me, ['撮合引擎', '与现货同一个'], on(act.includes('me')));
+    h += box(N.pool, ['借贷资金池', '来自理财活期存款'], on(act.includes('pool')));
+    h += box(N.int, ['应收利息账户', '先记应收，还款时实收'], on(act.includes('int')));
+    h += box(N.earn, ['理财用户收益'], on(act.includes('earn')));
+    h += box(N.fee, ['平台收入'], on(act.includes('fee')));
+    if (st === 1 || st === 2) h += T(30, 520, '本金与借款都是账本内划转，不上链', { size: 32, fill: C.info, bold: true });
+    if (st === 3) h += R(30, 470, 1580, 80, { fill: 'rgba(240,185,11,.12)', stroke: C.gold }) + T(820, 522, '2,000 × 8% ÷ 8,760 ≈ 0.0183 USDT / 小时 · 30 天 ≈ 13.15 USDT · 示例', { anchor: 'middle', size: 32, mono: true, fill: C.gold });
+    if (st === 5) h += R(30, 470, 1580, 80, { fill: 'rgba(91,156,255,.12)', stroke: C.info }) + T(820, 522, 'margin-service → risk-service → ledger-service · 幂等键 = 借款单号 · 示意命名', { anchor: 'middle', size: 30, fill: C.info });
+    svg.innerHTML = h;
+    el.querySelector('#mflow-h').textContent = st === 5 ? '服务层：每一步都是账本分录' : '一笔杠杆买入：钱怎么走';
+  }
+
+  function mlStep(el, st) {
+    const svg = el.querySelector('#ml');
+    const P = [50000, 43333.33, 36666.67, 33333.33, 30000][st];
+    const Y = p => 50 + (52000 - p) / 24000 * 500;
+    let h = '';
+    h += `<line x1="240" y1="${Y(52000)}" x2="240" y2="${Y(28000)}" stroke="${C.t2}" stroke-width="3"/>`;
+    [50000, 45000, 40000, 35000, 30000].forEach(p => h += `<line x1="230" y1="${Y(p)}" x2="250" y2="${Y(p)}" stroke="${C.t2}" stroke-width="3"/>` + T(220, Y(p) + 9, fmt(p), { anchor: 'end', fill: C.t2, size: 24, mono: true }));
+    h += T(240, 30, 'BTC 价格 · 示例', { anchor: 'middle', fill: C.t2, size: 24 });
+    const lineAt = (p, col, lab, dash) => `<line x1="250" y1="${Y(p)}" x2="560" y2="${Y(p)}" stroke="${col}" stroke-width="3"${dash ? ' stroke-dasharray="10 6"' : ''}/>` + T(560, Y(p) - 10, lab, { anchor: 'end', fill: col, size: 24 });
+    h += lineAt(50000, C.buy, '开仓 50,000');
+    if (st >= 1) h += lineAt(43333.33, C.warn, '追保 43,333.33', true);
+    if (st >= 2) h += lineAt(36666.67, C.sell, '强平 36,666.67', true);
+    if (st >= 3) h += lineAt(33333.33, C.t2, '破产 33,333.33', true);
+    if (st === 4) h += arrow(300, Y(40000), 300, Y(30000) - 4, { col: C.sell, w: 5 }) + T(320, Y(35000) + 30, '跳空', { fill: C.sell, size: 30, bold: true });
+    h += `<polygon points="250,${Y(P)} 280,${Y(P) - 15} 280,${Y(P) + 15}" fill="${C.gold}"/>`;
+    // right panel
+    const asset = 0.06 * P, debt = 2000, ml = asset / debt;
+    const bx = 700, bw = 760, S = v => v / 3000 * bw;
+    const bar = (y, lab, v, col) => T(bx, y - 12, lab, { size: 28, fill: C.t2 }) + R(bx, y, bw, 54, { rx: 8 }) + `<rect x="${bx}" y="${y}" width="${S(v)}" height="54" rx="8" fill="${col}"/>` + T(bx + bw + 16, y + 40, fmt(v), { size: 32, bold: true, fill: col, mono: true });
+    h += bar(70, '总资产 = 0.06 × 价格', asset, asset >= debt ? C.buy : C.sell);
+    h += bar(190, '负债 + 利息 · 忽略利息', debt, C.warn);
+    // ML gauge 0.8..1.6
+    const gx = 700, gw = 900, gy = 340, G = v => gx + (Math.min(Math.max(v, 0.8), 1.6) - 0.8) / 0.8 * gw;
+    h += T(gx, gy - 56, '保证金水平 ML = 总资产 ÷ 负债', { size: 28, fill: C.t2 });
+    h += `<rect x="${gx}" y="${gy}" width="${G(1.0) - gx}" height="50" fill="rgba(246,70,93,.35)"/><rect x="${G(1.0)}" y="${gy}" width="${G(1.1) - G(1.0)}" height="50" fill="rgba(246,70,93,.18)"/><rect x="${G(1.1)}" y="${gy}" width="${G(1.3) - G(1.1)}" height="50" fill="rgba(240,163,64,.2)"/><rect x="${G(1.3)}" y="${gy}" width="${gx + gw - G(1.3)}" height="50" fill="rgba(46,189,133,.18)"/>`;
+    [[1.0, '1.0 破产'], [1.1, '1.1 强平'], [1.3, '1.3 追保'], [1.5, '1.5']].forEach(([v, l]) => h += `<line x1="${G(v)}" y1="${gy - 6}" x2="${G(v)}" y2="${gy + 56}" stroke="${C.t2}" stroke-width="2"/>` + T(G(v), gy - 14, l, { anchor: 'middle', size: 24, fill: C.t2 }));
+    h += `<polygon points="${G(ml)},${gy + 54} ${G(ml) - 16},${gy + 84} ${G(ml) + 16},${gy + 84}" fill="${C.gold}"/>`;
+    const status = [['正常', C.buy], ['追保 · 禁止新借', C.warn], ['强平', C.sell], ['破产线', C.t2], ['坏账 −200', C.sell]][st];
+    h += T(gx, gy + 170, 'ML ' + ml.toFixed(st === 0 ? 2 : 2), { size: 64, bold: true, mono: true, fill: status[1] });
+    h += T(gx + 380, gy + 166, status[0], { size: 44, bold: true, fill: status[1] });
+    const calc = ['开仓：3,000 ÷ 2,000 = 1.50', '追保价 = 1.3 × 2,000 ÷ 0.06 ≈ 43,333.33 · 跌 13.3%', '强平价 = 1.1 × 2,000 ÷ 0.06 ≈ 36,666.67 · 跌 26.7%', '破产价 = 2,000 ÷ 0.06 ≈ 33,333.33 · 1.1 到 1.0 是缓冲', '30,000 × 0.06 = 1,800 &lt; 2,000 · 缺口 200'][st];
+    h += T(gx, gy + 236, calc, { size: 30, fill: C.text, mono: true });
+    svg.innerHTML = h;
+  }
+
+  function smStep(el, st) {
+    const svg = el.querySelector('#sm');
+    const N = {
+      none: { x: 20, y: 210, w: 230, h: 100 }, ok: { x: 380, y: 210, w: 230, h: 100 }, call: { x: 740, y: 30, w: 250, h: 100 },
+      liq: { x: 1040, y: 210, w: 250, h: 100 }, done: { x: 1380, y: 90, w: 240, h: 100 }, bad: { x: 1380, y: 360, w: 240, h: 100 },
+    };
+    const act = [['none', 'ok'], ['ok', 'call'], ['call', 'liq', 'done'], ['ok', 'liq', 'bad']][st];
+    const ae = [['b', 'r'], ['c', 'cb'], ['l', 'd'], ['j', 'x']][st];
+    const col = k => ae.includes(k) ? C.gold : C.dim;
+    let h = '';
+    h += edge(N.none, N.ok, { off: -18, label: '借币', ly: -14, col: col('b') });
+    h += edge(N.ok, N.none, { off: -18, label: '还清', ly: 36, col: col('r') });
+    h += edge(N.ok, N.call, { off: -16, label: 'ML ≤ 1.3', anchor: 'end', lx: -18, col: col('c') });
+    h += edge(N.call, N.ok, { off: -16, label: '补仓 · 还款 · 回升', anchor: 'start', lx: 10, ly: 50, col: col('cb') });
+    h += edge(N.call, N.liq, { label: 'ML ≤ 1.1', anchor: 'start', lx: 16, col: col('l') });
+    h += edge(N.ok, N.liq, { label: '跳空直穿', ly: 40, col: ae.includes('j') ? C.sell : C.dim, dash: '12 8', lcol: ae.includes('j') ? C.sell : C.dim });
+    h += edge(N.liq, N.done, { label: '足额还债', anchor: 'end', lx: -10, ly: -10, col: col('d') });
+    h += edge(N.liq, N.bad, { label: '资产不足', anchor: 'end', lx: -14, ly: 20, col: ae.includes('x') ? C.sell : C.dim, lcol: ae.includes('x') ? C.sell : C.dim });
+    const nb = (k, lines, c) => box(N[k], lines, act.includes(k) ? { stroke: c || C.gold, fill: c === C.sell ? 'rgba(246,70,93,.14)' : 'rgba(240,185,11,.12)' } : {});
+    h += nb('none', ['无负债']); h += nb('ok', ['正常', 'ML > 1.3']); h += nb('call', ['追保', '禁止新借款'], C.warn);
+    h += nb('liq', ['强平中', '撤单 · 卖出'], C.sell); h += nb('done', ['已结清']); h += nb('bad', ['坏账', '平台兜底'], C.sell);
+    const note = ['借币 = 账本分录 · 还清回到无负债', '追保是第一道闸：先阻止风险继续扩大', '强平中：撤销挂单 → 卖出资产 → 还本付息', '跳空：没有追保窗口 · 坏账由平台兜底，不转嫁存款人'][st];
+    h += R(20, 500, 1600, 76, { fill: 'rgba(240,185,11,.08)', stroke: st === 3 ? C.sell : C.gold }) + T(820, 550, note, { anchor: 'middle', size: 32, fill: st === 3 ? C.sell : C.gold, bold: true });
+    svg.innerHTML = h;
+  }
+
+  function ltvStep(el, st) {
+    const svg = el.querySelector('#ltv');
+    const P = [60000, 60000, 60000, 60000, 45882.35, 42857.14][st];
+    const ltv = 39000 / P;
+    let h = '';
+    const colB = { x: 20, y: 20, w: 440, h: 130 }, loanB = { x: 590, y: 20, w: 440, h: 130 };
+    h += box(colB, ['质押 1 BTC', st >= 3 ? '指数价 ' + fmt(P, P % 1 ? 2 : 0) : '冻结在子账户'], { stroke: C.info, sub: 28, subFill: st >= 4 ? C.sell : C.info });
+    h += box(loanB, ['借出 39,000 USDT', '进入现货账户'], { stroke: C.gold, sub: 28 });
+    h += arrow(470, 85, 580, 85, { col: C.t2 });
+    if (st >= 1) h += R(20, 170, 440, 60, { fill: 'rgba(46,189,133,.14)', stroke: C.buy }) + T(240, 210, '自动申购活期理财 · 继续生息', { anchor: 'middle', size: 26, fill: C.buy });
+    // LTV bar
+    const bx = 40, bw = 960, by = 290, X = v => bx + v * bw;
+    h += T(bx, by - 20, 'LTV = 39,000 ÷ 质押物价值', { size: 28, fill: C.t2 });
+    h += R(bx, by, bw, 64, { rx: 10 });
+    if (st >= 3) h += `<rect x="${bx}" y="${by}" width="${X(ltv) - bx}" height="64" rx="10" fill="${ltv >= 0.91 ? C.sell : ltv >= 0.85 ? C.warn : C.gold}"/>`;
+    if (st >= 2) [[0.65, '初始 65%', C.gold], [0.85, '追保 85%', C.warn], [0.91, '强平 91%', C.sell]].forEach(([v, l, c], i) => {
+      h += `<line x1="${X(v)}" y1="${by - 10}" x2="${X(v)}" y2="${by + 74}" stroke="${c}" stroke-width="4"/>`;
+      h += T(X(v) + (i === 2 ? 8 : 0), i === 1 ? by - 20 : by + 112, l, { anchor: i === 2 ? 'start' : 'middle', size: 26, fill: c, bold: true });
+    });
+    if (st >= 3) {
+      h += T(bx, by + 200, 'LTV ' + (ltv * 100).toFixed(st === 3 ? 0 : 0) + '%', { size: 64, bold: true, mono: true, fill: ltv >= 0.91 ? C.sell : ltv >= 0.85 ? C.warn : C.gold });
+      const calc = ['', '', '', '39,000 ÷ 60,000 = 65% · 30 天利息 ≈ 192.33', '39,000 ÷ 0.85 ≈ 45,882.35 · 跌 23.5%', '39,000 ÷ 0.91 ≈ 42,857.14 · 跌 28.6%'][st];
+      h += T(bx, by + 262, calc, { size: 30, mono: true });
+      if (st === 5) h += T(bx + 300, by + 192, 'ML = 1 ÷ LTV · 91% ≈ ML 1.099', { size: 32, bold: true, fill: C.info });
+    } else if (st === 2) h += T(bx, by + 200, '三条线 · 示例 · 每个币对不同', { size: 34, bold: true, fill: C.text });
+    else h += T(bx, by + 200, '活期：随借随还 · 利率每分钟更新', { size: 34, bold: true, fill: C.text });
+    svg.innerHTML = h;
+  }
+
+  function loanFlowStep(el, st) {
+    const svg = el.querySelector('#lflow');
+    const N = {
+      spot: { x: 20, y: 20, w: 340, h: 120 }, col: { x: 20, y: 300, w: 400, h: 140 }, pool: { x: 640, y: 20, w: 400, h: 120 },
+      liq: { x: 640, y: 300, w: 400, h: 120 }, fee: { x: 700, y: 480, w: 340, h: 90 },
+    };
+    const k = st > 3 ? 3 : st;
+    let h = '';
+    const c = n => n === k ? C.gold : n < k ? C.t2 : null;
+    if (c(0)) h += edge(N.spot, N.col, { label: '① 质押 1 BTC', anchor: 'start', lx: 14, col: c(0), off: -40 }) + edge(N.pool, N.spot, { label: '② 借 39,000 USDT', ly: -16, col: c(0) });
+    if (k === 1) h += `<path d="M ${N.col.x + N.col.w + 10} ${N.col.y + 40} C 560 230, 560 140, ${N.pool.x - 10} ${N.pool.y + 100}" fill="none" stroke="${k === 1 ? C.gold : C.dim}" stroke-width="4" stroke-dasharray="10 8"/>` + T(520, 230, '同一份资产', { anchor: 'middle', size: 26, fill: k === 1 ? C.gold : C.t2, halo: true });
+    if (c(2)) h += edge(N.col, N.liq, { label: '赎回 → 卖出', ly: -16, col: c(2) });
+    if (c(3)) h += edge(N.liq, N.pool, { label: '还债', anchor: 'start', lx: 14, col: c(3) }) + edge(N.liq, N.fee, { label: '清算费 · 示例', anchor: 'start', lx: 20, col: c(3), off: 0 }) + edge(N.liq, N.spot, { label: '剩余退回', ly: 40, lx: -60, col: c(3) });
+    const hl = [['spot', 'col', 'pool'], ['col', 'pool'], ['col', 'liq'], ['liq', 'pool', 'fee', 'spot']][k];
+    const o = n => hl.includes(n) ? { stroke: C.gold, fill: 'rgba(240,185,11,.12)' } : {};
+    h += box(N.spot, ['现货账户', '借款可自由使用'], o('spot'));
+    h += box(N.col, ['质押物子账户', '同时在活期理财池'], o('col'));
+    h += box(N.pool, ['借贷资金池', '理财存款'], o('pool'));
+    h += box(N.liq, ['强平卖出', 'LTV ≥ 91% · 示例'], k >= 2 ? { stroke: C.sell, fill: 'rgba(246,70,93,.12)' } : { stroke: C.dim });
+    if (k >= 3) h += box(N.fee, ['平台收入'], o('fee'));
+    if (st === 2) h += T(20, 530, '先赎回，再卖出：赎回受限 → 强平变慢', { size: 30, fill: C.sell, bold: true });
+    svg.innerHTML = h;
+    const cards = {
+      a: '<div class="card info tight">与杠杆账户不同<br>借款直接进<b>现货账户</b></div>',
+      b: '<div class="card gold tight">双重占用：平台要区分<br><b>可赎回余额</b>与<b>已质押余额</b></div>',
+      c: '<div class="card tight">强平引擎按<b>指数价</b>重算 LTV<br>到 91% → 赎回 → 卖出</div>',
+      d: '<div class="card buy tight">只卖够还债的部分<br>剩余质押物退回用户</div>',
+      e: '<div class="card sell tight"><b>强平螺旋</b><br>下跌 → 集中强平 → 再下跌</div>',
+      f: '<div class="card warn tight"><b>2022 Celsius</b> · 公开报道<br>期限错配，挤兑后暂停提现并破产</div>',
+    };
+    el.querySelector('#lnotes').innerHTML = [['a'], ['a', 'b'], ['b', 'c'], ['b', 'd'], ['b', 'e'], ['b', 'e', 'f']][st].map(k => cards[k]).join('');
+  }
+
+  function vipStep(el, st) {
+    const rows = el.querySelectorAll('#vipT tr');
+    const cur = [[1], [2, 3], [4], [], []][st];
+    rows.forEach((r, i) => { if (i) r.classList.toggle('cur', cur.includes(i)); });
+    const svg = el.querySelector('#vip');
+    let h = '';
+    if (st >= 3) {
+      const nodes = [['借款中', C.buy], ['追保', C.warn], ['宽限期 · 客户经理', C.gold], ['系统强平 + 2%', C.sell]];
+      nodes.forEach(([t, c], i) => {
+        const x = 20 + i * 410;
+        h += R(x, 20, 350, 90, { stroke: c, fill: i === 2 ? 'rgba(240,185,11,.16)' : C.panel }) + T(x + 175, 76, t, { anchor: 'middle', size: 30, bold: true, fill: c });
+        if (i < 3) h += arrow(x + 356, 65, x + 404, 65, { col: C.t2 });
+      });
+      if (st === 3) h += `<path d="M 1035 115 C 1000 165, 640 165, 600 115" fill="none" stroke="${C.buy}" stroke-width="3" stroke-dasharray="8 6"/>` + T(820, 162, '宽限期内补仓 → 回到正常', { anchor: 'middle', size: 26, fill: C.buy, halo: true });
+      if (st === 4) h = h.replace(/宽限期 · 客户经理/, '宽限期 · 跳空风险') + T(20, 160, '2022 三箭资本违约 · 公开报道 → 要有抵押 · 集中度上限 · 实时风险视图', { size: 30, bold: true, fill: C.sell });
+    } else {
+      h += T(20, 80, st === 2 ? '逾期 3 倍日利率 · 强平清算费 2% · 截至 2026 年公开资料' : '质押物不冻结 → 机构资金效率更高', { size: 34, bold: true, fill: C.gold });
+    }
+    svg.innerHTML = h;
+    el.querySelector('#vipT').style.opacity = st === 4 ? .45 : 1;
+  }
+
+  function kinkStep(el, st) {
+    const svg = el.querySelector('#kink');
+    const Rate = u => u <= 0.8 ? 1 + 6 * u / 0.8 : 7 + 60 * (u - 0.8) / 0.2;
+    const U = [0.7, 0.7, 0.7, 0.7, 0.8, 0.95][st];
+    let h = '';
+    // pool bar
+    const px = 160, pw = 1400;
+    h += T(px, 34, st === 0 ? '借贷资金池 D = 理财活期存款 + 平台自有资金补充' : `利用率 U = 已借出 B ÷ 总存款 D = ${Math.round(U * 100)}%`, { size: 28, fill: st === 1 ? C.gold : C.t2, bold: st === 1 });
+    h += R(px, 50, pw, 60, { rx: 8 });
+    h += `<rect x="${px}" y="50" width="${pw * U}" height="60" rx="8" fill="rgba(240,185,11,.55)"/>` + T(px + 20, 92, '已借出 B', { size: 28, bold: true, fill: C.bg });
+    h += U > 0.85 ? T(px + pw * U - 16, 92, '闲置 5%', { anchor: 'end', size: 28, bold: true, fill: C.bg }) : T(px + pw * U + 20, 92, '闲置 = 可赎回', { size: 28, bold: true, fill: C.info });
+    // chart
+    const x0 = 160, x1 = 1560, y0 = 560, y1 = 190, X = u => x0 + u * (x1 - x0), Y = r => y0 - r / 60 * (y0 - y1);
+    h += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" stroke="${C.t2}" stroke-width="3"/><line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1 - 10}" stroke="${C.t2}" stroke-width="3"/>`;
+    [0, 0.2, 0.4, 0.6, 0.8, 1].forEach(u => h += T(X(u), y0 + 34, Math.round(u * 100) + '%', { anchor: 'middle', size: 24, fill: C.t2, mono: true }));
+    [0, 20, 40, 60].forEach(r => h += T(x0 - 14, Y(r) + 8, r + '%', { anchor: 'end', size: 24, fill: C.t2, mono: true }));
+    h += T(x1, y0 - 14, '利用率 U', { anchor: 'end', size: 26, fill: C.t2 });
+    h += T(x0 + 14, y1 + 4, '借款年化 R', { size: 26, fill: C.t2 });
+    if (st >= 2) {
+      let d = '';
+      for (let i = 0; i <= 100; i++) { const u = i / 100; d += (i ? 'L' : 'M') + X(u).toFixed(1) + ' ' + Y(Rate(u)).toFixed(1) + ' '; }
+      h += `<path d="${d}" fill="none" stroke="${C.gold}" stroke-width="5"/>`;
+      h += `<line x1="${X(0.8)}" y1="${y0}" x2="${X(0.8)}" y2="${y1}" stroke="${C.warn}" stroke-width="3" stroke-dasharray="10 6"/>` + T(X(0.8) - 12, y1 + 40, '拐点 U* = 80%', { anchor: 'end', size: 28, fill: C.warn, bold: true });
+      h += T(X(0.3), Y(Rate(0.3)) - 24, '斜率一 6% · 缓', { anchor: 'middle', size: 26, fill: C.t2, halo: true });
+      h += T(X(0.8) - 20, Y(32), '斜率二 60% · 陡', { anchor: 'end', size: 26, fill: C.sell, halo: true });
+    } else {
+      h += T((x0 + x1) / 2, 380, st === 0 ? '理财资金 → 杠杆借贷 · 流动性 · 机构借贷 · 由抵押物担保' : 'U 越高 → 闲置越少 → 赎回越难', { anchor: 'middle', size: 36, bold: true, fill: st === 1 ? C.info : C.text });
+    }
+    if (st >= 3) {
+      const r = Rate(U), s = r * U * 0.9;
+      h += `<circle cx="${X(U)}" cy="${Y(r)}" r="14" fill="${C.text}" stroke="${C.gold}" stroke-width="5"/>`;
+      h += R(x0 + 40, y1 + 70, 600, 150, { fill: 'rgba(13,14,16,.85)', stroke: U > 0.8 ? C.sell : C.gold });
+      h += T(x0 + 70, y1 + 130, `U ${Math.round(U * 100)}% · 借款 R = ${r.toFixed(2)}%`, { size: 34, bold: true, mono: true, fill: U > 0.8 ? C.sell : C.gold });
+      h += T(x0 + 70, y1 + 190, `存款 S = R × U × 0.9 ≈ ${s.toFixed(2)}%`, { size: 30, mono: true, fill: C.buy });
+    }
+    svg.innerHTML = h;
+    el.querySelector('#kink-h').textContent = st >= 5 ? '过了拐点：52%' : '钱从哪来，利率怎么定';
+  }
+
+  function runStep(el, st) {
+    const svg = el.querySelector('#run');
+    const D = [100, 100, 80, 75, 75][st], B = 70, U = B / D;
+    const Rate = u => u <= 0.8 ? 1 + 6 * u / 0.8 : 7 + 60 * (u - 0.8) / 0.2;
+    let h = '';
+    const tx = 260, tw = 380, ty = 60, th = 470, Hh = v => v / 100 * th;
+    // tank
+    h += `<path d="M ${tx} ${ty} L ${tx} ${ty + th} L ${tx + tw} ${ty + th} L ${tx + tw} ${ty}" fill="none" stroke="${C.t2}" stroke-width="5"/>`;
+    h += `<rect x="${tx + 4}" y="${ty + th - Hh(B)}" width="${tw - 8}" height="${Hh(B)}" fill="rgba(240,185,11,.45)"/>` + T(tx + tw / 2, ty + th - Hh(B) / 2 + 10, '已借出 7,000 万', { anchor: 'middle', size: 30, bold: true, fill: C.text });
+    h += `<rect x="${tx + 4}" y="${ty + th - Hh(D)}" width="${tw - 8}" height="${Hh(D - B)}" fill="rgba(91,156,255,.55)"/>`;
+    h += T(tx + tw / 2, ty + th - Hh(D) + Hh(D - B) / 2 + 10, '闲置 ' + fmt((D - B) * 100) + ' 万', { anchor: 'middle', size: 28, bold: true, fill: C.text });
+    if (D < 100) h += `<rect x="${tx + 4}" y="${ty + th - Hh(100)}" width="${tw - 8}" height="${Hh(100 - D)}" fill="none" stroke="${C.dim}" stroke-width="2" stroke-dasharray="8 6"/>` + T(tx + tw / 2, ty + th - Hh(100) + Hh(100 - D) / 2 + 10, '已取走 ' + fmt((100 - D) * 100) + ' 万', { anchor: 'middle', size: 26, fill: C.t2 });
+    if (st === 0) {
+      h += arrow(80, 120, tx - 10, 120, { col: C.buy, w: 5 }) + T(60, 100, '倒水 = 存款', { size: 30, fill: C.buy, bold: true });
+      h += arrow(tx + tw + 10, 300, tx + tw + 200, 300, { col: C.gold, w: 5 }) + T(tx + tw + 30, 280, '舀水 = 借款', { size: 30, fill: C.gold, bold: true });
+    }
+    if (st >= 2 && st <= 3) h += arrow(tx + tw / 2, ty + 10, tx + tw / 2, ty - 50, { col: C.sell, w: 6 }) + T(tx + tw / 2 + 24, ty - 20, '取走 ' + (st === 2 ? '2,000' : '500') + ' 万', { size: 30, fill: C.sell, bold: true, halo: true });
+    // metrics
+    const mx = 820;
+    if (st >= 1) {
+      const r = Rate(U);
+      h += T(mx, 110, '存款 D', { size: 28, fill: C.t2 }) + T(mx + 260, 110, fmt(D * 100) + ' 万', { size: 40, bold: true, mono: true });
+      h += T(mx, 190, '利用率 U', { size: 28, fill: C.t2 }) + T(mx + 260, 190, (U * 100).toFixed(1) + '%', { size: 40, bold: true, mono: true, fill: U > 0.8 ? C.sell : C.gold });
+      h += T(mx, 290, '借款利率 R', { size: 28, fill: C.t2 }) + T(mx + 260, 300, (st === 3 ? '≈ 47' : r.toFixed(r % 1 ? 2 : 0).replace(/\.?0+$/, '')) + '%', { size: 72, bold: true, mono: true, fill: U > 0.8 ? C.sell : C.gold });
+      const calc = ['', '70 ÷ 100 = 70% · 拐点以下', '7% + 60% × (0.875 − 0.8) ÷ 0.2 = 29.5%', '闲置只剩 500 万 → 大额赎回无法立即满足', ''][st];
+      h += T(mx, 380, calc, { size: 28, mono: st < 3, fill: st === 3 ? C.sell : C.text, bold: st === 3 });
+    }
+    if (st === 4) {
+      const lp = [[mx, 400, '高利率'], [mx + 260, 400, '借款人还款'], [mx + 560, 400, 'U 回落']];
+      lp.forEach(([x, y, t], i) => { h += R(x, y, 220, 70, { stroke: C.buy }) + T(x + 110, y + 46, t, { anchor: 'middle', size: 28, bold: true, fill: C.buy }); if (i < 2) h += arrow(x + 224, y + 35, x + 256, y + 35, { col: C.buy }); });
+      h += `<line x1="${mx + 250}" y1="390" x2="${mx + 500}" y2="485" stroke="${C.sell}" stroke-width="7"/><line x1="${mx + 500}" y1="390" x2="${mx + 250}" y2="485" stroke="${C.sell}" stroke-width="7"/>`;
+      h += T(mx, 540, '比喻失效处：借款人被锁在亏损仓位，还不了款', { size: 30, bold: true, fill: C.sell });
+    }
+    svg.innerHTML = h;
+    el.querySelector('#run-h').textContent = st === 0 ? '当铺的大水缸' : st === 4 ? '负反馈回路：会失效' : '挤兑推演：U 被推过拐点';
+  }
+
+  function spreadStep(el, st) {
+    const svg = el.querySelector('#spread');
+    let h = '';
+    const bor = { x: 20, y: 150, w: 380, h: 140 }, pool = { x: 620, y: 150, w: 400, h: 140 }, dep = { x: 1240, y: 40, w: 380, h: 130 }, plat = { x: 1240, y: 270, w: 380, h: 130 };
+    h += box(bor, ['借款人', st >= 1 ? '6.25% × 7,000 万' : '已借出 B'], st >= 1 ? { stroke: C.gold, sub: 28 } : {});
+    h += box(pool, ['借贷资金池', 'D = 1 亿 · U = 70%'], {});
+    if (st >= 1) h += edge(bor, pool, { label: '437.5 万 / 年', ly: -18, col: C.gold, size: 32, bold: true });
+    h += box(dep, ['存款人', st >= 2 ? '3.94% × 1 亿 ≈ 394 万' : '利率 S'], st >= 2 ? { stroke: C.buy, sub: 28, subFill: C.buy } : {});
+    h += box(plat, ['平台', st >= 2 ? '≈ 43.75 万 = 437.5 × 10%' : '抽成 10%'], st >= 2 ? { stroke: C.gold, sub: 28, subFill: C.gold } : {});
+    if (st >= 2) h += edge(pool, dep, { col: C.buy }) + edge(pool, plat, { col: C.gold });
+    if (st === 0) h += T(20, 400, '示例参数同上：R = 6.25% · S ≈ 3.94% · 抽成 10%', { size: 30, fill: C.t2 });
+    if (st === 3) h += T(20, 400, '30% 的存款闲置不生息 · 另有杠杆交易手续费、强平清算费', { size: 30, fill: C.info, bold: true });
+    svg.innerHTML = h;
+  }
+
+  function badStep(el, st) {
+    const svg = el.querySelector('#bad');
+    const N = {
+      px: { x: 0, y: 10, w: 260, h: 100 }, cx: { x: 330, y: 10, w: 260, h: 100 }, sell: { x: 660, y: 10, w: 280, h: 100 }, q: { x: 1010, y: 10, w: 300, h: 100 },
+      back: { x: 1380, y: 10, w: 260, h: 100 }, bad: { x: 1010, y: 200, w: 300, h: 100 }, ins: { x: 650, y: 200, w: 290, h: 100 }, plat: { x: 290, y: 200, w: 290, h: 100 },
+    };
+    const act = [['px', 'cx', 'sell'], ['q', 'back'], ['q', 'bad'], ['bad', 'ins', 'plat'], ['px']][st];
+    const o = (k, c) => act.includes(k) ? { stroke: c || C.gold, fill: c === C.sell ? 'rgba(246,70,93,.14)' : 'rgba(240,185,11,.12)' } : {};
+    let h = '';
+    const ec = ks => ks.every(k => act.includes(k)) ? C.gold : C.dim;
+    h += edge(N.px, N.cx, { col: ec(['px', 'cx']) }) + edge(N.cx, N.sell, { col: ec(['cx', 'sell']) }) + edge(N.sell, N.q, { col: C.dim });
+    h += edge(N.q, N.back, { label: '够', ly: -14, col: ec(['q', 'back']) }) + edge(N.q, N.bad, { label: '不够', anchor: 'start', lx: 12, col: ec(['q', 'bad']) });
+    h += edge(N.bad, N.ins, { label: '先', ly: -14, col: ec(['bad', 'ins']) }) + edge(N.ins, N.plat, { label: '不足', ly: -14, col: ec(['ins', 'plat']) });
+    h += box(N.px, [st === 4 ? '指数价偏离' : '指数价下跌'], o('px', st === 4 ? C.sell : null));
+    h += box(N.cx, ['撤销挂单'], o('cx')); h += box(N.sell, ['卖出抵押物'], o('sell'));
+    h += box(N.q, ['够还负债+利息？'], o('q')); h += box(N.back, ['扣费后退回'], o('back', C.buy));
+    h += box(N.bad, ['坏账'], o('bad', C.sell)); h += box(N.ins, ['杠杆保险基金'], o('ins')); h += box(N.plat, ['平台核销'], o('plat', C.sell));
+    const note = ['ML ≤ 1.1 或 LTV ≥ 强平线 → 强平', '', '', '没有 ADL：不能强制减别人的仓 → 平台是最终兜底方', '2025-10-10 · USDe、WBETH、BNSOL 短时偏离 · 币安称补偿约 2.83 亿美元'][st];
+    if (note) h += T(0, 328, note, { size: 30, bold: true, fill: st >= 3 ? C.sell : C.gold });
+    svg.innerHTML = h;
+    const rows = el.querySelectorAll('#badT tr');
+    rows.forEach((r, i) => { if (i) r.classList.toggle('cur', (st === 1 && i === 1) || (st === 2 && i === 2)); });
+    el.querySelector('#badT').style.opacity = st >= 3 ? .4 : 1;
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

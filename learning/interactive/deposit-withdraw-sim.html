@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>充提模拟器</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .chain-svg, .chart-svg, .water-svg { width: 100%; height: auto; display: block; }
+  .blk { fill: var(--surface-2); stroke: var(--border); stroke-width: 1.5; }
+  .blk.has-dep { fill: var(--info-soft); stroke: var(--info); }
+  .blk.orphan { fill: var(--sell-soft); stroke: var(--sell); stroke-dasharray: 4 3; }
+  .blk.fresh { stroke: var(--accent); stroke-width: 2.5; }
+  .blk-h { font-size: 11px; font-family: var(--mono); }
+  .blk-hash { font-size: 9px; font-family: var(--mono); fill: var(--text-2); }
+  .blk-tag { font-size: 10px; font-weight: 600; fill: var(--info); }
+  .blk-tag.bad { fill: var(--sell); }
+  .link { stroke: var(--border); stroke-width: 2; }
+  .link.orphan { stroke: var(--sell); stroke-dasharray: 4 3; }
+  .row-label { font-size: 11px; fill: var(--text-2); }
+  .thr-band { fill: var(--accent-soft); }
+  .thr-line { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; }
+  .ax { stroke: var(--border); stroke-width: 1; }
+  .ax-t { font-size: 10px; fill: var(--text-2); }
+  .curve-risk { fill: none; stroke: var(--sell); stroke-width: 2.2; }
+  .curve-wait { fill: none; stroke: var(--info); stroke-width: 2.2; }
+  .marker { stroke: var(--accent); stroke-width: 1.5; }
+  .dot-risk { fill: var(--sell); } .dot-wait { fill: var(--info); }
+  .hist { fill: none; stroke: var(--accent); stroke-width: 2.2; }
+  .hist-area { fill: var(--accent-soft); }
+  .lim-up { stroke: var(--warn); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .lim-low { stroke: var(--sell); stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .lim-t-up { font-size: 10px; fill: var(--warn); }
+  .lim-t-low { font-size: 10px; fill: var(--sell); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 12px 0; }
+  .stat .v.sm { font-size: 18px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; border: 1.5px solid; }
+  .lg-dep { background: var(--info-soft); border-color: var(--info) !important; }
+  .lg-orp { background: var(--sell-soft); border-color: var(--sell) !important; }
+  .lg-new { background: var(--surface-2); border-color: var(--accent) !important; }
+  .lg-risk { background: var(--sell); border-color: var(--sell) !important; }
+  .lg-wait { background: var(--info); border-color: var(--info) !important; }
+  td.st { white-space: nowrap; }
+  .chain-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chain-pick button.on { background: var(--accent); border-color: var(--accent); color: #1d1d1b; font-weight: 600; }
+  ol.how { padding-left: 20px; margin: 6px 0; }
+  ol.how li { margin: 2px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../04-wallet-custody.md">对应章节：04 钱包与托管</a>
+  </header>
+  <h1>充值与提币模拟器</h1>
+  <p class="lead">第一部分模拟链上出块、确认数推进和链重组（reorg），帮你理解"确认数阈值"为什么重要。第二部分模拟热钱包水位管理，帮你理解"提币速度"和"被盗风险"之间的权衡。页面中所有链参数、概率和金额都是<strong>示例</strong>，不是币安当前参数。</p>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="how small">
+      <li>选择一条链。区块会自动产生。</li>
+      <li>点击"发起充值"。充值会进入下一个区块，然后确认数逐块增加。</li>
+      <li>确认数达到阈值后，状态变为 <span class="pill buy">CREDITED</span>（已入账）。</li>
+      <li>点击"触发链重组"，观察入账前和入账后被重组的不同后果。</li>
+      <li>在第二部分，调整热钱包上下限，发起提币，观察补充、归集和风险暴露量。</li>
+    </ol>
+  </div>
+
+  <!-- ============ Part 1 ============ -->
+  <h2>第一部分：确认数与链重组</h2>
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>1. 选择链与阈值</h3>
+      <div class="chain-pick" id="chainPick"></div>
+      <p class="small muted" id="chainDesc"></p>
+      <label for="thr">入账确认阈值（达到即入账）</label>
+      <div class="range-row"><input id="thr" type="range" min="1" max="30" value="2"><output id="thrOut">2</output></div>
+      <label for="depth">重组深度（被丢弃的区块数）</label>
+      <select id="depth">
+        <option value="1">1 块（自然分叉，常见）</option>
+        <option value="2">2 块（少见）</option>
+        <option value="3" selected>3 块（罕见）</option>
+        <option value="6">6 块（攻击级）</option>
+        <option value="12">12 块（51% 算力攻击）</option>
+      </select>
+      <div class="btn-row">
+        <button class="primary" id="btnDeposit">发起充值 1 BTC 等值</button>
+        <button class="sell" id="btnReorg">触发链重组</button>
+        <button id="btnPause">暂停出块</button>
+        <button id="btnReset1">重置</button>
+      </div>
+      <p class="small muted">演示假设：重组由攻击者发起。新链中，攻击者把同一笔钱转给了自己（双花），所以被丢弃的充值不会重新打包。</p>
+    </div>
+    <div class="card">
+      <h3>2. 风险与等待的权衡（示例模型）</h3>
+      <svg class="chart-svg" id="tradeoff" viewBox="0 0 420 220" role="img" aria-label="确认阈值与风险、等待时间的关系图"></svg>
+      <div class="legend"><span><i class="lg-risk"></i>入账后被重组的概率（对数刻度）</span><span><i class="lg-wait"></i>预计等待时间</span></div>
+      <div class="stats">
+        <div class="stat"><span class="k">预计等待</span><span class="v sm" id="sWait">–</span></div>
+        <div class="stat"><span class="k">入账后被推翻概率</span><span class="v sm" id="sRisk">–</span></div>
+        <div class="stat"><span class="k">每 1 万笔的期望坏账</span><span class="v sm" id="sBad">–</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>3. 区块链（最新区块）</h3>
+    <svg class="chain-svg" id="chainSvg" viewBox="0 0 640 190" role="img" aria-label="区块链出块动画"></svg>
+    <div class="legend">
+      <span><i class="lg-dep"></i>含你的充值</span>
+      <span><i class="lg-orp"></i>被重组丢弃的区块</span>
+      <span><i class="lg-new"></i>最新区块</span>
+    </div>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+      <h3>4. 我的充值</h3>
+      <div class="stats">
+        <div class="stat"><span class="k">已入账</span><span class="v sm up" id="sCred">0</span></div>
+        <div class="stat"><span class="k">入账前失效</span><span class="v sm" id="sDrop">0</span></div>
+        <div class="stat"><span class="k">入账后被推翻（交易所损失）</span><span class="v sm down" id="sLoss">0</span></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>编号</th><th class="num">区块</th><th class="num">确认数</th><th>状态</th></tr></thead>
+          <tbody id="depBody"><tr><td colspan="4" class="muted">还没有充值。点击"发起充值"。</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h3>5. 事件日志</h3>
+      <div class="log" id="log1"></div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>试一试</strong>
+    <ol class="how small">
+      <li>选 BTC，把阈值调到 1。发起充值，等它入账后立即触发 3 块重组。交易所损失了多少？</li>
+      <li>把阈值调到 6，再重复一次。这次充值在入账前就失效了，交易所没有损失。代价是什么？看右上角的等待时间。</li>
+      <li>选 BSC，把阈值调到 3，触发 12 块的"51% 攻击"。为什么出块越快的链，通常需要越大的确认数？</li>
+    </ol>
+  </div>
+
+  <!-- ============ Part 2 ============ -->
+  <h2>第二部分：热钱包与冷钱包水位</h2>
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>1. 设置水位</h3>
+      <label for="low">热钱包下限（低于它就从冷钱包补充）</label>
+      <div class="range-row"><input id="low" type="range" min="10" max="200" step="5" value="40"><output id="lowOut">40</output></div>
+      <label for="up">热钱包上限（高于它就归集到冷钱包）</label>
+      <div class="range-row"><input id="up" type="range" min="30" max="400" step="5" value="120"><output id="upOut">120</output></div>
+      <p class="small muted">单位：BTC（示例）。补充需要人工多签，本页用 6 秒模拟"约 2 小时"的审批延迟。归集是自动的，用 1 秒模拟。</p>
+      <div class="btn-row">
+        <button class="primary" id="btnW10">发起 10 笔提币</button>
+        <button class="sell" id="btnW30">提币潮（30 笔）</button>
+        <button class="buy" id="btnDep">充值归集 +80</button>
+      </div>
+      <div class="btn-row">
+        <button class="sell" id="btnHack">模拟热钱包被盗</button>
+        <button id="btnReset2">重置</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>2. 状态</h3>
+      <div class="stats">
+        <div class="stat"><span class="k">热钱包</span><span class="v sm" id="hHot">–</span></div>
+        <div class="stat"><span class="k">冷钱包</span><span class="v sm" id="hCold">–</span></div>
+        <div class="stat"><span class="k">被盗风险暴露量</span><span class="v sm down" id="hExp">–</span></div>
+        <div class="stat"><span class="k">暴露占总资产</span><span class="v sm" id="hPct">–</span></div>
+        <div class="stat"><span class="k">排队中的提币</span><span class="v sm" id="hQueue">0</span></div>
+        <div class="stat"><span class="k">冷→热补充 / 归集次数</span><span class="v sm" id="hOps">0 / 0</span></div>
+      </div>
+      <p class="small" id="hState"></p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <h3>3. 热钱包余额走势</h3>
+    <svg class="water-svg" id="waterSvg" viewBox="0 0 640 220" role="img" aria-label="热钱包余额随时间变化"></svg>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <h3>4. 资金调拨日志</h3>
+    <div class="log" id="log2"></div>
+  </div>
+
+  <div class="callout">
+    <strong>试一试</strong>
+    <ol class="how small">
+      <li>保持默认水位，点"提币潮"。热钱包跌破下限后，提币开始排队。补充到账前，用户要等待多久？</li>
+      <li>把上限降到 50、下限降到 15，再点"提币潮"。排队变多了，但"被盗风险暴露量"下降了多少？</li>
+      <li>先点几次"充值归集 +80"，再点"模拟热钱包被盗"。把上限调低后重复一次，比较两次损失。</li>
+    </ol>
+  </div>
+
+  <footer class="note">本页所有参数为教学示例，不代表币安或任何交易所的真实配置。确认数以交易所充值页面显示为准。概率模型为简化示意：入账后被推翻概率 = p₁ × rⁿ⁻¹，p₁ 与 r 均为假设值。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var NS = 'http://www.w3.org/2000/svg';
+  function $(id) { return document.getElementById(id); }
+  function el(tag, attrs, text) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) { if (Object.prototype.hasOwnProperty.call(attrs, k)) n.setAttribute(k, attrs[k]); }
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  function narrow() { return window.innerWidth < 640; }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+  function randHash() {
+    var s = '0x';
+    for (var i = 0; i < 6; i++) s += Math.floor(Math.random() * 16).toString(16);
+    return s;
+  }
+  function logTo(box, msg, cls) {
+    var line = document.createElement('div');
+    if (cls) line.className = cls;
+    var t = new Date();
+    var ts = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0') + ':' + String(t.getSeconds()).padStart(2, '0');
+    line.textContent = '[' + ts + '] ' + msg;
+    box.insertBefore(line, box.firstChild);
+    while (box.childNodes.length > 80) box.removeChild(box.lastChild);
+  }
+
+  /* ---------------- Part 1: chain, confirmations, reorg ---------------- */
+  // 示例参数。p1：某区块在 1 块深度被推翻的概率；r：每多 1 个确认，概率乘以 r。
+  var CHAINS = {
+    BTC: { name: 'BTC', blockSec: 600, defTh: 2, p1: 0.004, r: 0.12, desc: '出块约 10 分钟。算力大，深度重组极难。示例阈值 2。' },
+    ETH: { name: 'ETH', blockSec: 12, defTh: 12, p1: 0.01, r: 0.55, desc: '出块约 12 秒。PoS 下推荐等待 finalized（约 64–95 个区块）。示例阈值 12。' },
+    BSC: { name: 'BSC', blockSec: 3, defTh: 15, p1: 0.02, r: 0.7, desc: '出块 3 秒以内。验证者数量少，单块确认更弱。示例阈值 15。' }
+  };
+  var chainKey = 'BTC';
+  var blocks = [];      // main chain blocks: {h, hash, deps:[ids], fresh}
+  var orphans = [];     // orphaned blocks for display: {h, hash, deps}
+  var deposits = [];    // {id, block, status}
+  var depSeq = 0, pending = [];
+  var paused = false, timer = null;
+  var log1 = $('log1');
+
+  function th() { return Number($('thr').value); }
+  function tip() { return blocks.length ? blocks[blocks.length - 1].h : 0; }
+  function confOf(d) { return d.block ? Math.max(0, tip() - d.block + 1) : 0; }
+
+  function fmtDur(sec) {
+    if (sec < 60) return Math.round(sec) + ' 秒';
+    if (sec < 3600) return (sec / 60).toFixed(sec < 600 ? 1 : 0) + ' 分钟';
+    return (sec / 3600).toFixed(1) + ' 小时';
+  }
+  function riskAt(n) { var c = CHAINS[chainKey]; return c.p1 * Math.pow(c.r, n - 1); }
+  function fmtP(p) {
+    if (p >= 0.0001) return (p * 100).toFixed(p >= 0.01 ? 1 : 3) + '%';
+    var e = Math.floor(Math.log10(p));
+    return (p / Math.pow(10, e)).toFixed(1) + '×10^' + e;
+  }
+
+  function buildChainPick() {
+    var box = $('chainPick'); clear(box);
+    Object.keys(CHAINS).forEach(function (k) {
+      var b = document.createElement('button');
+      b.textContent = k + '（示例）';
+      if (k === chainKey) b.className = 'on';
+      b.addEventListener('click', function () { chainKey = k; $('thr').value = CHAINS[k].defTh; reset1(); buildChainPick(); });
+      box.appendChild(b);
+    });
+    $('chainDesc').textContent = CHAINS[chainKey].desc;
+  }
+
+  function mine() {
+    var h = tip() + 1;
+    blocks.forEach(function (b) { b.fresh = false; });
+    var b = { h: h, hash: randHash(), deps: pending.slice(), fresh: true };
+    pending.forEach(function (id) {
+      var d = deposits[id];
+      d.block = h; d.status = 'CONFIRMING';
+      logTo(log1, '充值 #' + (id + 1) + ' 进入区块 ' + h + '，确认数 1。', 'note');
+    });
+    pending = [];
+    blocks.push(b);
+    if (blocks.length > 40) blocks.shift();
+    // advance confirmations
+    deposits.forEach(function (d) {
+      if (d.status === 'CONFIRMING' && confOf(d) >= th()) {
+        d.status = 'CREDITED';
+        logTo(log1, '充值 #' + (d.id + 1) + ' 达到 ' + th() + ' 个确认，账本入账。', 'ok');
+      }
+    });
+    orphans = orphans.filter(function (o) { return o.h > tip() - 12; });
+    render1();
+  }
+
+  function reorg() {
+    var depth = Number($('depth').value);
+    if (blocks.length < depth + 1) { logTo(log1, '区块太少，等几个区块再试。', 'err'); return; }
+    var cut = tip() - depth + 1; // heights >= cut are dropped
+    var dropped = blocks.filter(function (b) { return b.h >= cut; });
+    blocks = blocks.filter(function (b) { return b.h < cut; });
+    orphans = dropped.map(function (b) { return { h: b.h, hash: b.hash, deps: b.deps }; });
+    logTo(log1, '链重组！区块 ' + cut + '–' + (cut + depth - 1) + ' 被丢弃（深度 ' + depth + '）。', 'err');
+    var lost = 0, drop = 0;
+    deposits.forEach(function (d) {
+      if (d.block && d.block >= cut && (d.status === 'CONFIRMING' || d.status === 'CREDITED')) {
+        if (d.status === 'CREDITED') {
+          d.status = 'REORG_LOSS'; lost++;
+          logTo(log1, '充值 #' + (d.id + 1) + ' 已入账后被推翻。若用户已卖出或提走，交易所承担损失。', 'err');
+        } else {
+          d.status = 'DROPPED'; drop++;
+          logTo(log1, '充值 #' + (d.id + 1) + ' 在入账前被推翻，状态改为 DROPPED，交易所无损失。', 'note');
+        }
+      }
+    });
+    if (!lost && !drop) logTo(log1, '被丢弃的区块里没有你的充值。', 'note');
+    // new competing chain: depth + 1 blocks, mined quickly
+    for (var i = 0; i < depth + 1; i++) {
+      blocks.forEach(function (b) { b.fresh = false; });
+      blocks.push({ h: tip() + 1, hash: randHash(), deps: [], fresh: true });
+    }
+    // remaining CONFIRMING deposits may cross threshold on the longer chain
+    deposits.forEach(function (d) {
+      if (d.status === 'CONFIRMING' && confOf(d) >= th()) { d.status = 'CREDITED'; logTo(log1, '充值 #' + (d.id + 1) + ' 在新链上达到阈值，入账。', 'ok'); }
+    });
+    logTo(log1, '节点切换到更长的新链，最新高度 ' + tip() + '。', 'note');
+    render1();
+  }
+
+  function render1() {
+    var svg = $('chainSvg'); clear(svg);
+    var nShow = narrow() ? 6 : 10;
+    var show = blocks.slice(-nShow);
+    var bw = 52, gap = 10, x0 = 14;
+    var W = x0 + nShow * (bw + gap) + 4;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' 190');
+    var baseH = show.length ? show[0].h : 1;
+    svg.appendChild(el('text', { x: 4, y: 22, 'class': 'row-label' }, orphans.length ? '被丢弃的分叉' : ''));
+    svg.appendChild(el('text', { x: 4, y: 102, 'class': 'row-label' }, '主链（最长链）'));
+    function xOf(h) { return x0 + (h - baseH) * (bw + gap); }
+    // orphans row
+    orphans.forEach(function (o, i) {
+      var x = xOf(o.h); if (x < 0 || x > W - bw) return;
+      if (i > 0) svg.appendChild(el('line', { x1: x - gap, y1: 52, x2: x, y2: 52, 'class': 'link orphan' }));
+      svg.appendChild(el('rect', { x: x, y: 30, width: bw, height: 44, rx: 6, 'class': 'blk orphan' }));
+      svg.appendChild(el('text', { x: x + bw / 2, y: 47, 'text-anchor': 'middle', 'class': 'blk-h' }, '#' + o.h));
+      svg.appendChild(el('text', { x: x + bw / 2, y: 62, 'text-anchor': 'middle', 'class': 'blk-hash' }, o.hash));
+      if (o.deps.length) svg.appendChild(el('text', { x: x + bw / 2, y: 26, 'text-anchor': 'middle', 'class': 'blk-tag bad' }, '充值#' + o.deps.map(function (d) { return d + 1; }).join(',')));
+    });
+    if (orphans.length) {
+      var fx = xOf(orphans[0].h);
+      if (fx > 0) svg.appendChild(el('line', { x1: fx - gap, y1: 130, x2: fx, y2: 74, 'class': 'link orphan' }));
+    }
+    // main row
+    show.forEach(function (b, i) {
+      var x = xOf(b.h);
+      if (i > 0) svg.appendChild(el('line', { x1: x - gap, y1: 130, x2: x, y2: 130, 'class': 'link' }));
+      var cls = 'blk' + (b.deps.length ? ' has-dep' : '') + (b.fresh ? ' fresh' : '');
+      svg.appendChild(el('rect', { x: x, y: 108, width: bw, height: 44, rx: 6, 'class': cls }));
+      svg.appendChild(el('text', { x: x + bw / 2, y: 125, 'text-anchor': 'middle', 'class': 'blk-h' }, '#' + b.h));
+      svg.appendChild(el('text', { x: x + bw / 2, y: 140, 'text-anchor': 'middle', 'class': 'blk-hash' }, b.hash));
+      if (b.deps.length) svg.appendChild(el('text', { x: x + bw / 2, y: 168, 'text-anchor': 'middle', 'class': 'blk-tag' }, '充值#' + b.deps.map(function (d) { return d + 1; }).join(',')));
+    });
+    // threshold marker: block that must exist for latest-included deposit... show "入账线"
+    var thrH = tip() - th() + 1; // a deposit at height <= thrH is credited
+    if (thrH >= baseH) {
+      var tx = xOf(thrH) + bw + gap / 2;
+      if (tx < W) {
+        svg.appendChild(el('line', { x1: tx, y1: 100, x2: tx, y2: 186, 'class': 'thr-line' }));
+        svg.appendChild(el('text', { x: Math.max(tx - 4, 60), y: 184, 'text-anchor': 'end', 'class': 'ax-t' }, '← 已达 ' + th() + ' 确认'));
+      }
+    }
+    if (pending.length) svg.appendChild(el('text', { x: W - 6, y: 102, 'text-anchor': 'end', 'class': 'blk-tag' }, '内存池：充值#' + pending.map(function (d) { return d + 1; }).join(',')));
+    renderDeps();
+  }
+
+  var STATUS_PILL = {
+    PENDING: ['info', 'PENDING 待打包'],
+    CONFIRMING: ['warn', 'CONFIRMING 确认中'],
+    CREDITED: ['buy', 'CREDITED 已入账'],
+    DROPPED: ['accent', 'DROPPED 已失效'],
+    REORG_LOSS: ['sell', '入账后被推翻']
+  };
+  function renderDeps() {
+    var body = $('depBody'); clear(body);
+    if (!deposits.length) {
+      var tr0 = document.createElement('tr'); var td0 = document.createElement('td');
+      td0.colSpan = 4; td0.className = 'muted'; td0.textContent = '还没有充值。点击"发起充值"。';
+      tr0.appendChild(td0); body.appendChild(tr0);
+    }
+    deposits.slice().reverse().forEach(function (d) {
+      var tr = document.createElement('tr');
+      var c = d.status === 'CONFIRMING' || d.status === 'CREDITED' ? confOf(d) : '–';
+      var cells = ['#' + (d.id + 1), d.block || '–', d.status === 'CONFIRMING' ? c + ' / ' + th() : c];
+      cells.forEach(function (v, i) { var td = document.createElement('td'); td.textContent = v; if (i > 0) td.className = 'num'; tr.appendChild(td); });
+      var tds = document.createElement('td'); tds.className = 'st';
+      var p = document.createElement('span'); p.className = 'pill ' + STATUS_PILL[d.status][0]; p.textContent = STATUS_PILL[d.status][1];
+      tds.appendChild(p); tr.appendChild(tds); body.appendChild(tr);
+    });
+    var cnt = { CREDITED: 0, DROPPED: 0, REORG_LOSS: 0 };
+    deposits.forEach(function (d) { if (cnt[d.status] !== undefined) cnt[d.status]++; });
+    $('sCred').textContent = cnt.CREDITED;
+    $('sDrop').textContent = cnt.DROPPED;
+    $('sLoss').textContent = cnt.REORG_LOSS + ' 笔';
+  }
+
+  function renderTradeoff() {
+    var svg = $('tradeoff'); clear(svg);
+    var c = CHAINS[chainKey];
+    var L = 44, R = 376, T = 14, B = 186, N = 30;
+    var minLog = -12, maxLog = -1; // risk axis (log10)
+    var maxWait = N * c.blockSec;
+    function xn(n) { return L + (n - 1) / (N - 1) * (R - L); }
+    function yr(p) { var lg = Math.max(minLog, Math.log10(p)); return B - (lg - minLog) / (maxLog - minLog) * (B - T); }
+    function yw(s) { return B - s / maxWait * (B - T); }
+    svg.appendChild(el('line', { x1: L, y1: B, x2: R, y2: B, 'class': 'ax' }));
+    svg.appendChild(el('line', { x1: L, y1: T, x2: L, y2: B, 'class': 'ax' }));
+    svg.appendChild(el('line', { x1: R, y1: T, x2: R, y2: B, 'class': 'ax' }));
+    [-12, -9, -6, -3, -1].forEach(function (lg) {
+      svg.appendChild(el('text', { x: L - 4, y: yr(Math.pow(10, lg)) + 3, 'text-anchor': 'end', 'class': 'ax-t' }, '1e' + lg));
+    });
+    [0, 0.5, 1].forEach(function (f) {
+      svg.appendChild(el('text', { x: R + 4, y: yw(maxWait * f) + 3, 'class': 'ax-t' }, fmtDur(maxWait * f).replace(' ', '')));
+    });
+    [1, 5, 10, 15, 20, 25, 30].forEach(function (n) {
+      svg.appendChild(el('text', { x: xn(n), y: B + 14, 'text-anchor': 'middle', 'class': 'ax-t' }, n));
+    });
+    svg.appendChild(el('text', { x: (L + R) / 2, y: B + 30, 'text-anchor': 'middle', 'class': 'ax-t' }, '确认阈值（区块数）'));
+    var dr = '', dw = '';
+    for (var n = 1; n <= N; n++) {
+      dr += (n === 1 ? 'M' : 'L') + xn(n).toFixed(1) + ' ' + yr(riskAt(n)).toFixed(1);
+      dw += (n === 1 ? 'M' : 'L') + xn(n).toFixed(1) + ' ' + yw(n * c.blockSec).toFixed(1);
+    }
+    svg.appendChild(el('path', { d: dr, 'class': 'curve-risk' }));
+    svg.appendChild(el('path', { d: dw, 'class': 'curve-wait' }));
+    var t = th();
+    svg.appendChild(el('line', { x1: xn(t), y1: T, x2: xn(t), y2: B, 'class': 'marker' }));
+    svg.appendChild(el('circle', { cx: xn(t), cy: yr(riskAt(t)), r: 4.5, 'class': 'dot-risk' }));
+    svg.appendChild(el('circle', { cx: xn(t), cy: yw(t * c.blockSec), r: 4.5, 'class': 'dot-wait' }));
+    $('sWait').textContent = fmtDur(t * c.blockSec);
+    $('sRisk').textContent = fmtP(riskAt(t));
+    var bad = riskAt(t) * 10000;
+    $('sBad').textContent = bad >= 0.01 ? bad.toFixed(2) + ' 笔' : '≈ 0 笔';
+  }
+
+  function schedule() {
+    if (timer) clearInterval(timer);
+    timer = setInterval(function () { if (!paused) mine(); }, 1600);
+  }
+  function reset1() {
+    blocks = []; orphans = []; deposits = []; pending = []; depSeq = 0;
+    clear(log1);
+    for (var i = 0; i < 6; i++) { blocks.push({ h: 1000 + i, hash: randHash(), deps: [], fresh: false }); }
+    logTo(log1, '切换到 ' + chainKey + '（示例参数）。入账阈值 ' + th() + '。', 'note');
+    $('thrOut').textContent = th();
+    renderTradeoff(); render1(); schedule();
+  }
+
+  $('thr').addEventListener('input', function () {
+    $('thrOut').textContent = th();
+    deposits.forEach(function (d) {
+      if (d.status === 'CONFIRMING' && confOf(d) >= th()) { d.status = 'CREDITED'; logTo(log1, '阈值下调，充值 #' + (d.id + 1) + ' 立即入账。', 'ok'); }
+    });
+    renderTradeoff(); render1();
+  });
+  $('btnDeposit').addEventListener('click', function () {
+    var id = depSeq++;
+    deposits.push({ id: id, block: null, status: 'PENDING' });
+    pending.push(id);
+    logTo(log1, '用户广播充值 #' + (id + 1) + '，交易进入内存池，状态 PENDING。', 'note');
+    render1();
+  });
+  $('btnReorg').addEventListener('click', reorg);
+  $('btnPause').addEventListener('click', function () {
+    paused = !paused;
+    this.textContent = paused ? '继续出块' : '暂停出块';
+  });
+  $('btnReset1').addEventListener('click', reset1);
+
+  /* ---------------- Part 2: hot / cold watermark ---------------- */
+  var TOTAL = 1000;
+  var w = {};
+  var log2 = $('log2');
+  var REFILL_MS = 6000, SWEEP_MS = 1000;
+
+  function lowV() { return Number($('low').value); }
+  function upV() { return Number($('up').value); }
+  function target() { return Math.round((lowV() + upV()) / 2); }
+
+  function reset2() {
+    if (w.loop) clearInterval(w.loop);
+    if (w.refillT) clearTimeout(w.refillT);
+    if (w.sweepT) clearTimeout(w.sweepT);
+    w = { hot: 80, cold: TOTAL - 80, queue: [], refilling: false, sweeping: false, refills: 0, sweeps: 0, hist: [], seq: 0, waitedMax: 0 };
+    clear(log2);
+    logTo(log2, '初始化：总资产 ' + TOTAL + ' BTC，热钱包 80，冷钱包 ' + (TOTAL - 80) + '（示例）。', 'note');
+    w.loop = setInterval(step2, 300);
+    render2();
+  }
+
+  function fmt(x) { return (Math.round(x * 10) / 10).toLocaleString('zh-CN'); }
+
+  function enqueue(n) {
+    for (var i = 0; i < n; i++) {
+      var amt = Math.round((1 + Math.random() * 7) * 10) / 10;
+      w.queue.push({ id: ++w.seq, amt: amt, t: Date.now() });
+    }
+    logTo(log2, '收到 ' + n + ' 笔提币申请。', 'note');
+  }
+
+  function step2() {
+    // pay at most one withdrawal per tick
+    if (w.queue.length) {
+      var q = w.queue[0];
+      if (w.hot >= q.amt) {
+        w.hot -= q.amt; w.queue.shift();
+        var waited = (Date.now() - q.t) / 1000;
+        if (waited > w.waitedMax) w.waitedMax = waited;
+        if (waited > 3) logTo(log2, '提币 #' + q.id + '（' + q.amt + ' BTC）排队 ' + waited.toFixed(1) + ' 秒后完成。', 'note');
+      }
+    }
+    checkWater();
+    w.hist.push(w.hot);
+    if (w.hist.length > 160) w.hist.shift();
+    render2();
+  }
+
+  function checkWater() {
+    if (w.hot < lowV() && !w.refilling) {
+      w.refilling = true;
+      logTo(log2, '热钱包 ' + fmt(w.hot) + ' < 下限 ' + lowV() + '。发起冷→热补充，等待人工多签（模拟约 2 小时）。', 'err');
+      w.refillT = setTimeout(function () {
+        var queued = w.queue.reduce(function (s, q) { return s + q.amt; }, 0);
+        var need = Math.max(0, target() - w.hot + Math.min(queued, upV() - target()));
+        need = Math.min(need, w.cold);
+        w.cold -= need; w.hot += need; w.refilling = false; w.refills++;
+        logTo(log2, '多签完成：冷钱包转入热钱包 ' + fmt(need) + ' BTC。', 'ok');
+      }, REFILL_MS);
+    }
+    if (w.hot > upV() && !w.sweeping && !w.refilling) {
+      w.sweeping = true;
+      w.sweepT = setTimeout(function () {
+        var extra = Math.max(0, w.hot - target());
+        if (extra > 0) {
+          w.hot -= extra; w.cold += extra; w.sweeps++;
+          logTo(log2, '热钱包高于上限 ' + upV() + '：自动归集 ' + fmt(extra) + ' BTC 到冷钱包。', 'ok');
+        }
+        w.sweeping = false;
+      }, SWEEP_MS);
+    }
+  }
+
+  function render2() {
+    $('lowOut').textContent = lowV();
+    $('upOut').textContent = upV();
+    $('hHot').textContent = fmt(w.hot);
+    $('hCold').textContent = fmt(w.cold);
+    $('hExp').textContent = fmt(w.hot) + ' BTC';
+    var tot = w.hot + w.cold;
+    $('hPct').textContent = tot > 0 ? (w.hot / tot * 100).toFixed(1) + '%' : '–';
+    $('hQueue').textContent = w.queue.length;
+    $('hOps').textContent = w.refills + ' / ' + w.sweeps;
+    var st;
+    if (w.refilling) st = '⏳ 冷→热补充审批中。热钱包余额不足时，新的提币会排队。';
+    else if (w.sweeping) st = '↘ 正在归集多余资金到冷钱包。';
+    else if (w.hot < lowV()) st = '热钱包低于下限。';
+    else if (w.hot > upV()) st = '热钱包高于上限。';
+    else st = '✓ 热钱包在水位区间内，不需要调拨。';
+    if (w.waitedMax > 0) st += ' 最长排队 ' + w.waitedMax.toFixed(1) + ' 秒。';
+    $('hState').textContent = st;
+
+    var svg = $('waterSvg'); clear(svg);
+    var L = 44, R = narrow() ? 340 : 600, T = 12, B = 196;
+    svg.setAttribute('viewBox', '0 0 ' + (R + 40) + ' 220');
+    var maxY = Math.max(upV() * 1.4, Math.max.apply(null, w.hist.concat([80])) * 1.1, 60);
+    function y(v) { return B - v / maxY * (B - T); }
+    function x(i) { return L + i / 159 * (R - L); }
+    svg.appendChild(el('line', { x1: L, y1: B, x2: R, y2: B, 'class': 'ax' }));
+    svg.appendChild(el('line', { x1: L, y1: T, x2: L, y2: B, 'class': 'ax' }));
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (f) {
+      svg.appendChild(el('text', { x: L - 4, y: y(maxY * f) + 3, 'text-anchor': 'end', 'class': 'ax-t' }, Math.round(maxY * f)));
+    });
+    svg.appendChild(el('text', { x: R, y: B + 16, 'text-anchor': 'end', 'class': 'ax-t' }, '时间 →'));
+    if (w.hist.length > 1) {
+      var off = 160 - w.hist.length;
+      var d = '', a = 'M' + x(off).toFixed(1) + ' ' + B;
+      w.hist.forEach(function (v, i) {
+        var p = x(i + off).toFixed(1) + ' ' + y(v).toFixed(1);
+        d += (i === 0 ? 'M' : 'L') + p; a += 'L' + p;
+      });
+      a += 'L' + x(159).toFixed(1) + ' ' + B + 'Z';
+      svg.appendChild(el('path', { d: a, 'class': 'hist-area' }));
+      svg.appendChild(el('path', { d: d, 'class': 'hist' }));
+    }
+    svg.appendChild(el('line', { x1: L, y1: y(upV()), x2: R, y2: y(upV()), 'class': 'lim-up' }));
+    svg.appendChild(el('text', { x: R - 4, y: y(upV()) - 5, 'text-anchor': 'end', 'class': 'lim-t-up' }, '上限 ' + upV() + '（高于则归集）'));
+    svg.appendChild(el('line', { x1: L, y1: y(lowV()), x2: R, y2: y(lowV()), 'class': 'lim-low' }));
+    svg.appendChild(el('text', { x: R - 4, y: y(lowV()) + 13, 'text-anchor': 'end', 'class': 'lim-t-low' }, '下限 ' + lowV() + '（低于则补充）'));
+  }
+
+  $('low').addEventListener('input', function () {
+    if (lowV() >= upV() - 10) { $('up').value = Math.min(400, lowV() + 10); }
+    render2();
+  });
+  $('up').addEventListener('input', function () {
+    if (upV() <= lowV() + 10) { $('low').value = Math.max(10, upV() - 10); }
+    render2();
+  });
+  $('btnW10').addEventListener('click', function () { enqueue(10); });
+  $('btnW30').addEventListener('click', function () { enqueue(30); });
+  $('btnDep').addEventListener('click', function () {
+    w.hot += 80; // 新增资产：用户充值归集进热钱包
+    logTo(log2, '用户充值经归集进入热钱包 +80 BTC。', 'ok');
+    render2();
+  });
+  $('btnHack').addEventListener('click', function () {
+    var loss = w.hot;
+    logTo(log2, '⚠ 热钱包私钥泄露！攻击者转走 ' + fmt(loss) + ' BTC。冷钱包 ' + fmt(w.cold) + ' BTC 未受影响。损失占总资产 ' + ((loss / (w.hot + w.cold)) * 100).toFixed(1) + '%。', 'err');
+    w.hot = 0;
+    render2();
+  });
+  $('btnReset2').addEventListener('click', reset2);
+
+  buildChainPick();
+  $('thr').value = CHAINS[chainKey].defTh;
+  reset1();
+  reset2();
+})();
+</script>
+</body>
+</html>

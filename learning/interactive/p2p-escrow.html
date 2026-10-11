@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P2P 担保托管</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .scen { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .scen label { display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: 13px; cursor: pointer; }
+  .scen label.on { border-color: var(--accent); background: var(--accent-soft); }
+  .scen input { margin-top: 3px; accent-color: var(--accent); }
+  .scen small { display: block; color: var(--text-2); font-size: 12px; }
+  .states { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; color: var(--text-2); background: var(--surface); white-space: nowrap; }
+  .chip.seen { color: var(--text); background: var(--surface-2); }
+  .chip.cur { background: var(--accent); border-color: var(--accent); color: #1d1d1b; font-weight: 700; }
+  .chip.end-ok.cur { background: var(--buy); border-color: var(--buy); color: #fff; }
+  .chip.end-bad.cur { background: var(--sell); border-color: var(--sell); color: #fff; }
+  .arrow { color: var(--text-2); font-size: 12px; }
+  .lane { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+  .lane .tag { font-size: 12px; color: var(--text-2); min-width: 64px; }
+  .roles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .role { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--surface); min-width: 0; transition: border-color .2s, box-shadow .2s; }
+  .role.turn { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .role h3 { margin: 0 0 6px; font-size: 14px; display: flex; justify-content: space-between; gap: 6px; }
+  .role .row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 2px 0; }
+  .role .row b { font-family: var(--mono); }
+  .role .note { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+  .coinbar { display: flex; height: 30px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); margin: 8px 0 4px; }
+  .coinbar div { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; transition: flex-grow .4s; flex-basis: 0; min-width: 0; overflow: hidden; white-space: nowrap; }
+  .seg-seller { background: var(--info-soft); color: var(--info); }
+  .seg-escrow { background: var(--warn-soft); color: var(--warn); }
+  .seg-buyer { background: var(--buy-soft); color: var(--buy); }
+  .seg-out { background: var(--sell-soft); color: var(--sell); }
+  .ops { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .op { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--surface-2); min-width: 0; }
+  .op h3 { margin: 0 0 6px; font-size: 13px; color: var(--text-2); font-weight: 600; }
+  .op .btn-row button { font-size: 13px; padding: 6px 10px; }
+  .clock { font-family: var(--mono); font-size: 13px; }
+  .dispo { min-height: 48px; }
+  .evid { list-style: none; padding: 0; margin: 6px 0 0; font-size: 13px; }
+  .evid li { padding: 4px 0; border-bottom: 1px dashed var(--border); }
+  .evid li:last-child { border-bottom: 0; }
+  .bad { color: var(--sell); font-weight: 600; }
+  .good { color: var(--buy); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <h1>P2P 担保托管</h1>
+  </header>
+  <p class="lead">一笔 P2P 订单：买家用 7,200 元向卖家买 1,000 USDT（示例价格 7.20）。平台只托管卖家的 USDT，法币在双方银行之间直接转账。用按钮推动订单，观察每个状态下币在哪里、平台怎么处置。配套章节：<a href="../products/P03-p2p-fiat.md">P03 P2P 交易与法币充提</a>、<a href="../05-ledger.md">05 账本</a>。</p>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="small">
+      <li>选一个场景。先选"正常交易"，按顺序点亮起的按钮。</li>
+      <li>每点一步，看"状态机"高亮哪一格、"币在哪里"条形图怎么变、"平台处置"写了什么。</li>
+      <li>换成三个欺诈场景，试着做出正确和错误的选择，比较结果。</li>
+    </ol>
+    <p class="small muted">付款时限 15 分钟为示例（真实时限由广告方设置）。卖家确认收款后 15 分钟内放币，来自币安 P2P 用户交易政策（截至 2026 年公开资料）。仲裁结果为教学简化，真实裁决由平台按证据个案判断。</p>
+  </div>
+
+  <h2>1. 选择场景</h2>
+  <div class="card">
+    <div class="scen" id="scen">
+      <label><input type="radio" name="sc" value="normal" checked><span>正常交易<small>买家本人付款，卖家核对后放币</small></span></label>
+      <label><input type="radio" name="sc" value="timeout"><span>超时未付款<small>买家下单后不付款</small></span></label>
+      <label><input type="radio" name="sc" value="third"><span>三方支付<small>付款人姓名与买家实名不一致</small></span></label>
+      <label><input type="radio" name="sc" value="norelease"><span>卖家收款后不放币<small>买家已付款，卖家失联</small></span></label>
+      <label><input type="radio" name="sc" value="fake"><span>买家假付款截图<small>买家没付钱，却上传截图</small></span></label>
+    </div>
+  </div>
+
+  <h2>2. 状态机</h2>
+  <div class="card">
+    <div class="lane"><span class="tag">主路径</span>
+      <span class="chip" data-s="idle">待下单</span><span class="arrow">→</span>
+      <span class="chip" data-s="created">已下单</span><span class="arrow">→</span>
+      <span class="chip" data-s="waitPay">待付款（已冻结）</span><span class="arrow">→</span>
+      <span class="chip" data-s="paid">已标记付款</span><span class="arrow">→</span>
+      <span class="chip end-ok" data-s="done">已完成</span>
+    </div>
+    <div class="lane"><span class="tag">取消分支</span>
+      <span class="chip end-bad" data-s="cancelled">已取消（解冻退回卖家）</span>
+    </div>
+    <div class="lane"><span class="tag">申诉分支</span>
+      <span class="chip" data-s="appeal">申诉中</span><span class="arrow">→</span>
+      <span class="chip" data-s="evidence">举证中</span><span class="arrow">→</span>
+      <span class="chip" data-s="ruled">已裁决</span><span class="arrow">→</span>
+      <span class="small muted">放币或解冻</span>
+    </div>
+    <p class="clock" id="clock"></p>
+  </div>
+
+  <h2>3. 角色与资金</h2>
+  <div class="card">
+    <div class="roles">
+      <div class="role" id="rBuyer">
+        <h3>买家 <span class="pill info" id="buyerName"></span></h3>
+        <div class="row"><span>平台 USDT</span><b id="bUsdt"></b></div>
+        <div class="row"><span>银行卡（元）</span><b id="bBank"></b></div>
+        <div class="note" id="bNote"></div>
+      </div>
+      <div class="role" id="rSeller">
+        <h3>卖家（广告方）<span class="pill accent">认证商家</span></h3>
+        <div class="row"><span>平台 USDT 可用</span><b id="sUsdt"></b></div>
+        <div class="row"><span>银行卡（元）</span><b id="sBank"></b></div>
+        <div class="row"><span>银行卡状态</span><b id="sCard"></b></div>
+        <div class="note" id="sNote"></div>
+      </div>
+      <div class="role" id="rEscrow">
+        <h3>平台托管 <span class="pill warn">账本冻结</span></h3>
+        <div class="row"><span>托管余额 USDT</span><b id="eUsdt"></b></div>
+        <div class="row"><span>平台持有法币</span><b>0（不经手）</b></div>
+        <div class="note">托管 = 卖家余额的冻结部分。账本操作只有冻结、解冻、扣减三种。</div>
+      </div>
+      <div class="role" id="rArb">
+        <h3>仲裁 <span class="pill" id="arbPill"></span></h3>
+        <div class="note" id="arbNote">暂无申诉。</div>
+        <ul class="evid" id="evid"></ul>
+      </div>
+    </div>
+
+    <h3 style="margin-top:16px">这 1,000 USDT 现在在哪里</h3>
+    <div class="coinbar" id="coinbar">
+      <div class="seg-seller" id="segSeller">卖家可用</div>
+      <div class="seg-escrow" id="segEscrow">托管</div>
+      <div class="seg-buyer" id="segBuyer">买家</div>
+      <div class="seg-out" id="segOut">已提走</div>
+    </div>
+    <p class="small muted">法币不出现在这条线上。法币只在买家、第三人和卖家的银行卡之间移动，平台看不到。</p>
+  </div>
+
+  <h2>4. 操作</h2>
+  <div class="card">
+    <div class="ops">
+      <div class="op">
+        <h3>买家</h3>
+        <div class="btn-row">
+          <button class="buy" id="btnOrder">① 下单</button>
+          <button id="btnPay">③ 线下付款</button>
+          <button id="btnMark">④ 标记已付款</button>
+          <button id="btnBuyerAppeal">买家申诉</button>
+        </div>
+      </div>
+      <div class="op">
+        <h3>平台系统</h3>
+        <div class="btn-row">
+          <button class="primary" id="btnFreeze">② 冻结卖家币</button>
+          <button id="btnFF">快进 5 分钟</button>
+        </div>
+      </div>
+      <div class="op">
+        <h3>卖家</h3>
+        <div class="btn-row">
+          <button id="btnCheck">核对银行流水</button>
+          <button class="sell" id="btnRelease">⑤ 确认收款并放币</button>
+          <button id="btnSellerAppeal">卖家申诉</button>
+        </div>
+      </div>
+      <div class="op">
+        <h3>仲裁</h3>
+        <div class="btn-row">
+          <button id="btnEvidence">双方提交证据</button>
+          <button class="primary" id="btnRule">裁决</button>
+        </div>
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:10px"><button id="btnReset">重置本场景</button></div>
+  </div>
+
+  <h2>5. 平台处置</h2>
+  <div class="callout dispo" id="dispo"></div>
+
+  <h2>6. 事件日志</h2>
+  <div class="log" id="log"></div>
+
+  <h2>7. 试一试</h2>
+  <div class="card">
+    <ol>
+      <li><b>超时的边界：</b>选"超时未付款"，下单后连点"快进"。订单在哪个状态被自动取消？再选"卖家收款后不放币"，标记已付款后快进 30 分钟。为什么这次系统不自动取消？</li>
+      <li><b>卖家的一次点击：</b>选"买家假付款截图"，在买家标记已付款后，不核对流水直接放币。再重置，先核对流水再申诉。比较两次卖家的 USDT。</li>
+      <li><b>户名的意义：</b>选"三方支付"，核对流水后仍然放币。看卖家银行卡状态。再重置，改走申诉。哪一步切断了"黑钱"链条？</li>
+    </ol>
+  </div>
+
+  <footer class="note">本页为教学模型，金额、时限、处罚均为简化示例，不代表币安内部实现。币安 P2P 政策以官网为准。账本操作对应本仓库（CEX Demo）services/ledger-service 的 freezeBalance、releaseBalance、consumeBalance；P2P 服务本身在本仓库未实现。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var QTY = 1000, PRICE = 7.2, FIAT = 7200;
+  var PAY_WINDOW = 15, RELEASE_WINDOW = 15;
+  var SEED = 20260;
+
+  function $(id) { return document.getElementById(id); }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  var SURN = ['李', '陈', '赵', '周', '吴', '孙'];
+  var GIVEN = ['明', '芳', '强', '静', '伟', '磊'];
+
+  var S;      // 当前订单状态
+  function scenario() {
+    var r = document.querySelector('input[name="sc"]:checked');
+    return r ? r.value : 'normal';
+  }
+
+  function reset() {
+    var sc = scenario();
+    var rand = mulberry32(SEED + sc.length * 97);
+    var buyer = SURN[Math.floor(rand() * SURN.length)] + GIVEN[Math.floor(rand() * GIVEN.length)];
+    var third;
+    do { third = SURN[Math.floor(rand() * SURN.length)] + GIVEN[Math.floor(rand() * GIVEN.length)]; } while (third === buyer);
+    S = {
+      sc: sc, state: 'idle', seen: { idle: true }, t: 0, paidAt: null,
+      orderNo: 'P2P' + String(Math.floor(rand() * 9e8 + 1e8)),
+      buyerName: buyer, thirdName: third,
+      bUsdt: 0, bBank: 20000, sUsdt: 5000, sBank: 0, escrow: 0, out: 0,
+      thirdBank: 0, sCardFrozen: false,
+      payment: null,      // { from: 姓名, real: true/false }
+      checked: false, appealBy: null, evidence: false, outcome: null
+    };
+    if (sc === 'third') S.thirdBank = 20000;
+    $('log').innerHTML = '';
+    log('note', '场景：' + label(sc) + '。订单号 ' + S.orderNo + '（示例）。');
+    render();
+  }
+
+  function label(sc) {
+    return { normal: '正常交易', timeout: '超时未付款', third: '三方支付', norelease: '卖家收款后不放币', fake: '买家假付款截图' }[sc];
+  }
+  function fmt(n) { return n.toLocaleString('zh-CN'); }
+  function log(cls, text) {
+    var d = document.createElement('div');
+    d.className = cls;
+    d.textContent = '[T+' + String(S.t).padStart(2, '0') + ' 分] ' + text;
+    $('log').insertBefore(d, $('log').firstChild);
+  }
+  function go(state) { S.state = state; S.seen[state] = true; }
+
+  // ---------- 动作 ----------
+  function order() {
+    go('created');
+    log('', '买家 ' + S.buyerName + ' 下单：用 ' + fmt(FIAT) + ' 元买 ' + fmt(QTY) + ' USDT。');
+    render();
+  }
+  function freeze() {
+    S.sUsdt -= QTY; S.escrow += QTY;
+    go('waitPay');
+    log('ok', '账本 freezeBalance：卖家 ' + fmt(QTY) + ' USDT 从可用转入冻结（托管）。付款倒计时 ' + PAY_WINDOW + ' 分钟开始。');
+    render();
+  }
+  function pay() {
+    if (S.sc === 'fake') {
+      S.payment = { from: S.buyerName, real: false };
+      log('err', '买家没有转账，用修图软件做了一张"转账成功"截图。');
+    } else if (S.sc === 'third') {
+      S.thirdBank -= FIAT; S.sBank += FIAT;
+      S.payment = { from: S.thirdName, real: true };
+      log('', '一个名叫 ' + S.thirdName + ' 的人从自己的银行卡向卖家转账 ' + fmt(FIAT) + ' 元。买家实名是 ' + S.buyerName + '。');
+    } else {
+      S.bBank -= FIAT; S.sBank += FIAT;
+      S.payment = { from: S.buyerName, real: true };
+      log('', '买家从本人银行卡向卖家转账 ' + fmt(FIAT) + ' 元。平台看不到这笔转账。');
+    }
+    render();
+  }
+  function mark() {
+    go('paid'); S.paidAt = S.t;
+    log(S.payment.real ? 'ok' : 'err', '买家点击"已付款，通知卖家"并上传凭证。' + (S.payment.real ? '' : '（凭证是伪造的）'));
+    log('note', '系统规则：进入"已标记付款"后，不再自动取消。');
+    render();
+  }
+  function check() {
+    S.checked = true;
+    var p = S.payment;
+    if (!p.real) log('err', '卖家登录网银：没有任何 ' + fmt(FIAT) + ' 元入账。截图是假的。');
+    else if (p.from !== S.buyerName) log('err', '卖家登录网银：收到 ' + fmt(FIAT) + ' 元，付款户名是 ' + p.from + '，与买家实名 ' + S.buyerName + ' 不一致。');
+    else log('ok', '卖家登录网银：收到 ' + fmt(FIAT) + ' 元，付款户名 ' + p.from + ' 与买家实名一致。');
+    render();
+  }
+  function release() {
+    S.escrow -= QTY; S.bUsdt += QTY;
+    go('done');
+    log('ok', '卖家输入 2FA 放币。账本 consumeBalance + postJournal：托管 ' + fmt(QTY) + ' USDT 划给买家。');
+    if (S.sc === 'fake') {
+      S.bUsdt -= QTY; S.out += QTY;
+      log('err', '买家立即把 ' + fmt(QTY) + ' USDT 提到外部地址。卖家没有收到任何法币。');
+      S.outcome = 'fakeLoss';
+    } else if (S.sc === 'third') {
+      S.sCardFrozen = true;
+      log('err', '（模拟 20 天后）' + S.thirdName + ' 发现自己被诈骗，向警方报案。资金流水指向卖家银行卡，卖家银行卡被冻结。');
+      S.outcome = 'thirdLoss';
+    } else {
+      log('ok', '订单完成。广告方手续费按费率另行扣除（示例 0.2%）。');
+      S.outcome = 'ok';
+    }
+    render();
+  }
+  function ff() {
+    S.t += 5;
+    log('', '时间快进 5 分钟。');
+    if (S.state === 'waitPay' && S.t >= PAY_WINDOW) {
+      S.escrow -= QTY; S.sUsdt += QTY;
+      go('cancelled');
+      S.outcome = 'timeout';
+      log('ok', '付款时限到期，系统自动取消订单。账本 releaseBalance：' + fmt(QTY) + ' USDT 解冻退回卖家。');
+      log('note', '规则：下单方连续 5 笔未在时限内付款，暂停买入 24 小时（截至 2026 年公开资料）。');
+    } else if (S.state === 'paid' && S.t - S.paidAt >= RELEASE_WINDOW && S.sc === 'norelease') {
+      log('err', '卖家已超过放币时限，仍无响应。买家现在可以申诉。');
+    }
+    render();
+  }
+  function appeal(by) {
+    S.appealBy = by;
+    go('appeal');
+    log('note', (by === 'buyer' ? '买家' : '卖家') + '发起申诉。订单锁定：双方不能取消，也不能放币。托管资产保持冻结。');
+    render();
+  }
+  function evidence() {
+    S.evidence = true;
+    go('evidence');
+    log('note', '仲裁要求双方在时限内（示例 24 小时）在订单聊天中提交证据。');
+    render();
+  }
+  function rule() {
+    go('ruled');
+    var sc = S.sc;
+    if (sc === 'norelease') {
+      S.escrow -= QTY; S.bUsdt += QTY;
+      S.outcome = 'forceRelease';
+      log('ok', '裁决：买家已付款。平台强制放币，托管 ' + fmt(QTY) + ' USDT 划给买家。');
+      log('err', '卖家违约：扣罚保证金、暂停广告权限（示例）。');
+      go('done');
+    } else if (sc === 'fake') {
+      S.escrow -= QTY; S.sUsdt += QTY;
+      S.outcome = 'fakeCaught';
+      log('ok', '裁决：买家未付款，凭证伪造。订单取消，' + fmt(QTY) + ' USDT 解冻退回卖家。');
+      log('err', '买家违规：永久封禁 P2P，记录黑名单（示例）。');
+      go('cancelled');
+    } else if (sc === 'third') {
+      S.escrow -= QTY; S.sUsdt += QTY;
+      S.sBank -= FIAT; S.thirdBank += FIAT;
+      S.outcome = 'thirdCaught';
+      log('ok', '裁决：三方支付。卖家原路退回 ' + fmt(FIAT) + ' 元给付款人 ' + S.thirdName + '。订单取消，USDT 解冻退回卖家。');
+      log('err', '买家违规：使用非实名付款方式，至少暂停 P2P 7 天（截至 2026 年公开资料）。');
+      go('cancelled');
+    } else {
+      S.escrow -= QTY; S.bUsdt += QTY;
+      S.outcome = 'ok';
+      log('ok', '裁决：付款真实、户名一致。平台放币给买家。');
+      go('done');
+    }
+    render();
+  }
+
+  // ---------- 渲染 ----------
+  function setBtn(id, on, title) {
+    var b = $(id); b.disabled = !on; b.title = title || '';
+  }
+  function dispoText() {
+    var st = S.state, sc = S.sc;
+    var map = {
+      idle: '订单还没有创建。平台展示卖家广告：价格 ' + PRICE + ' 元、限额、收款方式、付款时限。',
+      created: '订单已创建。下一步，系统必须先冻结卖家的币，才把卖家的收款信息展示给买家。业界通用做法是这两步在一个事务里完成。',
+      waitPay: '卖家的 ' + fmt(QTY) + ' USDT 在托管中。平台等待买家付款。超过付款时限且买家未标记付款，系统自动取消并解冻。',
+      paid: '买家声称已付款。平台无法验证银行转账，只能等卖家确认。卖家必须登录银行核对到账金额和付款户名，不能只看截图。卖家确认收款后须在 15 分钟内放币。',
+      appeal: '订单进入申诉。平台冻结订单操作，托管余额不动。客服先在订单聊天中协调，协调不成进入举证。',
+      evidence: '仲裁员比对：金额、时间、付款户名、收款账号是否与订单一致。截图是最弱证据，银行流水录屏更强。',
+      ruled: '仲裁已裁决。系统按裁决调用账本：放币或解冻。'
+    };
+    if (st === 'done' || st === 'cancelled') {
+      var o = {
+        ok: '订单完成。买家收到 USDT，卖家收到本人实名付款的法币。这是唯一"所有人都满意"的终点。',
+        timeout: '订单取消。买家没有付款，卖家的币原样解冻。平台对买家记一次超时。',
+        fakeLoss: '卖家损失 ' + fmt(QTY) + ' USDT。放币不可逆。平台只能冻结买家在平台内尚未提走的资产，并配合调查。教训：先核对银行流水，再放币。',
+        thirdLoss: '订单显示"已完成"，但卖家收到的是第三人的钱。第三人报案后，卖家银行卡被冻结，资金可能被扣划。平台托管只保护币，不保护法币。',
+        forceRelease: '平台根据买家的银行流水强制放币。卖家受处罚。这说明"已标记付款"后不能自动取消：买家可能真的付了钱。',
+        fakeCaught: '卖家没有放币，并及时申诉。币回到卖家手里。伪造凭证的买家被封禁。',
+        thirdCaught: '卖家拒绝了三方付款，原路退款。"黑钱"链条在放币之前被切断。'
+      };
+      return o[S.outcome] || '';
+    }
+    return map[st] + (sc === 'timeout' && st === 'waitPay' ? ' 本场景买家不会付款，请点"快进 5 分钟"。' : '');
+  }
+
+  function render() {
+    var st = S.state, sc = S.sc;
+    // 场景高亮
+    document.querySelectorAll('#scen label').forEach(function (l) {
+      l.classList.toggle('on', l.querySelector('input').checked);
+    });
+    // 状态机
+    document.querySelectorAll('.chip').forEach(function (c) {
+      var k = c.getAttribute('data-s');
+      c.classList.toggle('seen', !!S.seen[k]);
+      c.classList.toggle('cur', k === st || (k === 'ruled' && S.seen.ruled && (st === 'done' || st === 'cancelled')));
+    });
+    var clk = '虚拟时钟 T+' + S.t + ' 分钟';
+    if (st === 'waitPay') clk += ' · 付款剩余 ' + Math.max(0, PAY_WINDOW - S.t) + ' 分钟';
+    if (st === 'paid') clk += ' · 已标记付款 ' + (S.t - S.paidAt) + ' 分钟（放币时限 ' + RELEASE_WINDOW + ' 分钟）';
+    $('clock').textContent = clk;
+    // 角色
+    $('buyerName').textContent = '实名 ' + S.buyerName;
+    $('bUsdt').textContent = fmt(S.bUsdt);
+    $('bBank').textContent = fmt(S.bBank);
+    $('sUsdt').textContent = fmt(S.sUsdt);
+    $('sBank').textContent = fmt(S.sBank);
+    $('sCard').innerHTML = S.sCardFrozen ? '<span class="bad">已冻结</span>' : '<span class="good">正常</span>';
+    $('eUsdt').textContent = fmt(S.escrow);
+    $('bNote').textContent = sc === 'third' ? '第三人 ' + S.thirdName + ' 的银行卡：' + fmt(S.thirdBank) + ' 元' : (S.out ? '已提走 ' + fmt(S.out) + ' USDT 到外部地址' : '');
+    $('sNote').textContent = S.checked ? '已核对银行流水' : (st === 'paid' ? '尚未核对银行流水' : '');
+    // 仲裁
+    var inArb = st === 'appeal' || st === 'evidence' || S.seen.ruled;
+    $('arbPill').textContent = st === 'appeal' ? '申诉中' : st === 'evidence' ? '举证中' : S.seen.ruled ? '已裁决' : '空闲';
+    $('arbPill').className = 'pill ' + (inArb ? 'warn' : '');
+    $('arbNote').textContent = S.appealBy ? '申诉方：' + (S.appealBy === 'buyer' ? '买家' : '卖家') : '暂无申诉。';
+    var ev = [];
+    if (S.evidence) {
+      if (sc === 'norelease') ev = ['买家：银行转账回单，付款户名 ' + S.buyerName + '，金额 ' + fmt(FIAT) + ' 元 ✔', '卖家：未响应 ✘', '订单聊天：买家多次催促，卖家无回复'];
+      else if (sc === 'fake') ev = ['买家：一张转账截图（无流水号可查）✘', '卖家：网银流水全页录屏，无对应入账 ✔', '比对：截图中的收款账号与卖家账号末四位不符'];
+      else if (sc === 'third') ev = ['买家：转账回单，付款户名 ' + S.thirdName + ' ✘', '卖家：网银流水录屏，付款户名 ' + S.thirdName + ' ≠ 买家实名 ' + S.buyerName, '规则：付款户名必须与平台实名一致'];
+      else ev = ['买家：转账回单，户名一致 ✔', '卖家：网银流水，已到账 ✔'];
+    }
+    $('evid').innerHTML = ev.map(function (x) { return '<li>' + x + '</li>'; }).join('');
+    // 资金条
+    // 卖家原有 5000 USDT，只显示本订单涉及的 1000 USDT
+    var sellerPart = Math.max(0, S.sUsdt - 4000);
+    [['segSeller', sellerPart, '卖家可用'], ['segEscrow', S.escrow, '托管'], ['segBuyer', S.bUsdt, '买家'], ['segOut', S.out, '已提走']].forEach(function (x) {
+      var d = $(x[0]);
+      d.style.flexGrow = String(x[1]);
+      d.style.display = x[1] > 0 ? 'flex' : 'none';
+      d.textContent = x[2] + ' ' + fmt(x[1]);
+    });
+    // 轮到谁
+    var turn = { idle: 'rBuyer', created: 'rEscrow', waitPay: sc === 'timeout' ? 'rEscrow' : 'rBuyer', paid: 'rSeller', appeal: 'rArb', evidence: 'rArb' }[st];
+    ['rBuyer', 'rSeller', 'rEscrow', 'rArb'].forEach(function (r) { $(r).classList.toggle('turn', r === turn); });
+    // 按钮
+    var overdue = st === 'paid' && S.t - S.paidAt >= RELEASE_WINDOW;
+    setBtn('btnOrder', st === 'idle');
+    setBtn('btnFreeze', st === 'created');
+    setBtn('btnPay', st === 'waitPay' && !S.payment && sc !== 'timeout', sc === 'timeout' ? '本场景买家不付款' : '');
+    $('btnPay').textContent = sc === 'fake' ? '③ 伪造付款截图' : (sc === 'third' ? '③ 让第三人付款' : '③ 线下付款');
+    setBtn('btnMark', st === 'waitPay' && !!S.payment);
+    setBtn('btnFF', st === 'waitPay' || st === 'paid');
+    setBtn('btnCheck', st === 'paid' && !S.checked);
+    setBtn('btnRelease', st === 'paid' && sc !== 'norelease', sc === 'norelease' ? '本场景卖家失联' : '');
+    setBtn('btnSellerAppeal', st === 'paid' && S.checked && sc !== 'norelease');
+    setBtn('btnBuyerAppeal', st === 'paid' && overdue);
+    setBtn('btnEvidence', st === 'appeal');
+    setBtn('btnRule', st === 'evidence');
+    $('dispo').textContent = dispoText();
+    var endBad = S.outcome === 'fakeLoss' || S.outcome === 'thirdLoss';
+    $('dispo').className = 'callout dispo' + (endBad ? ' warn' : (st === 'done' || st === 'cancelled' ? ' info' : ''));
+  }
+
+  $('btnOrder').addEventListener('click', order);
+  $('btnFreeze').addEventListener('click', freeze);
+  $('btnPay').addEventListener('click', pay);
+  $('btnMark').addEventListener('click', mark);
+  $('btnCheck').addEventListener('click', check);
+  $('btnRelease').addEventListener('click', release);
+  $('btnFF').addEventListener('click', ff);
+  $('btnBuyerAppeal').addEventListener('click', function () { appeal('buyer'); });
+  $('btnSellerAppeal').addEventListener('click', function () { appeal('seller'); });
+  $('btnEvidence').addEventListener('click', evidence);
+  $('btnRule').addEventListener('click', rule);
+  $('btnReset').addEventListener('click', reset);
+  document.querySelectorAll('input[name="sc"]').forEach(function (r) { r.addEventListener('change', reset); });
+  reset();
+})();
+</script>
+</body>
+</html>

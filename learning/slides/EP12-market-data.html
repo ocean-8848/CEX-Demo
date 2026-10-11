@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EP12 行情</title>
+<link rel="stylesheet" href="assets/player.css">
+<style>
+  .stack { display: grid; } .stack > * { grid-area: 1 / 1; align-self: start; }
+  .harrow { font-size: 44px; color: var(--text-2); align-self: center; }
+  .fl { display: grid; grid-template-columns: 260px 60px 340px 60px 1fr; align-items: center; row-gap: 22px; }
+  .fl .n { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 20px; font-size: 30px; text-align: center; }
+  .fl .n small { display: block; font-size: 22px; color: var(--text-2); margin-top: 4px; }
+  .fl .n.gold { border-color: var(--gold); } .fl .n.buy { border-color: var(--buy); } .fl .n.info { border-color: var(--info); }
+  .fl .outs { display: flex; gap: 12px; flex-wrap: wrap; }
+  .fl .outs .chip { font-size: 28px; padding: 8px 18px; }
+  .lvl { display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: center; font-family: var(--mono); font-size: 30px; padding: 8px 16px; border-radius: 10px; border: 2px solid transparent; transition: all .3s; }
+  .lvl .p { color: var(--sell); font-weight: 700; }
+  .lvl.hit { border-color: var(--gold); background: var(--gold-soft); }
+  .lvl.gone { opacity: .25; text-decoration: line-through; }
+  .ord { display: inline-block; padding: 3px 12px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); font-size: 26px; margin-right: 6px; }
+  .ord.gone { opacity: .25; text-decoration: line-through; }
+  .msg { font-family: var(--mono); font-size: 32px; padding: 18px 24px; border-radius: 12px; border: 2px solid var(--info); background: var(--info-soft); }
+  .tr { display: grid; grid-template-columns: 50px 170px 150px 90px; gap: 8px; font-family: var(--mono); font-size: 28px; padding: 8px 14px; border-radius: 8px; background: var(--panel-2); border: 2px solid transparent; transition: all .3s; }
+  .tr.h { background: none; color: var(--text-2); font-family: var(--sans); font-size: 24px; }
+  .tr.on { border-color: var(--gold); }
+  .tr.next { border-color: var(--info); }
+  .tr.off { opacity: .25; }
+  .ohlc { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .ohlc .c { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; text-align: center; }
+  .ohlc .c .k { font-size: 22px; color: var(--text-2); } .ohlc .c .v { font-family: var(--mono); font-size: 30px; font-weight: 700; }
+  .ohlc .c.hit { border-color: var(--gold); } .ohlc .c.hit .v { color: var(--gold); }
+  svg.k text { font-family: var(--mono); font-size: 22px; fill: var(--text-2); }
+  svg.tl text { font-family: var(--mono); font-size: 24px; }
+  .code { font-size: 28px; }
+  .stepcard { font-size: 32px; padding: 18px 26px; min-height: 80px; }
+  .rules { font-family: var(--mono); font-size: 28px; }
+  .ruleli { display: flex; gap: 20px; align-items: center; padding: 18px 26px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); font-size: 36px; }
+  .ruleli .n { font-family: var(--mono); color: var(--gold); font-weight: 700; }
+  .fan { display: grid; grid-template-columns: 200px 50px 220px 50px 230px 50px 230px 50px 1fr; align-items: center; row-gap: 14px; }
+  .fan .n { background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 14px 14px; font-size: 28px; text-align: center; transition: all .3s; }
+  .fan .n small { display: block; font-size: 22px; color: var(--text-2); }
+  .fan .n.on { border-color: var(--gold); background: var(--gold-soft); }
+  .fan .n.bad { border-color: var(--sell); background: var(--sell-soft); }
+  .fan .a { text-align: center; color: var(--text-2); font-size: 36px; }
+  .cl { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cl i { width: 22px; height: 22px; border-radius: 50%; background: var(--info); display: inline-block; opacity: .85; }
+  .cl i.slow { background: var(--sell); }
+  table.t.tight th, table.t.tight td { padding: 9px 18px; }
+  .pipe { display: flex; gap: 0; align-items: stretch; }
+  .pipe .s { flex: 1; text-align: center; padding: 16px 8px; font-size: 28px; border: 2px solid var(--line); background: var(--panel); transition: all .3s; }
+  .pipe .s:first-child { border-radius: 12px 0 0 12px; } .pipe .s:last-child { border-radius: 0 12px 12px 0; }
+  .pipe .s.on { border-color: var(--sell); background: var(--sell-soft); }
+  .idx td.gone { opacity: .3; text-decoration: line-through; }
+  .idx tr.gone td { opacity: .3; text-decoration: line-through; }
+  .idx tr.hit td { color: var(--gold); }
+</style>
+</head>
+<body>
+<div class="stage" data-ep="EP12" data-title="行情：深度、K 线与增量同步">
+
+  <!-- 1 开场 -->
+  <section class="scene title" data-title="开场">
+    <div class="kicker">CEX 交易所系统 · 技术讲解</div>
+    <h1>行情：<span class="hl">深度、K 线</span>与增量同步</h1>
+    <div class="row" style="gap:20px; align-items:center" data-step="1">
+      <div class="card" style="font-size:34px">撮合引擎</div><div class="harrow">→</div>
+      <div class="card" style="font-size:34px">行情计算</div><div class="harrow">→</div>
+      <div class="card" style="font-size:34px">推送网关</div><div class="harrow">→</div>
+      <div class="card gold" style="font-size:34px">你的屏幕 <span class="mono hl">100.10</span></div>
+    </div>
+    <div class="card warn" style="font-size:36px" data-step="2">屏幕上的价格 = <span class="hl">稍早一点</span>的价格</div>
+    <ol class="say">
+      <li>大家好，欢迎回到交易所系统技术讲解。这一集我们讲行情系统。</li>
+      <li>先问一个问题。你在 App 上看到的最新价，是此刻的真实价格吗？</li>
+      <li>答案是，永远晚一点点。行情是撮合结果的副本，要经过好几层加工和转发，才到你的屏幕上。</li>
+    </ol>
+  </section>
+
+  <!-- 2 路线图 -->
+  <section class="scene" data-title="本集路线图">
+    <div class="kicker">本集路线图</div>
+    <h2>五段内容</h2>
+    <div class="grid3" style="grid-template-columns: repeat(5, 1fr); gap:22px">
+      <div class="card info" data-step="0"><div class="mono hl" style="font-size:44px">01</div>事件<br>变行情</div>
+      <div class="card info" data-step="0"><div class="mono hl" style="font-size:44px">02</div>深度 · K 线<br>Ticker</div>
+      <div class="card gold" data-step="1"><div class="mono hl" style="font-size:44px">03</div>快照 + 增量<br>本地同步</div>
+      <div class="card" data-step="2"><div class="mono hl" style="font-size:44px">04</div>WebSocket<br>扇出</div>
+      <div class="card" data-step="2"><div class="mono hl" style="font-size:44px">05</div>指数价格<br>延迟一致性</div>
+    </div>
+    <p class="lead" data-step="2">数字均为<span class="hl">示例</span>；流名称与连接规则来自币安现货公开文档，截至 2026 年。</p>
+    <ol class="say">
+      <li>本集分五段。先看撮合事件怎样变成各类行情，再看深度、Ticker 和 K 线是怎么生成的。</li>
+      <li>然后是本集重点。用快照加增量，在本地维护一本和交易所一致的订单簿。</li>
+      <li>最后讲 WebSocket 扇出、指数价格，以及延迟和一致性问题。今天的数字都是示例。</li>
+    </ol>
+  </section>
+
+  <!-- 3 事件到行情 -->
+  <section class="scene" data-title="从撮合事件到行情">
+    <div class="kicker">01 · 数据来源</div>
+    <h2>两类事件，生成六类行情</h2>
+    <div class="fl">
+      <div class="n gold" style="grid-row: span 2" data-step="0">撮合引擎<small>只读它的输出</small></div>
+      <div class="harrow" data-step="0">→</div>
+      <div class="n buy" data-step="0">成交事件<small>价格 · 数量 · 方向 · 时间</small></div>
+      <div class="harrow" data-step="2">→</div>
+      <div class="outs" data-step="2"><span class="chip buy">trade · aggTrade</span><span class="chip buy">K 线</span><span class="chip buy">Ticker</span></div>
+      <div class="harrow" data-step="0">→</div>
+      <div class="n info" data-step="0">订单簿变化事件<small>某档数量变成多少</small></div>
+      <div class="harrow" data-step="3">→</div>
+      <div class="outs" data-step="3"><span class="chip info">增量深度 depth</span><span class="chip info">depth5/10/20</span><span class="chip info">bookTicker</span></div>
+    </div>
+    <div class="stack">
+      <div class="card warn" data-step="4" data-until="4" style="font-size:32px">行情系统<span class="hl">不改变</span>订单簿，是只读副本。丢一个事件 → 深度对不上 → 每个事件都带<span class="hl">序号</span>。</div>
+      <div class="card" data-step="5" data-until="5" style="font-size:32px">比喻：撮合引擎是球场，行情系统是转播车。比分牌 = Ticker，阵型图 = 深度，精彩回放 = K 线。</div>
+      <div class="card sell" data-step="6" style="font-size:32px">比喻失效处：转播丢几帧无所谓；行情丢一条增量，本地订单簿就<span class="down">错了</span>，必须重建。</div>
+    </div>
+    <ol class="say">
+      <li>撮合引擎输出两类事件。第一类是成交事件，带价格、数量、方向和时间。</li>
+      <li>第二类是订单簿变化事件，说的是某个价格档的数量变成了多少。</li>
+      <li>成交事件决定价格走势类的数据，也就是逐笔成交、K 线和 Ticker。</li>
+      <li>订单簿变化事件决定挂单分布类的数据，也就是增量深度、有限档深度和最优挂单。</li>
+      <li>注意，行情系统不改变订单簿，它只是一个只读副本。丢一个事件，深度就和真实订单簿对不上。所以每个事件都要带序号。</li>
+      <li>打个比方，撮合引擎是球场，行情系统是转播车。比分牌是 Ticker，阵型图是深度，精彩回放是 K 线。</li>
+      <li>但比喻不完全准。转播丢几帧无所谓。行情丢一条增量，本地订单簿就错了，必须重建。</li>
+    </ol>
+  </section>
+
+  <!-- 4 深度 -->
+  <section class="scene" data-title="深度怎么生成" data-onstep="depthStep">
+    <div class="kicker">02 · 深度 Depth</div>
+    <h2>深度 = 按价格档汇总的订单簿</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="card col" style="flex:0 0 720px; gap:12px"><h3>订单簿 · 单个订单</h3><div id="d4a" class="col" style="gap:10px"></div></div>
+      <div class="harrow" data-step="1">→</div>
+      <div class="card col" data-step="1" style="gap:12px"><h3>深度 · 每档总量</h3><div id="d4b" class="col" style="gap:10px"></div></div>
+    </div>
+    <div class="msg" data-step="2" id="d4m"></div>
+    <ol class="say">
+      <li>先看深度怎么来。深度是按价格档汇总后的订单簿。它不显示单个订单，只显示每个价格的总量。</li>
+      <li>订单簿里，100.10 这一档有 S1 和 S2 两个订单。深度只显示一行，100.10，总量 2.0。</li>
+      <li>现在 S1 被吃掉 0.8。行情系统发出一条增量，100.10，1.2。</li>
+      <li>注意，1.2 是这一档新的总量，不是变化量。如果你把它当成减 0.8 去算，本地订单簿马上就错了。</li>
+      <li>再假设 S2 也被吃光。增量变成 100.10，数量 0。数量为 0，表示这一档被清空，要从本地删掉。</li>
+    </ol>
+  </section>
+
+  <!-- 5 K 线聚合 -->
+  <section class="scene" data-title="K 线聚合与 Ticker" data-onstep="klineStep">
+    <div class="kicker">02 · K 线 OHLCV</div>
+    <h2>逐笔成交 → 1 分钟 K 线</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="col" style="flex:0 0 520px; gap:8px" id="k5t"></div>
+      <div class="col" style="gap:14px">
+        <div class="card" style="padding:10px 16px"><svg class="k" id="k5s" viewBox="0 0 1000 330" width="1000" height="330"></svg></div>
+        <div class="ohlc" id="k5o"></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>再看 K 线。一根 K 线，把一个时间窗口内的成交压缩成五个数。也就是开高低收和成交量，简称 OHLCV。</li>
+      <li>示例，10 点 0 分 5 秒，第一笔成交 100.10。这是新窗口，新建一根 K 线，开高低收都是 100.10。</li>
+      <li>第二笔 100.25，刷新最高价。第三笔 99.95，刷新最低价。收盘价总是等于最新的一笔。</li>
+      <li>第四笔 100.15，时间是 10 点 0 分 42 秒，还在同一分钟。收盘价变成 100.15，成交量累加到 1.4。</li>
+      <li>第五笔在 10 点 1 分 3 秒，进入新窗口。旧 K 线关闭，币安用字段 x 等于 true 来标记。新 K 线从 100.20 开始。</li>
+      <li>Ticker 也来自同一条成交流。它是 24 小时滚动统计，包括最新价、最高价、最低价、成交量和涨跌幅。</li>
+    </ol>
+  </section>
+
+  <!-- 6 合并 -->
+  <section class="scene" data-title="大周期合并与迟到成交" data-onstep="mergeStep">
+    <div class="kicker">02 · K 线合并</div>
+    <h2>5 根 1 分钟 → 1 根 5 分钟</h2>
+    <div class="card" style="padding:10px 16px"><svg class="k" id="m6s" viewBox="0 0 1600 340" width="1600" height="340"></svg></div>
+    <div class="stack">
+      <div class="ohlc" id="m6o" data-step="0" data-until="2"></div>
+      <div class="card" data-step="3" data-until="3" style="font-size:30px">12 根 5 分钟 → 1 小时。某分钟无成交：不生成，或用上一根收盘价补一根零量 K 线，<span class="hl">各系统做法不同</span>。</div>
+      <div class="card warn" data-step="4" style="font-size:30px">迟到的成交：时间戳属于已关闭窗口 → <span class="hl">历史 K 线被修订</span> → 需要定义迟到容忍规则。</div>
+    </div>
+    <ol class="say">
+      <li>大周期 K 线由小周期合并。示例，5 根 1 分钟 K 线，合成一根 5 分钟 K 线。</li>
+      <li>开盘价取第一根的开盘价，100.10。收盘价取最后一根的收盘价，100.25。</li>
+      <li>最高价取最大，100.40。最低价取最小，99.80。成交量求和，等于 6.0。</li>
+      <li>同样，12 根 5 分钟合成 1 小时。如果某分钟一笔成交都没有，有的系统不生成 K 线。有的系统用上一根收盘价，补一根零成交量的 K 线。</li>
+      <li>还有一个坑，迟到的成交。它的时间戳属于已经关闭的窗口，会让历史 K 线被修订。生产系统要定义迟到容忍规则。</li>
+    </ol>
+  </section>
+
+  <!-- 7 快照 + 增量 字段 -->
+  <section class="scene" data-title="快照加增量：三个序号">
+    <div class="kicker">03 · 本地订单簿同步</div>
+    <h2>先拉一次快照，再持续应用增量</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="col" style="gap:16px">
+        <div class="card sell" data-step="0" style="padding:18px 26px">每秒拉全量快照：<span class="down">太慢、太重</span></div>
+        <div class="code" data-step="1">REST GET /api/v3/depth
+{
+  "lastUpdateId": <span class="hl">107</span>,
+  "bids": [...], "asks": [...]
+}</div>
+      </div>
+      <div class="col" style="gap:16px">
+        <div class="card buy" data-step="0" style="padding:18px 26px">快照一次 + 增量持续：<span class="up">又快又轻</span></div>
+        <div class="code" data-step="2">WS &lt;symbol&gt;@depth
+{
+  "U": <span class="hl">106</span>,  <span class="muted">// 第一个更新 ID</span>
+  "u": <span class="hl">110</span>,  <span class="muted">// 最后一个更新 ID</span>
+  <span data-step="4">"b": [["100.00", "1.5"]],
+  "a": [["100.10", "0"]]  <span class="muted">// 新总量</span></span>
+}</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>接下来是本集重点。量化交易者要在本地维护一本订单簿，并且和交易所保持一致。</li>
+      <li>每秒拉一次全量快照，太慢，也太重。正确做法是，先拉一次快照，再持续应用增量。</li>
+      <li>币安公开文档给了标准步骤。REST 深度快照会返回一个 lastUpdateId，表示快照对应的更新序号。</li>
+      <li>增量深度流的每个事件带两个序号。大写 U 是本事件第一个更新 ID，小写 u 是最后一个更新 ID。</li>
+      <li>事件里还有 b 和 a，分别是买盘和卖盘的变化档位。格式是价格，加上新的总量。</li>
+    </ol>
+  </section>
+
+  <!-- 8 同步动画 -->
+  <section class="scene" data-title="同步步骤：对齐与缺口" data-onstep="syncStep">
+    <div class="kicker">03 · 按币安公开文档的步骤</div>
+    <h2 id="s8h">同步本地订单簿</h2>
+    <div class="card" style="padding:10px 16px"><svg class="tl" id="s8s" viewBox="0 0 1600 300" width="1600" height="300"></svg></div>
+    <div class="row" style="gap:24px">
+      <div class="card stepcard" id="s8c" style="flex:1"></div>
+      <div class="card" style="flex:0 0 380px; text-align:center"><div class="muted" style="font-size:24px">本地 ID</div><div class="mono hl" style="font-size:56px; font-weight:700" id="s8id">—</div></div>
+    </div>
+    <ol class="say">
+      <li>来看完整流程。第一步，先建立 WebSocket 连接，订阅增量深度。收到的事件先缓存起来，不处理。</li>
+      <li>第二步，再用 REST 请求快照。示例，快照返回的 lastUpdateId 是 107。</li>
+      <li>第三步检查。107 不小于第一个缓存事件的 U，也就是 101，可以继续。如果 lastUpdateId 比 U 还小，就重新请求快照。</li>
+      <li>第四步，丢弃 u 不大于 107 的缓存事件。101 到 105 这个事件被丢掉。</li>
+      <li>第五步，本地订单簿等于快照，本地 ID 设为 107。</li>
+      <li>第六步，应用 106 到 110 这个事件。107 落在 106 和 110 之间，对齐成功。本地 ID 变成 110。</li>
+      <li>下一个事件的 U 是 111，正好等于本地 ID 加 1，说明连续，可以应用。本地 ID 变成 115。</li>
+      <li>再下一个事件，U 是 120。本地 ID 是 115，U 应该等于 116 才对。中间缺了一段，出现了缺口。</li>
+      <li>这时不能硬着头皮继续。丢弃本地订单簿，从第一步重新开始。</li>
+    </ol>
+  </section>
+
+  <!-- 9 顺序与应用规则 -->
+  <section class="scene" data-title="为什么先连接后快照" data-onstep="orderStep">
+    <div class="kicker">03 · 顺序与应用规则</div>
+    <h2 id="o9h">顺序反了，会丢一段事件</h2>
+    <div class="stack">
+      <div class="card" data-step="0" data-until="2" style="padding:10px 16px"><svg class="tl" id="o9s" viewBox="0 0 1600 420" width="1600" height="420"></svg></div>
+      <div class="col" data-step="3" style="gap:12px">
+        <div class="ruleli" data-step="3"><span class="n">1</span>u &lt; 本地 ID → 忽略</div>
+        <div class="ruleli" data-step="3"><span class="n">2</span>U &gt; 本地 ID + 1 → 丢弃本地簿，重建</div>
+        <div class="ruleli" data-step="3"><span class="n">3</span>每个价格档：数量 0 → 删除；否则覆盖，不存在就插入</div>
+        <div class="ruleli" data-step="3"><span class="n">4</span>本地 ID = 本事件的 u</div>
+        <div class="card sell" data-step="4" style="padding:16px 24px">症状：本地出现 买一价 ≥ 卖一价 · <span class="hl">交叉盘口</span> → 立刻重建</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>为什么一定要先开 WebSocket，后拉快照？我们看看反过来会怎样。</li>
+      <li>假设先拉快照，拿到 107。等 WebSocket 连上，第一个事件已经从 112 开始。108 到 111 这一段，谁也没收到。</li>
+      <li>先开连接再拉快照，快照之后的事件都已经在缓存里，一条不漏。</li>
+      <li>应用每个事件时，记住四条。第一，u 小于本地 ID，忽略。第二，U 大于本地 ID 加 1，重建。</li>
+      <li>第三，数量为 0，删除这一档，否则用新数量覆盖，不存在就插入。第四，把本地 ID 设为这个事件的 u。</li>
+      <li>如果增量丢了还继续用，常见症状是买一价大于等于卖一价，也就是交叉盘口。看到它，就该重建了。</li>
+    </ol>
+  </section>
+
+  <!-- 10 扇出 -->
+  <section class="scene" data-title="WebSocket 扇出" data-onstep="fanStep">
+    <div class="kicker">04 · 推送扇出 Fan-out · 业界通用做法</div>
+    <h2>算一次，复制给几十万连接</h2>
+    <div class="fan" id="fan"></div>
+    <div class="card" id="f10n" style="font-size:30px; padding:16px 26px"></div>
+    <ol class="say">
+      <li>一个热门交易对，可能有几十万个订阅者。撮合引擎不可能直接给每个客户端发消息。</li>
+      <li>行情系统用多层扇出。撮合事件进入按交易对分区的消息总线，行情计算节点只算一次。</li>
+      <li>算好的结果进入发布总线，再复制给 N 个推送网关。计算成本和订阅人数无关，带宽和订阅人数成正比。</li>
+      <li>推送网关无状态，可以水平扩容。每个网关只记住，哪个连接订阅了哪个频道。</li>
+      <li>最大的风险是慢客户端。它的发送缓冲区满了，网关应该断开它，不能让它拖慢其他人。</li>
+      <li>常见优化有四个。第一，100 毫秒或 1000 毫秒合并推送。第二，只推前几档。第三，同一条消息只序列化一次。第四，客户端按需订阅。</li>
+    </ol>
+  </section>
+
+  <!-- 11 公共与私有 -->
+  <section class="scene" data-title="公共行情与私有推送">
+    <div class="kicker">币安公开资料 · 截至 2026 年</div>
+    <h2>公共行情流 vs 私有用户数据流</h2>
+    <div class="row" style="align-items:flex-start">
+      <table class="t tight" style="flex:0 0 940px; width:940px; font-size:28px">
+        <tr><th>流名称</th><th>内容</th><th>更新</th></tr>
+        <tr data-step="0"><td class="mono">@trade</td><td>逐笔成交</td><td>实时</td></tr>
+        <tr data-step="0"><td class="mono">@aggTrade</td><td>同 Taker 同价合并</td><td>实时</td></tr>
+        <tr data-step="1"><td class="mono">@kline_1m</td><td>K 线</td><td>1s 周期 1000ms，其他 2000ms</td></tr>
+        <tr data-step="1"><td class="mono">@ticker</td><td>24h 滚动统计</td><td>1000ms</td></tr>
+        <tr data-step="1"><td class="mono">@bookTicker</td><td>最优买卖价</td><td>实时</td></tr>
+        <tr data-step="1"><td class="mono">@depth</td><td>增量深度</td><td>1000ms 或 100ms</td></tr>
+      </table>
+      <div class="stack" style="flex:1">
+        <div class="col" data-step="2" data-until="3" style="gap:16px">
+          <div class="card info">公共行情<br><span class="muted">不需登录 · 成交流里<span class="hl">没有用户身份</span></span></div>
+          <div class="card gold" data-step="3">私有推送 User Data Stream<br><span class="muted">订单、余额变化 · 按用户 ID 路由 · <span class="hl">必须鉴权</span></span></div>
+        </div>
+        <div class="card warn" data-step="4" style="font-size:30px">连接规则<br>· 单连接最长 <span class="hl">24 小时</span><br>· 服务端每 <span class="hl">20 秒</span> ping，1 分钟无 pong 断开<br>· 每秒最多 <span class="hl">5 条</span>客户端消息</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>根据币安公开资料，现货常用的行情流有这几种。trade 是逐笔成交。aggTrade 把同一 Taker 订单、同一价格的成交，合并成一条。</li>
+      <li>kline 是 K 线，ticker 是 24 小时滚动统计。bookTicker 是最优买卖价。depth 是增量深度，有 100 毫秒和 1000 毫秒两种速度。</li>
+      <li>这些都是公共行情，不需要登录。注意，公共成交流里没有用户身份，你看不到是谁买的。</li>
+      <li>你的订单成交了，余额变了，这类私有推送走单独的用户数据流。它按用户 ID 路由，必须鉴权。</li>
+      <li>连接也有规则。单个连接最多有效 24 小时。服务端每 20 秒发一次 ping，1 分钟内没收到 pong 就断开。每个连接每秒最多接收 5 条客户端消息。</li>
+    </ol>
+  </section>
+
+  <!-- 12 指数价格 -->
+  <section class="scene" data-title="指数价格" data-onstep="indexStep">
+    <div class="kicker">05 · 指数价格 Index Price · 业界通用做法</div>
+    <h2>多家交易所的加权平均</h2>
+    <div class="row" style="align-items:flex-start">
+      <div class="col" style="flex:0 0 560px; gap:16px">
+        <div class="card" data-step="0">代表<span class="hl">全市场公允价格</span>，主要给合约用</div>
+        <div class="card sell" data-step="0">单一交易所最新价<span class="down">易被操纵</span>：薄盘口砸一笔大单就偏离</div>
+        <div class="card" data-step="1" style="font-size:28px">① 采集 ② 剔除异常值 ③ 剔除过期 ④ 加权平均<br><span class="muted">权重与成分以币安官方公告为准</span></div>
+      </div>
+      <div class="col" style="gap:16px" data-step="1">
+        <table class="t tight idx" id="i12" style="font-size:28px"></table>
+        <div class="formula" data-step="4" style="font-size:32px">100.00×0.40 + 100.20×0.35 + 99.90×0.25<br>= <span class="hl" style="font-size:44px" id="i12v"></span></div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>再看指数价格。它是多家现货交易所价格的加权平均，代表全市场的公允价格，主要给合约用。</li>
+      <li>为什么需要它？单一交易所的最新价容易被操纵。有人在薄盘口砸一笔大单，最新价就会瞬间偏离。</li>
+      <li>计算分四步。采集多家价格，剔除偏离中位数太多的异常报价。再剔除数据过期的交易所，最后按权重加权平均。</li>
+      <li>示例，A 交易所 100.00，权重 40%。B 是 100.20，权重 35%。C 是 99.90，权重 25%。</li>
+      <li>加权平均等于 100.045。标记价格在它的基础上，再加一个平滑的基差，用来算未实现盈亏和强平。第 14 集细讲。</li>
+    </ol>
+  </section>
+
+  <!-- 13 延迟与一致性 -->
+  <section class="scene" data-title="延迟与一致性" data-onstep="latStep">
+    <div class="kicker">故障与边界</div>
+    <h2>延迟来自每一层</h2>
+    <div class="pipe" id="pipe"></div>
+    <div class="stack">
+      <div class="card warn" data-step="1" data-until="1" style="font-size:30px">合并推送：1000ms 流天然最多晚 <span class="hl">1 秒</span><br>极端行情消息暴增：网关积压，毫秒级 → <span class="down">秒级</span></div>
+      <table class="t tight" data-step="2" data-until="3" style="font-size:30px">
+        <tr><th>问题</th><th>对策</th></tr>
+        <tr><td>REST 与 WS 不同步</td><td>用 <span class="mono hl">lastUpdateId</span> 对齐，不按时间对齐</td></tr>
+        <tr data-step="3"><td>多个网关版本不同</td><td>消息带序号或事件时间，客户端<span class="hl">以序号为准</span></td></tr>
+      </table>
+      <div class="col" data-step="4" style="gap:16px">
+        <div class="card gold" style="font-size:32px">行情<span class="hl">不是</span>成交依据 → 以<span class="hl">订单接口</span>为准</div>
+        <div class="card sell" data-step="5" style="font-size:30px">剧烈波动时：你看到的是过去的价格，市价单实际成交价可能大幅偏离</div>
+      </div>
+    </div>
+    <ol class="say">
+      <li>现在回到开头的问题。延迟来自每一层。撮合输出、消息总线、行情计算、推送网关、公网，最后是客户端解析。</li>
+      <li>合并推送本身就有延迟，1000 毫秒的流，天然最多晚 1 秒。极端行情消息暴增，网关积压，延迟会从毫秒级升到秒级。</li>
+      <li>一致性也会出问题。REST 和 WebSocket 不同步时，用 lastUpdateId 对齐。不要按时间对齐。</li>
+      <li>多个推送网关版本不同，两个客户端可能看到不同的最新价。客户端要以序号为准。</li>
+      <li>最后一条原则，行情不是成交依据。行情显示成交了，订单接口显示没有，以订单接口为准。</li>
+      <li>所以剧烈波动时用市价单要小心。你看到的是过去的价格，实际成交价可能大幅偏离。</li>
+    </ol>
+  </section>
+
+  <!-- 14 小结 -->
+  <section class="scene" data-title="小结与预告">
+    <div class="kicker">本集小结</div>
+    <h2>记住三件事</h2>
+    <ul class="bullets">
+      <li data-step="0">行情是撮合事件的<span class="hl">只读副本</span>：成交 → 成交、K 线、Ticker；簿变化 → 深度。</li>
+      <li data-step="0"><span class="hl">先开 WS，再拉快照</span>；用 lastUpdateId 与 U、u 对齐，有缺口就重建。</li>
+      <li data-step="2">行情<span class="hl">一定有延迟</span>；成交结果以订单接口为准。</li>
+    </ul>
+    <div class="card info" data-step="3" style="font-size:34px">下一集 EP13 · 风控：<span class="hl">交易前、交易中与限流</span></div>
+    <ol class="say">
+      <li>小结一下。第一，行情是撮合事件的只读副本。成交流生成逐笔成交、K 线和 Ticker，订单簿变化生成深度。</li>
+      <li>第二，本地订单簿要先开 WebSocket，再拉快照。用 lastUpdateId 和 U、u 对齐，发现缺口就重建。</li>
+      <li>第三，行情一定有延迟。扇出让一份计算服务海量连接，但成交结果要以订单接口为准。</li>
+      <li>下一集，我们讲风控。交易前、交易中怎样拦截异常，限流又是怎么做的。我们下集见。</li>
+    </ol>
+  </section>
+</div>
+<script>
+  const P = t => (t / 100).toFixed(2);   // price ticks of 0.01
+  const Q = q => (q / 10).toFixed(1);    // quantity tenths
+
+  function depthStep(el, st) {
+    const s1 = st >= 2 ? 'gone' : '', s2 = st >= 4 ? 'gone' : '';
+    const t10 = (st >= 2 ? 0 : 8) + (st >= 4 ? 0 : 12);
+    el.querySelector('#d4a').innerHTML =
+      `<div class="lvl"><span class="p">100.20</span><span><span class="ord">S3 0.5</span><span class="ord">S4 2.0</span></span></div>` +
+      `<div class="lvl ${st >= 1 ? 'hit' : ''}"><span class="p">100.10</span><span><span class="ord ${s1}">S1 0.8</span><span class="ord ${s2}">S2 1.2</span></span></div>`;
+    el.querySelector('#d4b').innerHTML =
+      `<div class="lvl"><span class="p">100.20</span><span>2.5</span></div>` +
+      `<div class="lvl ${st >= 1 && st < 4 ? 'hit' : ''} ${st >= 4 ? 'gone' : ''}"><span class="p">100.10</span><span>${Q(t10)}</span></div>`;
+    const m = el.querySelector('#d4m');
+    m.innerHTML = st >= 4 ? '增量：<span class="hl">100.10 → 0</span> &nbsp;<span class="muted" style="font-family:var(--sans)">数量 0 = 删除该档</span>'
+      : st === 3 ? '增量：<span class="hl">100.10 → 1.2</span> &nbsp;<span class="muted" style="font-family:var(--sans)">是新总量，不是 −0.8</span>'
+      : '增量：<span class="hl">100.10 → 1.2</span>';
+  }
+
+  // trades: [label time, price tick, qty tenths]
+  const TR = [['10:00:05', 10010, 5], ['10:00:18', 10025, 2], ['10:00:31', 9995, 4], ['10:00:42', 10015, 3], ['10:01:03', 10020, 1]];
+  function candleSVG(cs, opt) {
+    const lo = opt.lo, hi = opt.hi, H = opt.h, top = 20;
+    const y = p => top + (hi - p) * (H - 2 * top) / (hi - lo);
+    let s = '';
+    opt.grid.forEach(p => s += `<line x1="90" x2="${opt.w}" y1="${y(p)}" y2="${y(p)}" stroke="#2c3038"/><text x="0" y="${y(p) + 8}">${P(p)}</text>`);
+    cs.forEach(c => {
+      const up = c.c >= c.o, col = c.col || (up ? '#2ebd85' : '#f6465d');
+      s += `<line x1="${c.x}" x2="${c.x}" y1="${y(c.h)}" y2="${y(c.l)}" stroke="${col}" stroke-width="4"/>`;
+      const yt = y(Math.max(c.o, c.c)), hh = Math.max(4, Math.abs(y(c.o) - y(c.c)));
+      s += `<rect x="${c.x - c.bw / 2}" y="${yt}" width="${c.bw}" height="${hh}" fill="${col}" ${c.dim ? 'opacity=".35"' : ''} ${c.hl ? 'stroke="#f0b90b" stroke-width="4"' : ''}/>`;
+      if (c.label) s += `<text x="${c.x}" y="${H - 2}" style="text-anchor:middle">${c.label}</text>`;
+      if (c.tag) s += `<text x="${c.x}" y="${y(c.h) - 12}" style="text-anchor:middle; fill:${c.tagc || '#f0b90b'}">${c.tag}</text>`;
+    });
+    (opt.marks || []).forEach(m => s += `<circle cx="${m.x}" cy="${y(m.p)}" r="9" fill="#f0b90b"/>`);
+    return s;
+  }
+  function ohlcHTML(c, hl) {
+    return [['O 开', P(c.o)], ['H 高', P(c.h)], ['L 低', P(c.l)], ['C 收', P(c.c)], ['V 量', Q(c.v)]]
+      .map(([k, v], i) => `<div class="c ${hl.includes(i) ? 'hit' : ''}"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+  }
+  function klineStep(el, st) {
+    const n = [0, 1, 3, 4, 5, 5][st];
+    let h = '<div class="tr h"><span>#</span><span>时间</span><span>价格</span><span>量</span></div>';
+    TR.forEach((t, i) => { const cls = i < n ? (i === n - 1 && st < 5 ? 'on' : '') : 'off'; h += `<div class="tr ${cls}"><span>${i + 1}</span><span>${t[0]}</span><span>${P(t[1])}</span><span>${Q(t[2])}</span></div>`; });
+    if (st >= 5) h += '<div class="card gold" style="padding:12px 18px; font-size:28px">Ticker · 24h 滚动：最新价 · 高 · 低 · 量 · 涨跌幅</div>';
+    el.querySelector('#k5t').innerHTML = h;
+    const first = TR.slice(0, Math.min(n, 4));
+    const c1 = first.length ? { o: first[0][1], h: Math.max(...first.map(t => t[1])), l: Math.min(...first.map(t => t[1])), c: first[first.length - 1][1], v: first.reduce((a, t) => a + t[2], 0) } : null;
+    const cs = [];
+    if (c1) cs.push({ ...c1, x: 330, bw: 120, label: '10:00', tag: st >= 4 ? 'x = true 已关闭' : 'x = false 进行中', tagc: st >= 4 ? '#9ea3ad' : '#f0b90b', dim: st >= 4 });
+    if (n >= 5) cs.push({ o: 10020, h: 10020, l: 10020, c: 10020, v: 1, x: 640, bw: 120, label: '10:01', tag: '新 K 线', col: '#f0b90b' });
+    el.querySelector('#k5s').innerHTML = candleSVG(cs, { lo: 9985, hi: 10035, h: 330, w: 1000, grid: [9990, 10010, 10030], marks: n && n <= 4 ? [{ x: 330, p: TR[n - 1][1] }] : [] });
+    const cur = n >= 5 ? { o: 10020, h: 10020, l: 10020, c: 10020, v: 1 } : c1;
+    const hl = [[], [0, 1, 2, 3], [1, 2, 3], [3, 4], [0, 1, 2, 3, 4], []][st];
+    el.querySelector('#k5o').innerHTML = cur ? ohlcHTML(cur, hl) : '<div class="c" style="grid-column: span 5"><div class="k">等待第一笔成交</div><div class="v">O · H · L · C · V</div></div>';
+  }
+
+  const M1 = [[10010, 10025, 9995, 10015, 14], [10020, 10040, 10010, 10035, 9], [10035, 10035, 9980, 9990, 21], [9990, 10005, 9985, 10000, 6], [10000, 10030, 9995, 10025, 10]];
+  function mergeStep(el, st) {
+    const cs = M1.map(([o, h, l, c, v], i) => ({ o, h, l, c, v, x: 200 + i * 170, bw: 90, label: `10:0${i}`,
+      hl: (st === 1 && (i === 0 || i === 4)) || (st === 2 && (i === 1 || i === 2)) }));
+    const m = { o: M1[0][0], h: Math.max(...M1.map(k => k[1])), l: Math.min(...M1.map(k => k[2])), c: M1[4][3], v: M1.reduce((a, k) => a + k[4], 0) };
+    if (st >= 1) cs.push({ ...m, x: 1350, bw: 150, label: '10:00 5m', col: '#f0b90b', tag: st >= 2 ? '合并结果' : '' });
+    let s = candleSVG(cs, { lo: 9970, hi: 10050, h: 340, w: 1600, grid: [9980, 10000, 10020, 10040] });
+    s += `<text x="1120" y="190" style="font-size:44px; fill:#9ea3ad">→</text>`;
+    if (st >= 4) s += `<rect x="830" y="44" width="160" height="266" fill="none" stroke="#f0a340" stroke-width="3" stroke-dasharray="10 8"/><text x="910" y="32" style="text-anchor:middle; fill:#f0a340">迟到成交 → 修订</text>`;
+    el.querySelector('#m6s').innerHTML = s;
+    const hl = [[], [0, 3], [1, 2, 4]][Math.min(st, 2)];
+    el.querySelector('#m6o').innerHTML = ohlcHTML(m, hl);
+  }
+
+  // ---- sync timeline ----
+  const X0 = 60, DX = 56;
+  const xi = id => X0 + (id - 100) * DX;
+  function axis(y, from, to) {
+    let s = `<line x1="${xi(from) - 20}" x2="${xi(to) + 20}" y1="${y}" y2="${y}" stroke="#3a3f48" stroke-width="2"/>`;
+    for (let i = from; i <= to; i++) s += `<line x1="${xi(i)}" x2="${xi(i)}" y1="${y - 6}" y2="${y + 6}" stroke="#3a3f48"/>` + (i % 5 === 0 ? `<text x="${xi(i)}" y="${y + 34}" style="fill:#9ea3ad; text-anchor:middle">${i}</text>` : '');
+    return s;
+  }
+  function bar(U, u, y, st, txt) {
+    const col = { buf: '#5b9cff', chk: '#f0b90b', drop: '#f6465d', ok: '#2ebd85', gap: '#f6465d', fade: '#555' }[st];
+    const fill = { buf: 'rgba(91,156,255,.15)', chk: 'rgba(240,185,11,.2)', drop: 'rgba(246,70,93,.1)', ok: 'rgba(46,189,133,.2)', gap: 'rgba(246,70,93,.2)', fade: 'rgba(80,80,80,.1)' }[st];
+    return `<rect x="${xi(U) - 22}" y="${y}" width="${xi(u) - xi(U) + 44}" height="58" rx="10" fill="${fill}" stroke="${col}" stroke-width="3" ${st === 'buf' ? 'stroke-dasharray="8 6"' : ''} ${st === 'drop' || st === 'fade' ? 'opacity=".55"' : ''}/>` +
+      `<text x="${(xi(U) + xi(u)) / 2}" y="${y + 38}" style="text-anchor:middle; fill:${col}; font-size:24px">U=${U} u=${u}${txt ? ' ' + txt : ''}</text>` +
+      (st === 'drop' ? `<line x1="${xi(U) - 22}" x2="${xi(u) + 22}" y1="${y + 29}" y2="${y + 29}" stroke="#f6465d" stroke-width="3"/>` : '');
+  }
+  function syncStep(el, st) {
+    const AY = 220;
+    let s = axis(AY, 100, 126);
+    s += `<text x="${xi(100) - 20}" y="40" style="fill:#9ea3ad; font-size:24px">WebSocket 增量事件 · 更新 ID 轴 · 示例</text>`;
+    const ev = [];
+    ev.push([101, 105, st === 0 || st === 1 ? 'buf' : st === 2 ? 'chk' : st >= 8 ? 'fade' : 'drop', st >= 3 && st < 8 ? '丢弃' : st <= 1 ? '缓存' : '']);
+    ev.push([106, 110, st >= 8 ? 'fade' : st >= 5 ? 'ok' : 'buf', st >= 5 && st < 8 ? '应用' : '缓存']);
+    if (st >= 6) ev.push([111, 115, st >= 8 ? 'fade' : 'ok', '']);
+    if (st >= 7) ev.push([120, 125, st >= 8 ? 'fade' : 'gap', '']);
+    ev.forEach(([U, u, k, t], i) => s += bar(U, u, i % 2 ? 130 : 66, k, t));
+    if (st >= 1) s += `<line x1="${xi(107)}" x2="${xi(107)}" y1="56" y2="${AY + 10}" stroke="#f0b90b" stroke-width="4" stroke-dasharray="${st >= 8 ? '6 6' : '0'}" opacity="${st >= 8 ? .4 : 1}"/><text x="${xi(107)}" y="${AY + 70}" style="fill:#f0b90b; text-anchor:middle">快照 lastUpdateId=107</text>`;
+    if (st >= 7 && st < 8) s += `<rect x="${xi(116) - 22}" y="66" width="${xi(119) - xi(116) + 44}" height="58" fill="rgba(246,70,93,.25)" stroke="#f6465d" stroke-width="2" stroke-dasharray="6 5"/><text x="${(xi(116) + xi(119)) / 2}" y="${AY + 70}" style="fill:#f6465d; text-anchor:middle">缺口 116–119</text>`;
+    const lid = [null, null, null, null, 107, 110, 115, 115, null][st];
+    if (lid) s += `<polygon points="${xi(lid)},${AY + 8} ${xi(lid) - 14},${AY + 34} ${xi(lid) + 14},${AY + 34}" fill="#2ebd85"/>`;
+    el.querySelector('#s8s').innerHTML = s;
+    el.querySelector('#s8id').textContent = lid || '—';
+    el.querySelector('#s8h').textContent = ['① 先连接 WebSocket，缓存事件', '② 再请求 REST 快照', '③ 检查 lastUpdateId ≥ 第一个 U', '④ 丢弃 u ≤ 107 的事件', '⑤ 本地簿 = 快照', '⑥ 对齐：U ≤ 108 ≤ u', '⑦ 连续：U = 上一个 u + 1', '⑧ 缺口：U ≠ 本地 ID + 1', '⑨ 丢弃本地簿，回到 ①'][st];
+    el.querySelector('#s8c').innerHTML = [
+      '先连接、先缓存，<span class="hl">暂不处理</span>',
+      'GET /api/v3/depth → lastUpdateId = <span class="hl">107</span>',
+      '107 ≥ U=101 ✓ <span class="muted">若 lastUpdateId &lt; U：重新请求快照</span>',
+      'u=105 ≤ 107 → 旧事件，<span class="down">丢弃</span>',
+      '本地订单簿 ← 快照，本地 ID = <span class="hl">107</span>',
+      '106 ≤ 107+1 ≤ 110 ✓ 应用 → 本地 ID = <span class="hl">110</span>',
+      'U=111 = 110+1 ✓ 应用 → 本地 ID = <span class="hl">115</span>',
+      'U=120 ≠ 115+1 = 116 → <span class="down">缺口</span>',
+      '<span class="down">本地簿作废</span>，从第一步重新同步'][st];
+  }
+
+  function orderStep(el, st) {
+    let s = '';
+    const row = (y, title, ok) => s += `<text x="0" y="${y - 115}" style="fill:${ok ? '#2ebd85' : '#f6465d'}; font-size:28px">${title}</text>` + axis(y, 100, 126) +
+      `<line x1="${xi(107)}" x2="${xi(107)}" y1="${y - 90}" y2="${y + 8}" stroke="#f0b90b" stroke-width="4"/><text x="${xi(107)}" y="${y + 34}" style="fill:#f0b90b; text-anchor:middle">快照 107</text>`;
+    row(150, '✗ 先拉快照，后连接 WebSocket', false);
+    if (st >= 1) {
+      s += `<rect x="${xi(112) - 22}" y="92" width="${xi(118) - xi(112) + 44}" height="44" rx="8" fill="rgba(91,156,255,.15)" stroke="#5b9cff" stroke-width="2"/><text x="${(xi(112) + xi(118)) / 2}" y="122" style="fill:#5b9cff; text-anchor:middle">连上后首个事件 U=112</text>`;
+      s += `<rect x="${xi(108) - 20}" y="92" width="${xi(111) - xi(108) + 40}" height="44" fill="rgba(246,70,93,.25)" stroke="#f6465d" stroke-dasharray="6 5"/><text x="${(xi(108) + xi(111)) / 2}" y="122" style="fill:#f6465d; text-anchor:middle">108–111 丢失</text>`;
+    }
+    if (st >= 2) {
+      row(370, '✓ 先连接 WebSocket，后拉快照', true);
+      s += `<rect x="${xi(101) - 22}" y="312" width="${xi(118) - xi(101) + 44}" height="44" rx="8" fill="rgba(46,189,133,.15)" stroke="#2ebd85" stroke-width="2"/><text x="${(xi(112) + xi(118)) / 2}" y="342" style="fill:#2ebd85; text-anchor:middle">全部缓存 101 → …</text>`;
+    }
+    el.querySelector('#o9s').innerHTML = s;
+    el.querySelector('#o9h').textContent = st >= 3 ? '应用每个增量事件的四条规则' : '顺序反了，会丢一段事件';
+  }
+
+  function fanStep(el, st) {
+    const on = (k) => [[], ['bus', 'calc'], ['pub', 'gw'], ['gw'], ['gw'], ['calc', 'gw']][st].includes(k) ? 'on' : '';
+    const clients = (slow) => `<div class="cl">${Array.from({ length: 18 }, (_, i) => `<i class="${slow && i === 5 ? 'slow' : ''}"></i>`).join('')}</div>`;
+    const gws = st >= 2 ? ['推送网关 1', '推送网关 2', '推送网关 N'] : ['…'];
+    let h = `<div class="n" style="grid-row: span 3">撮合引擎</div><div class="a" style="grid-row: span 3">→</div>` +
+      `<div class="n ${on('bus')}" style="grid-row: span 3; ${st >= 1 ? '' : 'opacity:.25'}">消息总线<small>按交易对分区</small></div><div class="a" style="grid-row: span 3">→</div>` +
+      `<div class="n ${on('calc')}" style="grid-row: span 3; ${st >= 1 ? '' : 'opacity:.25'}">行情计算<small>只算一次</small></div><div class="a" style="grid-row: span 3">→</div>` +
+      `<div class="n ${on('pub')}" style="grid-row: span 3; ${st >= 2 ? '' : 'opacity:.25'}">发布总线<small>+ REST 快照缓存</small></div>`;
+    for (let i = 0; i < 3; i++) {
+      const g = st >= 2 ? gws[i] : '';
+      const bad = st === 4 && i === 0;
+      h += `<div class="a" style="${st >= 2 ? '' : 'opacity:0'}">→</div><div class="row" style="gap:14px; align-items:center; ${st >= 2 ? '' : 'opacity:0'}"><div class="n ${bad ? 'bad' : on('gw')}" style="flex:0 0 200px">${g}${st === 3 ? '<small>无状态 · 连接→频道</small>' : ''}</div>${clients(st === 4 && i === 0)}</div>`;
+    }
+    el.querySelector('#fan').innerHTML = h;
+    el.querySelector('#f10n').innerHTML = [
+      '一个热门交易对：<span class="hl">几十万</span>订阅者。撮合引擎不能逐个发送。',
+      '事件进总线，行情计算节点<span class="hl">只算一次</span>',
+      '计算成本与订阅人数<span class="hl">无关</span>；带宽与订阅人数<span class="hl">成正比</span>',
+      '网关无状态 → <span class="hl">水平扩容</span>；只维护 连接 → 订阅频道',
+      '<span class="down">慢客户端</span>：发送缓冲区满 → 断开它，不拖慢其他人',
+      '优化：100ms / 1000ms 合并推送 · 只推前 5/10/20 档 · 序列化一次 · 分频道订阅'][st];
+  }
+
+  function indexStep(el, st) {
+    const rows = [['交易所 A', 10000, 40, ''], ['交易所 B', 10020, 35, ''], ['交易所 C', 9990, 25, ''], ['交易所 D', 10600, '—', 'out'], ['交易所 E', 10010, '—', 'stale']];
+    let h = '<tr><th>来源 · 示例</th><th>价格</th><th>权重</th><th></th></tr>';
+    rows.forEach(([n, p, w, k]) => {
+      const gone = k && st >= 2;
+      h += `<tr class="${gone ? 'gone' : ''} ${st >= 3 && !k ? 'hit' : ''}"><td>${n}</td><td class="num">${P(p)}</td><td class="num">${w === '—' ? '—' : w + '%'}</td><td style="font-size:24px">${k === 'out' ? '<span class="down" style="text-decoration:none">偏离 &gt;5%</span>' : k === 'stale' ? '<span class="down">数据过期</span>' : ''}</td></tr>`;
+    });
+    el.querySelector('#i12').innerHTML = h;
+    // integer math: sum(price_ticks * weight_pct) = price * 10000
+    const sum = 10000 * 40 + 10020 * 35 + 9990 * 25;
+    el.querySelector('#i12v').textContent = Math.floor(sum / 10000) + '.' + String(sum % 10000).padStart(4, '0').replace(/0+$/, '');
+  }
+
+  function latStep(el, st) {
+    const segs = ['撮合输出', '消息总线', '行情计算', '推送网关', '公网', '客户端解析'];
+    const hot = [[0, 1, 2, 3, 4, 5], [3], [], [3], [], [5]][st];
+    el.querySelector('#pipe').innerHTML = segs.map((s, i) => `<div class="s ${hot.includes(i) ? 'on' : ''}">${s}</div>`).join('');
+  }
+</script>
+<script src="assets/player.js"></script>
+</body>
+</html>

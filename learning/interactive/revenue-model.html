@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>商业模型沙盘</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .group-title { font-size: 13px; font-weight: 600; color: var(--text); margin: 14px 0 0; padding-top: 10px; border-top: 1px dashed var(--border); }
+  .group-title:first-of-type { border-top: 0; padding-top: 0; margin-top: 4px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .stats .stat .v { font-size: 19px; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  svg .axis { stroke: var(--border); stroke-width: 1; }
+  svg .grid-line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 3; }
+  svg .lbl { font-size: 13px; fill: var(--text-2); }
+  svg .val { font-size: 13px; font-family: var(--mono); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .legend i.line { height: 3px; width: 16px; vertical-align: 3px; border-radius: 0; }
+  .legend i.dash { height: 0; width: 16px; border-top: 2px dashed var(--text-2); vertical-align: 3px; }
+  .derived { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+  .badge-demo { display: inline-block; margin-left: 6px; }
+  ol.how { margin: 6px 0 0; padding-left: 20px; }
+  ol.how li { margin: 3px 0; }
+  .try { margin: 6px 0 0; padding-left: 20px; }
+  .try li { margin: 4px 0; }
+  .two-tables { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../12-business-model.md">配套章节：12 商业逻辑</a>
+  </header>
+  <h1>交易所商业模型沙盘</h1>
+  <p class="lead">调整交易量、费率、折扣和返佣，看一家交易所的收入如何一层层"漏"成净利润。第二部分逐期运行一个飞轮模型，体验降费和补贴的长期效果。</p>
+
+  <div class="callout warn"><strong>⚠️ 示例假设，非真实财务数据。</strong>本页所有默认数值和模型公式都是为了教学而假设的，不代表币安或任何交易所的真实收入、成本或费率。真实费率以各交易所官网为准。本页不构成投资建议。</div>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="how">
+      <li>在左侧拖动滑块。右侧数字和图表实时更新。</li>
+      <li>看"收入瀑布图"：从标准费率毛手续费开始，每一步扣掉一种让利，最后得到净利润。</li>
+      <li>滚动到第二部分。设置费率和补贴，按"下一期"逐月运行飞轮模型。</li>
+      <li>虚线是对照组（费率 0.10%、无补贴）。比较你的策略与对照组的交易量和累计利润。</li>
+    </ol>
+  </div>
+
+  <h2>第一部分：收入分解 <span class="pill warn badge-demo">示例假设</span></h2>
+  <div class="grid cols-2">
+    <div class="card" id="inputs">
+      <div class="group-title">交易量（亿美元 / 日，单边成交额）</div>
+      <label for="vs">现货日交易量</label>
+      <div class="range-row"><input type="range" id="vs" min="0" max="500" step="5" value="150"><output id="vs-o"></output></div>
+      <label for="vf">合约日交易量</label>
+      <div class="range-row"><input type="range" id="vf" min="0" max="2000" step="10" value="700"><output id="vf-o"></output></div>
+
+      <div class="group-title">标准费率（%）</div>
+      <label for="sft">现货 Taker 费率</label>
+      <div class="range-row"><input type="range" id="sft" min="0" max="0.2" step="0.005" value="0.1"><output id="sft-o"></output></div>
+      <label for="sfm">现货 Maker 费率</label>
+      <div class="range-row"><input type="range" id="sfm" min="0" max="0.2" step="0.005" value="0.1"><output id="sfm-o"></output></div>
+      <label for="fft">合约 Taker 费率</label>
+      <div class="range-row"><input type="range" id="fft" min="0" max="0.1" step="0.0025" value="0.05"><output id="fft-o"></output></div>
+      <label for="ffm">合约 Maker 费率</label>
+      <div class="range-row"><input type="range" id="ffm" min="0" max="0.1" step="0.0025" value="0.02"><output id="ffm-o"></output></div>
+
+      <div class="group-title">做市商（Maker 侧构成）</div>
+      <label for="mm">Maker 侧成交中做市商占比</label>
+      <div class="range-row"><input type="range" id="mm" min="0" max="95" step="5" value="60"><output id="mm-o"></output></div>
+      <div class="derived" id="maker-share"></div>
+      <label for="mmr">做市商返佣（负 Maker 费率，%）</label>
+      <div class="range-row"><input type="range" id="mmr" min="0" max="0.02" step="0.001" value="0.005"><output id="mmr-o"></output></div>
+
+      <div class="group-title">VIP、BNB 抵扣与返佣</div>
+      <label for="vip">VIP 用户交易量占比（普通用户成交中）</label>
+      <div class="range-row"><input type="range" id="vip" min="0" max="90" step="5" value="50"><output id="vip-o"></output></div>
+      <label for="vipm">VIP 平均费率（相对标准费率）</label>
+      <div class="range-row"><input type="range" id="vipm" min="10" max="100" step="5" value="40"><output id="vipm-o"></output></div>
+      <label for="bnbu">BNB 抵扣使用率</label>
+      <div class="range-row"><input type="range" id="bnbu" min="0" max="100" step="5" value="40"><output id="bnbu-o"></output></div>
+      <label for="bnbd">BNB 抵扣折扣</label>
+      <div class="range-row"><input type="range" id="bnbd" min="0" max="50" step="5" value="25"><output id="bnbd-o"></output></div>
+      <label for="ref">推荐返佣比例（占手续费）</label>
+      <div class="range-row"><input type="range" id="ref" min="0" max="50" step="1" value="10"><output id="ref-o"></output></div>
+
+      <div class="group-title">理财</div>
+      <label for="aum">理财资产规模（亿美元）</label>
+      <div class="range-row"><input type="range" id="aum" min="0" max="2000" step="10" value="300"><output id="aum-o"></output></div>
+      <label for="spr">理财年化利差（%）</label>
+      <div class="range-row"><input type="range" id="spr" min="0" max="6" step="0.1" value="2"><output id="spr-o"></output></div>
+
+      <div class="group-title">成本假设</div>
+      <label for="fix">固定成本：技术 + 合规 + 人员（亿美元 / 年）</label>
+      <div class="range-row"><input type="range" id="fix" min="0" max="100" step="1" value="25"><output id="fix-o"></output></div>
+      <label for="mkt">营销费用（占总收入）</label>
+      <div class="range-row"><input type="range" id="mkt" min="0" max="50" step="1" value="15"><output id="mkt-o"></output></div>
+      <label for="safu">安全储备提取（占净手续费）</label>
+      <div class="range-row"><input type="range" id="safu" min="0" max="30" step="1" value="10"><output id="safu-o"></output></div>
+      <div class="btn-row"><button id="reset1">恢复默认值</button></div>
+    </div>
+
+    <div class="card">
+      <div class="stats">
+        <div class="stat"><span class="k">日收入</span><span class="v" id="s-day"></span></div>
+        <div class="stat"><span class="k">年收入</span><span class="v" id="s-year"></span></div>
+        <div class="stat"><span class="k">年净利润</span><span class="v" id="s-profit"></span></div>
+        <div class="stat"><span class="k">净利率</span><span class="v" id="s-margin"></span></div>
+        <div class="stat"><span class="k">现货有效费率</span><span class="v" id="s-eff-s"></span></div>
+        <div class="stat"><span class="k">合约有效费率</span><span class="v" id="s-eff-f"></span></div>
+      </div>
+
+      <h3>收入瀑布图（万美元 / 日）</h3>
+      <svg class="chart" id="waterfall" viewBox="0 0 480 330" role="img" aria-label="收入瀑布图"></svg>
+      <div class="legend">
+        <span><i style="background:var(--info)"></i>起点 / 小计</span>
+        <span><i style="background:var(--sell)"></i>扣减</span>
+        <span><i style="background:var(--buy)"></i>增加</span>
+        <span><i style="background:var(--accent)"></i>结果</span>
+      </div>
+
+      <h3>收入构成（日收入占比）</h3>
+      <svg class="chart" id="compose" viewBox="0 0 600 60" role="img" aria-label="收入构成堆叠条"></svg>
+      <div class="legend" id="compose-legend"></div>
+
+      <h3>年度成本与利润（亿美元）</h3>
+      <div class="table-wrap">
+        <table>
+          <tbody id="cost-table"></tbody>
+        </table>
+      </div>
+      <p class="small muted">有效费率 = 净手续费 ÷ 单边交易量。它反映平台每成交 1 美元真正留下多少手续费。</p>
+    </div>
+  </div>
+
+  <h2>第二部分：飞轮模拟 <span class="pill warn badge-demo">示例模型</span></h2>
+  <p class="muted">每按一次"下一期"，模型前进 1 个月。模型规则：交易量越大，流动性越好；流动性越好，滑点越小；交易成本（费率 + 滑点）低于竞品时，用户增长；高于竞品时，用户流失。做市补贴提升流动性，但从手续费中支出。市场容量有上限。</p>
+  <div class="grid cols-2">
+    <div class="card">
+      <label for="ff">你的策略：平均费率（bp，1 bp = 0.01%）</label>
+      <div class="range-row"><input type="range" id="ff" min="2" max="20" step="1" value="7"><output id="ff-o"></output></div>
+      <label for="fs">做市补贴（占当期手续费）</label>
+      <div class="range-row"><input type="range" id="fs" min="0" max="60" step="5" value="20"><output id="fs-o"></output></div>
+      <label for="fc">竞品综合交易成本（bp）</label>
+      <div class="range-row"><input type="range" id="fc" min="8" max="24" step="1" value="16"><output id="fc-o"></output></div>
+      <p class="small muted">对照组固定为：费率 10 bp、无补贴。两组面对同样的竞品和同样的事件。模拟中途可以改变滑块，新参数从下一期起生效。</p>
+      <div class="btn-row">
+        <button class="primary" id="next">下一期</button>
+        <button id="run12">连续运行 12 期</button>
+        <button class="sell" id="crisis">触发信任危机</button>
+        <button id="reset2">重置</button>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+    <div class="card">
+      <h3>日交易量（亿美元）</h3>
+      <svg class="chart" id="chart-vol" viewBox="0 0 480 220" role="img" aria-label="日交易量曲线"></svg>
+      <h3>累计利润（亿美元）</h3>
+      <svg class="chart" id="chart-cum" viewBox="0 0 480 220" role="img" aria-label="累计利润曲线"></svg>
+      <div class="legend">
+        <span><i class="line" style="background:var(--accent)"></i>你的策略</span>
+        <span><i class="dash"></i>对照组</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3 id="period-title">当前期数据</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>指标</th><th class="num">你的策略</th><th class="num">对照组</th></tr></thead>
+        <tbody id="period-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <h2>试一试</h2>
+  <div class="card">
+    <ol class="try">
+      <li>第一部分：把 BNB 抵扣使用率从 0% 拉到 100%。日收入下降了多少？想一想：平台为什么仍然愿意让利？（提示：见第 12 章 3.3 节"BNB 代币经济"。）</li>
+      <li>第一部分：把"Maker 侧成交中做市商占比"拉到 95%，再把做市商返佣拉到 0.02%。合约有效费率变成多少？这说明做市激励的成本有多大？</li>
+      <li>第二部分：先用"费率 7 bp + 补贴 20%"运行 12 期，记下累计利润。重置后改成"费率 15 bp + 补贴 0%"再运行 12 期。哪种策略超过了对照组？在第 6 期按一次"触发信任危机"，结论会变吗？</li>
+    </ol>
+  </div>
+
+  <footer class="note">
+    本页为 CEX Demo 学习系列的教学工具。所有数值为示例假设，非真实财务数据；模型高度简化，只用于理解机制。配套阅读：<a href="../12-business-model.md">12 商业逻辑</a>、<a href="../11-products-ecosystem.md">11 产品生态</a>、<a href="depth-slippage.html">深度与滑点</a>。
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var NS = "http://www.w3.org/2000/svg";
+  function $(id) { return document.getElementById(id); }
+  function el(tag, attrs, text) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) {
+      if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+      // CSS variables are applied through style so every browser resolves them.
+      if ((k === "fill" || k === "stroke") && String(attrs[k]).indexOf("var(") === 0) n.style.setProperty(k, attrs[k]);
+      else n.setAttribute(k, attrs[k]);
+    }
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+  function fmt(x, d) { return Number(x).toLocaleString("zh-CN", { minimumFractionDigits: d, maximumFractionDigits: d }); }
+
+  /* ---------- Part 1: revenue breakdown ---------- */
+  var defs = {
+    vs: [150, function (v) { return fmt(v, 0) + " 亿"; }],
+    vf: [700, function (v) { return fmt(v, 0) + " 亿"; }],
+    sft: [0.1, function (v) { return fmt(v, 3) + "%"; }],
+    sfm: [0.1, function (v) { return fmt(v, 3) + "%"; }],
+    fft: [0.05, function (v) { return fmt(v, 4) + "%"; }],
+    ffm: [0.02, function (v) { return fmt(v, 4) + "%"; }],
+    mm: [60, function (v) { return v + "%"; }],
+    mmr: [0.005, function (v) { return "-" + fmt(v, 3) + "%"; }],
+    vip: [50, function (v) { return v + "%"; }],
+    vipm: [40, function (v) { return v + "%"; }],
+    bnbu: [40, function (v) { return v + "%"; }],
+    bnbd: [25, function (v) { return v + "%"; }],
+    ref: [10, function (v) { return v + "%"; }],
+    aum: [300, function (v) { return fmt(v, 0) + " 亿"; }],
+    spr: [2, function (v) { return fmt(v, 1) + "%"; }],
+    fix: [25, function (v) { return fmt(v, 0) + " 亿"; }],
+    mkt: [15, function (v) { return v + "%"; }],
+    safu: [10, function (v) { return v + "%"; }]
+  };
+  function val(id) { return parseFloat($(id).value); }
+
+  // One market: V in 亿美元/日 (one side), fees in %.
+  function market(V, ft, fm, p) {
+    ft = ft / 100; fm = fm / 100;
+    var mmShare = p.mm / 100, r = p.mmr / 100;
+    var takerVol = V;                       // every fill has one taker side (assume retail/VIP)
+    var mmVol = V * mmShare;                // maker side from market makers
+    var retailMakerVol = V * (1 - mmShare); // maker side from normal users
+    var gross = takerVol * ft + V * fm;     // everyone at standard rate
+    var retailFee = takerVol * ft + retailMakerVol * fm;
+    var vipCut = retailFee * (p.vip / 100) * (1 - p.vipm / 100);
+    var afterVip = retailFee - vipCut;
+    var mmCut = mmVol * (fm + r);           // forgone maker fee + rebate paid
+    var bnbCut = afterVip * (p.bnbu / 100) * (p.bnbd / 100);
+    var afterBnb = afterVip - bnbCut;
+    var refCut = afterBnb * (p.ref / 100);
+    var net = afterBnb - refCut - mmVol * r;
+    return { gross: gross, vipCut: vipCut, mmCut: mmCut, bnbCut: bnbCut, refCut: refCut, net: net, V: V };
+  }
+
+  function computeRevenue() {
+    var p = {};
+    for (var k in defs) { if (Object.prototype.hasOwnProperty.call(defs, k)) p[k] = val(k); }
+    var s = market(p.vs, p.sft, p.sfm, p);
+    var f = market(p.vf, p.fft, p.ffm, p);
+    var earn = p.aum * (p.spr / 100) / 365;
+    var netFee = s.net + f.net;
+    var day = netFee + earn;
+    var year = day * 365;
+    var mktCost = Math.max(0, year) * p.mkt / 100;
+    var safuCost = Math.max(0, netFee * 365) * p.safu / 100;
+    var cost = p.fix + mktCost + safuCost;
+    return { p: p, s: s, f: f, earn: earn, netFee: netFee, day: day, year: year,
+             fix: p.fix, mktCost: mktCost, safuCost: safuCost, cost: cost, profit: year - cost };
+  }
+
+  function drawWaterfall(r) {
+    var svg = $("waterfall"); clear(svg);
+    var W = 10000; // 亿 -> 万
+    var steps = [
+      { name: "标准费率毛手续费", v: (r.s.gross + r.f.gross) * W, kind: "start" },
+      { name: "VIP 让利", v: -(r.s.vipCut + r.f.vipCut) * W, kind: "delta" },
+      { name: "做市商负费率", v: -(r.s.mmCut + r.f.mmCut) * W, kind: "delta" },
+      { name: "BNB 抵扣", v: -(r.s.bnbCut + r.f.bnbCut) * W, kind: "delta" },
+      { name: "推荐返佣", v: -(r.s.refCut + r.f.refCut) * W, kind: "delta" },
+      { name: "净手续费", v: r.netFee * W, kind: "sub" },
+      { name: "理财利差", v: r.earn * W, kind: "delta" },
+      { name: "日总收入", v: r.day * W, kind: "result" },
+      { name: "日均成本", v: -(r.cost / 365) * W, kind: "delta" },
+      { name: "日均净利润", v: (r.profit / 365) * W, kind: "result" }
+    ];
+    var run = 0, lo = 0, hi = 0, bars = [];
+    steps.forEach(function (st) {
+      var a, b;
+      if (st.kind === "delta") { a = run; b = run + st.v; run = b; }
+      else { a = 0; b = st.v; run = st.v; }
+      bars.push({ st: st, a: a, b: b });
+      lo = Math.min(lo, a, b); hi = Math.max(hi, a, b);
+    });
+    if (hi - lo < 1) hi = lo + 1;
+    var left = 120, right = 470, top = 8, rowH = 31, barH = 20;
+    function x(v) { return left + (v - lo) / (hi - lo) * (right - left - 70); }
+    svg.appendChild(el("line", { x1: x(0), x2: x(0), y1: top - 4, y2: top + rowH * bars.length, "class": "axis" }));
+    bars.forEach(function (b, i) {
+      var y = top + i * rowH;
+      var color = b.st.kind === "start" || b.st.kind === "sub" ? "var(--info)"
+        : b.st.kind === "result" ? (b.b >= 0 ? "var(--accent)" : "var(--sell)")
+        : (b.st.v >= 0 ? "var(--buy)" : "var(--sell)");
+      var x0 = Math.min(x(b.a), x(b.b)), w = Math.max(1, Math.abs(x(b.b) - x(b.a)));
+      svg.appendChild(el("text", { x: left - 8, y: y + barH / 2 + 4, "text-anchor": "end", "class": "lbl" }, b.st.name));
+      svg.appendChild(el("rect", { x: x0, y: y, width: w, height: barH, rx: 3, fill: color }));
+      if (i < bars.length - 1 && bars[i + 1].st.kind === "delta") {
+        svg.appendChild(el("line", { x1: x(b.b), x2: x(b.b), y1: y + barH, y2: y + rowH, "class": "grid-line" }));
+      }
+      var sign = b.st.kind === "delta" && b.st.v > 0 ? "+" : "";
+      svg.appendChild(el("text", { x: x0 + w + 6, y: y + barH / 2 + 4, "class": "val" }, sign + fmt(b.st.v, 0)));
+    });
+  }
+
+  function drawCompose(r) {
+    var svg = $("compose"); clear(svg);
+    var parts = [
+      { name: "现货净手续费", v: Math.max(0, r.s.net), c: "var(--accent)" },
+      { name: "合约净手续费", v: Math.max(0, r.f.net), c: "var(--info)" },
+      { name: "理财利差", v: Math.max(0, r.earn), c: "var(--buy)" }
+    ];
+    var tot = parts.reduce(function (a, b) { return a + b.v; }, 0);
+    var leg = $("compose-legend"); clear(leg);
+    if (tot <= 0) {
+      svg.appendChild(el("text", { x: 300, y: 32, "text-anchor": "middle", "class": "lbl" }, "当前参数下收入为 0 或负数"));
+      return;
+    }
+    var x0 = 0;
+    parts.forEach(function (pt) {
+      var w = pt.v / tot * 600;
+      if (w > 0) {
+        svg.appendChild(el("rect", { x: x0, y: 8, width: w, height: 40, fill: pt.c }));
+        if (w > 48) {
+          var t = el("text", { x: x0 + w / 2, y: 33, "text-anchor": "middle", "class": "val" }, fmt(pt.v / tot * 100, 0) + "%");
+          t.setAttribute("style", "fill:var(--surface);font-weight:600");
+          svg.appendChild(t);
+        }
+      }
+      x0 += w;
+      var s = document.createElement("span");
+      var i = document.createElement("i"); i.style.background = pt.c;
+      s.appendChild(i);
+      s.appendChild(document.createTextNode(pt.name + " " + fmt(pt.v * 10000, 0) + " 万/日（" + fmt(pt.v / tot * 100, 1) + "%）"));
+      leg.appendChild(s);
+    });
+  }
+
+  function renderPart1() {
+    for (var k in defs) {
+      if (Object.prototype.hasOwnProperty.call(defs, k)) $(k + "-o").textContent = defs[k][1](val(k));
+    }
+    var r = computeRevenue();
+    var mmS = val("mm") / 100;
+    $("maker-share").textContent = "推导：普通用户成交中 Maker 占比 = " + fmt((1 - mmS) / (2 - mmS) * 100, 1) + "%（其余为 Taker）";
+    $("s-day").textContent = fmt(r.day * 10000, 0) + " 万";
+    $("s-year").textContent = fmt(r.year, 1) + " 亿";
+    $("s-profit").textContent = fmt(r.profit, 1) + " 亿";
+    $("s-profit").className = "v " + (r.profit >= 0 ? "up" : "down");
+    $("s-margin").textContent = r.year > 0 ? fmt(r.profit / r.year * 100, 1) + "%" : "—";
+    $("s-eff-s").textContent = r.s.V > 0 ? fmt(r.s.net / r.s.V * 100, 4) + "%" : "—";
+    $("s-eff-f").textContent = r.f.V > 0 ? fmt(r.f.net / r.f.V * 100, 4) + "%" : "—";
+    drawWaterfall(r);
+    drawCompose(r);
+    var rows = [
+      ["年收入（净手续费 + 理财利差）", r.year],
+      ["固定成本：技术、合规、人员", -r.fix],
+      ["营销费用", -r.mktCost],
+      ["安全储备提取（类似 SAFU）", -r.safuCost],
+      ["年净利润", r.profit]
+    ];
+    var tb = $("cost-table"); clear(tb);
+    rows.forEach(function (row, i) {
+      var tr = document.createElement("tr");
+      var a = document.createElement("td"); a.textContent = row[0];
+      var b = document.createElement("td"); b.className = "num" + (i === rows.length - 1 ? (row[1] >= 0 ? " up" : " down") : "");
+      b.textContent = fmt(row[1], 2);
+      if (i === 0 || i === rows.length - 1) { a.style.fontWeight = "600"; b.style.fontWeight = "600"; }
+      tr.appendChild(a); tr.appendChild(b); tb.appendChild(tr);
+    });
+  }
+
+  Object.keys(defs).forEach(function (k) { $(k).addEventListener("input", renderPart1); });
+  $("reset1").addEventListener("click", function () {
+    Object.keys(defs).forEach(function (k) { $(k).value = defs[k][0]; });
+    renderPart1();
+  });
+  renderPart1();
+
+  /* ---------- Part 2: flywheel ---------- */
+  var MAX_T = 36, V0 = 200, U_MAX = 600, FIXED = 2, BASE_SLIP = 6;
+  var sim;
+  function newState() { return { U: 100, g: 0, cum: 0, hist: [] }; }
+  function resetSim() {
+    sim = { t: 0, crisis: 0, mine: newState(), base: newState() };
+    clear($("log"));
+    log("note", "已重置。初始：用户指数 100，日交易量 200 亿美元（示例）。");
+    renderPart2();
+  }
+  function log(cls, msg) {
+    var d = document.createElement("div"); d.className = cls; d.textContent = msg;
+    var box = $("log"); box.appendChild(d); box.scrollTop = box.scrollHeight;
+  }
+  function stepState(st, feeBp, sub, cc, crisis) {
+    var V = st.U * 2;
+    var L = Math.pow(V / V0, 0.7) * (1 + 3 * sub);
+    var slip = BASE_SLIP / Math.sqrt(L);
+    var cost = feeBp + slip;
+    var gT = 0.01 + 0.25 * (cc - cost) / cc;
+    if (gT > 0) gT *= Math.max(0, 1 - st.U / U_MAX);
+    if (crisis > 0) gT -= 0.06;
+    var g = Math.max(-0.3, Math.min(0.3, 0.5 * st.g + 0.5 * gT));
+    var revenue = V * feeBp / 10000 * 30;
+    var subsidy = sub * revenue;
+    var profit = revenue - subsidy - FIXED;
+    st.cum += profit;
+    st.hist.push({ U: st.U, V: V, slip: slip, cost: cost, revenue: revenue, subsidy: subsidy, profit: profit, cum: st.cum, g: g });
+    st.g = g;
+    st.U = st.U * (1 + g);
+  }
+  function step() {
+    if (sim.t >= MAX_T) return false;
+    var fee = val("ff"), sub = val("fs") / 100, cc = val("fc");
+    stepState(sim.mine, fee, sub, cc, sim.crisis);
+    stepState(sim.base, 10, 0, cc, sim.crisis);
+    if (sim.crisis > 0) sim.crisis -= 1;
+    sim.t += 1;
+    var h = sim.mine.hist[sim.mine.hist.length - 1];
+    var cls = h.profit >= 0 ? "ok" : "err";
+    log(cls, "第 " + sim.t + " 期：交易量 " + fmt(h.V, 0) + " 亿/日，交易成本 " + fmt(h.cost, 1) + " bp，用户增速 " + fmt(h.g * 100, 1) + "%，本期利润 " + fmt(h.profit, 2) + " 亿。");
+    return true;
+  }
+  function drawLines(svgId, key) {
+    var svg = $(svgId); clear(svg);
+    var a = sim.mine.hist.map(function (h) { return h[key]; });
+    var b = sim.base.hist.map(function (h) { return h[key]; });
+    var all = a.concat(b);
+    var L = 50, R = 452, T = 12, B = 190;
+    var n = Math.max(12, sim.t);
+    var lo = all.length ? Math.min.apply(null, all) : 0;
+    var hi = all.length ? Math.max.apply(null, all) : 1;
+    if (key === "cum") { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
+    else { lo = Math.min(lo, 0); }
+    if (hi - lo < 1e-9) hi = lo + 1;
+    var pad = (hi - lo) * 0.08; hi += pad; if (lo < 0) lo -= pad;
+    function x(i) { return L + (i + 1) / n * (R - L); }
+    function y(v) { return B - (v - lo) / (hi - lo) * (B - T); }
+    for (var g = 0; g <= 4; g++) {
+      var gv = lo + (hi - lo) * g / 4;
+      svg.appendChild(el("line", { x1: L, x2: R, y1: y(gv), y2: y(gv), "class": "grid-line" }));
+      svg.appendChild(el("text", { x: L - 6, y: y(gv) + 4, "text-anchor": "end", "class": "lbl" }, fmt(gv, Math.abs(hi - lo) < 10 ? 1 : 0)));
+    }
+    if (lo < 0 && hi > 0) svg.appendChild(el("line", { x1: L, x2: R, y1: y(0), y2: y(0), "class": "axis" }));
+    svg.appendChild(el("line", { x1: L, x2: L, y1: T, y2: B, "class": "axis" }));
+    var tickStep = n > 24 ? 6 : 3;
+    for (var t = tickStep; t <= n; t += tickStep) {
+      svg.appendChild(el("text", { x: x(t - 1), y: B + 18, "text-anchor": "middle", "class": "lbl" }, "第" + t + "期"));
+    }
+    if (!a.length) {
+      svg.appendChild(el("text", { x: (L + R) / 2, y: (T + B) / 2, "text-anchor": "middle", "class": "lbl" }, "按「下一期」开始模拟"));
+      return;
+    }
+    function path(arr) { return arr.map(function (v, i) { return (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); }).join(" "); }
+    svg.appendChild(el("path", { d: path(b), fill: "none", stroke: "var(--text-2)", "stroke-width": 2, "stroke-dasharray": "5 4" }));
+    svg.appendChild(el("path", { d: path(a), fill: "none", stroke: "var(--accent)", "stroke-width": 2.5 }));
+    var li = a.length - 1;
+    svg.appendChild(el("circle", { cx: x(li), cy: y(a[li]), r: 3.5, fill: "var(--accent)" }));
+  }
+  function renderPart2() {
+    $("ff-o").textContent = val("ff") + " bp";
+    $("fs-o").textContent = val("fs") + "%";
+    $("fc-o").textContent = val("fc") + " bp";
+    drawLines("chart-vol", "V");
+    drawLines("chart-cum", "cum");
+    $("next").disabled = sim.t >= MAX_T;
+    $("run12").disabled = sim.t >= MAX_T;
+    $("period-title").textContent = sim.t ? "第 " + sim.t + " 期数据（每期 = 1 个月，示例）" : "当前期数据（尚未开始）";
+    var tb = $("period-table"); clear(tb);
+    var m = sim.mine.hist[sim.t - 1], b = sim.base.hist[sim.t - 1];
+    var rows = [
+      ["用户指数", "U", 0], ["日交易量（亿美元）", "V", 0], ["滑点（bp）", "slip", 2],
+      ["综合交易成本（bp）", "cost", 2], ["本期手续费收入（亿美元）", "revenue", 2],
+      ["本期补贴支出（亿美元）", "subsidy", 2], ["本期利润（亿美元，已扣固定成本 2 亿）", "profit", 2],
+      ["累计利润（亿美元）", "cum", 2]
+    ];
+    rows.forEach(function (row) {
+      var tr = document.createElement("tr");
+      var c0 = document.createElement("td"); c0.textContent = row[0]; tr.appendChild(c0);
+      [m, b].forEach(function (h) {
+        var c = document.createElement("td"); c.className = "num";
+        c.textContent = h ? fmt(h[row[1]], row[2]) : "—";
+        if (h && (row[1] === "profit" || row[1] === "cum")) c.className += h[row[1]] >= 0 ? " up" : " down";
+        tr.appendChild(c);
+      });
+      tb.appendChild(tr);
+    });
+  }
+  $("next").addEventListener("click", function () { step(); renderPart2(); });
+  $("run12").addEventListener("click", function () {
+    for (var i = 0; i < 12; i++) { if (!step()) break; }
+    if (sim.t >= MAX_T) log("note", "已到达第 " + MAX_T + " 期上限。按「重置」重新开始。");
+    renderPart2();
+  });
+  $("crisis").addEventListener("click", function () {
+    sim.mine.U *= 0.85; sim.base.U *= 0.85; sim.crisis = 3;
+    log("err", "信任危机：两组用户立即流失 15%，接下来 3 期增速额外降低 6 个百分点。");
+    renderPart2();
+  });
+  $("reset2").addEventListener("click", resetSim);
+  ["ff", "fs", "fc"].forEach(function (id) { $(id).addEventListener("input", renderPart2); });
+  resetSim();
+})();
+</script>
+</body>
+</html>

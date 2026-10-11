@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>对账实验室</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .src-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .src { min-width: 0; }
+  .src h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .src .table-wrap { max-height: 300px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .src table { font-size: 12px; }
+  .src th { position: sticky; top: 0; background: var(--surface); }
+  .src td, .src th { padding: 4px 6px; white-space: nowrap; }
+  tr.flag-err td { background: var(--sell-soft); }
+  tr.flag-warn td { background: var(--warn-soft); }
+  .inj { display: flex; flex-wrap: wrap; gap: 8px; }
+  .inj button[aria-pressed="true"] { background: var(--sell-soft); border-color: var(--sell); color: var(--sell); font-weight: 600; }
+  .res { font-size: 18px; text-align: center; }
+  .matrix td { vertical-align: top; }
+  .detect td, .detect th { text-align: center; }
+  .detect td:first-child, .detect th:first-child { text-align: left; }
+  .breaker { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .lamp { border-radius: 8px; padding: 12px 14px; border: 1px solid var(--border); }
+  .lamp.open { background: var(--buy-soft); color: var(--buy); }
+  .lamp.halt { background: var(--sell-soft); color: var(--sell); border-color: var(--sell); }
+  .lamp .big { font-size: 18px; font-weight: 700; }
+  .lamp .why { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+  .controls > div { min-width: 160px; flex: 1; }
+  ol.try li, ol.howto li { margin: 4px 0; }
+  .kv { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; margin-top: 6px; }
+  .kv b { font-family: var(--mono); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <a class="back" href="index.html">← 交互实验目录</a>
+    <a class="back" href="../backstage/B04-reconciliation.md">配套章节：B04 系统对账</a>
+  </header>
+  <h1>对账实验室</h1>
+  <p class="lead">六个数据源记录同一批约 20 笔业务：订单、成交、结算、账本、链上、托管。注入一种差异，运行对账，看哪一对最先发现它，差异进入工单队列后是自动修复还是人工处理。资产负债不平超过阈值时，该币种的提币自动暂停。配套章节：<a href="../backstage/B04-reconciliation.md">B04 系统对账</a>、<a href="../05-ledger.md">05 账本</a>。</p>
+
+  <div class="card">
+    <h3>怎么玩</h3>
+    <ol class="howto small">
+      <li>先点"运行对账"。没有注入差异时，对账矩阵全部是 ✅。</li>
+      <li>点亮一个或多个"注入差异"按钮。数据源表格会立即更新。</li>
+      <li>再点"运行对账"。看对账矩阵、发现矩阵、工单队列和熔断指示。</li>
+      <li>用"执行自动修复""时间推进 30 分钟""人工工单：双人审批"三个按钮处理工单，然后复跑。</li>
+      <li>熔断后，只有对账已平时才能"人工确认恢复提币"。</li>
+    </ol>
+    <p class="small muted">全部金额用 BigInt，以 10<sup>-8</sup> 为最小单位。数据由种子生成，同一种子每次结果相同。</p>
+  </div>
+
+  <h2>1. 控制台</h2>
+  <div class="card">
+    <h3>注入差异</h3>
+    <div class="inj" id="injBtns"></div>
+    <div class="controls" style="margin-top:12px">
+      <div>
+        <label for="seed">数据种子</label>
+        <input type="number" id="seed" value="20261007">
+      </div>
+      <div>
+        <label for="thr">熔断阈值（不可解释差额 ÷ 该币种资产，单位 bp）</label>
+        <div class="range-row"><input type="range" id="thr" min="1" max="100" value="10"><output id="thrO"></output></div>
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="primary" id="btnRun">运行对账</button>
+      <button id="btnAuto">执行自动修复</button>
+      <button id="btnTime">⏩ 时间推进 30 分钟</button>
+      <button id="btnManual">人工工单：双人审批</button>
+      <button id="btnReset">清除全部注入</button>
+      <button id="btnRegen">按种子重新生成</button>
+    </div>
+  </div>
+
+  <h2>2. 熔断指示</h2>
+  <div class="breaker" id="breaker"></div>
+
+  <h2>3. 对账矩阵</h2>
+  <div class="card">
+    <div class="table-wrap"><table class="matrix">
+      <thead><tr><th>#</th><th>对账对</th><th>对账键</th><th>频率（示例）</th><th>容差（示例）</th><th>结果</th><th>说明</th></tr></thead>
+      <tbody id="matrixBody"></tbody>
+    </table></div>
+    <p class="small muted">✅ 一致；⚠️ 有差异，但能被在途清单解释，可容忍；❌ 不可解释的差异。</p>
+  </div>
+
+  <h2>4. 发现矩阵：哪类差异在哪一层被发现</h2>
+  <div class="card">
+    <div class="table-wrap"><table class="detect">
+      <thead><tr><th>注入的差异</th><th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>R5</th><th>R6</th><th>恒等式</th></tr></thead>
+      <tbody id="detectBody"></tbody>
+    </table></div>
+    <p class="small muted">每一行只统计该注入造成的差异。空白表示这一层"看不见"它。</p>
+  </div>
+
+  <h2>5. 工单队列</h2>
+  <div class="card">
+    <div class="table-wrap"><table>
+      <thead><tr><th>工单</th><th>对账对</th><th>类别</th><th>明细</th><th>处置</th><th>动作</th></tr></thead>
+      <tbody id="ticketBody"></tbody>
+    </table></div>
+    <h3>处置日志</h3>
+    <div class="log" id="log"></div>
+  </div>
+
+  <h2>6. 六个数据源</h2>
+  <div class="src-grid" id="sources"></div>
+
+  <h2>7. 试一试</h2>
+  <div class="card">
+    <ol class="try">
+      <li><b>重复消费：</b>只注入"消息重复消费"，运行对账。哪一对变红？资产负债恒等式为什么仍是 ✅？</li>
+      <li><b>在途可容忍：</b>注入"托管商延迟"和"在途时序差"。R5、R6 显示 ⚠️，熔断不触发。点"时间推进 30 分钟"后复跑，⚠️ 是否消失？</li>
+      <li><b>熔断与阈值：</b>注入"人为错误调账"。USDT 提币被暂停。把阈值拖到 50 bp 以上再运行，结果变成什么？为什么 R1–R3 全部是 ✅？</li>
+    </ol>
+  </div>
+
+  <footer class="note">本页为教学模型。全部用户、金额、交易哈希、阈值均为合成示例，不代表币安或任何交易所的内部实现。对应本仓库：services/ledger-service（reconcile-balances、replay-account）、services/settlement-service（成交事件序号断档检测）、services/order-service（订单与撮合异常）、services/wallet-service（reconcile-stale-withdrawals）。</footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var D = 100000000n;
+  var ASSETS = ['BTC', 'USDT'];
+  var USERS = ['U1', 'U2', 'U3', 'U4', 'U5', 'U6'];
+  var INJ = [
+    { k: 'dup', name: '消息重复消费' },
+    { k: 'miss', name: '结算漏单' },
+    { k: 'chainNoLedger', name: '链上提币未入账' },
+    { k: 'round', name: '精度舍入' },
+    { k: 'custDelay', name: '托管商延迟' },
+    { k: 'humanAdj', name: '人为错误调账' },
+    { k: 'inTransit', name: '在途时序差' }
+  ];
+  var INJ_NAME = {};
+  INJ.forEach(function (i) { INJ_NAME[i.k] = i.name; });
+  var PAIRS = ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'EQ'];
+
+  var state = { inj: {}, halted: { BTC: false, USDT: false }, haltWhy: { BTC: '', USDT: '' }, last: null, data: null, ticketSeq: 0 };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function ri(r, lo, hi) { return lo + Math.floor(r() * (hi - lo + 1)); }
+  function abs(v) { return v < 0n ? -v : v; }
+  function fmt(v) {
+    var neg = v < 0n, a = neg ? -v : v;
+    var i = (a / D).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    var f = (a % D).toString().padStart(8, '0').replace(/0+$/, '');
+    return (neg ? '-' : '') + i + (f ? '.' + f : '');
+  }
+  function hex(r) { var s = '0x'; for (var i = 0; i < 6; i++) s += ri(r, 0, 255).toString(16).padStart(2, '0'); return s; }
+  function hhmm(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+
+  // ---------- data generation (all random draws happen first; injections never consume randomness) ----------
+  function build(seed, inj) {
+    var r = mulberry32(seed);
+    var S = { orders: [], trades: [], stls: [], journals: [], chain: [], custTx: [], wds: [], ops: [], open: {}, truthEq: { BTC: [], USDT: [] } };
+    var jn = 0;
+    function J(type, ref, time, entries, tag) { S.journals.push({ id: 'J' + String(++jn).padStart(3, '0'), type: type, ref: ref, time: time, entries: entries, inj: tag || null }); }
+
+    // opening balances
+    var tot = { BTC: 0n, USDT: 0n }, openEntries = [];
+    USERS.forEach(function (u) {
+      var b = BigInt(ri(r, 200, 500)) * 1000000n;
+      var q = BigInt(ri(r, 200, 500)) * 1000n * D;
+      tot.BTC += b; tot.USDT += q;
+      openEntries.push({ acct: 'user:' + u, asset: 'BTC', amt: b }, { acct: 'user:' + u, asset: 'USDT', amt: q });
+    });
+    S.open.hot = { BTC: tot.BTC / 5n, USDT: tot.USDT / 5n };
+    S.open.cust = { BTC: tot.BTC - S.open.hot.BTC, USDT: tot.USDT - S.open.hot.USDT };
+    ASSETS.forEach(function (a) {
+      openEntries.push({ acct: 'hot', asset: a, amt: S.open.hot[a] }, { acct: 'custody', asset: a, amt: S.open.cust[a] });
+    });
+    J('期初', 'opening', '09:59', openEntries);
+
+    // plan 20 flows
+    var plan = [];
+    for (var i = 0; i < 4; i++) plan.push('dep');
+    for (i = 0; i < 10; i++) plan.push('trade');
+    for (i = 0; i < 4; i++) plan.push('wd');
+    for (i = 0; i < 2; i++) plan.push('sweep');
+    for (i = plan.length - 1; i > 0; i--) { var j = ri(r, 0, i); var t = plan[i]; plan[i] = plan[j]; plan[j] = t; }
+
+    var minute = 600, nT = 0, nW = 0, nSW = 0, nO = 0;
+    plan.forEach(function (kind) {
+      minute += ri(r, 1, 4);
+      var tm = hhmm(minute);
+      if (kind === 'dep') {
+        var u = USERS[ri(r, 0, 5)], a = ASSETS[ri(r, 0, 1)];
+        var amt = a === 'BTC' ? BigInt(ri(r, 10, 100)) * 1000000n : BigInt(ri(r, 1000, 20000)) * D;
+        var h = hex(r);
+        S.chain.push({ hash: h, type: '充值', asset: a, amt: amt, dir: 1n, ref: h, time: tm, inj: null });
+        J('充值', h, tm, [{ acct: 'hot', asset: a, amt: amt }, { acct: 'user:' + u, asset: a, amt: amt }]);
+      } else if (kind === 'trade') {
+        var bi = ri(r, 0, 5), si = (bi + ri(r, 1, 5)) % 6;
+        var buyer = USERS[bi], seller = USERS[si];
+        var price = BigInt(ri(r, 60000, 62000));
+        var qty = BigInt(ri(r, 1000000, 20000000));
+        var quote = price * qty;
+        if (quote % 1000n === 0n) { qty += 1n; quote = price * qty; }
+        var feeFloor = quote / 1000n;               // 0.1% fee, round down
+        var feeCeil = feeFloor + 1n;                // wrong rounding direction
+        var tid = 'T' + String(++nT).padStart(2, '0');
+        var ob = 'O' + String(++nO).padStart(2, '0'), os = 'O' + String(++nO).padStart(2, '0');
+        var idx = nT - 1;
+        S.orders.push({ id: ob, user: buyer, side: '买', qty: qty, filled: qty, time: tm });
+        S.orders.push({ id: os, user: seller, side: '卖', qty: qty, filled: qty, time: tm });
+        var tr = { id: tid, buy: ob, sell: os, buyer: buyer, seller: seller, price: price, qty: qty, time: tm, inj: null };
+        S.trades.push(tr);
+        if (inj.miss && idx === 5) { tr.inj = 'miss'; return; }
+        var isRound = inj.round && (idx === 0 || idx === 7 || idx === 9);
+        var sid = 'S' + tid.slice(1);
+        S.stls.push({ id: sid, trade: tid, quote: quote, fee: isRound ? feeCeil : feeFloor, time: tm, inj: isRound ? 'round' : null });
+        var ent = function () {
+          return [
+            { acct: 'user:' + buyer, asset: 'USDT', amt: -quote }, { acct: 'user:' + buyer, asset: 'BTC', amt: qty },
+            { acct: 'user:' + seller, asset: 'BTC', amt: -qty }, { acct: 'user:' + seller, asset: 'USDT', amt: quote - feeFloor },
+            { acct: 'fee', asset: 'USDT', amt: feeFloor }
+          ];
+        };
+        J('成交结算', sid, tm, ent(), isRound ? 'round' : null);
+        if (inj.dup && idx === 2) {
+          S.stls.push({ id: sid + '′', trade: tid, quote: quote, fee: feeFloor, time: tm, inj: 'dup' });
+          J('成交结算', sid + '′', tm, ent(), 'dup');
+        }
+      } else if (kind === 'wd') {
+        var wi = nW++;
+        var wa = wi % 2 === 0 ? 'BTC' : 'USDT';
+        var wu = USERS[ri(r, 0, 5)];
+        var wamt = wa === 'BTC' ? BigInt(ri(r, 30, 80)) * 1000000n : BigInt(ri(r, 1000, 20000)) * D;
+        var wh = hex(r);
+        var wid = 'W' + String(wi + 1).padStart(2, '0');
+        var wd = { id: wid, user: wu, asset: wa, amt: wamt, status: '已上链', time: tm, inj: null };
+        S.wds.push(wd);
+        var noLedger = inj.chainNoLedger && wi === 0;
+        var pending = inj.inTransit && wi === 3;
+        if (!noLedger) J('提币', wid, tm, [{ acct: 'user:' + wu, asset: wa, amt: -wamt }, { acct: 'hot', asset: wa, amt: -wamt }], pending ? 'inTransit' : null);
+        else { wd.inj = 'chainNoLedger'; S.truthEq[wa].push('chainNoLedger'); }
+        if (!pending) S.chain.push({ hash: wh, type: '提币', asset: wa, amt: wamt, dir: -1n, ref: wid, time: tm, inj: noLedger ? 'chainNoLedger' : null });
+        else { wd.status = '已出账·待广播'; wd.inj = 'inTransit'; }
+      } else {
+        var swi = nSW++;
+        var sa = swi === 0 ? 'BTC' : 'USDT';
+        var samt = sa === 'BTC' ? BigInt(ri(r, 50, 100)) * 1000000n : BigInt(ri(r, 20000, 50000)) * D;
+        var sh = hex(r);
+        var swid = 'SW' + (swi + 1);
+        var delayed = inj.custDelay && swi === 1;
+        J('归集', swid, tm, [{ acct: 'hot', asset: sa, amt: -samt }, { acct: 'custody', asset: sa, amt: samt }], delayed ? 'custDelay' : null);
+        S.chain.push({ hash: sh, type: '归集→托管', asset: sa, amt: samt, dir: -1n, ref: swid, time: tm, inj: delayed ? 'custDelay' : null });
+        if (!delayed) S.custTx.push({ ref: swid, asset: sa, amt: samt, time: tm, inj: null });
+      }
+    });
+
+    // balances derived from journals
+    S.ledgerBal = {};
+    S.journals.forEach(function (j) {
+      j.entries.forEach(function (e) { var k = e.acct + '|' + e.asset; S.ledgerBal[k] = (S.ledgerBal[k] || 0n) + e.amt; });
+    });
+    S.snap = {};
+    Object.keys(S.ledgerBal).forEach(function (k) { S.snap[k] = S.ledgerBal[k]; });
+    if (inj.humanAdj) {
+      S.snap['user:U3|USDT'] = (S.snap['user:U3|USDT'] || 0n) + 5000n * D;
+      S.ops.push({ who: 'ops_li', acct: 'user:U3', asset: 'USDT', amt: 5000n * D, note: '直接修改快照，未写分录，无工单' });
+      S.truthEq.USDT.push('humanAdj');
+    }
+    S.chainBal = { BTC: S.open.hot.BTC, USDT: S.open.hot.USDT };
+    S.chain.forEach(function (c) { S.chainBal[c.asset] += c.dir * c.amt; });
+    S.custBal = { BTC: S.open.cust.BTC, USDT: S.open.cust.USDT };
+    S.custTx.forEach(function (c) { S.custBal[c.asset] += c.amt; });
+    return S;
+  }
+
+  // ---------- reconciliation ----------
+  function reconcile(S, bp) {
+    var res = { pairs: {}, tickets: [], flagged: {}, detect: {} };
+    PAIRS.forEach(function (p) { res.pairs[p] = { status: 'ok', note: [] }; });
+    function mark(id, lvl) { if (res.flagged[id] !== 'err') res.flagged[id] = lvl; }
+    function hit(pair, lvl, inj) {
+      var p = res.pairs[pair];
+      if (lvl === 'err') p.status = 'err'; else if (p.status === 'ok') p.status = 'warn';
+      if (!inj) return;
+      res.detect[inj] = res.detect[inj] || {};
+      if (res.detect[inj][pair] !== 'err') res.detect[inj][pair] = lvl;
+    }
+    function ticket(pair, cls, detail, mode, action, ids, lvl, inj) {
+      res.tickets.push({ pair: pair, cls: cls, detail: detail, mode: mode, action: action, lvl: lvl, inj: inj });
+      ids.forEach(function (id) { mark(id, lvl); });
+      hit(pair, lvl, inj);
+    }
+    var jByRef = {};
+    S.journals.forEach(function (j) { jByRef[j.ref] = j; });
+
+    // R1 orders vs trades
+    var filledByOrder = {};
+    S.trades.forEach(function (t) {
+      filledByOrder[t.buy] = (filledByOrder[t.buy] || 0n) + t.qty;
+      filledByOrder[t.sell] = (filledByOrder[t.sell] || 0n) + t.qty;
+    });
+    S.orders.forEach(function (o) {
+      var f = filledByOrder[o.id] || 0n;
+      if (f !== o.filled) ticket('R1', '金额不符', o.id + ' 已成交 ' + fmt(o.filled) + '，成交合计 ' + fmt(f), '人工', '核对撮合日志', [o.id], 'err', null);
+    });
+    res.pairs.R1.note.push(S.orders.length + ' 笔订单 / ' + S.trades.length + ' 笔成交');
+
+    // R2 trades vs settlements
+    var stlByTrade = {};
+    S.stls.forEach(function (s) { (stlByTrade[s.trade] = stlByTrade[s.trade] || []).push(s); });
+    S.trades.forEach(function (t) {
+      var list = stlByTrade[t.id] || [];
+      if (list.length === 0) ticket('R2', '遗漏', t.id + ' 没有结算记录', '自动修复', '重放成交事件 ' + t.id + '，补结算', [t.id], 'err', t.inj);
+      if (list.length > 1) ticket('R2', '重复', t.id + ' 有 ' + list.length + ' 条结算：' + list.map(function (s) { return s.id; }).join('、'), '自动修复', '冲正 ' + list[1].id + ' 及其分录', [t.id].concat(list.slice(1).map(function (s) { return s.id; })), 'err', list[1].inj);
+    });
+    res.pairs.R2.note.push(S.trades.length + ' 笔成交 / ' + S.stls.length + ' 条结算');
+
+    // R3 settlements vs ledger
+    S.stls.forEach(function (s) {
+      var j = jByRef[s.id];
+      if (!j) { ticket('R3', '遗漏', s.id + ' 没有账本分录', '自动修复', '重新提交 postJournal（幂等键 ' + s.id + '）', [s.id], 'err', s.inj); return; }
+      var fe = j.entries.filter(function (e) { return e.acct === 'fee'; })[0];
+      var d = s.fee - (fe ? fe.amt : 0n);
+      if (d !== 0n) {
+        if (abs(d) <= 1n) ticket('R3', '精度舍入', s.id + ' 手续费：结算 ' + fmt(s.fee) + ' / 账本 ' + fmt(fe.amt) + '（差 1 个最小单位）', '自动修复', '差额记入"舍入差额"科目；提缺陷单统一舍入方向', [s.id, j.id], 'err', s.inj);
+        else ticket('R3', '金额不符', s.id + ' 手续费差 ' + fmt(d), '人工', '核对费率与结算逻辑', [s.id, j.id], 'err', s.inj);
+      }
+    });
+    res.pairs.R3.note.push(S.stls.length + ' 条结算 / ' + S.journals.filter(function (j) { return j.type === '成交结算'; }).length + ' 个结算 journal');
+
+    // R4 ledger entries vs snapshot
+    var keys = {};
+    Object.keys(S.ledgerBal).forEach(function (k) { keys[k] = 1; });
+    Object.keys(S.snap).forEach(function (k) { keys[k] = 1; });
+    Object.keys(keys).forEach(function (k) {
+      var e = S.ledgerBal[k] || 0n, sn = S.snap[k] || 0n;
+      if (e !== sn) {
+        var parts = k.split('|');
+        var op = S.ops.filter(function (o) { return o.acct === parts[0] && o.asset === parts[1]; })[0];
+        ticket('R4', op ? '人为调账' : '金额不符', k + '：流水合计 ' + fmt(e) + '，快照 ' + fmt(sn) + (op ? '（操作人 ' + op.who + '：' + op.note + '）' : ''), '人工', '双人审批：经办提交冲正方案 → 复核人（≠ 经办）批准 → 写入调账 journal → 复跑', ['snap:' + k], 'err', op ? 'humanAdj' : null);
+      }
+    });
+    res.pairs.R4.note.push(Object.keys(keys).length + ' 个账户×币种');
+
+    // R5 ledger hot vs chain
+    var chainByRef = {};
+    S.chain.forEach(function (c) { chainByRef[c.ref] = c; });
+    S.chain.forEach(function (c) {
+      if (!jByRef[c.ref]) ticket('R5', '遗漏', '链上' + c.type + ' ' + c.hash + '（' + fmt(c.amt) + ' ' + c.asset + '）在账本中没有分录', '人工', '核实提币单与链上交易；补记分录或追回资产', [c.hash], 'err', c.inj);
+    });
+    var wdById = {};
+    S.wds.forEach(function (w) { wdById[w.id] = w; });
+    S.journals.forEach(function (j) {
+      if (['充值', '提币', '归集'].indexOf(j.type) < 0) return;
+      if (chainByRef[j.ref]) return;
+      var w = wdById[j.ref];
+      if (w && w.status === '已出账·待广播') ticket('R5', '时序差/在途', j.ref + ' 已出账，尚未广播上链（' + fmt(w.amt) + ' ' + w.asset + '）', '自动修复', '列入在途清单；30 分钟未上链则升级人工', [j.id, w.id], 'warn', j.inj);
+      else ticket('R5', '遗漏', j.ref + ' 有账本分录，链上找不到交易', '人工', '核实广播记录', [j.id], 'err', j.inj);
+    });
+    ASSETS.forEach(function (a) {
+      res.pairs.R5.note.push(a + ' 账 ' + fmt(S.ledgerBal['hot|' + a] || 0n) + ' / 链 ' + fmt(S.chainBal[a]));
+    });
+
+    // R6 ledger custody vs custodian report
+    var custByRef = {};
+    S.custTx.forEach(function (c) { custByRef[c.ref] = c; });
+    S.journals.forEach(function (j) {
+      if (j.type !== '归集' || custByRef[j.ref]) return;
+      if (chainByRef[j.ref]) ticket('R6', '时序差/在途', j.ref + ' 链上已转入托管地址，托管商报告尚未包含', '自动修复', '等待托管商下一次报告；超过 1 个报告周期升级人工', [j.id, j.ref], 'warn', j.inj);
+      else ticket('R6', '遗漏', j.ref + ' 托管商与链上都没有记录', '人工', '联系托管商核实', [j.id], 'err', j.inj);
+    });
+    S.custTx.forEach(function (c) {
+      if (!jByRef[c.ref]) ticket('R6', '遗漏', '托管商入账 ' + c.ref + ' 在账本中没有分录', '人工', '核实来源', [c.ref], 'err', c.inj);
+    });
+    ASSETS.forEach(function (a) {
+      res.pairs.R6.note.push(a + ' 账 ' + fmt(S.ledgerBal['custody|' + a] || 0n) + ' / 托管 ' + fmt(S.custBal[a]));
+    });
+
+    // Asset-liability identity per asset
+    res.eq = {};
+    ASSETS.forEach(function (a) {
+      var L = 0n;
+      USERS.forEach(function (u) { L += S.snap['user:' + u + '|' + a] || 0n; });
+      var E = S.snap['fee|' + a] || 0n;
+      var X = S.chainBal[a] + S.custBal[a];
+      var diff = X - (L + E);
+      var explained = 0n, explInj = [];
+      S.wds.forEach(function (w) { if (w.asset === a && w.status === '已出账·待广播') { explained += w.amt; explInj.push('inTransit'); } });
+      S.journals.forEach(function (j) {
+        if (j.type === '归集' && !custByRef[j.ref] && chainByRef[j.ref] && chainByRef[j.ref].asset === a) { explained -= chainByRef[j.ref].amt; explInj.push('custDelay'); }
+      });
+      var un = diff - explained;
+      var thrUnits = X * BigInt(bp) / 10000n;
+      var halt = abs(un) > thrUnits;
+      res.eq[a] = { L: L, E: E, X: X, diff: diff, explained: explained, un: un, thr: thrUnits, halt: halt };
+      explInj.forEach(function (k) { hit('EQ', 'warn', k); });
+      if (un !== 0n) {
+        S.truthEq[a].forEach(function (k) { hit('EQ', 'err', k); });
+        hit('EQ', 'err', null);
+        ticket('EQ', '金额不符', a + '：资产 − (负债 + 权益) = ' + fmt(diff) + '，在途可解释 ' + fmt(explained) + '，不可解释 ' + fmt(un), '人工', halt ? '已自动暂停 ' + a + ' 提币；回到 R1–R6 逐对定位' : '告警 P2（未超过熔断阈值）；回到 R1–R6 逐对定位', [], 'err', null);
+      }
+    });
+    return res;
+  }
+
+  // ---------- rendering ----------
+  var PAIR_META = {
+    R1: ['订单服务 ↔ 撮合成交', 'order_id；已成交量 = Σ 成交量', '实时流式 + 小时', '0'],
+    R2: ['撮合成交 ↔ 结算记录', 'trade_id（每笔恰好 1 条）', '实时流式', '0；在途 ≤ 30 秒'],
+    R3: ['结算记录 ↔ 账本分录', '结算号 → 幂等键；金额', '实时 + 小时', '0（最小单位）'],
+    R4: ['账本流水 ↔ 余额快照', '(账户, 币种)；Σ流水 = 快照', '小时 + 日终', '0'],
+    R5: ['账本热钱包 ↔ 链上地址', 'tx_hash / 提币单号；余额', '每个区块', '在途清单以内'],
+    R6: ['账本托管科目 ↔ 托管商报告', '归集单号；余额', '日终', '在途清单以内'],
+    EQ: ['资产负债恒等式（按币种）', 'Σ负债 + 权益 = Σ资产', '小时 + 日终', '熔断阈值（bp）']
+  };
+  function icon(s) { return s === 'ok' ? '✅' : s === 'warn' ? '⚠️' : '❌'; }
+
+  function renderMatrix() {
+    var res = state.last, html = '';
+    PAIRS.forEach(function (p) {
+      var m = PAIR_META[p];
+      var st = res ? res.pairs[p].status : null;
+      var note = '';
+      if (res) {
+        if (p === 'EQ') {
+          note = ASSETS.map(function (a) {
+            var e = res.eq[a];
+            return a + '：差额 ' + fmt(e.diff) + '，在途 ' + fmt(e.explained) + '，不可解释 ' + fmt(e.un) + '（阈值 ' + fmt(e.thr) + '）';
+          }).join('<br>');
+        } else note = res.pairs[p].note.map(esc).join('<br>');
+      }
+      html += '<tr><td class="mono">' + (p === 'EQ' ? '∑' : p) + '</td><td>' + m[0] + '</td><td class="small">' + esc(m[1]) + '</td><td class="small">' + m[2] + '</td><td class="small">' + esc(m[3]) + '</td><td class="res">' + (st ? icon(st) : '—') + '</td><td class="small mono">' + (res ? note : '<span class="muted">尚未运行</span>') + '</td></tr>';
+    });
+    $('matrixBody').innerHTML = html;
+  }
+
+  function renderDetect() {
+    var res = state.last, html = '';
+    INJ.forEach(function (i) {
+      var on = !!state.inj[i.k];
+      html += '<tr><td>' + i.name + (on ? '' : ' <span class="muted small">（未注入）</span>') + '</td>';
+      PAIRS.forEach(function (p) {
+        var v = res && on && res.detect[i.k] ? res.detect[i.k][p] : null;
+        html += '<td>' + (v ? icon(v) : '') + '</td>';
+      });
+      html += '</tr>';
+    });
+    $('detectBody').innerHTML = html;
+  }
+
+  function renderTickets() {
+    var res = state.last;
+    if (!res || res.tickets.length === 0) {
+      $('ticketBody').innerHTML = '<tr><td colspan="6" class="muted">' + (res ? '没有差异工单。' : '尚未运行对账。') + '</td></tr>';
+      return;
+    }
+    $('ticketBody').innerHTML = res.tickets.map(function (t) {
+      var pill = t.mode === '人工' ? '<span class="pill sell">人工</span>' : '<span class="pill buy">自动修复</span>';
+      var cls = t.lvl === 'warn' ? '<span class="pill warn">' + t.cls + '</span>' : '<span class="pill info">' + t.cls + '</span>';
+      return '<tr><td class="mono">' + t.id + '</td><td class="mono">' + (t.pair === 'EQ' ? '∑' : t.pair) + '</td><td>' + cls + '</td><td class="small">' + esc(t.detail) + '</td><td>' + pill + '</td><td class="small">' + esc(t.action) + '</td></tr>';
+    }).join('');
+  }
+
+  function renderBreaker() {
+    var res = state.last;
+    $('breaker').innerHTML = ASSETS.map(function (a) {
+      var halted = state.halted[a];
+      var canResume = halted && res && res.eq[a].un === 0n;
+      var why = halted ? state.haltWhy[a] : (res ? '不可解释差额 ' + fmt(res.eq[a].un) + ' ' + a + '，阈值 ' + fmt(res.eq[a].thr) : '尚未运行对账');
+      return '<div class="lamp ' + (halted ? 'halt' : 'open') + '"><div class="big">' + a + ' 提币：' + (halted ? '已暂停' : '开放') + '</div><div class="why">' + esc(why) + '</div>' +
+        (halted ? '<div class="btn-row"><button data-resume="' + a + '"' + (canResume ? '' : ' disabled') + '>人工确认恢复提币</button></div><div class="why">' + (canResume ? '最近一次对账已平，可以恢复。' : '最近一次对账仍不平，不能恢复。') + '</div>' : '') +
+        '<div class="why">充值和交易继续运行。</div></div>';
+    }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-resume]'), function (b) {
+      b.addEventListener('click', function () {
+        var a = b.getAttribute('data-resume');
+        state.halted[a] = false;
+        log('note', '值班负责人人工确认：恢复 ' + a + ' 提币。');
+        renderBreaker();
+      });
+    });
+  }
+
+  function cls(id) {
+    var f = state.last ? state.last.flagged[id] : null;
+    return f === 'err' ? ' class="flag-err"' : f === 'warn' ? ' class="flag-warn"' : '';
+  }
+  function table(head, rows) {
+    return '<div class="table-wrap"><table><thead><tr>' + head.map(function (h) { return '<th' + (h.charAt(0) === '#' ? ' class="num"' : '') + '>' + h.replace(/^#/, '') + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
+  }
+  function renderSources() {
+    var S = state.data, out = [];
+    out.push('<div class="card src"><h3>① 订单 <span class="small muted">' + S.orders.length + ' 笔</span></h3>' + table(['订单', '用户', '方向', '#数量 BTC', '#已成交'], S.orders.map(function (o) {
+      return '<tr' + cls(o.id) + '><td class="mono">' + o.id + '</td><td>' + o.user + '</td><td>' + o.side + '</td><td class="num">' + fmt(o.qty) + '</td><td class="num">' + fmt(o.filled) + '</td></tr>';
+    })) + '</div>');
+    out.push('<div class="card src"><h3>② 成交 <span class="small muted">' + S.trades.length + ' 笔</span></h3>' + table(['成交', '时间', '买单', '卖单', '#价格', '#数量 BTC'], S.trades.map(function (t) {
+      return '<tr' + cls(t.id) + '><td class="mono">' + t.id + '</td><td>' + t.time + '</td><td class="mono">' + t.buy + '</td><td class="mono">' + t.sell + '</td><td class="num">' + t.price.toString() + '</td><td class="num">' + fmt(t.qty) + '</td></tr>';
+    })) + '</div>');
+    out.push('<div class="card src"><h3>③ 结算 <span class="small muted">' + S.stls.length + ' 条</span></h3>' + table(['结算', '成交', '#成交额 USDT', '#手续费 USDT'], S.stls.map(function (s) {
+      return '<tr' + cls(s.id) + '><td class="mono">' + s.id + '</td><td class="mono">' + s.trade + '</td><td class="num">' + fmt(s.quote) + '</td><td class="num">' + fmt(s.fee) + '</td></tr>';
+    })) + '</div>');
+    var snapRows = [];
+    ['hot', 'custody', 'fee'].concat(USERS.map(function (u) { return 'user:' + u; })).forEach(function (acct) {
+      ASSETS.forEach(function (a) {
+        var k = acct + '|' + a;
+        if (S.ledgerBal[k] === undefined && S.snap[k] === undefined) return;
+        snapRows.push('<tr' + cls('snap:' + k) + '><td class="mono">' + k + '</td><td class="num">' + fmt(S.ledgerBal[k] || 0n) + '</td><td class="num">' + fmt(S.snap[k] || 0n) + '</td></tr>');
+      });
+    });
+    out.push('<div class="card src"><h3>④ 账本 <span class="small muted">' + S.journals.length + ' 个 journal</span></h3>' + table(['journal', '时间', '类型', '引用', '分录'], S.journals.map(function (j) {
+      var txt = j.entries.length > 6 ? j.entries.length + ' 条' : j.entries.map(function (e) { return e.acct.replace('user:', '') + ' ' + (e.amt > 0n ? '+' : '') + fmt(e.amt) + ' ' + e.asset; }).join('；');
+      return '<tr' + cls(j.id) + '><td class="mono">' + j.id + '</td><td>' + j.time + '</td><td>' + j.type + '</td><td class="mono">' + j.ref + '</td><td class="small">' + esc(txt) + '</td></tr>';
+    })) + '<h3 style="margin-top:12px">余额快照</h3>' + table(['账户|币种', '#流水合计', '#快照'], snapRows) + '</div>');
+    out.push('<div class="card src"><h3>⑤ 链上 <span class="small muted">' + S.chain.length + ' 笔</span></h3>' + table(['时间', '交易哈希', '类型', '#金额', '币种', '引用'], S.chain.map(function (c) {
+      return '<tr' + cls(c.hash) + '><td>' + c.time + '</td><td class="mono">' + c.hash + '</td><td>' + c.type + '</td><td class="num">' + fmt(c.amt) + '</td><td>' + c.asset + '</td><td class="mono">' + c.ref + '</td></tr>';
+    })) + '<div class="kv">热钱包链上余额：' + ASSETS.map(function (a) { return a + ' <b>' + fmt(S.chainBal[a]) + '</b>'; }).join('　') + '</div>' +
+      '<h3 style="margin-top:12px">钱包服务提币单</h3>' + table(['提币单', '用户', '#金额', '币种', '状态'], S.wds.map(function (w) {
+        return '<tr' + cls(w.id) + '><td class="mono">' + w.id + '</td><td>' + w.user + '</td><td class="num">' + fmt(w.amt) + '</td><td>' + w.asset + '</td><td>' + w.status + '</td></tr>';
+      })) + '</div>');
+    out.push('<div class="card src"><h3>⑥ 托管商报告 <span class="small muted">' + S.custTx.length + ' 笔入账</span></h3>' + table(['引用', '时间', '#金额', '币种'], S.custTx.map(function (c) {
+      return '<tr' + cls(c.ref) + '><td class="mono">' + c.ref + '</td><td>' + c.time + '</td><td class="num">' + fmt(c.amt) + '</td><td>' + c.asset + '</td></tr>';
+    }).concat(S.custTx.length ? [] : ['<tr><td colspan="4" class="muted">报告期内没有入账</td></tr>'])) +
+      '<div class="kv">托管商报告余额：' + ASSETS.map(function (a) { return a + ' <b>' + fmt(S.custBal[a]) + '</b>'; }).join('　') + '</div>' +
+      (S.ops.length ? '<h3 style="margin-top:12px">运营操作日志</h3><div class="log">' + S.ops.map(function (o) { return '<span class="err">' + esc(o.who + ' 修改 ' + o.acct + ' ' + o.asset + ' +' + fmt(o.amt) + '：' + o.note) + '</span>'; }).join('\n') + '</div>' : '') + '</div>');
+    $('sources').innerHTML = out.join('');
+  }
+
+  function renderInj() {
+    $('injBtns').innerHTML = INJ.map(function (i) {
+      return '<button data-inj="' + i.k + '" aria-pressed="' + (state.inj[i.k] ? 'true' : 'false') + '">' + i.name + '</button>';
+    }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-inj]'), function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-inj');
+        state.inj[k] = !state.inj[k];
+        log('note', (state.inj[k] ? '注入：' : '撤销注入：') + INJ_NAME[k] + '。请点"运行对账"。');
+        regen(false);
+      });
+    });
+  }
+
+  function log(kind, msg) {
+    var el = $('log');
+    el.innerHTML += '<span class="' + kind + '">' + esc(msg) + '</span>\n';
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function seed() { var v = parseInt($('seed').value, 10); return isFinite(v) ? v : 1; }
+  function regen(clearResult) {
+    state.data = build(seed(), state.inj);
+    state.last = null;
+    renderInj(); renderSources(); renderMatrix(); renderDetect(); renderTickets(); renderBreaker();
+  }
+
+  function run() {
+    var bp = parseInt($('thr').value, 10);
+    var res = reconcile(state.data, bp);
+    res.tickets.forEach(function (t) { t.id = 'TK-' + String(++state.ticketSeq).padStart(3, '0'); });
+    state.last = res;
+    ASSETS.forEach(function (a) {
+      if (res.eq[a].halt && !state.halted[a]) {
+        state.halted[a] = true;
+        state.haltWhy[a] = '不可解释差额 ' + fmt(res.eq[a].un) + ' ' + a + ' 超过阈值 ' + fmt(res.eq[a].thr) + '（' + bp + ' bp）';
+        log('err', '熔断：' + a + ' 提币自动暂停。' + state.haltWhy[a]);
+      }
+    });
+    var nErr = res.tickets.filter(function (t) { return t.lvl === 'err'; }).length;
+    var nWarn = res.tickets.length - nErr;
+    log(nErr ? 'err' : (nWarn ? 'note' : 'ok'), '对账完成：' + res.tickets.length + ' 张工单（❌ ' + nErr + '，⚠️ ' + nWarn + '）。');
+    renderSources(); renderMatrix(); renderDetect(); renderTickets(); renderBreaker();
+  }
+
+  function resolve(keys, msgs) {
+    var any = false;
+    keys.forEach(function (k) { if (state.inj[k]) { state.inj[k] = false; any = true; log('ok', msgs[k]); } });
+    if (!any) { log('note', '没有可由此动作处理的差异。'); return; }
+    regen(false);
+    log('note', '已复跑对账：');
+    run();
+  }
+
+  $('btnRun').addEventListener('click', run);
+  $('btnAuto').addEventListener('click', function () {
+    resolve(['dup', 'miss', 'round'], {
+      dup: '自动修复：冲正重复结算及其分录（引用原 journal），复跑。',
+      miss: '自动修复：从成交流重放漏掉的成交事件，补写结算与分录（幂等键保证不重复）。',
+      round: '自动修复：舍入差额记入"舍入差额"科目；统一舍入方向为向下取整。'
+    });
+  });
+  $('btnTime').addEventListener('click', function () {
+    resolve(['inTransit', 'custDelay'], {
+      inTransit: '时间推进：待广播的提币已上链，在途清单关闭。',
+      custDelay: '时间推进：托管商发布新报告，包含此前缺失的归集入账。'
+    });
+  });
+  $('btnManual').addEventListener('click', function () {
+    resolve(['chainNoLedger', 'humanAdj'], {
+      chainNoLedger: '人工工单：经办 ops_a 核实链上提币属于提币单 W01 → 复核 ops_b 批准 → 补记提币分录（幂等键 adj:W01）。',
+      humanAdj: '人工工单：经办 ops_a 提交快照回滚方案 → 复核 ops_b 批准（经办 ≠ 复核）→ 用流水重建 U3 USDT 快照，写审计日志。'
+    });
+  });
+  $('btnReset').addEventListener('click', function () { state.inj = {}; log('note', '已清除全部注入。'); regen(false); });
+  $('btnRegen').addEventListener('click', function () { log('note', '按种子 ' + seed() + ' 重新生成数据。'); regen(false); });
+  $('thr').addEventListener('input', function () { $('thrO').textContent = $('thr').value + ' bp'; });
+  $('thrO').textContent = $('thr').value + ' bp';
+
+  regen(false);
+  run();
+})();
+</script>
+</body>
+</html>
