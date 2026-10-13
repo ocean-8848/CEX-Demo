@@ -15,6 +15,7 @@ import type { AssetCode } from "@web3-cex/domain";
 import pg from "pg";
 
 import { LedgerApplicationService } from "../application/ledger-application-service.js";
+import { LedgerError } from "../domain/errors.js";
 import { LedgerOpsReporter } from "../infrastructure/ledger-ops-reporter.js";
 import { PostgresLedgerRepository } from "../infrastructure/postgres-ledger-repository.js";
 
@@ -154,5 +155,89 @@ test(
       const replay = await reporter.replayAccount({ accountId, assetCode });
       assert.equal(replay.mismatch, false, `${assetCode} replay of ${accountId}`);
     }
+  }
+);
+
+test(
+  "concurrent journals with the same idempotency key replay or 409, never a unique-violation 500",
+  { skip: !DATABASE_URL ? "set LEDGER_TEST_DATABASE_URL to run" : false, timeout: 60_000 },
+  async (t) => {
+    const schema = `ledger_it_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const admin = new pg.Pool({ connectionString: DATABASE_URL, max: 1 });
+    await admin.query(`create schema ${schema}`);
+    const pool = new pg.Pool({
+      connectionString: DATABASE_URL,
+      max: 20,
+      options: `-c search_path=${schema},public`
+    });
+    t.after(async () => {
+      await pool.end();
+      await admin.query(`drop schema ${schema} cascade`);
+      await admin.end();
+    });
+
+    const sqlDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../sql");
+    for (const file of (await readdir(sqlDir)).filter((name) => name.endsWith(".sql")).sort()) {
+      await pool.query(await readFile(path.join(sqlDir, file), "utf8"));
+    }
+
+    const service = new LedgerApplicationService(new PostgresLedgerRepository(pool, pool));
+    const opening = randomUUID();
+    const users = Array.from({ length: 8 }, () => randomUUID());
+    await service.createAccount({ accountId: opening, accountType: "opening_balance" });
+    for (const accountId of users) {
+      await service.createAccount({ accountId, userId: randomUUID(), accountType: "spot" });
+    }
+
+    // One opening (equity) account per target so the conflicting journals below
+    // share no balance rows.
+    const openings = new Map<string, string>();
+    for (const accountId of users) {
+      const source = randomUUID();
+      openings.set(accountId, source);
+      await service.createAccount({ accountId: source, accountType: "opening_balance" });
+    }
+
+    const journal = (key: string, target: string, amount: string, source: string = opening) => ({
+      businessType: "airdrop",
+      businessId: key,
+      idempotencyKey: key,
+      traceId: `${key}:${randomUUID()}`,
+      entries: [
+        { accountId: source, assetCode: "USDT" as AssetCode, direction: "debit" as const, amount, referenceType: "airdrop", referenceId: key },
+        { accountId: target, assetCode: "USDT" as AssetCode, direction: "credit" as const, amount, referenceType: "airdrop", referenceId: key }
+      ]
+    });
+
+    // 1) Identical payloads racing on the same balances: one journal, applied once.
+    const sameKey = `same-${randomUUID()}`;
+    const identical = await Promise.all(
+      Array.from({ length: 10 }, () => service.postJournal(journal(sameKey, users[0]!, "100")))
+    );
+    assert.equal(new Set(identical.map((item) => item.journalId)).size, 1);
+    assert.equal(Number((await service.getBalance(users[0]!, "USDT")).available), 100);
+
+    // 2) Same key, different targets (disjoint balances, so the unique index is
+    //    the only thing serialising them): one wins, the rest get 409.
+    const conflictKey = `conflict-${randomUUID()}`;
+    const settled = await Promise.allSettled(
+      users.slice(1).map((target) => service.postJournal(journal(conflictKey, target, "5", openings.get(target))))
+    );
+    const fulfilled = settled.filter((item) => item.status === "fulfilled");
+    const rejected = settled.filter((item): item is PromiseRejectedResult => item.status === "rejected");
+    assert.equal(fulfilled.length, 1, JSON.stringify(rejected.map((item) => String(item.reason))));
+    for (const item of rejected) {
+      assert.ok(item.reason instanceof LedgerError, `unexpected error: ${String(item.reason)}`);
+      assert.equal(item.reason.code, "DUPLICATE_IDEMPOTENCY_KEY");
+    }
+    const credited = await Promise.all(
+      users.slice(1).map(async (target) => Number((await service.getBalance(target, "USDT").catch(() => ({ available: "0" }))).available))
+    );
+    assert.equal(credited.reduce((sum, value) => sum + value, 0), 5, "only the winner's journal was applied");
+
+    // 3) A later retry with the same payload as the winner replays it.
+    const winnerTarget = users.slice(1)[credited.findIndex((value) => value === 5)]!;
+    const replay = await service.postJournal(journal(conflictKey, winnerTarget, "5.000", openings.get(winnerTarget)));
+    assert.equal(replay.journalId, (fulfilled[0] as PromiseFulfilledResult<{ journalId: string }>).value.journalId);
   }
 );

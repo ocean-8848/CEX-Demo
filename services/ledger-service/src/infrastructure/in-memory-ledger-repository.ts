@@ -1,6 +1,6 @@
 import type { AssetCode } from "@web3-cex/domain";
 
-import { LedgerError } from "../domain/errors.js";
+import { DuplicateJournalIdempotencyKeyError, LedgerError } from "../domain/errors.js";
 import { addAmounts } from "../domain/money.js";
 import type { LedgerRepository } from "../domain/repository.js";
 import type {
@@ -91,6 +91,11 @@ export class InMemoryLedgerRepository implements LedgerRepository {
   }
 
   async saveJournal(journal: LedgerJournal): Promise<void> {
+    const existing = this.journalsByIdempotencyKey.get(journal.idempotencyKey);
+    if (existing && existing.journalId !== journal.journalId) {
+      // Mirrors the unique (idempotency_key) constraint of ledger_journals.
+      throw new DuplicateJournalIdempotencyKeyError(journal.idempotencyKey);
+    }
     this.journalsById.set(journal.journalId, journal);
     this.journalsByIdempotencyKey.set(journal.idempotencyKey, journal);
   }
