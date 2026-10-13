@@ -61,6 +61,6 @@ test("saveSettlement binds all trade_settlements columns", async () => {
 
   const insert = queries.find((entry) => entry.sql.includes("insert into trade_settlements"));
   assert.ok(insert, "trade_settlements insert query missing");
-  assert.match(insert.sql, /\$29\b/);
-  assert.equal(insert.values.length, 29);
+  assert.match(insert.sql, /\$33\b/);
+  assert.equal(insert.values.length, 33);
 });

@@ -329,21 +329,21 @@ flowchart LR
 
 ## 8. 本仓库对照
 
-本仓库（`CEX Demo`）的风控集中在**交易前**校验，没有业务风控。
+本仓库（`CEX Demo`）的风控以**交易前**校验为主，另有一个事后的市场监控批量扫描；没有营销反作弊和信用风险。
 
 | 本章概念 | 本仓库实现 | 状态 |
 |---|---|---|
 | 价格保护带 | `risk-service` 校验价格偏离参考价上限；参考价来自本地配置（`RISK_REFERENCE_PRICE_BTC_USDT` 等） | 已实现（简化） |
 | 下单规则 | `risk-service` 校验最小数量、价格 / 数量 step、可用余额 | 已实现 |
 | 自成交预防 STP | — | 未实现 |
-| 市场监控（幌骗 / 对敲 / 拉盘） | — | 未实现；可用 `order-service` 的成交记录和订单事件作为数据源 |
+| 市场监控（幌骗 / 对敲 / 拉盘） | `risk-service` 每分钟从 `order-service` 读取成交与快撤单窗口（`GET /api/v1/surveillance/activity`），检测对敲 / 自成交、成交集中、幌骗、价格异动（`src/domain/surveillance.ts`），告警带证据并在 ops-console「市场监控」确认 / 忽略（备注必填、审计）；做市商账户只标注不告警 | 已实现（简化：只识别同一用户的自成交，无设备 / IP 关联图；批量扫描而非流式） |
 | 营销反作弊、关联图 | — | 未实现（本仓库没有营销活动） |
 | 信用风险 / 保险基金 | — | 未实现（本仓库只有现货） |
-| 风险参数治理 | 参数通过环境变量配置，无审批流程 | 未实现 |
+| 风险参数治理 | 参数通过环境变量配置（市场监控阈值为 `RISK_SURVEILLANCE_*`），无审批流程 | 未实现 |
 
-相关文件：[services/risk-service/README.md](../../services/risk-service/README.md)、[risk-application-service.ts](../../services/risk-service/src/application/risk-application-service.ts)。
+相关文件：[services/risk-service/README.md](../../services/risk-service/README.md)、[risk-application-service.ts](../../services/risk-service/src/application/risk-application-service.ts)、[surveillance.ts](../../services/risk-service/src/domain/surveillance.ts)、[surveillance-service.ts](../../services/risk-service/src/application/surveillance-service.ts)。
 
-> 💡 注意：如果要在本仓库上做市场监控实验，`order-service` 的成交记录已带 `executionSequence` 和 `replayCursor`，可以按市场有序回放。这是监控引擎所需的"有序订单流"。
+> 💡 注意：想亲手触发告警，可以在交易前台自买自卖一笔（对敲），或反复挂出大额买单后几秒内撤销（幌骗），再到 ops-console「市场监控」点「立即扫描」，步骤见 [使用手册 08](../../docs/manual/08-ops-trading-and-ledger.md)。`order-service` 的成交记录带 `executionSequence` 和 `replayCursor`，可以按市场有序回放，是做流式监控所需的"有序订单流"。
 
 ---
 

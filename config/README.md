@@ -79,7 +79,36 @@
 运营在 ops-console「市场管理」页暂停 / 恢复市场：覆盖值存在 risk-service 的 `risk_market_status_overrides` 表里，
 文件里的 `status` 是默认值；恢复到默认状态时覆盖行被删除。`pnpm demo:reset` 会清空覆盖。
 
+## 手续费等级（`config/fee-tiers.json`）
+
+VIP 手续费等级的唯一来源，`packages/domain/src/fee-tiers.ts` 的 `parseFeeTierConfig()` 在进程启动时校验（结构见
+[fee-tiers.schema.json](fee-tiers.schema.json)，换文件用 `WEB3_CEX_FEE_TIERS_CONFIG`）。
+
+```jsonc
+{
+  "version": 1,
+  "volumeAsset": "USDT",              // 成交量口径：只统计报价资产为 USDT 的市场；必须是 markets.json 里的资产
+  "volumeWindowDays": 30,             // 滚动窗口（天）
+  "tiers": [                          // minVolume 严格递增，第一档必须是 0；费率逐档不升
+    { "tier": "VIP0", "name": "普通用户", "minVolume": "0",      "makerFeeRate": "0.0005", "takerFeeRate": "0.001" },
+    { "tier": "VIP1", "name": "VIP 1", "minVolume": "100000", "makerFeeRate": "0.0004", "takerFeeRate": "0.0009" }
+  ],
+  "marketMakers": [                   // 做市商计划：标注为「做市商」，可固定等级
+    { "userId": "10000000-0000-0000-0000-000000000301", "label": "做市商 Ask", "feeTier": "VIP0" }
+  ]
+}
+```
+
+- 当前阶梯：VIP0 ≥ 0（0.05% / 0.1%，等于各市场默认费率）、VIP1 ≥ 100,000 USDT（0.04% / 0.09%）、VIP2 ≥ 500,000（0.03% / 0.08%）、
+  VIP3 ≥ 2,000,000（0.02% / 0.06%）。
+- 解析顺序：ops-console 运营指定（`spot_fee_tier_overrides`）> `marketMakers[].feeTier` > 30 日成交量。
+- 实际费率 = `min(等级费率, 市场费率)`，所以市场可以单独设更低的促销费率；VIP0 与市场默认相同，等级功能不会改变普通用户的手续费。
+- 演示的两个做市账户固定在 VIP0：它们每小时有数十万 USDT 的成交，不固定的话很快升到 VIP3，演示里的手续费数字会随时间变化。
+  `marketMakers` 也是 risk-service 市场监控的做市商名单（只标注、默认不告警）。
+- `pnpm check:markets` 会额外校验 VIP0 与每个市场的默认费率一致；`ORDER_FEE_TIERS_ENABLED=false` 可让 order-service 退回市场默认费率。
+
 ## 延伸阅读
 
 - [11 产品生态及其背后实现](../learning/11-products-ecosystem.md)、[P07 上币与新币发行](../learning/products/P07-listing-launch.md)
 - [领域模型](../docs/domain-model.md)
+- [07 清算结算与手续费](../learning/07-clearing-settlement-fees.md)、[12 商业模式](../learning/12-business-model.md)

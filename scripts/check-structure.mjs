@@ -5,6 +5,8 @@ const requiredPaths = [
   "README.md",
   "config/markets.json",
   "config/markets.schema.json",
+  "config/fee-tiers.json",
+  "config/fee-tiers.schema.json",
   "docs/README.md",
   "docs/getting-started.md",
   "docs/demo-walkthrough.md",

@@ -107,6 +107,8 @@
 ### 2.6 交易与账本
 
 - **下单前风控**（`services/risk-service/src/application/risk-application-service.ts`）：市场状态（暂停 / 下架时拒绝新单、撤单始终放行）、价格与数量步长、可用余额校验。详见 [risk-service README](../services/risk-service/README.md)。
+- **市场监控**（`services/risk-service/src/domain/surveillance.ts`）：每分钟扫描成交与撤单，对自成交（对敲）、成交集中、幌骗、价格异动生成带证据的告警，运营在 ops-console「市场监控」确认 / 忽略（备注必填、双重审计）。只做事后识别，不拦截交易；只识别同一用户的自成交，没有设备 / IP 关联。
+- **手续费等级指定**：运营指定 VIP 等级需要 `ops.users.manage`，备注必填，写入 `spot_fee_tier_override_audit` 与运营操作审计；用户侧 `GET /fees/tier` 不返回运营备注和操作人。
 - **账本不变量**（`services/ledger-service/src/application/ledger-application-service.ts`）：每笔 journal 按资产借贷平衡，否则拒绝；`idempotencyKey` 去重；冻结 / 释放 / 消耗都检查可用余额与锁状态。运营端没有“直接改余额”的接口，余额调整也必须走 journal。详见 [ledger-service-design.md](ledger-service-design.md)。
 
 ### 2.7 提现控制（wallet-service）

@@ -214,11 +214,13 @@ pnpm --filter @web3-cex/ledger-service start
 | `OPS_REQUIRE_TWO_FACTOR` | `identity-service` | `true` | 运营账户登录是否要求 TOTP |
 | `OTEL_ENABLED` / `OTEL_EXPORTER_OTLP_ENDPOINT` | 各 Node 服务 | 关闭 / `http://127.0.0.1:4318` | OpenTelemetry 追踪 |
 | `TRADER_WEB_DEMO_MODE` | `trader-web` | `true` | 是否显示「一键登录演示账户」与水龙头 |
+| `ORDER_FEE_TIERS_ENABLED` / `ORDER_FEE_TIER_CACHE_MS` | `order-service` | 开启 / `30000` | VIP 手续费等级开关与等级缓存时长；关闭时全部按市场默认费率 |
+| `RISK_SURVEILLANCE_ENABLED` / `RISK_SURVEILLANCE_INTERVAL_MS` | `risk-service` | 开启 / `60000` | 市场监控定时扫描；各检测器阈值 `RISK_SURVEILLANCE_*` 见 [risk-service README](../services/risk-service/README.md) |
 | `DEMO_MAKERS_ENABLED` | `demo-simulator` | 开启 | 设为 `false` 关闭做市商 |
 | `DEMO_CHAIN_BLOCK_MS` / `DEMO_CHAIN_REQUIRED_CONFIRMATIONS` | `demo-simulator` | `1500` / `12` | 模拟链出块间隔与确认数 |
 | `DEMO_*_URL`、`DEMO_DATABASE_URL` 等 | 根目录脚本 | 本地默认地址 | 覆盖脚本访问的服务地址，见 `scripts/mvp-demo-lib.mjs` 中的 `loadDemoConfig` |
 
-市场与币种不通过环境变量配置，而是统一来自 `config/markets.json`，见 [config/README.md](../config/README.md)。
+市场与币种不通过环境变量配置，而是统一来自 `config/markets.json`；VIP 手续费等级与做市商计划来自 `config/fee-tiers.json`，见 [config/README.md](../config/README.md)。
 
 ## 10. 根目录脚本一览
 

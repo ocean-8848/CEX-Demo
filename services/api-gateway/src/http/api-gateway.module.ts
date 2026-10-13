@@ -7,9 +7,10 @@ import { ApiGatewayExceptionFilter } from "./api-gateway-exception.filter.js";
 import { ApiGatewayHttpService } from "./api-gateway-http.service.js";
 import { ApiGatewayIdempotencyInterceptor } from "./api-gateway-idempotency.interceptor.js";
 import { ApiGatewayRateLimitGuard } from "./api-gateway-rate-limit.guard.js";
+import { FeeTierController } from "./fee-tier.controller.js";
 
 @Module({
-  controllers: [ApiGatewayController],
+  controllers: [ApiGatewayController, FeeTierController],
   providers: [
     ApiGatewayHttpService,
     ApiGatewayAuthGuard,

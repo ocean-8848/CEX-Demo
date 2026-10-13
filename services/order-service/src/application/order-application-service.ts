@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   DEFAULT_TRADE_EVENT_VERSION_GATE,
+  effectiveFeeRate,
   getSpotMarketDefinition,
   addAmounts,
   compareAmounts,
@@ -28,6 +29,7 @@ import type {
   SettlementOrderClient
 } from "../domain/clients.js";
 import type { OrderEventPublisher } from "../domain/event-publisher.js";
+import type { FeeTierResolver, UserFeeTier } from "../domain/fee-tier-repository.js";
 import type { OrderRepository } from "../domain/repository.js";
 import type {
   CancelSpotOrderCommand,
@@ -52,6 +54,8 @@ interface ServiceOptions {
   recoveryLeaseMs?: number;
   tradeEventVersionGate?: TradeEventVersionGate;
   settlementMode?: "sync" | "async";
+  /** VIP tier resolver (A7). Absent = every side pays the market default rate. */
+  feeTierResolver?: FeeTierResolver;
 }
 
 interface RecoveryPlan {
@@ -73,6 +77,7 @@ export class OrderApplicationService {
   private readonly recoveryLeaseMs: number;
   private readonly tradeEventVersionGate: TradeEventVersionGate;
   private readonly settlementMode: "sync" | "async";
+  private readonly feeTierResolver?: FeeTierResolver;
 
   constructor(
     private readonly repository: OrderRepository,
@@ -101,6 +106,7 @@ export class OrderApplicationService {
     this.tradeEventVersionGate =
       options.tradeEventVersionGate ?? DEFAULT_TRADE_EVENT_VERSION_GATE;
     this.settlementMode = options.settlementMode ?? "sync";
+    this.feeTierResolver = options.feeTierResolver;
   }
 
   async createOrder(command: CreateSpotOrderCommand): Promise<SpotOrderRecord> {
@@ -204,7 +210,8 @@ export class OrderApplicationService {
 
       compensationRequired = true;
       const makerOrders = await this.loadMakerOrders(engineResult);
-      const recoveryPlan = this.buildRecoveryPlan(order, engineResult, makerOrders);
+      const feeTiers = await this.resolveFeeTiers(order, makerOrders);
+      const recoveryPlan = this.buildRecoveryPlan(order, engineResult, makerOrders, feeTiers);
       await this.repository.saveRecoveryJob(this.createRecoveryJob(recoveryPlan));
 
       try {
@@ -541,12 +548,17 @@ export class OrderApplicationService {
   private buildTrade(
     takerOrder: SpotOrderRecord,
     makerOrder: SpotOrderRecord,
-    match: Awaited<ReturnType<MatchingEngineClient["submitOrder"]>>["trades"][number]
+    match: Awaited<ReturnType<MatchingEngineClient["submitOrder"]>>["trades"][number],
+    feeTiers: Map<string, UserFeeTier> = new Map()
   ): SpotTradeRecord {
     const buyerOrder = takerOrder.side === "buy" ? takerOrder : makerOrder;
     const sellerOrder = takerOrder.side === "sell" ? takerOrder : makerOrder;
     const price = this.normalizePrice(takerOrder.market, match.price);
     const quantity = this.normalizeQuantity(takerOrder.market, match.quantity);
+    const sellerLiquidity = makerOrder.orderId === sellerOrder.orderId ? "maker" : "taker";
+    const buyerLiquidity = makerOrder.orderId === buyerOrder.orderId ? "maker" : "taker";
+    const sellerTier = feeTiers.get(sellerOrder.userId);
+    const buyerTier = feeTiers.get(buyerOrder.userId);
 
     return {
       tradeId: createStableUuid(`trade:${match.executionId}`),
@@ -561,9 +573,13 @@ export class OrderApplicationService {
       sellerUserId: sellerOrder.userId,
       buyerAccountId: buyerOrder.accountId,
       sellerAccountId: sellerOrder.accountId,
-      // Maker / taker rate per side; each side pays in the asset it receives.
-      sellerFeeRate: this.resolveFeeRate(takerOrder.market, makerOrder.orderId, sellerOrder.orderId),
-      buyerFeeRate: this.resolveFeeRate(takerOrder.market, makerOrder.orderId, buyerOrder.orderId),
+      // Maker / taker rate per side, from each user's VIP tier (min(tier,
+      // market)); each side pays in the asset it receives. Rate and tier are
+      // recorded so settlement / replay never re-resolve them.
+      sellerFeeRate: this.resolveFeeRate(takerOrder.market, sellerLiquidity, sellerTier),
+      buyerFeeRate: this.resolveFeeRate(takerOrder.market, buyerLiquidity, buyerTier),
+      ...(sellerTier ? { sellerFeeTier: sellerTier.tier } : {}),
+      ...(buyerTier ? { buyerFeeTier: buyerTier.tier } : {}),
       executionId: match.executionId,
       executionBatchId: match.executionBatchId,
       executionSequence: match.executionSequence,
@@ -578,7 +594,8 @@ export class OrderApplicationService {
   private buildRecoveryPlan(
     takerOrder: SpotOrderRecord,
     result: Awaited<ReturnType<MatchingEngineClient["submitOrder"]>>,
-    makerOrders: Map<string, SpotOrderRecord>
+    makerOrders: Map<string, SpotOrderRecord>,
+    feeTiers: Map<string, UserFeeTier> = new Map()
   ): RecoveryPlan {
     const normalizedResult = this.normalizeMatchingResult(takerOrder.market, result);
     const updatedAt = this.now().toISOString();
@@ -592,7 +609,7 @@ export class OrderApplicationService {
         );
       }
 
-      const trade = this.buildTrade(takerOrder, makerOrder, match);
+      const trade = this.buildTrade(takerOrder, makerOrder, match, feeTiers);
       return {
         trade,
         makerNextOrder: this.buildMakerOrderAfterTrade(
@@ -784,15 +801,38 @@ export class OrderApplicationService {
 
   private resolveFeeRate(
     market: SpotMarket,
-    makerOrderId: string,
-    sideOrderId: string
+    liquidity: "maker" | "taker",
+    tier: UserFeeTier | undefined
   ): string {
     const definition = getSpotMarketDefinition(market);
     if (!definition) {
       throw new OrderServiceError("UNSUPPORTED_MARKET", 400, `Market ${market} is not supported`);
     }
 
-    return makerOrderId === sideOrderId ? definition.makerFeeRate : definition.takerFeeRate;
+    return effectiveFeeRate(tier, definition, liquidity);
+  }
+
+  /**
+   * Resolves the VIP tier of the taker and every maker before trades are built.
+   * Runs after the engine already matched, so a failure must not fail the
+   * order: fall back to the market default rates (no tier recorded).
+   */
+  private async resolveFeeTiers(
+    takerOrder: SpotOrderRecord,
+    makerOrders: Map<string, SpotOrderRecord>
+  ): Promise<Map<string, UserFeeTier>> {
+    if (!this.feeTierResolver) {
+      return new Map();
+    }
+    try {
+      return await this.feeTierResolver.resolveMany([
+        takerOrder.userId,
+        ...[...makerOrders.values()].map((order) => order.userId)
+      ]);
+    } catch (error) {
+      console.warn(`fee tier resolution failed, using market default rates: ${readErrorMessage(error)}`);
+      return new Map();
+    }
   }
 
   private async publishTradeEvents(
@@ -928,6 +968,8 @@ export class OrderApplicationService {
       sellerAccountId: trade.sellerAccountId,
       sellerFeeRate: trade.sellerFeeRate,
       buyerFeeRate: trade.buyerFeeRate,
+      ...(trade.sellerFeeTier ? { sellerFeeTier: trade.sellerFeeTier } : {}),
+      ...(trade.buyerFeeTier ? { buyerFeeTier: trade.buyerFeeTier } : {}),
       executedAt: trade.executedAt,
       executionId: trade.executionId,
       executionBatchId: trade.executionBatchId,
@@ -1009,6 +1051,8 @@ export class OrderApplicationService {
                 sellerAccountId: trade.sellerAccountId,
                 sellerFeeRate: trade.sellerFeeRate,
                 buyerFeeRate: trade.buyerFeeRate,
+                sellerFeeTier: trade.sellerFeeTier,
+                buyerFeeTier: trade.buyerFeeTier,
                 executionId: trade.executionId,
                 executionBatchId: trade.executionBatchId,
                 executionSequence: trade.executionSequence,

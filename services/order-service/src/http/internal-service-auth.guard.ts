@@ -17,7 +17,8 @@ const DEFAULT_ALLOWED_CALLERS = [
   "settlement-service",
   "market-data-service",
   "ops-console",
-  "demo-scripts"
+  "demo-scripts",
+  "risk-service"
 ];
 
 @Injectable()

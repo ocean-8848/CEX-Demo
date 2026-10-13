@@ -1,13 +1,14 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 
+import { FeeTierController, SurveillanceDataController } from "./fee-tier.controller.js";
 import { OrderController, OrderOpsController, TradeController } from "./order.controller.js";
 import { OrderExceptionFilter } from "./order-exception.filter.js";
 import { OrderHttpService } from "./order-http.service.js";
 import { InternalServiceAuthGuard } from "./internal-service-auth.guard.js";
 
 @Module({
-  controllers: [OrderController, TradeController, OrderOpsController],
+  controllers: [OrderController, TradeController, OrderOpsController, FeeTierController, SurveillanceDataController],
   providers: [
     OrderHttpService,
     OrderExceptionFilter,

@@ -89,6 +89,10 @@ export interface SpotTradeRecord {
   sellerAccountId: string;
   sellerFeeRate: string;
   buyerFeeRate: string;
+  /** VIP tier the seller rate came from (absent on trades before fee tiers). */
+  sellerFeeTier?: string;
+  /** VIP tier the buyer rate came from (absent on trades before fee tiers). */
+  buyerFeeTier?: string;
   executionId: string;
   executionBatchId: string;
   executionSequence: number;

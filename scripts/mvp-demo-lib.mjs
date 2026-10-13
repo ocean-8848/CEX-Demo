@@ -129,6 +129,10 @@ export function demoMarketAssets(config = loadDemoConfig()) {
 
 const RESET_TABLES = [
   "risk_market_status_overrides",
+  "risk_surveillance_alert_events",
+  "risk_surveillance_alerts",
+  "spot_fee_tier_override_audit",
+  "spot_fee_tier_overrides",
   "ops_action_audit_logs",
   "wallet_notifications",
   "withdrawal_audit_logs",

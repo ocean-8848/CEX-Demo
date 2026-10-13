@@ -88,6 +88,7 @@ flowchart LR
 | `buyerOrderId`、`sellerOrderId`、`buyerUserId`、`sellerUserId`、`buyerAccountId`、`sellerAccountId` | 结算所需的双方信息 |
 | `sellerFeeRate` | 卖方费率（以 quote 收取） |
 | `buyerFeeRate` | 买方费率（以 base 收取），可选以兼容旧事件 |
+| `sellerFeeTier`、`buyerFeeTier` | 可选：双方费率所依据的 VIP 等级（如 `VIP0`），`order-service` 在成交时解析；结算原样保存，不参与校验 |
 | `executionId`、`executionBatchId`、`executionSequence`、`executionBatchSequence` | 引擎序号，`executionSequence` 在每个市场单调递增 |
 | `replayCursor` | `<market>:<executionSequence>` |
 | `protocolVersion` | 当前只支持 `v2`（版本闸门 `DEFAULT_TRADE_EVENT_VERSION_GATE`） |

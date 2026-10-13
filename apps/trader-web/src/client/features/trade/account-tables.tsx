@@ -15,6 +15,7 @@ import {
 } from "@web3-cex/web-ui";
 
 import { readErrorMessage } from "../../lib/api.js";
+import { formatRate, userTradeFeeRate } from "../../lib/fee-tier.js";
 import {
   describeOrderStatus,
   filledRatio,
@@ -244,6 +245,7 @@ export function TradeHistoryTable(props: { market?: string; limit?: number }) {
             const myOrderId = side === "buy" ? trade.buyerOrderId : trade.sellerOrderId;
             const role = myOrderId && myOrderId === trade.makerOrderId ? "Maker" : "Taker";
             const fee = userTradeFee(trade, userId);
+            const feeRate = userTradeFeeRate(trade, userId);
             return (
               <tr
                 key={trade.tradeId}
@@ -263,10 +265,15 @@ export function TradeHistoryTable(props: { market?: string; limit?: number }) {
                 <td className="num">{formatFixed(trade.price, d.price)}</td>
                 <td className="num">{formatFixed(trade.quantity, d.quantity)}</td>
                 <td className="num">{formatFixed(toNumber(trade.price) * toNumber(trade.quantity), 2)}</td>
-                <td className="num muted">
+                <td className="num muted" title={feeRate.tier ? `${feeRate.tier} 等级费率` : "成交时记录的费率"}>
                   {fee.amount > 0
                     ? `${formatAmount(fee.amount, 8)} ${fee.asset === "base" ? splitMarket(trade.market ?? "").base : splitMarket(trade.market ?? "").quote}`
                     : "0"}
+                  <span className="fee-rate small" data-fee-rate={feeRate.rate}>
+                    {" "}
+                    · {feeRate.tier ? `${feeRate.tier} ` : ""}
+                    {formatRate(feeRate.rate)}
+                  </span>
                 </td>
                 <td className="num">
                   <Button

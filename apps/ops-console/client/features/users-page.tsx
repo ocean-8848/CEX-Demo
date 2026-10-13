@@ -29,6 +29,7 @@ import {
 import { useOpsAction, useOpsQuery } from "../state/hooks.js";
 import { useSession } from "../state/session.js";
 import { AssetOptions } from "../components/market-options.js";
+import { UserFeeTierSection } from "./user-fee-tier.js";
 
 const PAGE_SIZE = 20;
 
@@ -203,6 +204,8 @@ function UserDrawer(props: { userId: string | undefined; onClose: () => void; on
               {record.userType !== "ops" ? (
                 <UserKycSection userId={record.userId} onChanged={() => { user.reload(); props.onChanged(); }} />
               ) : null}
+
+              {record.userType !== "ops" ? <UserFeeTierSection userId={record.userId} /> : null}
 
               <section>
                 <h4>资产（账本）</h4>

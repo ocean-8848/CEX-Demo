@@ -701,7 +701,16 @@ function buildActions(
           title: `订单进入撮合：${order.status === "filled" ? "立即全部成交" : order.status === "partially_filled" ? "部分成交" : order.status === "rejected" ? "被拒绝" : "挂入订单簿"}`,
           tone: order.status === "rejected" ? "negative" : "positive",
           traceId: orderTraceId
-        })
+        }),
+        ...(order.status === "filled" || order.status === "partially_filled"
+          ? [
+              learnEvent({
+                service: "order-service",
+                title: "按 VIP 等级定手续费率",
+                detail: "按双方 30 日成交量（或运营指定 / 做市商计划）解析等级，费率 = min(等级费率, 市场费率)，费率和等级写进成交记录，结算与重放都按记录收费。"
+              })
+            ]
+          : [])
       );
       if (stateRef.current.prefs.learnMode) {
         void buildMatchReplay(order, input, depthBefore);

@@ -363,6 +363,7 @@ Content-Type: application/json
 | POST | `/orders/:orderId/cancel` | 会话/Key(trade) | | 撤单，释放剩余冻结 |
 | GET | `/trades` | 会话/Key(read) | | 我的成交，过滤：`market`、`orderId`、分页 |
 | GET | `/trades/:tradeId/journals` | 会话/Key(read) | | 该成交产生的账本 journal 的脱敏视图：自己的账户显示为本人现货账户，其他用户显示为对手方，平台账户显示可读名称，不暴露对方的账户 / 用户 / 订单 ID |
+| GET | `/fees/tier` | 会话/Key(read) | | 本人 VIP 手续费等级：`tier`、`name`、`source`（`volume` 按 30 日成交量 / `programme` 做市商计划 / `override` 运营指定）、`makerFeeRate` / `takerFeeRate`、`volume`（`volumeAsset` 计，`volumeWindowDays` 日）、`nextTier`、`remainingVolume`、`progressRatio`、`markets[]`（每个市场的实际费率 = min(等级费率, 市场费率)）、`tiers[]`；`override` 只返回 `tier` 和 `updatedAt`，不含运营备注 |
 
 下单示例：
 
@@ -409,6 +410,7 @@ Content-Type: application/json
 - `type`：`limit` / `market`；`timeInForce`：`gtc` / `ioc` / `fok`；`limit` 必须带 `price`
 - 订单状态：`pending_risk`、`accepted`、`partially_filled`、`filled`、`cancelled`、`rejected`、`recovery_pending`（成交后续步骤失败，等待恢复任务）
 - 价格、数量需对齐市场的 `priceStep` / `quantityStep`，并满足最小数量与价格偏离限制
+- 成交记录（`GET /trades`）带 `buyerFeeRate` / `sellerFeeRate` 与 `buyerFeeTier` / `sellerFeeTier`：成交时按双方 VIP 等级解析并记录的费率，结算按记录收费
 
 ### 2.7 用 API key 调用的完整示例
 
@@ -584,6 +586,10 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/kyc/requests` | `ops.users.read` | KYC 申请列表（`status: pending / approved / rejected`） |
 | POST | `/kyc/requests/:requestId/approve` | `ops.users.manage` | 批准（`tier?`、`note?`） |
 | POST | `/kyc/requests/:requestId/reject` | `ops.users.manage` | 拒绝（`reason?`） |
+| GET | `/fee-tiers` | `ops.users.read` | `config/fee-tiers.json`：等级阶梯、`volumeAsset`、`volumeWindowDays`、做市商计划成员 |
+| GET | `/users/:userId/fee-tier` | `ops.users.read` | 用户 VIP 等级档案（同网关 `/fees/tier`，另含 `override.note` / `assignedBy` 与 `audit[]` 指定记录） |
+| POST | `/users/:userId/fee-tier/override` | `ops.users.manage` | 运营指定等级（`tier`、`note` 必填），优先于做市商计划和成交量；写等级审计与运营审计（`fee_tier.override.set`） |
+| POST | `/users/:userId/fee-tier/override/clear` | `ops.users.manage` | 取消指定（`note` 必填），审计动作 `fee_tier.override.clear` |
 
 ### 5.2 资产、充值、提币与通知
 
@@ -660,6 +666,11 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/custody/providers/health` | `ops.custody.read` | 托管提供方健康 |
 | POST | `/custody/providers/health/check` | `ops.providers.manage` | 立即执行健康检查 |
 | GET | `/alerts` | `ops.alerts.read` | 告警汇总 |
+| GET | `/surveillance/overview` | `ops.markets.read` | 市场监控总览：最近一次扫描、阈值、按类型的待处理数、按状态计数、做市商列表、各市场成交参与度 |
+| GET | `/surveillance/alerts` | `ops.markets.read` | 告警列表（`type: wash_trade / concentrated_volume / spoofing / price_move`、`status: open / acknowledged / dismissed`、`market`、`userId`、`includeMarketMakers`、分页） |
+| GET | `/surveillance/alerts/:alertId` | `ops.markets.read` | 告警详情：指标、证据（`evidence.tradeIds` / `orderIds` 与快照）、处理记录 `events[]` |
+| POST | `/surveillance/alerts/:alertId/status` | `ops.markets.manage` | 处理告警（`status`、`note` 必填）；`open → acknowledged / dismissed`、`acknowledged → dismissed / open`、`dismissed → open`，非法转换 409；审计动作 `surveillance.alert.acknowledge / dismiss / reopen` |
+| POST | `/surveillance/scan` | `ops.markets.manage` | 立即扫描一次（返回扫描结果），审计动作 `surveillance.scan` |
 | GET | `/audit-logs/withdrawals` | `ops.audit.read` | 提币审计日志搜索 |
 | GET | `/audit-logs/actions` | `ops.audit.read` | 运营操作审计日志 |
 | GET | `/execution-templates` | `ops.audit.read` | 运维执行模板 |
@@ -804,6 +815,22 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/api/v1/trades/:tradeId` | 成交详情 |
 | POST | `/api/v1/trades/:tradeId/settlement` | settlement-service 回写结算结果 |
 
+VIP 手续费等级（`/api/v1/fee-tiers`）：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/fee-tiers` | 等级配置（含 `volumeMarkets`：计入成交量的市场） |
+| GET | `/api/v1/fee-tiers/users/:userId` | 用户等级档案（每次实时重算成交量） |
+| POST | `/api/v1/fee-tiers/users/:userId/override` | 设置运营指定（`tier`、`note`、`actor` 必填；未知等级 `400 FEE_TIER_UNKNOWN`） |
+| POST | `/api/v1/fee-tiers/users/:userId/override/clear` | 取消指定（`note`、`actor`） |
+| GET | `/api/v1/fee-tiers/overrides`、`/api/v1/fee-tiers/audit` | 当前指定列表；指定审计（`userId?`、`limit?`） |
+
+市场监控数据（供 risk-service）：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/surveillance/activity` | 时间窗口内的成交与“大额、未成交、快速撤销”的委托（`since`、`until`，窗口不超过 24 小时；`market?`、`tradeLimit?`、`orderMinNotional?`、`orderMaxLifetimeMs?`、`orderLimit?`、`orderExcludeUserIds?`），返回 `trades[]`、`cancelledOrders[]`、`truncated` |
+
 运维（`/api/v1/orders/ops`）：
 
 | 方法 | 路径 | 说明 |
@@ -826,13 +853,17 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/markets` | 市场及状态 |
 | GET | `/markets/:market` | 单个市场 |
 | POST | `/markets/:market/status` | 设置状态覆盖（`status`、`reason?`、`operator?`） |
+| GET | `/surveillance/overview` | 市场监控总览 |
+| POST | `/surveillance/scan` | 立即扫描 |
+| GET | `/surveillance/alerts`、`/surveillance/alerts/:alertId` | 告警列表 / 详情 |
+| POST | `/surveillance/alerts/:alertId/status` | 处理告警（`status`、`note`、`actor` 必填） |
 
 ### 6.6 settlement-service（`/api/v1/settlement`，HMAC）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/trades/settle` | 同步结算一笔成交 |
-| GET | `/trades`、`/trades/report` | 结算记录与汇总 |
+| POST | `/trades/settle` | 同步结算一笔成交（`sellerFeeRate`、`buyerFeeRate?`、`sellerFeeTier?`、`buyerFeeTier?` 来自成交记录） |
+| GET | `/trades`、`/trades/report` | 结算记录与汇总；结算记录带实际收费的 `sellerFeeRate` / `buyerFeeRate` / `sellerFeeTier` / `buyerFeeTier` |
 | POST | `/trades/:tradeId/recover` | 恢复单笔结算 |
 | GET | `/recovery-jobs`、`/recovery-governance`、`/automation-executions` | 恢复任务与治理 |
 | POST | `/recovery-jobs/process` | 处理恢复任务 |
