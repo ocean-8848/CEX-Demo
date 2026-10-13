@@ -391,3 +391,47 @@ export interface PrivateRealtimeMessage {
   sequence?: number;
   message?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Proof of reserves (GET /api/v1/gateway/proof-of-reserves)
+// ---------------------------------------------------------------------------
+
+export interface ProofOfReservesAssetView {
+  assetCode: string;
+  liabilities: string;
+  withdrawalsInFlight: string;
+  netLiabilities: string;
+  reserves: string;
+  hot: string;
+  cold: string;
+  depositAddresses: string;
+  internalInTransit: string;
+  reserveRatio?: string;
+  status: "covered" | "shortfall" | "no_liabilities";
+}
+
+export type ProofOfReservesView =
+  | { available: false }
+  | {
+      available: true;
+      snapshot: {
+        snapshotId: string;
+        merkleRoot: string;
+        leafCount: number;
+        treeDepth: number;
+        createdAt: string;
+        assets: ProofOfReservesAssetView[];
+        format?: { hashAlgorithm: string; userHash: string; leaf: string; node: string };
+      };
+      included: boolean;
+      leaf?: {
+        userId: string;
+        nonce: string;
+        userHash: string;
+        balances: Record<string, string>;
+        leafIndex: number;
+        leafHash: string;
+        message: string;
+      };
+      proof: Array<{ position: "left" | "right"; hash: string }>;
+    };
