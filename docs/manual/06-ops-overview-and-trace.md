@@ -4,7 +4,7 @@
 
 ## 1. 后台布局与角色
 
-![运营总览页：左侧分组侧边栏，顶部全局搜索框、「系统正常」健康胶囊、主题切换和操作员信息 Demo Ops Admin / ops_admin](images/ops-dashboard.png)
+![运营总览页：左侧分组侧边栏（概览 / 业务 / 风控与运维，「提现审核」旁黄色待审核数、「系统运维」旁红色告警数），顶部全局搜索框、红色「N 条告警」健康胶囊、主题切换和操作员信息 Demo Ops Admin / ops_admin](images/ops-dashboard.png)
 
 ### 功能说明
 
@@ -19,10 +19,12 @@
   | | 交易与结算 | `ops.assets.read` |
   | | 市场管理 | `ops.markets.read` |
   | 风控与运维 | 账本对账 | `ops.ledger.read` |
+  | | 钱包与储备金 | `ops.ledger.read` |
   | | 系统运维 | `ops.dashboard.read` |
   | | 操作审计 | `ops.audit.read` |
+  | | 市场监控 | `ops.markets.read` |
 
-  没有对应权限的菜单项不会显示。「提现审核」旁的黄色数字是待审核提现数（每 10 秒刷新），「系统运维」旁的红色数字是当前告警数（每 30 秒刷新）。侧边栏底部「打开交易前台 ↗」在新窗口打开 trader-web。
+  没有对应权限的菜单项不会显示。「提现审核」旁的黄色数字是待审核提现数（每 10 秒刷新），「系统运维」旁的红色数字是当前告警数（每 30 秒刷新），「市场监控」旁的黄色数字是未处理的监控告警数（每 60 秒刷新）。侧边栏底部「打开交易前台 ↗」在新窗口打开 trader-web。
 - **顶部全局搜索框**：占位文字为「搜索 userId / orderId / withdrawalId / txHash …」。输入任意业务主键后回车，会跳到「业务追踪」并自动识别主键类型（见第 3 节）。
 - **健康胶囊**：显示「系统正常」（绿色）或「N 条告警」（红色），点击进入「系统运维」。
 - **主题切换**：☀ / ☾ 按钮在深色和浅色主题之间切换。
@@ -54,7 +56,7 @@ RBAC 里还定义了 `ops_finance_operator`、`ops_risk_operator`、`ops_platfor
 
 ## 2. 运营总览
 
-![运营总览：待审核提现 2、系统告警 0、已结算成交 391、累计手续费 373.01、账本对账「一致」、待投递通知 4；下方是待审核提现列表与告警面板](images/ops-dashboard.png)
+![运营总览：指标卡依次为待审核提现、系统告警（提示行「P1 n · P2 n · P3 n」）、已结算成交（待恢复 · 失败）、累计手续费、账本对账「一致」（扫描的余额个数）、待投递通知；下方是待审核提现列表（每行「批准」「拒绝」）和告警面板（右上角 P1 / P2 / P3 徽标，截图中为一条 P3 TRADING 告警），再往下是模块状态卡片](images/ops-dashboard.png)
 
 ### 功能说明
 
@@ -111,7 +113,7 @@ RBAC 里还定义了 `ops_finance_operator`、`ops_risk_operator`、`ops_platfor
 - **自动识别**：以 `0x` 开头的按交易哈希查询；其他输入依次尝试提现单、订单、成交、充值单、用户、账本账户，取第一个命中的结果。都没命中时提示「没有找到与 … 关联的业务对象」。
 - **蓝色 ID 链接**：后台各页面表格里的蓝色短 ID（用户、订单、提现单、交易哈希等）都可以点击，直接跳到这里并带上对应主键。
 
-![以 userId 追踪 Demo Trader：结果头部显示 USER 类型与关联主键，左侧「跨模块链路」依次列出 identity-service、ledger-service、api-gateway 三步，右侧「命中的业务对象」包括 user、balances（2 条）、notifications（4 条）](images/ops-trace-user.png)
+![以 userId 追踪 Demo Trader：结果头部显示 USER 类型与关联主键，左侧「跨模块链路」依次列出 identity-service、ledger-service、api-gateway 三步，右侧「命中的业务对象」包括 user（正常）、balances、notifications](images/ops-trace-user.png)
 
 追踪结果包括：
 
@@ -141,7 +143,7 @@ RBAC 里还定义了 `ops_finance_operator`、`ops_risk_operator`、`ops_platfor
 
 ## 4. 操作审计
 
-![操作审计页：「后台操作」与「提现状态迁移」两个页签，筛选栏有动作输入框（提示 withdrawal.approve）和「全部结果」下拉框，当前显示「暂无审计记录」](images/ops-audit.png)
+![操作审计页：「后台操作」与「提现状态迁移」两个页签，筛选栏有动作输入框（提示 withdrawal.approve）和「全部结果」下拉框；表格列为时间、操作人、动作、权限、对象、结果，截图中有一条 ops-admin@example.com 的 treasury.por.generate（ops.ledger.execute，对象 proof_of_reserves snapshot，成功）](images/ops-audit.png)
 
 ### 功能说明
 

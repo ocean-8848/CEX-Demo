@@ -89,6 +89,23 @@ try {
     await page.context().close();
   }
 
+  // ---- ops-console: make sure a proof-of-reserves snapshot exists for the trader page ----
+  {
+    const { context, page } = await opsPage();
+    await opsLogin(page);
+    await go(page, opsUrl, "/treasury");
+    const generate = page.locator("#treasury-por-generate");
+    await generate.waitFor({ timeout: 15_000 });
+    await generate.click();
+    const confirm = page.locator("#confirm-submit");
+    if (await confirm.count()) {
+      await page.fill("#confirm-note", "manual screenshot run").catch(() => {});
+      await confirm.click();
+    }
+    await page.waitForTimeout(3000);
+    await context.close();
+  }
+
   // ---- trader-web, signed in ----
   {
     const page = await traderPage({ loggedIn: true });
@@ -189,9 +206,10 @@ try {
     // proof of reserves: verify the user's own Merkle leaf in the browser
     await go(page, traderUrl, "/assets/reserves");
     await page.waitForSelector("#reserves-page");
-    if (await page.locator("#reserves-verify").count()) {
-      await page.click("#reserves-verify");
-    }
+    await page.locator("#reserves-verify").waitFor({ timeout: 15_000 });
+    await page.waitForTimeout(1500);
+    await page.click("#reserves-verify");
+    await page.locator("#reserves-verdict").waitFor({ timeout: 15_000 }).catch(() => {});
     await shot(page, "trader-reserves", { settle: 2500 });
     await shot(page, "trader-reserves-full", { settle: 300, fullPage: true });
 
@@ -273,7 +291,6 @@ try {
     await shot(page, "ops-withdrawal-detail", { settle: 1500 });
     await go(page, opsUrl, `/users/${DEMO_TRADER.userId}`);
     await shot(page, "ops-user-detail", { settle: 2500 });
-    await shot(page, "ops-user-detail-full", { settle: 300, fullPage: true });
     await go(page, opsUrl, "/treasury");
     await shot(page, "ops-treasury-full", { settle: 2500, fullPage: true });
     await go(page, opsUrl, "/surveillance");

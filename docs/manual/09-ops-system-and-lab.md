@@ -6,13 +6,13 @@
 
 ## 1. 告警
 
-![系统运维「告警」页签：四张来源卡片，账本 ledger-service、链上观察 blockchain-indexer、托管 custody-adapter 显示「正常」和「所有指标都在阈值内」，钱包 wallet-service 显示「告警」和 pending_notifications=33 exceeds threshold 20；顶部健康胶囊为「1 条告警」](images/ops-system.png)
+![系统运维「告警」页签：页签栏为告警、托管通道、恢复队列、事件总线、自动化作业、实验室、紧急开关；顶部「全部告警（按级别排序）」面板右上角是 P1 / P2 / P3 数量，按级别列出告警（截图中为一条红色 P1 TREASURY reserve_coverage_shortfall 和一条灰色 P3 TRADING settlement_pending_recovery_count），下方是级别含义说明；再往下是各来源卡片：账本、链上观察、托管、钱包、定时对账与熔断、紧急开关、提现地址风险 KYT 为「正常」，交易域（P3）和钱包与储备金 treasury（P1）为「告警」](images/ops-system.png)
 
 ### 功能说明
 
 - 顶部「全部告警（按级别排序）」面板：右上角是 P1 / P2 / P3 各级数量；下面把所有数据源的告警合在一起按级别排序，每行是级别徽标（P1 红、P2 黄、P3 灰）、来源和告警内容，悬停显示规则说明；面板底部说明三个级别的含义（规则表见 [安全设计](../security.md) 第 2.12 节）。
-- 每个告警数据源一张卡片，标题为中文名 + 服务名（账本 ledger-service、链上观察 blockchain-indexer、托管 custody-adapter、钱包 wallet-service、定时对账与熔断、紧急开关 risk-service、交易域），右上角是该来源的最高级别徽标和状态徽标（正常 / 告警），卡片内的告警同样带级别。
-- 没有告警时显示「所有指标都在阈值内。」；有告警时逐条列出告警文本。截图中钱包 wallet-service 的告警是 `pending_notifications=33 exceeds threshold 20`，即待投递站内信超过阈值，此时顶部健康胶囊变为「1 条告警」，侧边栏「系统运维」旁出现红色数字 1。
+- 每个告警数据源一张卡片，标题为中文名 + 服务名（账本 ledger-service、链上观察 blockchain-indexer、托管 custody-adapter、钱包 wallet-service、定时对账与熔断、紧急开关 risk-service、交易域、钱包与储备金 treasury、提现地址风险 KYT、市场监控 surveillance），右上角是该来源的最高级别徽标和状态徽标（正常 / 告警），卡片内的告警同样带级别。
+- 没有告警时显示「所有指标都在阈值内。」；有告警时逐条列出告警文本。截图中有两条告警：钱包与储备金 treasury 的 `reserve_coverage_shortfall:BTC=…`（P1，某币种链上储备低于净负债，属于资金正确性问题）和交易域的 `settlement_pending_recovery_count=… exceeds threshold 0`（P3，结算恢复队列有待处理任务）。此时顶部健康胶囊显示告警条数，侧边栏「系统运维」旁出现红色数字。
 - 「指标明细」展开后是该数据源的原始指标 JSON。
 - 每 15 秒刷新。顶部健康胶囊、侧边栏「系统运维」上的红色数字、运营总览的「系统告警」卡片都来自同一份数据。需要 `ops.alerts.read`。
 
@@ -20,7 +20,7 @@
 
 1. 顶部健康胶囊变红或侧边栏出现红色数字时，进入「系统运维」→「告警」。
 2. 找到状态为「告警」的卡片，阅读告警文本，展开「指标明细」看具体数值。
-3. 先处理 P1，再处理 P2、P3。按来源跳到对应页面处理：账本 / 定时对账 → 「账本对账」，紧急开关 → 本页「紧急开关」，链上观察 → 「充值与链上」，托管 → 本页「托管通道」，交易域（结算失败 / 滞后 / 消费者暂停）→ 「交易与结算」或本页「事件总线」，钱包的待投递通知积压 → 运营总览「待投递通知」面板的「立即投递」。
+3. 先处理 P1，再处理 P2、P3。按来源跳到对应页面处理：账本 / 定时对账 → 「账本对账」，紧急开关 → 本页「紧急开关」，链上观察 → 「充值与链上」，托管 → 本页「托管通道」，交易域（结算失败 / 滞后 / 消费者暂停）→ 「交易与结算」或本页「事件总线」，钱包的待投递通知积压 → 运营总览「待投递通知」面板的「立即投递」，钱包与储备金 → 「钱包与储备金」页，提现地址风险 → 「提现审核」（风险筛选「已拦截」）或「用户与资产」→「地址黑名单」。
 
 ### 背后的服务
 
@@ -28,7 +28,7 @@
 
 ## 2. 托管通道
 
-![「托管通道」页签：托管状态「正常」、熔断中的通道 0、不健康通道 0、待回查 / 可重试 / 失败 0 / 0 / 0；路由表列出 base、bsc、ethereum 三个网络各自的 mock-custody（优先级 0）与 mock-custody-backup（优先级 1），全部「健康」「闭合」，ethereum 主通道广播成功 6 次；右上角「立即健康检查」「刷新」](images/ops-system-custody.png)
+![「托管通道」页签：托管状态「正常」、熔断中的通道 0、不健康通道 0、待回查 / 可重试 / 失败 0 / 0 / 0；路由表列出 base、bsc、ethereum 三个网络各自的 mock-custody（优先级 0）与 mock-custody-backup（优先级 1），全部「健康」「闭合」，ethereum 通道有广播成功 / 失败计数；右上角「立即健康检查」「刷新」](images/ops-system-custody.png)
 
 ### 功能说明
 
@@ -53,13 +53,13 @@
 
 ## 3. 恢复队列
 
-![「恢复队列」页签：订单恢复任务 1372（完成 1372）、待处理 0、失败 0、死信 0；状态筛选为「待处理」；订单恢复队列、死信任务面板均显示「队列为空」，分别带「处理一批」「全部重新入队」按钮，下方是结算恢复队列](images/ops-system-recovery.png)
+![「恢复队列」页签：指标卡为订单恢复任务（全部已完成）、待处理 0、失败 0、死信 0；状态筛选为「待处理」；订单恢复队列、死信任务面板均显示「队列为空」，分别带「处理一批」「全部重新入队」按钮，下方是结算恢复队列](images/ops-system-recovery.png)
 
 ### 功能说明
 
 撮合结果落库或成交结算任何一步失败时，任务进入恢复队列自动重试；超过最大次数后进入终态失败或死信，需要人工处理。
 
-- **指标卡**：订单恢复任务总数（及已完成数）、待处理、失败、死信。截图中累计 1372 个订单恢复任务全部完成，待处理、失败、死信都是 0。
+- **指标卡**：订单恢复任务总数（及已完成数）、待处理、失败、死信。截图中订单恢复任务全部完成，待处理、失败、死信都是 0。
 - **状态筛选**：全部 / 待处理（默认）/ 处理中 / 失败 / 已完成，作用于下面的订单和结算两个队列。
 - 三个任务面板，列都是更新时间、任务、订单或成交、市场、阶段、尝试次数、最近错误、状态、操作：
   - **订单恢复队列（order-service）**：右上角「处理一批」（一次最多 20 条），每行「恢复」。
@@ -112,13 +112,13 @@
 
 ## 5. 自动化作业
 
-![「自动化作业」页签：七张作业模板卡片（Order Recovery Batch、Order Dead-Letter Requeue、Settlement Recovery Batch、Trade Domain Recovery Sweep、Trade Runtime Alert Delivery、Trade Event Stream Replay、Trade Event Bus Self-Heal），其中 Trade Runtime Alert Delivery 的「执行」为灰色；左下「定时计划」按市场列出 5–15 分钟间隔的计划，右下「最近执行」列出多条 withdrawal.approve 成功记录](images/ops-system-automation.png)
+![「自动化作业」页签：七张作业模板卡片（Order Recovery Batch、Order Dead-Letter Requeue、Settlement Recovery Batch、Trade Domain Recovery Sweep、Trade Runtime Alert Delivery、Trade Event Stream Replay、Trade Event Bus Self-Heal），其中 Trade Runtime Alert Delivery 的「执行」为灰色；左下「定时计划」按市场列出 5–15 分钟间隔的计划和「执行到期计划」按钮，右下「最近执行」列出 treasury.por.generate 成功记录](images/ops-system-automation.png)
 
 ### 功能说明
 
 - **作业模板**：每个模板一张卡片，显示名称、说明、对应的动作名和「执行」按钮。演示环境中有 7 个模板：Order Recovery Batch（批量处理待恢复订单任务）、Order Dead-Letter Requeue（死信重新入队）、Settlement Recovery Batch（批量处理待恢复结算任务）、Trade Domain Recovery Sweep（串行执行订单恢复、结算恢复和可选的死信重入队）、Trade Runtime Alert Delivery（导出交易域告警并推送到外部 sink）、Trade Event Stream Replay（从持久化成交事件流回放指定区间）、Trade Event Bus Self-Heal（按滞后 SLO 自动回放、处理订阅者、裁剪和告警投递）。只有当前账号具备模板要求的权限时按钮才可用；截图中 Trade Runtime Alert Delivery 需要的 `ops.alerts.manage` 没有分配给任何默认角色，所以即使是 `ops_admin` 也显示为灰色。点击后弹窗显示说明和默认参数，点「确认执行」后以默认市场为参数执行。面板右上角提示「每次执行都会写入操作审计」。
 - **定时计划**：列出计划名称、市场、间隔（分钟）和下次到期时间。截图中每个市场都有 Trade Domain Recovery Sweep（15 分钟）、Trade Runtime Alert Delivery（10 分钟）、Trade Event Bus Self-Heal（5 分钟）三个计划。有 `ops.ledger.execute` 时显示「执行到期计划」，一次最多执行 10 个到期计划。
-- **最近执行**：最近 15 次执行的动作、对象、结果和时间，每 15 秒刷新。截图中显示的是演示过程中的 `withdrawal.approve` 记录。
+- **最近执行**：最近 15 次执行的动作、对象、结果和时间，每 15 秒刷新。截图中显示的是一条生成储备金证明快照的 `treasury.por.generate` 记录。
 - 页面底部说明：本地演示环境中这些作业通常处理 0 条记录，说明交易链路是健康的。
 
 ### 操作步骤
@@ -137,7 +137,7 @@
 
 ## 6. 实验室（故障注入）
 
-![「实验室」页签：顶部「故障注入实验室」面板含市场下拉框 ETH/USDT、刷新与「一键恢复全部」，显示「无活动故障 · 系统处于正常状态」；下方卡片 ① 暂停结算消费者（已成交未结算 2、消费者运行中）和 ② 托管广播连续失败（mock-custody / mock-custody-backup 均健康、闭合），各带预期现象 / 观察位置 / 恢复方式说明和操作按钮](images/ops-system-lab.png)
+![「实验室」页签：顶部「故障注入实验室」面板含市场下拉框 ETH/USDT、刷新与「一键恢复全部」，显示「无活动故障 · 系统处于正常状态」；下方卡片 ① 暂停结算消费者（「已成交未结算」按市场列出、消费者「运行中」）和 ② 托管广播连续失败（mock-custody / mock-custody-backup 均健康、闭合），各带预期现象 / 观察位置 / 恢复方式说明和操作按钮](images/ops-system-lab.png)
 
 实验室在本地演示环境里制造**受控、会自动解除**的真实故障，用来观察系统如何降级、告警和恢复。设计原则、接口和更多练习见 [故障注入实验室](../fault-lab.md)。
 
@@ -205,6 +205,8 @@
 ## 7. 紧急开关
 
 紧急开关用于事故时止血：暂停提现出口，或把整个平台切到只读模式。入口为「系统运维」→「紧急开关」页签（`#/system?tab=controls`）。
+
+![「紧急开关」页签：顶部说明开关生效范围与权限；「全站提现暂停」和「API 写入冻结（只读模式）」两张卡片均为「关闭」，各带红色「开启」按钮；「单币种提现」表列出 USDT、USDC、ETH、BTC、SOL，状态均「正常」，每行有「暂停提现」按钮；底部露出「对账熔断」面板与「账本对账 →」链接](images/ops-system-controls.png)
 
 ### 功能说明
 

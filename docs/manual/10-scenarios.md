@@ -16,7 +16,7 @@
 
 目标：下一笔立即成交的买单，看资金冻结 → 撮合 → 结算 → 记账的完整过程。
 
-![交易页：K 线、订单簿与下单面板](images/trader-trade.png)
+![交易页：ETH/USDT 市场头部、K 线、订单簿与右侧下单面板（限价 / 市价 / 止损、只做 Maker、STP）](images/trader-trade.png)
 
 ### 操作步骤
 
@@ -27,12 +27,12 @@
 5. 切到页面下方的「成交记录」页签：出现一笔成交，角色为「Taker」（吃单方），手续费以 ETH 扣除。
 6. 点这笔成交的「T 型账户」，弹窗按账户角色展开借贷分录，右上角显示「✓ 借贷平衡」。
 
-   ![成交分录弹窗：T 型账户与借贷平衡](images/trader-trade-journal.png)
+   ![成交分录弹窗：买入 0.01 ETH/USDT 的 8 个 T 型账户卡片，右上角「✓ 借贷平衡」](images/trader-trade-journal.png)
 
 7. 打开「资产」→「资金流水 / 对账单」：能看到这笔订单的「下单冻结」「委托解冻」，以及成交的「成交支出」（USDT）和「成交收入」（ETH，带手续费）。
 8. 切到后台，进入「交易与结算」，选 `ETH/USDT`，在「成交」和「结算」页签找到同一笔成交；结算记录中卖方费（quote）和买方费（base）分列，状态为「已结算」。
 
-   ![后台交易与结算：结算列表](images/ops-trading-settlements.png)
+   ![后台交易与结算「结算」页签：ETH/USDT 的结算记录，卖方费（quote）和买方费（base）分列，尝试 1 次、状态「已结算」](images/ops-trading-settlements.png)
 
 9. 把成交 ID 粘贴到后台顶栏的搜索框（业务追踪），订单、成交、结算和账本分录会串成一条链。
 
@@ -50,7 +50,7 @@
 
 目标：用测试水龙头模拟一笔链上转账，看确认数涨到 12 后入账。
 
-![领取测试币后：回执显示确认进度，充值记录同步推进](images/trader-deposit-records.png)
+![领取 1,000 USDT 测试币后：水龙头回执显示「x/12 确认」与进度条，下方充值记录列出此前已入账的充值](images/trader-deposit-records.png)
 
 ### 操作步骤
 
@@ -89,7 +89,7 @@
 5. 在后台左侧导航点「提现审核」（菜单上的数字是待审核笔数）。「待审核」页签列出这笔提现，「规则校验」列显示 2FA、白名单、KYC 等级和当日已用额度。
 6. 点这一行的「批准」，在弹窗「批准 1 笔提现」里填写审核备注，点「确认批准并广播」。弹窗说明：批准后 `wallet-service` 立即调用 `custody-adapter` 签名并广播交易，链上确认后从账本最终扣除冻结资金，此操作不可撤回。
 
-   ![后台批准提现弹窗](images/ops-withdrawal-approve.png)
+   ![后台「批准 1 笔提现」弹窗：不可撤回说明、审核备注输入框与「确认批准并广播」按钮](images/ops-withdrawal-approve.png)
 
 7. 批准后提示「提现已批准」，并说明「custody-adapter 已广播，模拟链确认 12 个区块后完成」。如需拒绝，点「拒绝」并填写原因，冻结的金额和手续费会退回用户可用余额。
 
@@ -98,17 +98,17 @@
 8. 约 20 秒后，前台「提现记录」推进到「已完成」，铃铛收到广播和确认通知；冻结的 21 USDT 被最终扣除，「资金流水」出现「提现出账」。
 9. 后台「提现审核」→「全部提现」页签可以按状态、币种、用户筛选，这笔提现的状态显示为「已确认」。
 
-   ![后台全部提现：一笔已确认，一笔待审核](images/ops-withdrawals-all.png)
+   ![后台「全部提现」页签：刚批准的 20 USDT 提现状态为「已确认」，其余几笔仍为「待审核」](images/ops-withdrawals-all.png)
 
 **用业务追踪串起整条链**
 
 10. 点提现单号，或在顶栏搜索框粘贴 `withdrawalId`，进入「业务追踪」。页面顶部列出推导出的关联主键（userId、accountId、assetCode、txHash），「跨模块链路」按顺序展示 `identity-service`（用户锚点）→ `wallet-service`（提现状态机，`status=confirmed`、`reviewStatus=approved`）→ `ledger-service`（余额事实）→ `custody-adapter`（托管广播，带 txHash）→ `api-gateway`（通知与审计投影）。右侧「命中的业务对象」可展开查看提现、托管转账、余额、通知和提现审计日志的详情。
 
-    ![业务追踪：提现的跨模块链路](images/ops-trace-withdrawal.png)
+    ![业务追踪：以 withdrawalId 追踪一笔 20 USDT 提现，关联主键 userId、accountId、assetCode、txHash，跨模块链路依次为 identity-service、wallet-service（status=confirmed、reviewStatus=approved）、ledger-service、custody-adapter，右侧命中 user、withdrawal（已确认）、custodyTransfer（已广播）、balances 等对象](images/ops-trace-withdrawal.png)
 
     整页还包括底部的「关联记录」（同一用户的充值、提现、订单、成交、结算）和「完整追踪结果（JSON）」：
 
-    ![业务追踪整页](images/ops-trace-withdrawal-full.png)
+    ![业务追踪整页：五步跨模块链路（最后一步 api-gateway 通知与审计投影），右侧多出 notifications 与 withdrawalAuditLogs，底部「关联记录」分列 deposits、withdrawals、orders、trades、settlements，以及「完整追踪结果（JSON）」折叠项](images/ops-trace-withdrawal-full.png)
 
 11. 在「操作审计」里能查到这次 `withdrawal.approve` 操作及操作人（见 [09 · 系统运维与实验室](09-ops-system-and-lab.md)）。
 
@@ -138,7 +138,7 @@
 1. **提升 KYC 等级**：前台「账户」→「身份认证与提现限额」，申请等级选「L1 基础认证」，填虚构的姓名和证件号，点「提交认证申请」，面板显示「等待运营审核」（见 [05 · 账户与安全](05-trader-account.md)）。
 2. 后台用 `ops-admin` 登录，进入「用户与资产」→「KYC 审核」，在这条申请上点「批准 L1」并确认。
 
-   ![后台 KYC 审核：批准 L1 / 批准 L2 / 拒绝](images/ops-users-kyc.png)
+   ![后台 KYC 审核页签：Demo Trader 当前「未认证」、申请 L1，状态「待处理」，操作「批准 L1」「批准 L2」「拒绝」](images/ops-users-kyc.png)
 
 3. 回到前台刷新账户页，徽标变为「L1 基础认证」，USDT 单笔限额变为 10,000。
 4. **提交大额提现**：前台「资产」→「提现」，币种 `USDT`，地址选「Demo Safe Address」，数量填 `6000`。表单汇总里多出一行「审核：大额提现，需两名运营人员复核」。预校验通过后点「提交提现」。
