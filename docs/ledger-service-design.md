@@ -354,7 +354,38 @@ expectedTotal     = journalNet
 | `available` 为负的余额数 | 0 | `LEDGER_ALERT_MAX_NEGATIVE_AVAILABLE_BALANCES` |
 | `locked` 为负的余额数 | 0 | `LEDGER_ALERT_MAX_NEGATIVE_LOCKED_BALANCES` |
 
-ops-console 的账本页面通过 `/api/v1/ops/ledger/*` 调用这些能力。
+ops-console 的账本页面通过 `/api/v1/ops/ledger/*` 调用这些能力；告警在 ops-console 中按 P1/P2/P3 分级（对账差异、负余额为 P1，死信、超时冻结为 P2，outbox 堆积为 P3，见 [security.md](security.md) 第 2.11 节）。
+
+### 11.5 定时对账、委托冻结对账与熔断
+
+ledger-service 进程内的 `ReconciliationJob`（`src/application/reconciliation-job.ts`，调度在 `src/http/reconciliation-job.service.ts`）每 `RECONCILIATION_INTERVAL_SECONDS` 秒运行一轮（代码默认 `0` 不调度；`pnpm demo:up` / `stack:start` 传入 `30`；首轮延迟 `RECONCILIATION_INITIAL_DELAY_SECONDS`，默认等于间隔），也可以通过 `POST /ops/reconciliation/jobs/run` 或 ops-console 立即运行。同一时刻只跑一轮，重复触发会合并到正在进行的那一轮。
+
+每一轮做三件事：
+
+1. **余额对账**：即 11.1 节，在同一个 REPEATABLE READ 快照内完成，不存在时序误差。
+2. **委托冻结对账**（`src/application/order-lock-reconciliation.ts`）：在一个快照内读出全部活跃的 `spot_order` 冻结（`remaining_amount`）和各账户币种的 `locked`（拆成委托冻结与提现等其他冻结），再按冻结的委托 ID 分批（每批 ≤ 2000）调用 order-service `POST /api/v1/orders/ops/lock-expectations`。order-service 对每笔委托给出账本冻结应有的金额：
+
+   ```text
+   expected = 未成交部分的冻结（买：限价 × resting，卖：resting）
+            + 已成交但结算尚未消耗的部分（买：成交价 × 数量，卖：数量）
+   ```
+
+   逐笔比较后按账户 + 币种汇总（`ledgerLocked`、`ledgerOrderLocked`、`ledgerOtherLocked`、`orderExpectedLocked`、差额）。差异类型：`lock_amount_mismatch`、`missing_ledger_lock`（委托仍需冻结但账本没有冻结）、`orphan_ledger_lock`（账本有冻结但委托不存在）。
+
+   **在途处理**：两个服务的读取有先后（先账本快照、再 order-service），一笔委托还要经过 风控 → 冻结 → 撮合 → 落库 → 结算。以下差异算「在途」，不计入不一致：order-service 标记的 `pending_risk` / `recovery_pending`；委托 `updatedAt` 或最近一笔成交时间晚于「账本快照时间 − `RECONCILIATION_ORDER_LOCK_GRACE_SECONDS`（默认 15 秒）」；冻结创建于宽限期内。
+3. **熔断判定**（`src/application/reconciliation-breaker.ts`）：余额对账不平的币种立即熔断；委托冻结对账需要**同一笔委托**连续 `RECONCILIATION_BREAKER_CONFIRMATIONS`（默认 2）轮不一致才熔断，只出现一轮记为 `suspected`（P2）。熔断调用 risk-service `POST /api/v1/risk/controls`，以 `source: "automatic"` 暂停该币种提现（已暂停时记 `already_paused`），并记录 P1 告警；`RECONCILIATION_BREAKER_ENABLED=false` 时只告警不暂停。
+
+每轮结果写入 `ledger_reconciliation_runs`（`sql/005_reconciliation_runs.sql`，保留最近 `RECONCILIATION_HISTORY_LIMIT` 条，默认 2000）：
+
+| 状态 | 含义 |
+| --- | --- |
+| `ok` | 余额与委托冻结全部一致（在途差异不算） |
+| `suspected` | 委托冻结有不一致，但还没达到连续轮数 |
+| `mismatch` | 本轮触发了熔断（余额不平，或委托冻结连续不一致） |
+| `partial` | 余额对账完成，委托冻结对账失败（如 order-service 不可用，P2） |
+| `failed` | 余额对账本身失败（P2） |
+
+熔断暂停只能人工在 ops-console「系统运维 → 紧急开关」恢复，且需要一轮晚于暂停时间、该币种一致的对账。故障实验室的「账本对账差额」实验（`POST /ops/reconciliation/lab/drift`）只在固定的实验账户 `00000000-0000-0000-0000-0000000000a1`（`account_type = fault_lab`）上写入没有分录的余额，用来演示整条链路，清除时删除该账户的余额行。
 
 ### 11.4 运维脚本
 
@@ -381,5 +412,12 @@ ops-console 的账本页面通过 `/api/v1/ops/ledger/*` 调用这些能力。
 | `DATABASE_URL` / `PG*` | `web3:web3@127.0.0.1:5432/web3_cex` | Postgres 连接；`PGSSL=true` 开启 SSL |
 | `INTERNAL_SERVICE_AUTH_SECRET` | 无 | 内部 HMAC 密钥，未配置时所有接口返回 503 |
 | `INTERNAL_SERVICE_ALLOWED_CALLERS` | 见 [api-contracts.md](api-contracts.md#12-认证方式一览) | 调用方白名单 |
+| `RECONCILIATION_INTERVAL_SECONDS` | `0`（演示栈 `30`） | 定时对账间隔，`0` 不调度 |
+| `RECONCILIATION_INITIAL_DELAY_SECONDS` | 同间隔 | 启动后首轮延迟 |
+| `RECONCILIATION_ORDER_LOCK_GRACE_SECONDS` | `15` | 委托冻结对账的在途宽限 |
+| `RECONCILIATION_BREAKER_ENABLED` | `true` | 是否自动暂停提现 |
+| `RECONCILIATION_BREAKER_CONFIRMATIONS` | `2` | 委托冻结不一致需连续多少轮才熔断 |
+| `RECONCILIATION_HISTORY_LIMIT` | `2000` | 保留的对账记录条数 |
+| `LEDGER_ORDER_SERVICE_URL` / `LEDGER_RISK_SERVICE_URL` | `http://127.0.0.1:3009` / `:3008` | 委托冻结对账与熔断调用的下游 |
 
 所有 HTTP 接口都要求内部服务签名，外部只能经 api-gateway（用户）或 ops-console（运营）间接访问。

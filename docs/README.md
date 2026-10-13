@@ -17,11 +17,11 @@
 |---|---|
 | [architecture.md](architecture.md) | 技术栈、服务分层、调用关系、三条主链时序图、与真实交易所的差异 |
 | [domain-model.md](domain-model.md) | 核心实体、状态机与不变量 |
-| [ledger-service-design.md](ledger-service-design.md) | 双分录账本、冻结生命周期、并发控制、对账与回放 |
+| [ledger-service-design.md](ledger-service-design.md) | 双分录账本、冻结生命周期、并发控制、对账与回放、定时对账与对账熔断 |
 | [event-catalog.md](event-catalog.md) | 服务间事件、生产者 / 消费者与投递语义 |
 | [api-contracts.md](api-contracts.md) | 对外 API、WebSocket、运营 BFF 与内部服务接口 |
-| [security.md](security.md) | 已实现的安全控制、威胁模型、走向真实环境还缺什么 |
-| [fault-lab.md](fault-lab.md) | 故障注入实验室：注入、观察与恢复 |
+| [security.md](security.md) | 已实现的安全控制（含紧急开关、P1/P2/P3 告警分级）、威胁模型、走向真实环境还缺什么 |
+| [fault-lab.md](fault-lab.md) | 故障注入实验室：注入、观察与恢复（含对账差额 → 对账熔断） |
 
 ## 模块文档
 

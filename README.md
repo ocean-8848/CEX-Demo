@@ -18,7 +18,7 @@ The repository has two parts:
 - **Spot trading** on `ETH/USDT` (default), `BTC/USDT` and `SOL/USDT`: limit / market orders, GTC / IOC / FOK, order book, trades, K-lines.
 - **Funds**: deposit addresses, a test faucet with confirmation tracking, withdrawals with review, a double-entry ledger with freeze / unfreeze / consume.
 - **Accounts & security**: sessions (HttpOnly cookie), self-service 2FA, KYC levels and withdrawal limits, API keys (keyId + secret signing), RBAC, signed service-to-service calls.
-- **Operations**: withdrawal review with dual approval for large amounts, KYC review, market halt / resume, ledger reconciliation, business tracing by any ID, audit log, and a fault-injection lab.
+- **Operations**: withdrawal review with dual approval for large amounts, KYC review, market halt / resume, emergency switches (global / per-asset withdrawal pause, API read-only mode), ledger reconciliation with a scheduled job and an automatic withdrawal circuit breaker, P1/P2/P3 alert levels, business tracing by any ID, audit log, and a fault-injection lab.
 - **Learning mode** in the trader app: shows which services each action passes through, replays matching step by step, and links to Jaeger traces.
 
 ## Architecture at a glance

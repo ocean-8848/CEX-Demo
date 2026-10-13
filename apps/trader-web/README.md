@@ -22,6 +22,8 @@
 
 二维码由 `src/client/lib/qr.ts` 在浏览器本地生成（无第三方依赖，ISO 18004 字节模式 + Reed-Solomon，`src/__tests__/qr.test.ts` 做编解码往返与格式位校验），2FA 密钥不会发给任何第三方二维码服务。提现面板会提前展示当前币种限额、是否必须填写动态码和冷却期；`WITHDRAWAL_2FA_NOT_ENABLED` 映射为「请先在账户页开启二次验证」，`WITHDRAWAL_SECURITY_COOLDOWN` 显示剩余等待时间。
 
+运营紧急开关：页面每 15 秒读取公开接口 `GET /api/gateway/system/controls`（`src/client/state/system-controls.ts`）。当前币种提现被暂停（全站或单币种，含对账熔断）时，提现面板显示红色提示并禁用「预校验 / 提交提现」；API 写入冻结（只读模式）时提现面板与下单表单都显示提示并禁用提交，撤单不受影响。网关仍会以 `409 WITHDRAWALS_PAUSED / ASSET_WITHDRAWALS_PAUSED / API_WRITE_FROZEN` 拒绝，错误提示已映射为中文。
+
 全局：顶栏通知中心（铃铛 + 未读数 + 下拉列表；中文标题按 eventType 映射，点击跳转到对应提现 / 充值记录并标记已读，支持「全部已读」；已读状态由 wallet-service 持久化，刷新 / 换设备保持；REST 首屏 + 私有 WS `notifications` 频道增量）、深色 / 浅色主题、行情与账户连接状态、Toast 通知（成交、充值到账、提现状态变化、错误）、学习模式抽屉（服务时间线 + 服务职责说明）、移动端自适应。
 
 学习功能：

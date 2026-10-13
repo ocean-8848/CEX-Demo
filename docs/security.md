@@ -22,6 +22,7 @@
 - 服务间请求的 HMAC 签名
 - 提现链路上的限额、KYC 分级、地址簿 / 白名单、冷却期、双人审批、审计日志
 - 账本的借贷平衡、冻结 / 释放、幂等记账
+- 紧急开关（全站 / 单币种提现暂停、API 写入冻结）、定时对账与对账熔断、P1/P2/P3 告警分级
 
 ### 1.2 明确不在保护范围内的东西
 
@@ -59,7 +60,7 @@
 - **恢复码**（`domain/recovery-codes.ts`）：开启 2FA 时生成 8 个一次性恢复码，只展示一次，库里存加用户 ID 的 SHA-256 哈希，使用后标记 `used_at`。
 - **运营强制 2FA**：`OPS_REQUIRE_TWO_FACTOR` 默认开启，未绑定 2FA 的运营账号无法登录 `ops-console`。
 - **客户自助 2FA**：开启、关闭、重新生成恢复码的接口只接受会话鉴权，API Key 无法关闭 2FA（`services/api-gateway/src/http/api-gateway.controller.ts`）。
-- **RBAC**（`domain/rbac.ts`）：6 个运营角色 `ops_admin / ops_reviewer / ops_finance_operator / ops_risk_operator / ops_platform_operator / ops_observer`，映射到细粒度权限（如 `ops.withdrawals.review`、`ops.ledger.execute`、`ops.users.freeze`）。未指定角色时默认 `ops_observer`（只读）。
+- **RBAC**（`domain/rbac.ts`）：6 个运营角色 `ops_admin / ops_reviewer / ops_finance_operator / ops_risk_operator / ops_platform_operator / ops_observer`，映射到细粒度权限（如 `ops.withdrawals.review`、`ops.ledger.execute`、`ops.users.freeze`）。紧急开关权限 `ops.controls.manage` 只授予 `ops_admin`。未指定角色时默认 `ops_observer`（只读）。
 - **KYC 分级**（`domain/kyc.ts`）：`unverified → L1 → L2`，只能逐级申请、由运营审核；证件号脱敏后存储。
 
 ### 2.3 客户入口（api-gateway）
@@ -106,14 +107,14 @@
 
 ### 2.6 交易与账本
 
-- **下单前风控**（`services/risk-service/src/application/risk-application-service.ts`）：市场状态（暂停 / 下架时拒绝新单、撤单始终放行）、价格与数量步长、可用余额校验。详见 [risk-service README](../services/risk-service/README.md)。
+- **下单前风控**（`services/risk-service/src/application/risk-application-service.ts`）：API 写入冻结（`API_WRITE_FROZEN`，见 2.10 节）、市场状态（暂停 / 下架时拒绝新单、撤单始终放行）、价格与数量步长、可用余额校验。详见 [risk-service README](../services/risk-service/README.md)。
 - **账本不变量**（`services/ledger-service/src/application/ledger-application-service.ts`）：每笔 journal 按资产借贷平衡，否则拒绝；`idempotencyKey` 去重；冻结 / 释放 / 消耗都检查可用余额与锁状态。运营端没有“直接改余额”的接口，余额调整也必须走 journal。详见 [ledger-service-design.md](ledger-service-design.md)。
 
 ### 2.7 提现控制（wallet-service）
 
 代码位置：`services/wallet-service/src/application/wallet-application-service.ts`、`src/domain/withdrawal-policy.ts`、`src/infrastructure/withdrawal-validation-rules.ts`。详见 [wallet-service README](../services/wallet-service/README.md)。
 
-提现申请的校验顺序大致为：资产 / 网络在 `config/markets.json` 中存在 → 安全冷却期 → 最小金额与手续费 → 白名单 → 单笔 / 日累计限额（含 KYC 分级）→ 2FA。动态码放在最后验证，避免被其他规则拒绝时白白消耗一次性动态码。
+提现申请的校验顺序大致为：紧急开关（全站 / 单币种暂停、API 写入冻结，见 2.10 节）→ 资产 / 网络在 `config/markets.json` 中存在 → 安全冷却期 → 最小金额与手续费 → 白名单 → 单笔 / 日累计限额（含 KYC 分级）→ 2FA。动态码放在最后验证，避免被其他规则拒绝时白白消耗一次性动态码。
 
 | 控制 | 规则 | 默认值 / 开关 |
 | --- | --- | --- |
@@ -128,7 +129,9 @@
 ### 2.8 审计与可追溯
 
 - `withdrawal_audit_logs`（`services/wallet-service/sql/006_add_withdrawal_audit_and_notifications.sql`）：记录提现 `requested / approved / rejected / broadcasted / confirmed`，含操作人、角色、`trace_id`、前后快照。
-- `ops_action_audit_logs`（`apps/ops-console/sql/001_init.sql`）：记录每个运营动作的操作人、角色、所用权限、目标、请求 / 响应、成功或失败；`ops-console` 中可按操作人、动作、目标检索。
+- `ops_action_audit_logs`（`apps/ops-console/sql/001_init.sql`）：记录每个运营动作的操作人、角色、所用权限、目标、请求 / 响应、成功或失败；`ops-console` 中可按操作人、动作、目标检索。紧急开关的变更记为 `controls.<scope>.enable|disable`。
+- `risk_control_switch_events`（`services/risk-service/sql/002_control_switches.sql`）：紧急开关每一次开启 / 恢复（含对账熔断的自动开启）的原因、来源（`manual` / `automatic`）、操作人和时间。
+- `ledger_reconciliation_runs`（`services/ledger-service/sql/005_reconciliation_runs.sql`）：每一轮定时 / 手动对账的结果与熔断动作。
 - identity 的 `identity_kyc_events` 记录 KYC 申请与审核过程。
 - 服务链路接入 OpenTelemetry，可在 Jaeger 里按 trace 串起一次请求经过的服务。
 
@@ -139,6 +142,35 @@
 - 充值与提现按确认数阈值推进（`DEPOSIT_CONFIRMATION_THRESHOLD`、`WITHDRAWAL_CONFIRMATION_THRESHOLD`、`INDEXER_CONFIRMATION_THRESHOLD`，默认 12）；模拟链支持停止出块和重组演练。
 
 详见 [custody-adapter README](../services/custody-adapter/README.md)、[blockchain-indexer README](../services/blockchain-indexer/README.md)。
+
+### 2.10 紧急开关与对账熔断
+
+代码位置：`packages/domain/src/control-switches.ts`（开关模型与校验函数）、`services/risk-service/src/application/control-switch-service.ts`（存储与规则）、`services/wallet-service/src/application/wallet-application-service.ts`（`assertWithdrawalSwitches`）、`services/api-gateway/src/http/api-gateway-control-switch.guard.ts`、`services/ledger-service/src/application/reconciliation-job.ts`、`apps/ops-console/client/features/controls-tab.tsx`。
+
+| 开关 | 效果 | 错误码（409） |
+| --- | --- | --- |
+| 全站提现暂停 `withdrawals_global` | 所有币种的提现申请、运营批准、广播（含停滞提现的重新广播）都被拒绝；运营仍可拒绝提现（释放冻结） | `WITHDRAWALS_PAUSED` |
+| 单币种提现暂停 `withdrawals_asset` | 同上，只影响一个币种；人工开启或由对账熔断自动开启（`source: automatic`） | `ASSET_WITHDRAWALS_PAUSED` |
+| API 写入冻结 `api_write` | 只读模式：新委托与提现申请被拒绝；撤单、查询、运营审核照常 | `API_WRITE_FROZEN` |
+
+- **存储**：risk-service 的 `risk_control_switches`（开启的开关才有一行）和 `risk_control_switch_events`（变更记录）。开启必须填原因；ops-console 要求开关两个方向都填原因，并写入操作审计。
+- **执行点**：api-gateway 的写接口守卫（`POST /orders`、`/withdrawals/validate`、`/withdrawals/request`），被拦截的请求不消耗幂等键；wallet-service 在申请、批准、重新广播时再校验（防止绕过网关的内部调用）；risk-service 的下单风控校验 API 写入冻结，order-service 每笔下单都要经过它（纵深防御）。撤单不经过任何开关。
+- **缓存与失败策略**：各执行点通过 `CachedControlSwitchReader` 读取开关，默认缓存 2 秒（`CONTROL_SWITCH_CACHE_MS`），risk-service 自身缓存 1 秒（`RISK_CONTROL_SWITCH_CACHE_MS`）；读取失败时沿用上一次的状态，从未读到过时按“全部关闭”放行（fail-open），保证演示环境在 risk-service 重启时可用。真实环境的提现出口应改为 fail-closed。
+- **对账熔断**：ledger-service 按 `RECONCILIATION_INTERVAL_SECONDS`（演示栈 30 秒）运行余额对账与委托冻结对账（见 [ledger-service-design.md](ledger-service-design.md) 第 11.5 节）。余额对账不平立即熔断；委托冻结对账需要同一笔委托连续 `RECONCILIATION_BREAKER_CONFIRMATIONS`（默认 2）轮不一致才熔断，首次只给 P2 告警。熔断通过 risk-service 以 `source: automatic` 暂停该币种提现并产生 P1 告警；自动来源不会覆盖人工开关，也不能关闭开关。
+- **恢复**：熔断暂停只能人工恢复，而且 ops-console 要求最近一轮对账晚于暂停时间且该币种一致，否则返回 `409 RECONCILIATION_NOT_CLEAN`。
+- **默认值**：全部开关默认关闭；`pnpm demo:reset` 会清空开关、开关记录和对账历史；健康的演示数据对账为 0 处不一致，熔断不会触发。
+
+### 2.11 告警分级（P1 / P2 / P3）
+
+规则表在 `apps/ops-console/src/domain/alert-severity.ts`，`GET /api/v1/ops/alerts` 为每条告警附上级别，运营总览与 系统运维 → 告警 按级别排序、着色并显示各级数量。未在表中的告警默认 P2。
+
+| 级别 | 含义 | 告警来源与指标 |
+| --- | --- | --- |
+| P1 | 资金正确性 / 资金出口，立即处理 | ledger：`balance_mismatch_count`、`negative_available_balance_count`、`negative_locked_balance_count`；reconciliation：`RECONCILIATION_BREAKER_TRIPPED`（熔断暂停中的币种）、`RECONCILIATION_BREAKER_FAILED`、`BALANCE_RECONCILIATION_MISMATCH`、`ORDER_LOCK_MISMATCH_CONFIRMED` |
+| P2 | 核心链路受损，尽快响应 | ledger：`dead_lettered_outbox_count`、`stale_locked_balance_count`；reconciliation：`ORDER_LOCK_MISMATCH_SUSPECTED`、`ORDER_LOCK_RECONCILIATION_UNAVAILABLE`、`RECONCILIATION_FAILED`、`RECONCILIATION_STALE`；controls：人工开启的 `withdrawals_paused`、`asset_withdrawals_paused`、`api_write_frozen`；custody：`open_circuit_count`、`unhealthy_route_count`、`failed_count`；indexer：`reorg_cursor_count`、`pending_withdrawal_count`、`oldest_pending_withdrawal_age_seconds`、`withdrawal_cursor_lag_blocks`、`withdrawal_cursor_age_seconds`；trading：`settlement_failed_count`、`settlement_lag_critical`（滞后 ≥ 50）、`settlement_consumer_paused`；交易运行时告警：`SETTLEMENT_FAILED`、`TRADE_EVENT_CONSUMER_LAG`、`TRADE_EVENT_PROTOCOL_V2_UNSUPPORTED`、`ORDER_DEAD_LETTER_BACKLOG` |
+| P3 | 非核心，可排队处理 | ledger：`pending_outbox_count`、`retrying_outbox_count`、`oldest_pending_outbox_age_seconds`；custody：`retryable_count`、`pending_sync_count`、`oldest_pending_sync_age_seconds`；indexer：充值侧积压与扫描滞后；wallet：`failed_notifications`、`pending_notifications`、`review_queue`；trading：`settlement_pending_recovery_count`、`settlement_lag`（滞后 ≥ 10）；交易运行时告警中其余 `warning` 级代码（`critical` 至少为 P2） |
+
+没有值班呼叫系统：告警只在后台展示，交易运行时告警可通过 `OPS_ALERT_SINKS_JSON` 投递（payload 中每条告警带 `level`）。
 
 ## 3. 威胁模型
 
@@ -151,9 +183,9 @@
 | API Key | 泄露、重放、越权使用 | keyId + 加密 secret；nonce 防重放；5 分钟漂移窗口；`read/trade/withdraw` scope | IP 白名单、key 有效期、提现权限单独审批、异常调用告警 |
 | 2FA 种子 | 数据库泄露后可伪造动态码 | 动态码单次使用；恢复码哈希存储 | TOTP 种子加密存储或放入独立密钥服务；支持 WebAuthn / 硬件密钥 |
 | 运营会话与审批权 | 运营 token 被盗或内部人员作恶，批准恶意提现 | 运营强制 2FA；12 小时 TTL；RBAC 细粒度权限；大额双人审批；全量动作审计 | 审批时 step-up、硬件密钥、审批 IP / 设备绑定、批量审批分权、审计日志防篡改 |
-| 提现链路 | 账号被盗后快速提走资产 | 已开 2FA 必须带动态码；KYC 分级限额；安全冷却期；可选白名单 | 默认强制白名单与冷却期、地址风险筛查（制裁 / 混币）、行为风控、紧急全局暂停 |
+| 提现链路 | 账号被盗后快速提走资产 | 已开 2FA 必须带动态码；KYC 分级限额；安全冷却期；可选白名单；全站 / 单币种提现暂停开关 | 默认强制白名单与冷却期、地址风险筛查（制裁 / 混币）、行为风控、开关读取失败时 fail-closed |
 | 热钱包私钥 | 环境变量泄露、误把真实私钥 / RPC 配进来 | 默认走 mock provider；模拟链；无真实资产 | HSM / MPC / KMS 签名，冷热分离，热钱包余额上限，链上监控与对账 |
-| 账本 | 伪造记账、重复记账、绕过冻结 | 借贷平衡校验；幂等键；冻结 / 消耗状态校验；无直接改余额接口 | 定期账实对账、journal 不可变存储、独立对账系统与告警 |
+| 账本 | 伪造记账、重复记账、绕过冻结 | 借贷平衡校验；幂等键；冻结 / 消耗状态校验；无直接改余额接口；定时余额对账与委托冻结对账，不平自动暂停该币种提现（P1） | 链上 / 托管 / 账本三方对账、journal 不可变存储、独立对账系统 |
 | 内部服务 | 内网横向移动后直接调用 ledger / wallet 等接口 | HMAC 签名 + 30 秒时间窗 + 调用方允许列表；默认回环监听 | mTLS 与每服务独立身份、按调用方最小权限、私网 ACL、密钥轮换 |
 | 撮合通道 | 伪造下单 / 撤单 / reset 命令 | 仅回环监听 | 认证与加密通道、命令来源校验 |
 | 公开行情 | 大量连接 / 订阅压垮 market-data 与 order-service | REST 查询有 `limit` 上限；网关 REST 限流 | 公共 WS 连接数与消息限流、CDN / 边缘缓存、快照去抖 |
@@ -167,9 +199,9 @@
 1. **密钥托管**：移除 `custody-adapter` 从环境变量读私钥 / 助记词的路径，改用 HSM / MPC / KMS；冷热钱包分离，热钱包设余额上限。
 2. **服务身份**：把共享 HMAC 密钥升级为 mTLS 或每服务独立凭证，补上 `blockchain-indexer`、`custody-adapter`、`market-data-service` 的入口认证，撮合 TCP 通道加认证；所有服务显式绑定内网地址。
 3. **密钥与配置管理**：所有默认密钥（内部签名密钥、API Key 加密主密钥、数据库口令）进入密钥管理系统，可轮换；演示账号与固定 TOTP 种子不能出现在任何共享环境。
-4. **提现默认策略收紧**：默认强制 2FA、白名单和冷却期；审批时 step-up；引入地址风险筛查与紧急暂停开关。
+4. **提现默认策略收紧**：默认强制 2FA、白名单和冷却期；审批时 step-up；引入地址风险筛查；紧急开关读取失败时提现出口 fail-closed，开关变更走双人审批。
 5. **账号安全**：登录失败锁定与验证码、设备管理、异常登录提醒；TOTP 种子加密存储；支持 WebAuthn。
 6. **Web 安全头**：CSP、`X-Frame-Options`、HSTS；Cookie 默认 `Secure`；全站 HTTPS。
 7. **入口防护**：限流不信任客户端传入的 `X-Forwarded-For`；公共行情 WS 加连接与消息限流；私有 WS 去掉 query 参数认证。
-8. **对账与监控**：链上余额、托管余额、账本余额三方对账，资金异常告警；审计日志写入不可篡改存储。
+8. **对账与监控**：在现有余额对账、委托冻结对账与熔断之外，补上链上余额、托管余额、账本余额三方对账；告警接入值班呼叫；审计日志写入不可篡改存储。
 9. **基础设施**：数据库、Redis、Kafka 走私网与 TLS，最小权限账号，备份与访问审计。

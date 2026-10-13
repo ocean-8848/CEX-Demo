@@ -16,6 +16,7 @@
 
 - HTTP 服务，默认端口 `3008`
 - 支持的市场与规则（步长、最小数量、费率、价格偏离上限、兜底参考价、默认状态）全部来自 [config/markets.json](../../config/markets.json)，默认为 `BTC-USDT`、`ETH-USDT`、`SOL-USDT`
+- 紧急开关（运营紧急开关的所属服务，`src/application/control-switch-service.ts`）：全站提现暂停 `withdrawals_global`、单币种提现暂停 `withdrawals_asset`、API 写入冻结 `api_write`。开启必须带原因；`source: "automatic"`（ledger-service 对账熔断）不覆盖已开启的开关、不能关闭开关；每次变更写 `risk_control_switch_events`。wallet-service 与 api-gateway 读取后执行，本服务的下单校验在 API 写入冻结时返回 `409 API_WRITE_FROZEN`
 - 市场状态：`halted` 拒绝新委托（`409 MARKET_HALTED`，含暂停原因），`delisted` 拒绝新委托（`409 MARKET_DELISTED`）；撤单不经过风控，始终允许
 - 订单类型:
   - `limit`
@@ -38,7 +39,7 @@
 
 运行脚本:
 
-- `pnpm --filter @web3-cex/risk-service db:prepare`（建 `risk_market_status_overrides` 表，见 [sql/001_market_status_overrides.sql](sql/001_market_status_overrides.sql)；已包含在根目录 `pnpm db:prepare:core`）
+- `pnpm --filter @web3-cex/risk-service db:prepare`（建 `risk_market_status_overrides` 表与紧急开关的 `risk_control_switches` / `risk_control_switch_events` 表，见 [sql/001_market_status_overrides.sql](sql/001_market_status_overrides.sql)、[sql/002_control_switches.sql](sql/002_control_switches.sql)；已包含在根目录 `pnpm db:prepare:core`）
 - `pnpm --filter @web3-cex/risk-service build`
 - `pnpm --filter @web3-cex/risk-service start`
 - `pnpm --filter @web3-cex/risk-service test`
@@ -55,13 +56,16 @@
 - `RISK_MARKET_DATA_URL`（实时参考价来源，默认 market-data-service）
 - `RISK_REFERENCE_PRICE_MODE`（设为 `configured` 时只用配置值）
 - `RISK_REFERENCE_PRICE_<BASE>_<QUOTE>`（可选，覆盖配置中的 `referencePrice`，如 `RISK_REFERENCE_PRICE_SOL_USDT`）
-- `RISK_MARKET_STATUS_STORE`（`postgres` 默认 / `memory`）、`RISK_MARKET_STATUS_CACHE_MS`（默认 `1000`）、`DATABASE_URL` / `PG*`
+- `RISK_MARKET_STATUS_STORE`（`postgres` 默认 / `memory`，紧急开关使用同一模式）、`RISK_MARKET_STATUS_CACHE_MS`（默认 `1000`）、`RISK_CONTROL_SWITCH_CACHE_MS`（默认 `1000`）、`DATABASE_URL` / `PG*`
 
 HTTP 接口:
 
 - `POST /api/v1/risk/orders/validate`
 - `GET /api/v1/risk/markets`、`GET /api/v1/risk/markets/:market`：配置状态 + 运行时覆盖 + 生效状态
 - `POST /api/v1/risk/markets/:market/status`：`{ status: "halted" | "listed", reason, operator }`，暂停必须填原因；设回配置默认值时删除覆盖行
+- `GET /api/v1/risk/controls`：紧急开关状态（调用方 wallet-service、api-gateway、ops-console）
+- `POST /api/v1/risk/controls`：`{ scope, assetCode?, enabled, reason, operator, source? }`，返回 `{ changed, entry, state }`（调用方 ops-console、ledger-service）
+- `GET /api/v1/risk/controls/events?limit=`：开关变更记录
 
 返回重点:
 

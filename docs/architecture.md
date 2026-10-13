@@ -84,8 +84,8 @@ flowchart TB
 | 服务 | 端口 | 存储 | 职责 |
 | --- | --- | --- | --- |
 | `trader-web` | 3013 | 无（会话放在 HttpOnly Cookie） | 用户侧交易前台。Node Web Host 提供 React SPA，并把 `/api/gateway/*` 代理到 `api-gateway`、`/api/market/*` 代理到 `market-data-service`、`/api/demo/*` 代理到 `demo-simulator`；`/api/realtime` 代理私有 WebSocket 并在服务端附加会话；CSRF double-submit。浏览器直连 `market-data-service` 的公共 WebSocket。 |
-| `ops-console` | 3006 | PostgreSQL `ops_action_audit_logs` | 运营后台（React + NestJS BFF）。登录（邮箱 + 密码 + TOTP）、提现审核与双人复核、KYC 审核、市场暂停/恢复、账本对账、恢复队列、故障实验室、操作审计。只通过 HTTP 调用各服务，不直接读别的服务的表。 |
-| `api-gateway` | 3007 | Redis（限流、幂等键） | 用户侧统一 REST 入口 `/api/v1/gateway/*` 与私有 WebSocket `/api/v1/gateway/realtime`。支持 Bearer 会话和 API Key + HMAC 两种认证，校验账户归属，下游调用 identity / wallet / ledger / order。每个响应带 `x-trace-id`（追踪开启时）。 |
+| `ops-console` | 3006 | PostgreSQL `ops_action_audit_logs` | 运营后台（React + NestJS BFF）。登录（邮箱 + 密码 + TOTP）、提现审核与双人复核、KYC 审核、市场暂停/恢复、紧急开关、账本对账与定时对账历史、P1/P2/P3 告警、恢复队列、故障实验室、操作审计。只通过 HTTP 调用各服务，不直接读别的服务的表。 |
+| `api-gateway` | 3007 | Redis（限流、幂等键） | 用户侧统一 REST 入口 `/api/v1/gateway/*` 与私有 WebSocket `/api/v1/gateway/realtime`。支持 Bearer 会话和 API Key + HMAC 两种认证，校验账户归属，下游调用 identity / wallet / ledger / order；下单与提币写接口先经过紧急开关守卫（读 `risk-service`）。每个响应带 `x-trace-id`（追踪开启时）。 |
 | `identity-service` | 3005 | PostgreSQL `identity_*`、`user_two_factor_profiles` | 用户与运营账号、密码与会话（`customer_web` / `ops_console` 两种 scope）、TOTP 2FA 与恢复码、RBAC（`ops_admin`、`ops_reviewer` 等 6 个角色）、API Key、KYC 等级（`unverified` / `L1` / `L2`）与审核、用户冻结。 |
 
 ### 3.2 交易层
@@ -93,7 +93,7 @@ flowchart TB
 | 服务 | 端口 | 存储 | 职责 |
 | --- | --- | --- | --- |
 | `order-service` | 3009 | PostgreSQL `spot_orders`、`spot_trades`、`spot_order_recovery_jobs`、`spot_order_automation_executions`；Redis | 订单生命周期的编排中心：调 `risk-service` 预检 → 调 `ledger-service` 冻结 → 经 TCP 调撮合引擎 → 落库订单与成交 → 发布交易事件。负责撤单、恢复队列（lease / dead-letter）、撮合引擎状态同步（引擎重启后自动恢复序号并重放挂单）。 |
-| `risk-service` | 3008 | PostgreSQL `risk_market_status_overrides` | 下单前校验：市场状态（listed / halted / delisted）、`timeInForce`、价格与数量 step 对齐、最小数量、限价单价格偏离、可用余额（查 ledger），并算出需要冻结的资产与金额。运营的市场暂停/恢复写在这里。 |
+| `risk-service` | 3008 | PostgreSQL `risk_market_status_overrides`、`risk_control_switches`、`risk_control_switch_events` | 紧急开关的所属服务：全站 / 单币种提现暂停、API 写入冻结（人工或对账熔断自动开启），供 wallet-service / api-gateway 读取。下单前校验：API 写入冻结、市场状态（listed / halted / delisted）、`timeInForce`、价格与数量 step 对齐、最小数量、限价单价格偏离、可用余额（查 ledger），并算出需要冻结的资产与金额。运营的市场暂停/恢复写在这里。 |
 | `matching-engine` | 3011 | 无（纯内存） | Rust 实现，每行一条 JSON 命令（`submit` / `seed` / `cancel` / `reset` / `restore` / `snapshot`）。每个市场一本订单簿，价格优先、时间优先，支持 `limit` / `market` 与 `gtc` / `ioc` / `fok`，多档扫单、部分成交。为每笔成交生成 `executionSequence`、`replayCursor`（`<market>:<seq>`）和协议版本 `v2`。不访问数据库，不改余额。 |
 | `settlement-service` | 3010 | PostgreSQL `trade_settlements`、`trade_settlement_recovery_jobs`、`trade_event_consumer_checkpoints`、汇总表；Redis | 消费 Redis Stream 中的 `trade.executed`，按成交幂等结算：消耗买卖双方的冻结，过账 base / quote 两笔 journal（含手续费），再把 `settlementId` 回写给 `order-service`。失败进入恢复队列。 |
 | `market-data-service` | 3012 | Redis（行情快照）、ClickHouse | 订阅交易事件后从 `order-service` 拉取订单和成交，重建 ticker / depth / recent trades 快照写入 Redis，并把快照落到 ClickHouse；K 线优先从 ClickHouse 读，失败时用成交现算。提供公共 REST 与公共 WebSocket `/api/v1/market-data/ws`。 |
@@ -102,9 +102,9 @@ flowchart TB
 
 | 服务 | 端口 | 存储 | 职责 |
 | --- | --- | --- | --- |
-| `ledger-service` | 3001 | PostgreSQL `accounts`、`balances`、`ledger_journals`、`ledger_entries`、`balance_locks`、`outbox_events` | 资金事实源。双分录记账（每笔 journal 借贷平衡、按 `idempotencyKey` 幂等）、冻结 / 解冻 / 消耗（消耗一定生成一笔 journal）、余额快照、对账与重放。每次资金变动在同一事务里写 outbox 事件。详见 [ledger-service-design.md](./ledger-service-design.md)。 |
+| `ledger-service` | 3001 | PostgreSQL `accounts`、`balances`、`ledger_journals`、`ledger_entries`、`balance_locks`、`outbox_events`、`ledger_reconciliation_runs` | 资金事实源。双分录记账（每笔 journal 借贷平衡、按 `idempotencyKey` 幂等）、冻结 / 解冻 / 消耗（消耗一定生成一笔 journal）、余额快照、对账与重放。进程内的定时对账任务（演示栈每 30 秒）做余额对账和委托冻结对账（对照 `order-service`），不平时经 `risk-service` 自动暂停该币种提现（对账熔断）。每次资金变动在同一事务里写 outbox 事件。详见 [ledger-service-design.md](./ledger-service-design.md)。 |
 | `ledger-outbox-publisher` | 无 | 同上 | 常驻 worker（`ledger-service` 的 `publish-outbox` 脚本），把 `outbox_events` 投递到 Kafka `ledger.events`，失败退避重试，超过次数标记死信并尽力投递 `dead-letter.events`。 |
-| `wallet-service` | 3002 | PostgreSQL `wallet_addresses`、`deposits`、`withdrawals`、`withdrawal_address_book`、`withdrawal_audit_logs`、`wallet_notifications`；Redis | 充值地址分配（服务内生成地址）、充值单据与入账、提币申请 / 校验（白名单、2FA、KYC 限额、安全冷却期）/ 审核（大额双人复核）/ 广播 / 确认、站内通知。资金动作全部委托给 `ledger-service`。 |
+| `wallet-service` | 3002 | PostgreSQL `wallet_addresses`、`deposits`、`withdrawals`、`withdrawal_address_book`、`withdrawal_audit_logs`、`wallet_notifications`；Redis | 充值地址分配（服务内生成地址）、充值单据与入账、提币申请 / 校验（紧急开关、白名单、2FA、KYC 限额、安全冷却期）/ 审核（大额双人复核）/ 广播 / 确认、站内通知。资金动作全部委托给 `ledger-service`。 |
 | `blockchain-indexer` | 3003 | PostgreSQL `blockchain_deposit_observations`、`blockchain_withdrawal_observations`、`blockchain_scan_cursors` | 记录链上观测事实（充值交易、提币交易的确认数和区块哈希），检测重组，达到确认阈值后调用 `wallet-service` 入账或确认提币。提供 `scan-evm` / `replay-evm` / `repair-backlog` 脚本对接真实 EVM RPC；演示环境中观测数据由 `demo-simulator` 推送。 |
 | `custody-adapter` | 3004 | PostgreSQL `custody_transfers`、`custody_transfer_attempts` | 托管供应商抽象：按网络路由 provider（默认 `mock-custody` → `mock-custody-backup` 故障切换，另有 `evm-hot-wallet`），广播、重试、状态回查、provider 健康检查与熔断。 |
 
@@ -147,11 +147,14 @@ flowchart TB
 | `api-gateway` | `wallet-service` | 充值地址、充提记录、提币申请、通知 |
 | `api-gateway` | `ledger-service` | 开户、余额、资金流水 |
 | `api-gateway` | `order-service` | 下单、撤单、订单 / 成交查询 |
-| `order-service` | `risk-service` | `validateSpotOrder` |
+| `order-service` | `risk-service` | `validateSpotOrder`（含 API 写入冻结） |
 | `order-service` | `ledger-service` | 冻结 / 释放订单资金 |
 | `order-service` | `matching-engine`（TCP） | 提交、撤单、快照、重放挂单 |
 | `order-service` | `settlement-service` | 同步结算模式和订单恢复时调用 `settleTrade` |
 | `risk-service` | `ledger-service`、`market-data-service` | 查可用余额、取参考价 |
+| `api-gateway`、`wallet-service` | `risk-service` | 读取紧急开关（`GET /api/v1/risk/controls`，本地缓存 2 秒） |
+| `ledger-service` | `order-service` | 委托冻结对账：`POST /api/v1/orders/ops/lock-expectations` |
+| `ledger-service` | `risk-service` | 对账熔断：自动暂停该币种提现 |
 | `settlement-service` | `ledger-service` | 消耗冻结、过账 journal、创建平台账户 |
 | `settlement-service` | `order-service` | 回写 `settlementId`；`http` 传输模式下也从这里拉成交事件 |
 | `market-data-service` | `order-service` | 拉取订单（算深度）与成交 |
@@ -176,9 +179,9 @@ flowchart TB
 | `identity-service` | api-gateway、wallet-service、ops-console、demo-scripts |
 | `wallet-service` | api-gateway、blockchain-indexer、ops-console、demo-scripts |
 | `ledger-service` | api-gateway、wallet-service、order-service、settlement-service、risk-service、ops-console、demo-scripts |
-| `order-service` | api-gateway、settlement-service、market-data-service、ops-console、demo-scripts |
+| `order-service` | api-gateway、settlement-service、market-data-service、ops-console、demo-scripts、ledger-service |
 | `settlement-service` | order-service、ops-console、demo-scripts |
-| `risk-service` | order-service、ops-console、demo-scripts |
+| `risk-service` | order-service、ops-console、demo-scripts、wallet-service、api-gateway、ledger-service |
 
 `demo-simulator` 的 `/internal/lab/*` 也校验同样的签名，只接受 `ops-console` 和 `demo-scripts`。更多安全设计见 [security.md](./security.md)。
 
@@ -242,7 +245,9 @@ sequenceDiagram
   participant BI as blockchain-indexer
 
   U->>GW: POST 提币 (地址, 金额, 手续费, 2FA)
+  GW->>GW: 紧急开关守卫（全站 / 该币种暂停、API 写入冻结 → 409）
   GW->>W: requestWithdrawal
+  W->>W: 再次检查紧急开关
   W->>ID: 2FA 校验 / KYC 等级 / 安全变更时间
   W->>W: 白名单、最小金额与手续费、单笔与日限额、冷却期
   W->>W: 落单 status=requested, reviewStatus=pending
@@ -340,6 +345,22 @@ sequenceDiagram
 
 对应学习章节：[06 订单与撮合](../learning/06-order-matching.md)、[07 清算结算与手续费](../learning/07-clearing-settlement-fees.md)、[08 行情](../learning/08-market-data.md)、[09 风控](../learning/09-risk-control.md)。
 
+### 5.4 紧急开关与对账熔断
+
+```mermaid
+flowchart LR
+  OPSC["ops-console<br/>系统运维 → 紧急开关"] -->|人工开关 + 原因 + 审计| RS["risk-service<br/>risk_control_switches"]
+  JOB["ledger-service<br/>定时对账（30s）"] -->|余额对账 / 委托冻结对账不平| RS
+  JOB -->|lock-expectations| OS["order-service"]
+  RS -->|GET /controls（缓存 2s）| GW["api-gateway<br/>下单 / 提币守卫"]
+  RS -->|GET /controls（缓存 2s）| WS["wallet-service<br/>申请 / 批准 / 广播"]
+  RS -->|API 写入冻结| RV["risk 下单校验<br/>（order-service 必经）"]
+```
+
+- 三个开关：全站提现暂停、单币种提现暂停、API 写入冻结（只读模式，撤单放行），错误码 `WITHDRAWALS_PAUSED` / `ASSET_WITHDRAWALS_PAUSED` / `API_WRITE_FROZEN`（409）。
+- 对账熔断：余额对账不平立即暂停该币种提现；委托冻结对账要同一笔委托连续 2 轮不一致才触发（排除在途时序误差）。熔断记为 `source: automatic` 并产生 P1 告警，只能人工恢复，且恢复前要有一轮一致的对账。
+- 详见 [security.md](./security.md) 第 2.10、2.11 节和 [ledger-service-design.md](./ledger-service-design.md) 第 11.5 节。
+
 ## 6. 数据存储
 
 | 存储 | 存什么 | 是否事实源 |
@@ -385,7 +406,8 @@ sequenceDiagram
 | 下单链路 | 同步串行调用 risk → ledger → engine | 预冻结在内存账户中完成，异步排队进入撮合 |
 | 事件总线 | 交易事件走 Redis Pub/Sub + Stream；Kafka 只承载账本 outbox 且无消费者 | 全链路统一事件总线，严格分区与消费组 |
 | 结算 | 每笔成交独立结算，轮询拉取 | 批量 / 流式清算，轧差 |
-| 风控 | 下单前静态规则 + 提币限额，无实时风控计数器、无 AML | 实时风控引擎、反洗钱、Travel Rule、设备与行为风控 |
+| 风控 | 下单前静态规则 + 提币限额 + 紧急开关，无实时风控计数器、无 AML | 实时风控引擎、反洗钱、Travel Rule、设备与行为风控 |
+| 对账 | 账本内余额对账 + 委托冻结对账，定时运行并可自动暂停单币种提现 | 链上 / 托管 / 账本 / 交易多方对账，独立对账系统，按阈值分级处置 |
 | KYC | 演示用等级与人工审核，证件号只做脱敏存储 | 接入第三方 KYC/KYB 服务 |
 | 部署 | 单机、单库、单节点中间件，无高可用 | 多可用区、主从、灾备演练 |
 | 内部认证 | 共享 HMAC 密钥 + 本地监听 | mTLS、每服务独立凭据、网络隔离 |
@@ -402,6 +424,7 @@ sequenceDiagram
 | 结算与手续费 | [07 清算结算与手续费](../learning/07-clearing-settlement-fees.md) |
 | 行情快照、公共 WS、K 线 | [08 行情](../learning/08-market-data.md) |
 | 风控规则、提币限额、市场暂停 | [09 风控](../learning/09-risk-control.md) |
-| 恢复队列、故障实验室、追踪 | [13 可靠性与安全事故](../learning/13-reliability-security-incidents.md) |
+| 恢复队列、故障实验室、追踪、紧急开关、告警分级 | [13 可靠性与安全事故](../learning/13-reliability-security-incidents.md)、[B07 应急响应](../learning/backstage/B07-incident-response.md) |
+| 定时对账与对账熔断 | [B04 系统对账](../learning/backstage/B04-reconciliation.md) |
 
 相关文档：[domain-model.md](./domain-model.md) · [event-catalog.md](./event-catalog.md) · [api-contracts.md](./api-contracts.md) · [ledger-service-design.md](./ledger-service-design.md) · [fault-lab.md](./fault-lab.md) · [troubleshooting.md](./troubleshooting.md)

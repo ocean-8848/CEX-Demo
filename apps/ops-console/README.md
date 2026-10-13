@@ -13,15 +13,15 @@
 
 | 路由 | 页面 | 主要能力 |
 | --- | --- | --- |
-| `#/` | 运营总览 | 待审核提现（可直接批准 / 拒绝）、告警、结算统计、账本对账结果、模块状态、待投递通知 |
+| `#/` | 运营总览 | 待审核提现（可直接批准 / 拒绝）、告警（P1/P2/P3 计数，按级别排序着色）、结算统计、账本对账结果、模块状态、待投递通知 |
 | `#/withdrawals` | 提现审核 | 待审核队列（单笔 / 批量批准、拒绝）、全部提现筛选；大额提现显示「1/2 已批准」与批准人，同一运营不能批准两次；详情抽屉含双人复核进度、审核要点、用户余额、审计轨迹、托管广播、用户通知 |
 | `#/deposits` | 充值与链上 | 充值记录、indexer 待确认观察（确认数进度，单笔 / 批量重放、关闭） |
 | `#/users` | 用户与资产 | 用户搜索（含 KYC 等级列）、冻结 / 解冻、用户详情（KYC 等级 / 事件 / 手动调整、余额、委托、充提）；「KYC 审核」页签（批准 L1 / L2、拒绝）；全局余额；提现地址簿白名单 |
 | `#/trading` | 交易与结算 | 按市场查看订单、成交、结算（失败结算可重试）；订单簿健康（DB 与撮合引擎对比、从 DB 重建引擎订单簿） |
 | `#/markets` | 市场管理 | 列出 `config/markets.json` 中的全部市场：当前状态 / 配置默认状态、步长、费率、参考价、运行时覆盖（原因 / 操作人 / 时间）；`暂停交易` / `恢复交易`（需 `ops.markets.manage`，写操作审计，经 risk-service 持久化） |
 | `#/trace` | 业务追踪 | 输入 userId / orderId / tradeId / depositId / withdrawalId / accountId / txHash（或自动识别），展示跨模块链路与命中对象；后台任意蓝色 ID 都可点击跳转到这里 |
-| `#/ledger` | 账本对账 | 对账（分录净额、活跃冻结、余额快照、差额）、账户回放（逐笔冻结 / 解冻 / 结算）、outbox 投递 |
-| `#/system` | 系统运维 | 各数据源告警、托管路由与熔断、订单 / 结算恢复队列与死信、事件总线运行报告与手动作业、自动化作业模板与定时计划；**实验室**页签：暂停结算消费、托管广播故障、链重组、撮合引擎重置四个故障实验（一键触发 / 观察 / 恢复，见 [fault-lab.md](../../docs/fault-lab.md)） |
+| `#/ledger` | 账本对账 | 对账（分录净额、活跃冻结、余额快照、差额）；**定时对账与熔断**（调度、最近结果、熔断暂停中的币种、历史记录与每轮的余额 / 委托冻结对账明细、「立即运行」）；账户回放（逐笔冻结 / 解冻 / 结算）、outbox 投递 |
+| `#/system` | 系统运维 | 各数据源告警（全部告警按 P1/P2/P3 排序 + 各级数量 + 各数据源最高级别）、托管路由与熔断、订单 / 结算恢复队列与死信、事件总线运行报告与手动作业、自动化作业模板与定时计划；**实验室**页签：暂停结算消费、托管广播故障、链重组、撮合引擎重置、账本对账差额五个故障实验（一键触发 / 观察 / 恢复，见 [fault-lab.md](../../docs/fault-lab.md)）；**紧急开关**页签（`#/system?tab=controls`）：全站提现暂停、API 写入冻结、单币种提现暂停（含对账熔断自动暂停的来源标记）、开关变更记录；开关需 `ops.controls.manage`（仅 `ops_admin`），两个方向都要填原因并二次确认，写入操作审计 |
 | `#/audit` | 操作审计 | 后台动作审计（可展开请求 / 响应）、提现状态迁移记录 |
 
 导航、按钮按当前会话的权限点显示；无权限的操作会被隐藏或禁用，后端同样会拒绝。
@@ -61,6 +61,7 @@ pnpm -s ops:totp                              # 打印演示运营账户当前�
 
 - `PORT`（默认 `3006`）、`DATABASE_URL`
 - 下游服务：`OPS_LEDGER_SERVICE_URL`、`OPS_WALLET_SERVICE_URL`、`OPS_INDEXER_SERVICE_URL`、`OPS_CUSTODY_SERVICE_URL`、`OPS_IDENTITY_SERVICE_URL`、`OPS_ORDER_SERVICE_URL`（默认 `http://127.0.0.1:3009`）、`OPS_SETTLEMENT_SERVICE_URL`（默认 `http://127.0.0.1:3010`）、`OPS_RISK_SERVICE_URL`（默认 `http://127.0.0.1:3008`，市场状态）、`OPS_DEMO_SIMULATOR_URL`（故障实验室，默认 `http://127.0.0.1:3014`）
+- 紧急开关读写走 `OPS_RISK_SERVICE_URL`，定时对账历史 / 立即运行 / 对账差额实验走 `OPS_LEDGER_SERVICE_URL`
 - `OPS_CONSOLE_AUDIT_STORE`（`postgres` 默认，`memory` 可回退为内存审计）
 - `OPS_ALERT_SINKS_JSON`（告警投递目标，默认 `[]`）
 - `OPS_EXECUTION_SCHEDULER_RUN_FOREVER` / `OPS_EXECUTION_SCHEDULER_INTERVAL_MS` / `OPS_EXECUTION_SCHEDULER_BATCH_SIZE`（自动化作业定时计划）
@@ -70,15 +71,16 @@ pnpm -s ops:totp                              # 打印演示运营账户当前�
 
 - 以下路径均以 `/api/v1/ops` 为前缀
 - 认证：`POST /auth/login`、`GET /auth/me`、`POST /auth/logout`
-- 总览：`GET /dashboard`、`GET /modules`、`GET /alerts`、`GET /business-trace`
+- 总览：`GET /dashboard`、`GET /modules`、`GET /alerts`（每条告警带 `severity: P1/P2/P3`，另有 `countsBySeverity`；规则在 `src/domain/alert-severity.ts`）、`GET /business-trace`
+- 紧急开关（`src/http/controls.controller.ts`）：`GET /controls`；`POST /controls`（`{ scope, assetCode?, enabled, reason }`，需 `ops.controls.manage`，审计动作 `controls.<scope>.enable|disable`；恢复对账熔断暂停的币种前需要一轮一致的对账，否则 `409 RECONCILIATION_NOT_CLEAN`）
 - 提现：`GET /withdrawals`、`GET /withdrawals/review-queue`、`GET /withdrawals/:id`（含审计与托管）、`POST /withdrawals/:id/approve|reject`、`POST /withdrawal-batches/approve|reject`
 - 用户与资产：`GET /users`、`POST /users/:id/freeze|unfreeze`、`GET /balances`、`GET /withdrawal-address-book`
 - KYC：`GET /kyc/requests`、`POST /kyc/requests/:id/approve`（`{ tier, note }`）、`POST /kyc/requests/:id/reject`（`{ reason }`）、`GET /users/:id/kyc`、`POST /users/:id/kyc-tier`（`{ tier, reason }`）；写操作需要 `ops.users.manage`，审计动作 `user.kyc.approve|reject|set_tier`
 - 交易：`GET /spot/orders|trades|settlements`、`GET /spot/ops/overview|anomalies`（默认市场取 `config/markets.json` 的 `defaultMarket`）、`POST /spot/ops/replay-engine`
 - 市场：`GET /market-config`（配置中的市场 / 币种，供各页下拉框使用，页面不硬编码）、`GET /markets`（含 risk-service 实时状态；risk 不可用时回退为配置默认值并标记 `statusSource: "config"`）、`POST /markets/:market/status`（`{ status: "halted" | "listed", reason }`）
-- 账本：`GET /ledger/overview|reconciliation|replay`、`POST /ledger/outbox/drain`
+- 账本：`GET /ledger/overview|reconciliation|replay`、`POST /ledger/outbox/drain`；定时对账 `GET /ledger/reconciliation/runs`、`POST /ledger/reconciliation/jobs/run`（`ops.ledger.execute`）
 - 运维：恢复队列、事件总线、执行模板等见 `src/http/ops-console.controller.ts`
-- 故障实验室（`src/http/fault-lab.controller.ts`）：`GET /lab/status`；`POST /lab/settlement/pause|resume`、`/lab/custody/inject|probe|clear`、`/lab/chain/halt|resume|seed-deposit|reorg`、`/lab/indexer/reorg-acknowledge`、`/lab/engine/reset`、`/lab/recover-all`。写操作需同时具备 `ops.ledger.execute`、`ops.providers.manage`、`ops.indexer.execute`（默认仅 `ops_admin`），以 `fault_lab.*` 写入操作审计
+- 故障实验室（`src/http/fault-lab.controller.ts`）：`GET /lab/status`；`POST /lab/settlement/pause|resume`、`/lab/custody/inject|probe|clear`、`/lab/chain/halt|resume|seed-deposit|reorg`、`/lab/indexer/reorg-acknowledge`、`/lab/engine/reset`、`/lab/reconciliation/drift|clear`、`/lab/recover-all`。写操作需同时具备 `ops.ledger.execute`、`ops.providers.manage`、`ops.indexer.execute`（默认仅 `ops_admin`），以 `fault_lab.*` 写入操作审计
 
 ## 说明
 

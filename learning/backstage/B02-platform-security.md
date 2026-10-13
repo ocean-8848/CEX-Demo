@@ -354,7 +354,7 @@ flowchart LR
 | 运营操作审计 | [`apps/ops-console/sql/001_init.sql`](../../apps/ops-console/sql/001_init.sql) 的 `ops_action_audit_logs` 表；[`apps/ops-console/src/domain/action-audit.ts`](../../apps/ops-console/src/domain/action-audit.ts) | 已实现。审计写入普通 Postgres 表，不是 WORM 存储 |
 | 服务间鉴权 | [`services/identity-service/src/http/internal-service-auth.guard.ts`](../../services/identity-service/src/http/internal-service-auth.guard.ts) | 已实现 HMAC 共享密钥鉴权，默认监听 `127.0.0.1`。尚未升级到 mTLS |
 | 网关审计与限流 | [`services/api-gateway/src/http/api-gateway-audit.interceptor.ts`](../../services/api-gateway/src/http/api-gateway-audit.interceptor.ts)、[`api-gateway-rate-limit.guard.ts`](../../services/api-gateway/src/http/api-gateway-rate-limit.guard.ts) | 已实现 |
-| 安全基线与紧急开关 | [`docs/security.md`](../../docs/security.md) 第 2、4 节 | 已编写，按代码列出已实现的控制和缺口。紧急开关只有单市场暂停（`risk-service` 市场 `halted`）；全站 / 单资产提币开关、API 写入开关和变更单流程本仓库未实现 |
+| 安全基线与紧急开关 | [`docs/security.md`](../../docs/security.md) 第 2、4 节（紧急开关见第 2.10 节）；[`services/risk-service/src/application/control-switch-service.ts`](../../services/risk-service/src/application/control-switch-service.ts) | 已编写，按代码列出已实现的控制和缺口。紧急开关：单市场暂停（市场 `halted`）、全站 / 单资产提币暂停、API 写入冻结，开关权限 `ops.controls.manage` 只给 `ops_admin`，每次变更必填原因并写审计；对账不平时自动暂停单资产提币。变更单（开关的双人审批）流程未实现 |
 | 威胁模型 | [`docs/security.md`](../../docs/security.md) 第 3 节 | 已编写。按资产列出威胁、现有缓解和真实 CEX 的做法；第 4 节把"`custody-adapter` 从环境变量读私钥 / 助记词"列为最高风险缺口 |
 | 签名策略引擎、MPC/HSM、意图校验 | — | 未实现。`custody-adapter` 仍可用环境变量中的私钥直接签名 |
 | 四眼审批、JIT、PAM | [`docs/security.md`](../../docs/security.md) 第 2.7 节 | ⚠️ 只有提现大额双人审批（超过分资产阈值需两名不同运营批准，同一人不能批两次）；JIT、PAM 未实现 |

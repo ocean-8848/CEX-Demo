@@ -114,8 +114,8 @@ SHA256(body)      原始请求体的 hex 摘要，空体为空串的摘要
 | identity-service | `api-gateway`、`wallet-service`、`ops-console`、`demo-scripts` |
 | ledger-service | `api-gateway`、`wallet-service`、`order-service`、`settlement-service`、`risk-service`、`ops-console`、`demo-scripts` |
 | wallet-service | `api-gateway`、`blockchain-indexer`、`ops-console`、`demo-scripts` |
-| order-service | `api-gateway`、`settlement-service`、`market-data-service`、`ops-console`、`demo-scripts` |
-| risk-service | `order-service`、`ops-console`、`demo-scripts` |
+| order-service | `api-gateway`、`settlement-service`、`market-data-service`、`ops-console`、`demo-scripts`、`ledger-service`（委托冻结对账） |
+| risk-service | `order-service`、`ops-console`、`demo-scripts`、`wallet-service`、`api-gateway`（读取紧急开关）、`ledger-service`（对账熔断） |
 | settlement-service | `order-service`、`ops-console`、`demo-scripts` |
 
 ### 1.3 幂等
@@ -150,6 +150,7 @@ SHA256(body)      原始请求体的 hex 摘要，空体为空串的摘要
 | api-gateway | `UNAUTHORIZED`、`SESSION_REQUIRED`、`INVALID_API_KEY`、`INVALID_API_KEY_NONCE`、`INVALID_API_KEY_TIMESTAMP`、`API_KEY_TIMESTAMP_EXPIRED`、`API_KEY_NONCE_REPLAYED`、`API_KEY_SCOPE_DENIED`、`ACCOUNT_FORBIDDEN`、`ACCOUNT_NOT_ACTIVE`、`RESOURCE_FORBIDDEN`、`TWO_FACTOR_CODE_REQUIRED`、`INVALID_STATEMENT_QUERY`、`INVALID_NOTIFICATION_ID` |
 | identity | `INVALID_CREDENTIALS`、`USER_ALREADY_EXISTS`、`USER_NOT_ACTIVE`、`TWO_FACTOR_REQUIRED`、`OPS_TWO_FACTOR_REQUIRED`、`TWO_FACTOR_INVALID_CODE`、`TWO_FACTOR_CODE_REUSED`、`TWO_FACTOR_RECOVERY_CODE_INVALID`、`OPS_ACCESS_DENIED`、`KYC_REQUEST_PENDING`、`KYC_NOT_ALLOWED`、`API_KEY_NOT_FOUND`、`API_KEY_REVOKED`、`INVALID_API_KEY_SIGNATURE` |
 | ledger | `ACCOUNT_NOT_FOUND`、`BALANCE_NOT_FOUND`、`INSUFFICIENT_AVAILABLE_BALANCE`、`JOURNAL_NOT_BALANCED`、`INVALID_AMOUNT`、`DUPLICATE_BALANCE_LOCK`、`BALANCE_LOCK_NOT_FOUND`、`INVALID_BALANCE_LOCK_STATE`、`SETTLEMENT_ACCOUNT_REQUIRED` |
+| 紧急开关（api-gateway / wallet / risk，均为 409） | `WITHDRAWALS_PAUSED`（全站提币暂停）、`ASSET_WITHDRAWALS_PAUSED`（该币种提币暂停，含对账熔断）、`API_WRITE_FROZEN`（只读模式：下单与提币申请被拒，撤单放行） |
 | order / risk | `UNSUPPORTED_MARKET`、`MARKET_HALTED`、`MARKET_DELISTED`、`PRICE_REQUIRED`、`INVALID_ORDER_PRICE`、`INVALID_ORDER_QUANTITY`、`INVALID_STEP_ALIGNMENT`、`ORDER_MIN_QUANTITY_NOT_MET`、`PRICE_DEVIATION_TOO_HIGH`、`UNSUPPORTED_TIME_IN_FORCE`、`ORDER_NOT_FOUND`、`ORDER_NOT_CANCELLABLE` |
 | wallet | `INVALID_AMOUNT`、`INVALID_DESTINATION_ADDRESS`、`WITHDRAWAL_AMOUNT_BELOW_MINIMUM`、`WITHDRAWAL_FEE_BELOW_MINIMUM`、`WITHDRAWAL_SINGLE_LIMIT_EXCEEDED`、`WITHDRAWAL_DAILY_LIMIT_EXCEEDED`、`WITHDRAWAL_2FA_REQUIRED`、`WITHDRAWAL_2FA_NOT_ENABLED`、`WITHDRAWAL_2FA_INVALID`、`WITHDRAWAL_ADDRESS_NOT_WHITELISTED`、`WITHDRAWAL_SECURITY_COOLDOWN`、`WITHDRAWAL_SAME_APPROVER`、`INVALID_WITHDRAWAL_STATE` |
 
@@ -344,6 +345,8 @@ Content-Type: application/json
 
 提币状态：`requested` → `reviewing` → `approved` → `broadcasted` → `confirmed`（或 `failed`）。超过双人复核阈值的提币需要两名不同的审核人批准。
 
+紧急开关：`/withdrawals/validate` 与 `/withdrawals/request` 先经过网关的开关守卫，全站提币暂停返回 `409 WITHDRAWALS_PAUSED`，该币种暂停返回 `409 ASSET_WITHDRAWALS_PAUSED`，API 写入冻结返回 `409 API_WRITE_FROZEN`；被拦截的请求不消耗幂等键和 2FA 动态码。wallet-service 在申请、运营批准与广播时再校验一次（批准被拒时同样返回这些错误码）。
+
 ### 2.5 通知
 
 | 方法 | 路径 | 认证 | 说明 |
@@ -357,10 +360,10 @@ Content-Type: application/json
 
 | 方法 | 路径 | 认证 | 幂等 | 说明 |
 | --- | --- | --- | --- | --- |
-| POST | `/orders` | 会话/Key(trade) | 是（必需） | 下单 |
+| POST | `/orders` | 会话/Key(trade) | 是（必需） | 下单；API 写入冻结时返回 `409 API_WRITE_FROZEN` |
 | GET | `/orders` | 会话/Key(read) | | 过滤：`accountId`、`market`、`status`、分页 |
 | GET | `/orders/:orderId` | 会话/Key(read) | | 订单详情 |
-| POST | `/orders/:orderId/cancel` | 会话/Key(trade) | | 撤单，释放剩余冻结 |
+| POST | `/orders/:orderId/cancel` | 会话/Key(trade) | | 撤单，释放剩余冻结（API 写入冻结时仍可撤单） |
 | GET | `/trades` | 会话/Key(read) | | 我的成交，过滤：`market`、`orderId`、分页 |
 | GET | `/trades/:tradeId/journals` | 会话/Key(read) | | 该成交产生的账本 journal 的脱敏视图：自己的账户显示为本人现货账户，其他用户显示为对手方，平台账户显示可读名称，不暴露对方的账户 / 用户 / 订单 ID |
 
@@ -409,6 +412,12 @@ Content-Type: application/json
 - `type`：`limit` / `market`；`timeInForce`：`gtc` / `ioc` / `fok`；`limit` 必须带 `price`
 - 订单状态：`pending_risk`、`accepted`、`partially_filled`、`filled`、`cancelled`、`rejected`、`recovery_pending`（成交后续步骤失败，等待恢复任务）
 - 价格、数量需对齐市场的 `priceStep` / `quantityStep`，并满足最小数量与价格偏离限制
+
+### 2.6.1 平台状态（紧急开关）
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/system/controls` | 公开 | 当前开启的紧急开关（不含运营原因与操作人）：`{ withdrawalsPaused, pausedWithdrawalAssets: ["SOL"], apiWriteFrozen }`；trader-web 据此禁用提现表单、提示只读模式 |
 
 ### 2.7 用 API key 调用的完整示例
 
@@ -613,6 +622,8 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/ledger/overview` | `ops.ledger.read` | 账本运维总览（outbox、冻结、对账、告警） |
 | GET | `/ledger/reconciliation` | `ops.ledger.read` | 余额对账报告 |
 | POST | `/ledger/reconciliation/run` | `ops.ledger.execute` | 手动执行对账 |
+| GET | `/ledger/reconciliation/runs` | `ops.ledger.read` | 定时对账任务配置（`job`）与历史记录（`items`，最新在前，`limit?`） |
+| POST | `/ledger/reconciliation/jobs/run` | `ops.ledger.execute` | 立即运行一次定时对账（余额 + 委托冻结 + 熔断），返回本次记录；审计动作 `ledger.reconciliation.run_job` |
 | GET | `/ledger/replay` | `ops.ledger.read` | 单账户单资产回放（`accountId`、`assetCode`） |
 | POST | `/ledger/replay/run` | `ops.ledger.execute` | 手动执行回放 |
 | POST | `/ledger/outbox/drain` | `ops.ledger.execute` | 重排死信并发布积压 outbox |
@@ -659,7 +670,9 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/custody/overview` | `ops.custody.read` | 托管总览 |
 | GET | `/custody/providers/health` | `ops.custody.read` | 托管提供方健康 |
 | POST | `/custody/providers/health/check` | `ops.providers.manage` | 立即执行健康检查 |
-| GET | `/alerts` | `ops.alerts.read` | 告警汇总 |
+| GET | `/alerts` | `ops.alerts.read` | 告警汇总：各数据源（ledger / indexer / custody / wallet / reconciliation / controls / trading）的 `alerts` 原文，以及带级别的 `items[]`（`source`、`code`、`severity: P1/P2/P3`、`message`，P1 在前）、`countsBySeverity`、`highestSeverity`；规则见 [security.md](security.md) 第 2.11 节 |
+| GET | `/controls` | `ops.dashboard.read` | 紧急开关状态、可选币种、最近 30 条开关变更、最近一次对账结果 |
+| POST | `/controls` | `ops.controls.manage` | 设置开关：`{ scope: "withdrawals_global" \| "withdrawals_asset" \| "api_write", assetCode?, enabled, reason }`，`reason` 开关两个方向都必填；恢复被对账熔断暂停的币种前，必须已有一轮晚于暂停时间且该币种一致的对账，否则 `409 RECONCILIATION_NOT_CLEAN`；审计动作 `controls.<scope>.enable\|disable` |
 | GET | `/audit-logs/withdrawals` | `ops.audit.read` | 提币审计日志搜索 |
 | GET | `/audit-logs/actions` | `ops.audit.read` | 运营操作审计日志 |
 | GET | `/execution-templates` | `ops.audit.read` | 运维执行模板 |
@@ -687,13 +700,15 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | POST | `/chain/reorg` | 触发链重组（`depth?`） |
 | POST | `/indexer/reorg-acknowledge` | 确认 reorg 告警 |
 | POST | `/engine/reset` | 清空撮合引擎内存订单簿 |
-| POST | `/recover-all` | 一键恢复所有注入的故障 |
+| POST | `/reconciliation/drift` | 在 ledger-service 实验账户上注入对账差额（`assetCode`、`amount?` 默认 `1`），用于演示对账熔断 |
+| POST | `/reconciliation/clear` | 清除对账差额（被熔断暂停的提币仍需在紧急开关中人工恢复） |
+| POST | `/recover-all` | 一键恢复所有注入的故障（含清除对账差额，不会自动恢复提币） |
 
 ### 5.5 角色与权限
 
 | 角色 | 权限 |
 | --- | --- |
-| `ops_admin` | 全部权限 |
+| `ops_admin` | 全部权限（紧急开关 `ops.controls.manage` 只有这个角色拥有） |
 | `ops_reviewer` | dashboard、提币读 / 审核 / 批量审核、充值读、通知读、地址簿读、审计读、告警读 |
 | `ops_finance_operator` | dashboard、提币读、资产读、账本读 / 执行 / 管理、充值读、通知读 / 管理、地址簿读、审计读、告警读 |
 | `ops_risk_operator` | dashboard、提币读、用户读 / 冻结、充值读、地址簿读 / 管理、审计读、告警读、市场读 / 管理 |
@@ -757,6 +772,12 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | POST | `/ops/replay/run` | 同上，参数放请求体 |
 | GET | `/ops/overview` | 运维总览（`staleLockMinutes?`） |
 | POST | `/ops/outbox/drain` | 重排死信并发布（`requeueDeadLetter?`、`maxCycles?`） |
+| GET | `/ops/reconciliation/job` | 定时对账配置与状态（`intervalSeconds`、`graceMs`、`breakerEnabled`、`confirmations`、`lastRunAt`、`nextRunAt`） |
+| GET | `/ops/reconciliation/runs` | 对账历史（`limit?`，最新在前），返回 `{ job, items }` |
+| POST | `/ops/reconciliation/jobs/run` | 立即运行一次（余额对账 + 委托冻结对账 + 熔断判定），返回本次记录 |
+| GET | `/ops/reconciliation/lab/drift` | 故障实验：实验账户上的对账差额 |
+| POST | `/ops/reconciliation/lab/drift` | 故障实验：在实验账户写入无分录的余额（`assetCode`、`amount?`） |
+| POST | `/ops/reconciliation/lab/drift/clear` | 故障实验：删除实验账户余额 |
 
 `/ops/*` 只在 Postgres 模式下可用。各操作语义见 [ledger-service-design.md](ledger-service-design.md)。
 
@@ -810,6 +831,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | --- | --- | --- |
 | GET | `/overview`、`/anomalies` | 总览与异常 |
 | POST | `/replay-engine` | 用持久化挂单重建撮合订单簿 |
+| POST | `/lock-expectations` | 委托冻结对账输入（调用方 ledger-service）：`{ orderIds?: string[] (≤2000), includeOpenOrders?: boolean }`，返回每笔委托账本冻结应有的金额 `expectedLockAmount` = 未成交部分冻结 + 已成交未结算部分，以及 `inFlight`（`pending_risk` / `recovery_pending`）、`updatedAt`、`lastTradeAt` |
 | POST | `/lab/engine-reset` | 故障实验：清空引擎订单簿 |
 | GET | `/recovery-jobs`、`/recovery-metrics`、`/recovery-governance`、`/automation-executions` | 恢复任务与治理 |
 | POST | `/recovery-jobs/process`、`/recovery-jobs/:jobId/recover` | 处理恢复任务 |
@@ -822,10 +844,13 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/orders/validate` | 下单风控：市场状态、步长、最小数量、价格偏离；返回 `lockAssetCode`、`lockAmount`、`timeInForce` |
+| POST | `/orders/validate` | 下单风控：API 写入冻结（`409 API_WRITE_FROZEN`）、市场状态、步长、最小数量、价格偏离；返回 `lockAssetCode`、`lockAmount`、`timeInForce` |
 | GET | `/markets` | 市场及状态 |
 | GET | `/markets/:market` | 单个市场 |
 | POST | `/markets/:market/status` | 设置状态覆盖（`status`、`reason?`、`operator?`） |
+| GET | `/controls` | 紧急开关当前状态 `{ withdrawalsPaused, assetWithdrawalPauses[], apiWriteFrozen }`，每项含 `reason`、`source: manual \| automatic`、`updatedBy`、`updatedAt`；调用方 wallet-service / api-gateway / ops-console |
+| POST | `/controls` | 设置开关（`scope`、`assetCode?`、`enabled`、`reason`、`operator`、`source?`）。开启必须带原因；`source: "automatic"`（ledger-service 对账熔断）不会覆盖已开启的开关，也不能关闭开关；返回 `{ changed, entry, state }` |
+| GET | `/controls/events` | 开关变更记录（`limit?`），即 `risk_control_switch_events` |
 
 ### 6.6 settlement-service（`/api/v1/settlement`，HMAC）
 

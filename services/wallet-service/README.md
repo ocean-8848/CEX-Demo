@@ -86,6 +86,7 @@ HTTP 接口:
 
 当前提币流:
 
+- 紧急开关（`risk-service` 持有，经 `CachedControlSwitchReader` 读取、缓存 `CONTROL_SWITCH_CACHE_MS`，默认 2 秒）：`validateWithdrawalRequest` / `requestWithdrawal` 最先检查全站 / 该币种提现暂停和 API 写入冻结；`approveWithdrawal` / `rebroadcastWithdrawal` 检查提现暂停（API 写入冻结不影响运营审核）。命中时返回 `409 WITHDRAWALS_PAUSED` / `ASSET_WITHDRAWALS_PAUSED` / `API_WRITE_FROZEN`，不会冻结资金也不会消耗 2FA 动态码；`rejectWithdrawal` 不受影响。读取失败时沿用上次状态，从未读到过则放行。单元测试见 `src/__tests__/withdrawal-controls.test.ts`
 - `validateWithdrawalRequest` 会校验地址格式、最小提币额、最小手续费、白名单、单笔限额、日累计限额和 `identity-service` 中的 2FA 启用状态
 - `requestWithdrawal` 会调用 `identity-service /two-factor/verify` 做真实 TOTP 校验，再调用 `ledger-service /balances/freeze`
 - `approveWithdrawal` 会调用 `custody-adapter /transfers` 并把提币单推进到 `broadcasted`；金额严格大于双人复核阈值时，第一次批准只把单子推进到
@@ -117,6 +118,7 @@ HTTP 接口:
 关键环境变量:
 
 - `LEDGER_SERVICE_BASE_URL` / `CUSTODY_ADAPTER_BASE_URL`
+- `WALLET_RISK_SERVICE_URL`（紧急开关来源，默认 `http://127.0.0.1:3008`）/ `CONTROL_SWITCH_CACHE_MS`（默认 `2000`）
 - `DEPOSIT_CONFIRMATION_THRESHOLD` / `WITHDRAWAL_CONFIRMATION_THRESHOLD`（默认 `12`）
 - `WITHDRAWAL_REQUIRE_2FA`
 - `WITHDRAWAL_REQUIRE_WHITELIST`

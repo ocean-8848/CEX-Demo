@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Query,
@@ -71,6 +72,12 @@ export class ReconciliationController {
   }
 
   private requireLab() {
+    if (process.env.LEDGER_FAULT_LAB_ENABLED === "false") {
+      throw new ForbiddenException({
+        code: "LEDGER_FAULT_LAB_DISABLED",
+        message: "The reconciliation drift lab is disabled (LEDGER_FAULT_LAB_ENABLED=false)"
+      });
+    }
     const lab = this.reconciliation.driftLab;
     if (!lab) {
       throw new ServiceUnavailableException("Reconciliation lab needs LEDGER_REPOSITORY=postgres");

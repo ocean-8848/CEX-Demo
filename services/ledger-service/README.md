@@ -32,6 +32,7 @@ SQL schema:
 - [002_add_consumed_at_to_balance_locks.sql](sql/002_add_consumed_at_to_balance_locks.sql)
 - [003_add_outbox_retry_fields.sql](sql/003_add_outbox_retry_fields.sql)
 - [004_add_remaining_amount_to_balance_locks.sql](sql/004_add_remaining_amount_to_balance_locks.sql)
+- [005_reconciliation_runs.sql](sql/005_reconciliation_runs.sql)（定时对账记录 `ledger_reconciliation_runs`）
 
 服务级设计:
 
@@ -46,6 +47,7 @@ SQL schema:
 - [src/infrastructure/postgres-ledger-repository.ts](src/infrastructure/postgres-ledger-repository.ts)
 - [src/infrastructure/ledger-ops-reporter.ts](src/infrastructure/ledger-ops-reporter.ts)
 - [src/infrastructure/kafka-ledger-outbox-transport.ts](src/infrastructure/kafka-ledger-outbox-transport.ts)
+- [src/application/reconciliation-job.ts](src/application/reconciliation-job.ts)、[order-lock-reconciliation.ts](src/application/order-lock-reconciliation.ts)、[reconciliation-breaker.ts](src/application/reconciliation-breaker.ts)（定时对账、委托冻结对账、对账熔断）
 
 运行脚本:
 
@@ -104,6 +106,15 @@ SQL schema:
 - `LEDGER_WITHDRAWAL_SETTLEMENT_ACCOUNT_ID`
 - `LEDGER_OPENING_BALANCE_ACCOUNT_ID`
 
+定时对账与熔断（[设计文档第 11.5 节](../../docs/ledger-service-design.md)）:
+
+- `RECONCILIATION_INTERVAL_SECONDS`（代码默认 `0` 不调度，`pnpm demo:up` 传 `30`）、`RECONCILIATION_INITIAL_DELAY_SECONDS`（默认同间隔）
+- `RECONCILIATION_ORDER_LOCK_GRACE_SECONDS`（默认 `15`，委托冻结对账的在途宽限）
+- `RECONCILIATION_BREAKER_ENABLED`（默认 `true`）、`RECONCILIATION_BREAKER_CONFIRMATIONS`（默认 `2`）
+- `RECONCILIATION_HISTORY_LIMIT`（默认 `2000`）
+- `LEDGER_ORDER_SERVICE_URL`（默认 `http://127.0.0.1:3009`）、`LEDGER_RISK_SERVICE_URL`（默认 `http://127.0.0.1:3008`）
+- `LEDGER_FAULT_LAB_ENABLED`（默认 `true`，故障实验室的对账差额注入）
+
 HTTP 接口:
 
 - `POST /api/v1/ledger/accounts`
@@ -117,6 +128,8 @@ HTTP 接口:
 - `POST /api/v1/ledger/ops/replay/run`
 - `GET /api/v1/ledger/ops/overview`
 - `POST /api/v1/ledger/ops/outbox/drain`
+- `GET /api/v1/ledger/ops/reconciliation/job`、`GET /api/v1/ledger/ops/reconciliation/runs`、`POST /api/v1/ledger/ops/reconciliation/jobs/run`（定时对账状态、历史、立即运行）
+- `GET|POST /api/v1/ledger/ops/reconciliation/lab/drift`、`POST /api/v1/ledger/ops/reconciliation/lab/drift/clear`（故障实验室：只写实验账户的对账差额）
 - `POST /api/v1/ledger/balances/freeze`
 - `POST /api/v1/ledger/balances/release`
 - `POST /api/v1/ledger/balances/consume`
