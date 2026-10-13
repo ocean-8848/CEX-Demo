@@ -245,6 +245,7 @@ export interface OpsReviewQueueQueryDto {
   reviewStatus?: string;
   txHash?: string;
   toAddress?: string;
+  riskLevel?: string;
   limit?: string;
   offset?: string;
 }

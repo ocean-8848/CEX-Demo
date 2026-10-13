@@ -94,6 +94,10 @@ export interface WithdrawalRecord {
   approvedAt?: string;
   broadcastedAt?: string;
   confirmedAt?: string;
+  /** KYT score / level / reasons stored at request time. */
+  riskScore?: number;
+  riskLevel?: string;
+  riskReasons?: Array<{ code: string; score: number; message: string }>;
   metadata?: Record<string, unknown>;
 }
 
