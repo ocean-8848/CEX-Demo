@@ -124,6 +124,15 @@ try {
     await page.waitForTimeout(2500);
     await shot(page, "trader-trade-open-orders", { settle: 500, fullPage: true });
 
+    // post-only + STP options on a limit order, then the stop-order tab
+    await page.check("#order-post-only");
+    await shot(page, "trader-order-form-postonly", { selector: "#order-form", settle: 600 });
+    await page.uncheck("#order-post-only");
+    await page.click("#order-type-stop");
+    await page.fill("#order-trigger-price-input", (Math.floor(last * 1.03 * 100) / 100).toFixed(2));
+    await shot(page, "trader-order-form-stop", { selector: "#order-form", settle: 600 });
+    await page.locator("#order-form").getByText("限价", { exact: true }).first().click();
+
     // guided tours
     await page.click("#tour-launcher");
     await shot(page, "trader-tour", { settle: 800 });
@@ -177,6 +186,15 @@ try {
     await page.waitForSelector("#statement-table");
     await shot(page, "trader-statement", { settle: 1500 });
 
+    // proof of reserves: verify the user's own Merkle leaf in the browser
+    await go(page, traderUrl, "/assets/reserves");
+    await page.waitForSelector("#reserves-page");
+    if (await page.locator("#reserves-verify").count()) {
+      await page.click("#reserves-verify");
+    }
+    await shot(page, "trader-reserves", { settle: 2500 });
+    await shot(page, "trader-reserves-full", { settle: 300, fullPage: true });
+
     // account
     await go(page, traderUrl, "/account");
     await shot(page, "trader-account", { settle: 1500 });
@@ -192,6 +210,9 @@ try {
     }
     await shot(page, "trader-kyc-pending", { selector: "#kyc-panel" });
     await shot(page, "trader-api-key", { selector: "#api-key-form" });
+    await shot(page, "trader-fee-tier", { selector: "#fee-tier-panel" });
+    await page.locator("#device-table").scrollIntoViewIfNeeded();
+    await shot(page, "trader-devices", { settle: 600 });
 
     await page.context().close();
   }
@@ -211,7 +232,9 @@ try {
       ["trace", "/trace"],
       ["ledger", "/ledger"],
       ["system", "/system"],
-      ["audit", "/audit"]
+      ["audit", "/audit"],
+      ["treasury", "/treasury"],
+      ["surveillance", "/surveillance"]
     ];
     for (const [name, hash] of pages) {
       await go(page, opsUrl, hash);
@@ -231,7 +254,8 @@ try {
       ["/deposits", "待确认观察", "deposits-pending"],
       ["/users", "KYC 审核", "users-kyc"],
       ["/users", "余额", "users-balances"],
-      ["/users", "提现地址簿", "users-addresses"]
+      ["/users", "提现地址簿", "users-addresses"],
+      ["/users", "地址黑名单", "users-blacklist"]
     ];
     for (const [hash, label, name] of tabs) {
       if (filter && !`ops-${name}`.includes(filter)) {
@@ -249,6 +273,17 @@ try {
     await shot(page, "ops-withdrawal-detail", { settle: 1500 });
     await go(page, opsUrl, `/users/${DEMO_TRADER.userId}`);
     await shot(page, "ops-user-detail", { settle: 2500 });
+    await shot(page, "ops-user-detail-full", { settle: 300, fullPage: true });
+    await go(page, opsUrl, "/treasury");
+    await shot(page, "ops-treasury-full", { settle: 2500, fullPage: true });
+    await go(page, opsUrl, "/surveillance");
+    if (await page.locator("#surveillance-scan").count()) {
+      await page.click("#surveillance-scan");
+      await page.waitForTimeout(2500);
+    }
+    await shot(page, "ops-surveillance-scanned", { settle: 1000 });
+    await go(page, opsUrl, "/ledger");
+    await shot(page, "ops-ledger-full", { settle: 2500, fullPage: true });
     await go(page, opsUrl, `/trace?userId=${DEMO_TRADER.userId}`);
     await shot(page, "ops-trace-user", { settle: 3000 });
 
