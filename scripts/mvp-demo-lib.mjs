@@ -156,6 +156,8 @@ const RESET_TABLES = [
   "ledger_journals",
   "balances",
   "accounts",
+  "identity_login_events",
+  "identity_user_devices",
   "identity_kyc_events",
   "identity_kyc_requests",
   "identity_two_factor_recovery_codes",

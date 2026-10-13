@@ -26,7 +26,23 @@ import {
   type KycTier,
   type SecurityChange
 } from "../domain/withdrawal-policy.js";
+import {
+  DEFAULT_WITHDRAWAL_RISK_RULES,
+  describeBlacklistCategory,
+  describeBlockedAddress,
+  findAddressRiskLabel,
+  isAddressBlacklistCategory,
+  scoreWithdrawalRisk,
+  type AddressBlacklistEntry,
+  type AddressRiskLabel,
+  type WithdrawalRiskAssessment,
+  type WithdrawalRiskRules
+} from "../domain/withdrawal-risk.js";
 import type {
+  AddAddressBlacklistEntryCommand,
+  CreateSecurityNotificationCommand,
+  ListAddressBlacklistQuery,
+  RemoveAddressBlacklistEntryCommand,
   ApproveWithdrawalCommand,
   ConfirmWithdrawalCommand,
   ConfirmDepositCommand,
@@ -70,7 +86,11 @@ interface ServiceOptions {
 interface InternalWithdrawalValidationResult extends WithdrawalValidationResult {
   normalizedToAddress: string;
   twoFactorVerifiedAt?: string;
+  risk: WithdrawalRiskAssessment;
 }
+
+/** Operator id used for automatic KYT decisions in audit logs. */
+export const KYT_SYSTEM_OPERATOR = "system:kyt";
 
 const unconfiguredIdentityClient: IdentityClient = {
   async getTwoFactorStatus() {
@@ -320,6 +340,7 @@ export class WalletApplicationService {
     return {
       valid: true,
       frozenAmount: validation.frozenAmount,
+      risk: validation.risk,
       appliedRules: validation.appliedRules
     };
   }
@@ -346,6 +367,9 @@ export class WalletApplicationService {
       status: "requested",
       reviewStatus: "pending",
       requestedAt: now,
+      riskScore: validation.risk.score,
+      riskLevel: validation.risk.level,
+      riskReasons: validation.risk.reasons,
       metadata
     };
 
@@ -597,6 +621,18 @@ export class WalletApplicationService {
     if (withdrawal.reviewStatus !== "approved") {
       this.ensureReviewableWithdrawal(withdrawal, "approve");
 
+      // KYT re-check: the address may have been blacklisted after the request.
+      const blacklistEntry = this.riskRules.enabled
+        ? await this.repository.findActiveAddressBlacklistEntry(withdrawal.network, withdrawal.toAddress)
+        : null;
+      if (blacklistEntry) {
+        await this.autoRejectBlacklistedWithdrawal(withdrawal, blacklistEntry, "approveWithdrawal");
+        throw new WalletError(
+          "WITHDRAWAL_ADDRESS_BLOCKED",
+          `Destination address was blacklisted (${blacklistEntry.category}); withdrawal ${withdrawal.withdrawalId} was rejected automatically and funds released`
+        );
+      }
+
       const approvedAt = this.now().toISOString();
       // M5-2: the policy stored at request time wins; legacy rows fall back to
       // the current threshold configuration.
@@ -811,6 +847,19 @@ export class WalletApplicationService {
     const normalizedToAddress = this.normalizeAddress(command.network, command.toAddress);
     this.assertDestinationAddress(command.network, normalizedToAddress);
 
+    // Simplified KYT runs first: a blacklisted destination is refused before
+    // any other rule (and before a 2FA code is consumed). A real request to a
+    // blocked address is still recorded as an auto-rejected withdrawal so ops
+    // can see the attempt and the user gets an inbox notification.
+    const riskCheck = await this.assessWithdrawalRisk(command, normalizedToAddress);
+    if (riskCheck.blacklistEntry) {
+      if (verifyTwoFactorCode) {
+        await this.recordBlockedWithdrawal(command, normalizedToAddress, riskCheck.assessment, riskCheck.blacklistEntry);
+      }
+      throw new WalletError("WITHDRAWAL_ADDRESS_BLOCKED", describeBlockedAddress(riskCheck.blacklistEntry));
+    }
+    const risk = riskCheck.assessment;
+
     const rules = this.withdrawalValidationRules;
     const requireTwoFactor = rules.requireTwoFactor ?? false;
 
@@ -826,6 +875,13 @@ export class WalletApplicationService {
     const cooldown = await this.evaluateSecurityCooldown(command.userId, twoFactorStatus?.changedAt);
     if (cooldown.active) {
       throw new WalletError("WITHDRAWAL_SECURITY_COOLDOWN", describeCooldown(cooldown));
+    }
+
+    // Optional policy (default off): no withdrawals for N seconds after a
+    // login from a device identity-service has not seen before.
+    const newDeviceLock = await this.evaluateNewDeviceLock(command.userId);
+    if (newDeviceLock?.active) {
+      throw new WalletError("WITHDRAWAL_NEW_DEVICE_LOCK", describeCooldown(newDeviceLock));
     }
 
     if (requireTwoFactor && !twoFactorStatus?.enabled) {
@@ -846,10 +902,17 @@ export class WalletApplicationService {
       platformSingleLimit: rules.singleLimitByAsset?.[command.assetCode],
       platformDailyLimit: rules.dailyLimitByAsset?.[command.assetCode]
     });
-    const approvalPolicy = resolveApprovalPolicy(
+    const amountPolicy = resolveApprovalPolicy(
       command.amount,
       rules.dualApprovalThresholdByAsset?.[command.assetCode]
     );
+    // KYT high: manual review by two different operators regardless of amount.
+    const approvalPolicy =
+      risk.requiresDualApproval && amountPolicy.requiredApprovals === 1
+        ? { ...amountPolicy, requiredApprovals: 2 as const }
+        : amountPolicy;
+    const dualApprovalReason =
+      amountPolicy.requiredApprovals === 2 ? "amount" : approvalPolicy.requiredApprovals === 2 ? "risk_high" : undefined;
 
     const appliedRules: WithdrawalValidationResult["appliedRules"] = {
       requireTwoFactor: twoFactorChecked,
@@ -864,7 +927,9 @@ export class WalletApplicationService {
       tierDailyLimit: limits.tierLimit?.daily,
       requiredApprovals: approvalPolicy.requiredApprovals,
       dualApprovalThreshold: approvalPolicy.threshold,
-      securityCooldownSeconds: cooldown.cooldownSeconds
+      dualApprovalReason,
+      securityCooldownSeconds: cooldown.cooldownSeconds,
+      newDeviceLockSeconds: newDeviceLock?.cooldownSeconds
     };
 
     if (
@@ -954,7 +1019,8 @@ export class WalletApplicationService {
       frozenAmount,
       appliedRules,
       normalizedToAddress,
-      twoFactorVerifiedAt
+      twoFactorVerifiedAt,
+      risk
     };
   }
 
@@ -966,6 +1032,7 @@ export class WalletApplicationService {
       : undefined;
     const kycTier = await this.resolveKycTier(userId);
     const cooldown = await this.evaluateSecurityCooldown(userId, twoFactorStatus?.changedAt);
+    const newDeviceLock = await this.evaluateNewDeviceLock(userId);
     const dayWindow = utcDayWindow(this.now());
 
     const assetCodes = new Set<AssetCode>([
@@ -1010,8 +1077,319 @@ export class WalletApplicationService {
       requireWhitelist: rules.requireWhitelist ?? false,
       dayWindow,
       cooldown,
+      ...(newDeviceLock ? { newDeviceLock } : {}),
       assets
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Simplified KYT: blacklist, demo labels, address history
+  // -------------------------------------------------------------------------
+
+  private get riskRules(): WithdrawalRiskRules {
+    return this.withdrawalValidationRules.riskRules ?? DEFAULT_WITHDRAWAL_RISK_RULES;
+  }
+
+  private async assessWithdrawalRisk(
+    command: Pick<RequestWithdrawalCommand, "userId" | "network" | "assetCode" | "amount">,
+    normalizedToAddress: string
+  ): Promise<{ assessment: WithdrawalRiskAssessment; blacklistEntry: AddressBlacklistEntry | null }> {
+    const rules = this.riskRules;
+    if (!rules.enabled) {
+      return { assessment: scoreWithdrawalRisk({
+        assetCode: command.assetCode,
+        amount: command.amount,
+        whitelisted: false,
+        priorSuccessfulWithdrawals: 0,
+        now: this.now()
+      }, rules), blacklistEntry: null };
+    }
+
+    const [blacklistEntry, addressBookEntry, priorSuccessfulWithdrawals] = await Promise.all([
+      this.repository.findActiveAddressBlacklistEntry(command.network, normalizedToAddress),
+      this.repository.findWithdrawalAddressBookEntryByUniqueKey({
+        userId: command.userId,
+        network: command.network,
+        address: normalizedToAddress
+      }),
+      this.repository.countSuccessfulWithdrawalsToAddress({
+        userId: command.userId,
+        network: command.network,
+        address: normalizedToAddress
+      })
+    ]);
+
+    const assessment = scoreWithdrawalRisk(
+      {
+        assetCode: command.assetCode,
+        amount: command.amount,
+        blacklistEntry,
+        label: findAddressRiskLabel(rules.labels, normalizedToAddress),
+        whitelisted: addressBookEntry?.isWhitelisted ?? false,
+        priorSuccessfulWithdrawals,
+        addressBookCreatedAt: addressBookEntry?.createdAt,
+        now: this.now()
+      },
+      rules
+    );
+    return { assessment, blacklistEntry };
+  }
+
+  /** A request to a blacklisted address: kept as an auto-rejected withdrawal, nothing is frozen. */
+  private async recordBlockedWithdrawal(
+    command: RequestWithdrawalCommand,
+    normalizedToAddress: string,
+    assessment: WithdrawalRiskAssessment,
+    entry: AddressBlacklistEntry
+  ): Promise<WithdrawalRecord> {
+    const now = this.now().toISOString();
+    const withdrawalId = this.createId();
+    const reason = `KYT: destination address blacklisted (${entry.category}: ${entry.reason})`;
+    const record: WithdrawalRecord = {
+      withdrawalId,
+      userId: command.userId,
+      ledgerAccountId: command.ledgerAccountId,
+      assetCode: command.assetCode,
+      network: command.network,
+      toAddress: normalizedToAddress,
+      amount: command.amount,
+      fee: command.fee,
+      frozenAmount: "0",
+      freezeReferenceId: withdrawalId,
+      status: "rejected",
+      reviewStatus: "rejected",
+      requestedAt: now,
+      riskScore: assessment.score,
+      riskLevel: "blocked",
+      riskReasons: assessment.reasons,
+      metadata: {
+        approvals: [],
+        review: {
+          action: "rejected",
+          reviewedAt: now,
+          reviewedBy: KYT_SYSTEM_OPERATOR,
+          reason
+        },
+        kyt: { blockedAtRequest: true, blacklistEntryId: entry.entryId, category: entry.category }
+      }
+    };
+
+    await this.persistWithdrawalTransition({
+      after: record,
+      action: "rejected",
+      operatorId: KYT_SYSTEM_OPERATOR,
+      operatorRole: "system",
+      notifications: ["withdrawal.rejected"],
+      metadata: {
+        source: "wallet-service",
+        trigger: "requestWithdrawal",
+        reason,
+        blacklistEntryId: entry.entryId
+      }
+    });
+    return record;
+  }
+
+  /** Pending withdrawal whose destination is now blacklisted: reject, release funds, notify. */
+  private async autoRejectBlacklistedWithdrawal(
+    withdrawal: WithdrawalRecord,
+    entry: AddressBlacklistEntry,
+    trigger: string
+  ): Promise<WithdrawalRecord> {
+    if (toAtomicUnits(withdrawal.frozenAmount) > 0n) {
+      try {
+        await this.ledgerClient.releaseBalance({
+          accountId: withdrawal.ledgerAccountId,
+          assetCode: withdrawal.assetCode,
+          referenceType: "withdrawal",
+          referenceId: withdrawal.freezeReferenceId
+        });
+      } catch (error) {
+        throw new WalletError(
+          "LEDGER_RELEASE_FAILED",
+          error instanceof Error ? error.message : "Failed to release frozen balance"
+        );
+      }
+    }
+
+    const reviewedAt = this.now().toISOString();
+    const reason = `KYT: destination address blacklisted (${entry.category}: ${entry.reason})`;
+    const blockedReason = {
+      code: "BLACKLISTED_ADDRESS" as const,
+      score: 100,
+      message: `目标地址在平台黑名单中（${describeBlacklistCategory(entry.category)}）`,
+      detail: { entryId: entry.entryId, category: entry.category, reason: entry.reason }
+    };
+    const rejected: WithdrawalRecord = {
+      ...withdrawal,
+      status: "rejected",
+      reviewStatus: "rejected",
+      riskScore: 100,
+      riskLevel: "blocked",
+      riskReasons: [blockedReason, ...(withdrawal.riskReasons ?? [])],
+      metadata: {
+        ...withdrawal.metadata,
+        review: { action: "rejected", reviewedAt, reviewedBy: KYT_SYSTEM_OPERATOR, reason },
+        kyt: { autoRejected: true, blacklistEntryId: entry.entryId, category: entry.category, trigger }
+      }
+    };
+
+    await this.persistWithdrawalTransition({
+      before: withdrawal,
+      after: rejected,
+      action: "rejected",
+      operatorId: KYT_SYSTEM_OPERATOR,
+      operatorRole: "system",
+      notifications: ["withdrawal.rejected"],
+      metadata: { source: "wallet-service", trigger, reason, blacklistEntryId: entry.entryId }
+    });
+    return rejected;
+  }
+
+  private async evaluateNewDeviceLock(userId: string): Promise<CooldownStatus | undefined> {
+    const lockSeconds = this.withdrawalValidationRules.newDeviceLockSeconds ?? 0;
+    if (lockSeconds <= 0 || !this.hasIdentityClient() || !this.identityClient.getLoginSecuritySummary) {
+      return undefined;
+    }
+    const summary = await this.identityClient.getLoginSecuritySummary(userId);
+    return evaluateCooldown({
+      now: this.now(),
+      cooldownSeconds: lockSeconds,
+      changes: summary.lastNewDeviceLoginAt
+        ? [{ kind: "new_device_login", at: summary.lastNewDeviceLoginAt }]
+        : []
+    });
+  }
+
+  listAddressRiskLabels(): AddressRiskLabel[] {
+    return this.riskRules.labels;
+  }
+
+  async listAddressBlacklist(
+    query: ListAddressBlacklistQuery
+  ): Promise<PagedResult<AddressBlacklistEntry>> {
+    return this.repository.listAddressBlacklist(
+      normalizePagination({
+        ...query,
+        address:
+          query.address && query.network
+            ? this.normalizeAddress(query.network, query.address)
+            : query.address?.trim().toLowerCase() || undefined
+      })
+    );
+  }
+
+  /**
+   * Adds an address to the blacklist and immediately sweeps pending
+   * withdrawals to it: each is rejected, its frozen funds released and the
+   * user notified.
+   */
+  async addAddressBlacklistEntry(
+    command: AddAddressBlacklistEntryCommand
+  ): Promise<{ entry: AddressBlacklistEntry; autoRejectedWithdrawalIds: string[] }> {
+    const reason = command.reason?.trim();
+    if (!reason) {
+      throw new WalletError("INVALID_BLACKLIST_ENTRY", "A reason is required to blacklist an address");
+    }
+    if (!isAddressBlacklistCategory(command.category)) {
+      throw new WalletError(
+        "INVALID_BLACKLIST_ENTRY",
+        "category must be one of sanctioned, mixer, scam, hack, other"
+      );
+    }
+    if (!command.network || !command.address) {
+      throw new WalletError("INVALID_BLACKLIST_ENTRY", "network and address are required");
+    }
+    const address = this.normalizeAddress(command.network, command.address);
+    this.assertDestinationAddress(command.network, address);
+
+    const existing = await this.repository.findActiveAddressBlacklistEntry(command.network, address);
+    if (existing) {
+      throw new WalletError(
+        "INVALID_BLACKLIST_ENTRY",
+        `Address ${address} is already blacklisted on ${command.network}`
+      );
+    }
+
+    const entry: AddressBlacklistEntry = {
+      entryId: this.createId(),
+      network: command.network,
+      address,
+      category: command.category,
+      reason,
+      source: "ops",
+      status: "active",
+      createdBy: command.createdBy,
+      createdAt: this.now().toISOString()
+    };
+    await this.repository.withTransaction((repository) => repository.saveAddressBlacklistEntry(entry));
+
+    const pending = await this.repository.listWithdrawals({
+      network: command.network,
+      toAddress: address,
+      reviewStatuses: ["pending", "pending_second_approval"],
+      limit: 200,
+      offset: 0
+    });
+    const autoRejectedWithdrawalIds: string[] = [];
+    for (const withdrawal of pending.items) {
+      if (withdrawal.status !== "requested" && withdrawal.status !== "under_review") {
+        continue;
+      }
+      await this.autoRejectBlacklistedWithdrawal(withdrawal, entry, "addAddressBlacklistEntry");
+      autoRejectedWithdrawalIds.push(withdrawal.withdrawalId);
+    }
+    return { entry, autoRejectedWithdrawalIds };
+  }
+
+  async removeAddressBlacklistEntry(
+    command: RemoveAddressBlacklistEntryCommand
+  ): Promise<AddressBlacklistEntry> {
+    const reason = command.reason?.trim();
+    if (!reason) {
+      throw new WalletError("INVALID_BLACKLIST_ENTRY", "A reason is required to remove a blacklist entry");
+    }
+    const entry = await this.repository.findAddressBlacklistEntryById(command.entryId);
+    if (!entry) {
+      throw new WalletError("BLACKLIST_ENTRY_NOT_FOUND", `Blacklist entry ${command.entryId} not found`);
+    }
+    if (entry.status === "removed") {
+      return entry;
+    }
+    const removed: AddressBlacklistEntry = {
+      ...entry,
+      status: "removed",
+      removedBy: command.removedBy,
+      removedAt: this.now().toISOString(),
+      removalReason: reason
+    };
+    await this.repository.withTransaction((repository) => repository.saveAddressBlacklistEntry(removed));
+    return removed;
+  }
+
+  /** Inbox notification for an account security event (called by identity-service). */
+  async createSecurityNotification(
+    command: CreateSecurityNotificationCommand
+  ): Promise<WalletNotificationRecord> {
+    if (!command.userId || command.eventType !== "security.new_device_login") {
+      throw new WalletError("NOTIFICATION_NOT_FOUND", "userId and a supported security eventType are required");
+    }
+    const notification: WalletNotificationRecord = {
+      notificationId: randomUUID(),
+      userId: command.userId,
+      eventType: command.eventType,
+      channel: "inbox",
+      status: "pending",
+      subject: command.subject?.trim() || "新设备登录",
+      body: command.body?.trim() || "你的账户在一台新设备上登录。",
+      payload: command.payload ?? {},
+      createdAt: this.now().toISOString(),
+      deliveryAttempts: 0,
+      deliveryReceipt: {}
+    };
+    await this.repository.withTransaction((repository) => repository.saveWalletNotification(notification));
+    await this.publishNotifications([notification]);
+    return notification;
   }
 
   private hasIdentityClient(): boolean {
@@ -1159,7 +1537,9 @@ export class WalletApplicationService {
       // M5-2: fixed at request time so a config change cannot downgrade review.
       approvalPolicy: {
         requiredApprovals: validation.appliedRules.requiredApprovals ?? 1,
-        threshold: validation.appliedRules.dualApprovalThreshold
+        threshold: validation.appliedRules.dualApprovalThreshold,
+        // Only KYT-triggered dual approval is tagged; amount-based keeps the M5-2 shape.
+        ...(validation.appliedRules.dualApprovalReason === "risk_high" ? { reason: "risk_high" } : {})
       },
       approvals: [],
       security: existingSecurity,
@@ -1355,7 +1735,8 @@ export class WalletApplicationService {
         status: record.status,
         reviewStatus: record.reviewStatus,
         txHash: record.txHash,
-        custodyRequestId: record.custodyRequestId
+        custodyRequestId: record.custodyRequestId,
+        riskLevel: record.riskLevel
       },
       createdAt,
       deliveryAttempts: 0,
@@ -1404,6 +1785,14 @@ export class WalletApplicationService {
           body: `Withdrawal ${record.withdrawalId} for ${record.amount} ${record.assetCode} has passed review.`
         };
       case "withdrawal.rejected":
+        if (record.riskLevel === "blocked") {
+          return {
+            subject: "Withdrawal blocked by risk control",
+            body:
+              `Withdrawal ${record.withdrawalId} for ${record.amount} ${record.assetCode} to ${record.toAddress} ` +
+              "was rejected automatically: the destination address is on the platform blacklist. Any frozen funds have been released."
+          };
+        }
         return {
           subject: "Withdrawal rejected",
           body: `Withdrawal ${record.withdrawalId} for ${record.amount} ${record.assetCode} was rejected during review.`

@@ -116,7 +116,7 @@ Stream 以 `MAXLEN ~ 10000`（`ORDER_EVENT_STREAM_MAX_LEN`）近似裁剪。orde
 | `wallet.withdrawal.updated` | 提币每次状态迁移后（requested / first_approved / approved / broadcasted / confirmed / rejected） | 完整提币单：`withdrawalId`、`userId`、`status`、`reviewStatus`、`amount`、`fee`、`toAddress`、`txHash`、`custodyRequestId` 等 |
 | `wallet.notification.created` | 写入一条站内通知后 | 通知记录：`notificationId`、`userId`、`eventType`（见下）、`subject`、`body`、`payload` |
 
-站内通知（`wallet_notifications` 表）的 `eventType`：`deposit.credited`、`withdrawal.requested`、`withdrawal.approved`、`withdrawal.rejected`、`withdrawal.broadcasted`、`withdrawal.confirmed`。它们是数据库记录而非消息主题，与状态变更在同一事务中提交，用户通过网关的通知接口读取；`deliver-notifications` 脚本会把 `pending` 通知交给投递通道（演示中只输出到控制台）并标记 `delivered` / `failed`。
+站内通知（`wallet_notifications` 表）的 `eventType`：`deposit.credited`、`withdrawal.requested`、`withdrawal.approved`、`withdrawal.rejected`、`withdrawal.broadcasted`、`withdrawal.confirmed`、`security.new_device_login`。`security.*` 通知不关联提币或充值，由 identity-service 在识别到新设备登录时通过内部 HMAC 接口 `POST /api/v1/wallet/notifications/security` 写入（`payload` 含 `deviceId`、`deviceLabel`、`ipAddress`、`loggedInAt`）；KYT 自动拒绝的提现仍发 `withdrawal.rejected`，`payload.riskLevel` 为 `blocked`。它们是数据库记录而非消息主题，与状态变更在同一事务中提交，用户通过网关的通知接口读取；`deliver-notifications` 脚本会把 `pending` 通知交给投递通道（演示中只输出到控制台）并标记 `delivered` / `failed`。
 
 发布失败只打印告警（`event publish degraded`），不影响业务事务。
 

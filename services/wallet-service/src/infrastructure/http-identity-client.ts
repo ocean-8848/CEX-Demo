@@ -2,6 +2,7 @@ import { WalletError } from "../domain/errors.js";
 import type {
   IdentityClient,
   IdentityKycProfile,
+  IdentityLoginSecuritySummary,
   IdentityTwoFactorStatus,
   VerifyIdentityTwoFactorCommand
 } from "../domain/identity-client.js";
@@ -58,6 +59,34 @@ export class HttpIdentityClient implements IdentityClient {
       pendingEnrollment: payload.pendingEnrollment,
       enabledAt: payload.enabledAt,
       changedAt: payload.changedAt
+    };
+  }
+
+  async getLoginSecuritySummary(userId: string): Promise<IdentityLoginSecuritySummary> {
+    const path = `/api/v1/identity/users/${userId}/login-security`;
+    const response = await this.performRequest(
+      `${this.baseUrl}${path}`,
+      {
+        method: "GET",
+        headers: buildInternalServiceHeaders({
+          method: "GET",
+          path,
+          headers: {
+            "content-type": "application/json"
+          }
+        })
+      },
+      "fetch login security summary"
+    );
+
+    if (!response.ok) {
+      throw await mapIdentityError(response, "fetch login security summary");
+    }
+
+    const payload = (await response.json()) as { userId?: string; lastNewDeviceLoginAt?: string };
+    return {
+      userId: payload.userId ?? userId,
+      lastNewDeviceLoginAt: payload.lastNewDeviceLoginAt
     };
   }
 

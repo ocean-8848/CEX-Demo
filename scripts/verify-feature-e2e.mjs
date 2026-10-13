@@ -3,12 +3,12 @@
 //
 //   node ./scripts/verify-feature-e2e.mjs [section...]
 //
-// Sections: apikey, websocket, fees, sol, notifications, security, lab, hardening, matching.
+// Sections: apikey, websocket, fees, sol, notifications, security, lab, hardening, matching, risk-security.
 // Without arguments all sections run. The demo trader is restored afterwards
 // (2FA disabled, faults recovered); KYC tier and balances change, which
 // `pnpm demo:prepare` resets.
 import assert from "node:assert/strict";
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 
 import {
@@ -552,6 +552,113 @@ const sections = {
     assert.equal(fired.status, "filled", JSON.stringify(fired));
     await waitSettled(firing.body.orderId);
     return "post-only reject/rest · STP expire_taker + expire_maker · stop pending/cancel · stop-market fired + settled";
+  },
+
+  /**
+   * Withdrawal address risk (simplified KYT) and device / login security:
+   * scoring, blocked addresses, blacklist sweep, new-device notice, device
+   * revoke, failed-login lock. Assumes 2FA is off for the demo trader.
+   */
+  async "risk-security"(ctx) {
+    const SANCTIONED = "0xbad0000000000000000000000000000000000001"; // seeded in wallet sql/010
+    const MIXER = "0xdeadbeef00000000000000000000000000000001"; // demo label set
+    const withdrawBody = (toAddress, amount = "10") => ({
+      ledgerAccountId: ctx.accountId,
+      assetCode: "USDT",
+      network: config.demoNetwork,
+      toAddress,
+      amount,
+      fee: "1"
+    });
+
+    // 1. KYT scoring at validate time.
+    const safe = await gateway("/withdrawals/validate", { token: ctx.token, body: withdrawBody(config.withdrawalAddress ?? DEMO_WITHDRAWAL_ADDRESS) });
+    assert.equal(safe.status, 201, JSON.stringify(safe.body));
+    assert.equal(safe.body.risk?.level, "low", "the demo whitelisted address scores low");
+    const mixer = await gateway("/withdrawals/validate", { token: ctx.token, body: withdrawBody(MIXER) });
+    assert.equal(mixer.status, 201, JSON.stringify(mixer.body));
+    assert.equal(mixer.body.risk?.level, "high", "mixer-labelled address scores high");
+    assert.equal(mixer.body.appliedRules?.requiredApprovals, 2, "high risk needs dual approval regardless of amount");
+    const blockedCheck = await gateway("/withdrawals/validate", { token: ctx.token, body: withdrawBody(SANCTIONED) });
+    assert.equal(blockedCheck.status, 403);
+    assert.match(JSON.stringify(blockedCheck.body), /WITHDRAWAL_ADDRESS_BLOCKED/);
+
+    // 2. A real request to a blacklisted address is refused and kept as an auto-rejected withdrawal.
+    const blocked = await gateway("/withdrawals/request", {
+      token: ctx.token,
+      headers: { "idempotency-key": randomUUID() },
+      body: withdrawBody(SANCTIONED)
+    });
+    assert.equal(blocked.status, 403, JSON.stringify(blocked.body));
+    const blockedRecord = await waitFor("blocked withdrawal record", async () =>
+      items((await gateway(`/withdrawals?toAddress=${SANCTIONED}&limit=5`, { token: ctx.token })).body).find(
+        (item) => item.riskLevel === "blocked" && item.status === "rejected"
+      ), 10_000);
+    assert.equal(Number(blockedRecord.frozenAmount), 0, "nothing was frozen for a blocked request");
+
+    // 3. Blacklisting an address sweeps pending withdrawals to it (funds released, user notified).
+    const fresh = `0x${randomBytes(20).toString("hex")}`;
+    const pending = await gateway("/withdrawals/request", {
+      token: ctx.token,
+      headers: { "idempotency-key": randomUUID() },
+      body: withdrawBody(fresh)
+    });
+    assert.equal(pending.status, 201, JSON.stringify(pending.body));
+    assert.equal(pending.body.riskLevel, "low");
+    const added = await ops(ctx.opsToken, "/risk/address-blacklist", { network: config.demoNetwork, address: fresh, category: "scam", reason: "e2e risk-security" });
+    assert.equal(added.status, 201, JSON.stringify(added.body));
+    assert.deepEqual(added.body.autoRejectedWithdrawalIds, [pending.body.withdrawalId]);
+    const swept = await waitFor("swept withdrawal rejected", async () =>
+      items((await gateway("/withdrawals?limit=10", { token: ctx.token })).body).find(
+        (item) => item.withdrawalId === pending.body.withdrawalId && item.status === "rejected"
+      ), 10_000);
+    assert.equal(swept.riskLevel, "blocked");
+    const blockedFilter = await ops(ctx.opsToken, `/withdrawals?riskLevel=blocked&userId=${DEMO_TRADER.userId}&limit=50`);
+    assert.ok(items(blockedFilter.body).some((item) => item.withdrawalId === pending.body.withdrawalId), "ops filter by risk level");
+    const removed = await ops(ctx.opsToken, `/risk/address-blacklist/${added.body.entry.entryId}/remove`, { reason: "e2e cleanup" });
+    assert.equal(removed.body.status, "removed");
+    const audit = await ops(ctx.opsToken, "/audit-logs/actions?action=risk.blacklist.add&limit=5");
+    if (audit.status === 200) {
+      assert.ok(items(audit.body).some((item) => item.targetId === `${config.demoNetwork}:${fresh}`), "blacklist add is audited");
+    }
+
+    // 4. New device: login with an unseen device id -> flagged + inbox notice; then revoke it.
+    const deviceId = `e2e_${randomBytes(8).toString("hex")}`;
+    const runtime = await fetchJson(`${TRADER_WEB}/api/config`);
+    const account = runtime.demo?.account ?? { email: DEMO_TRADER.email, password: DEMO_TRADER.password };
+    const newDevice = await gateway("/auth/sessions", { body: { ...account, deviceId } });
+    assert.equal(newDevice.status, 201, JSON.stringify(newDevice.body));
+    assert.equal(newDevice.body.device?.isNewDevice, true, "unseen device is flagged as new");
+    await waitFor("new-device notification", async () =>
+      items((await gateway("/notifications?eventType=security.new_device_login&limit=10", { token: ctx.token })).body).some(
+        (item) => item.payload?.deviceId === deviceId
+      ), 15_000);
+    const devices = await gateway("/auth/devices", { token: ctx.token });
+    assert.ok(items(devices.body).some((item) => item.deviceId === deviceId && item.flaggedNew), "device list shows the new device");
+    const history = await gateway("/auth/login-events?limit=5", { token: ctx.token });
+    assert.ok(items(history.body).some((item) => item.deviceId === deviceId && item.outcome === "success" && item.isNewDevice));
+    const opsDevices = await ops(ctx.opsToken, `/users/${DEMO_TRADER.userId}/devices`);
+    assert.ok(items(opsDevices.body).some((item) => item.deviceId === deviceId), "ops user detail lists devices");
+    assert.equal((await ops(ctx.opsToken, `/users/${DEMO_TRADER.userId}/login-events?limit=5`)).status, 200);
+    const revoked = await gateway(`/auth/devices/${deviceId}/revoke`, { token: ctx.token, body: {} });
+    assert.equal(revoked.status, 201, JSON.stringify(revoked.body));
+    assert.ok(revoked.body.revokedSessionCount >= 1);
+    assert.equal((await gateway("/auth/me", { token: newDevice.body.token })).status, 401, "revoked device session is dead");
+    assert.equal((await gateway("/auth/me", { token: ctx.token })).status, 200, "other devices stay signed in");
+
+    // 5. Failed-login lock on a throwaway account (default 5 failures / 5 minutes).
+    const email = `e2e-lock-${Date.now()}@example.com`;
+    const password = "E2eLockPass123!";
+    const registered = await gateway("/auth/register", { body: { email, password, displayName: "E2E Lock" } });
+    assert.equal(registered.status, 201, JSON.stringify(registered.body));
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      assert.equal((await gateway("/auth/sessions", { body: { email, password: "wrong-password" } })).status, 401);
+    }
+    const locked = await gateway("/auth/sessions", { body: { email, password } });
+    assert.equal(locked.status, 429, JSON.stringify(locked.body));
+    assert.match(JSON.stringify(locked.body), /LOGIN_TEMPORARILY_LOCKED/);
+
+    return "whitelisted low · mixer high (2 approvals) · blacklisted 403 + auto-rejected · sweep releases pending · new device notified + revoked · 5 failures lock 429";
   }
 };
 

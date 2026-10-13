@@ -14,9 +14,9 @@
 | 路由 | 页面 | 主要能力 |
 | --- | --- | --- |
 | `#/` | 运营总览 | 待审核提现（可直接批准 / 拒绝）、告警、结算统计、账本对账结果、模块状态、待投递通知 |
-| `#/withdrawals` | 提现审核 | 待审核队列（单笔 / 批量批准、拒绝）、全部提现筛选；大额提现显示「1/2 已批准」与批准人，同一运营不能批准两次；详情抽屉含双人复核进度、审核要点、用户余额、审计轨迹、托管广播、用户通知 |
+| `#/withdrawals` | 提现审核 | 待审核队列（单笔 / 批量批准、拒绝）、全部提现筛选（含 KYT 风险等级筛选与风险徽标列）；高风险提现无论金额都需双人复核；详情抽屉的「地址风险（KYT）」区列出分数与命中规则；大额提现显示「1/2 已批准」与批准人，同一运营不能批准两次；详情抽屉含双人复核进度、审核要点、用户余额、审计轨迹、托管广播、用户通知 |
 | `#/deposits` | 充值与链上 | 充值记录、indexer 待确认观察（确认数进度，单笔 / 批量重放、关闭） |
-| `#/users` | 用户与资产 | 用户搜索（含 KYC 等级列）、冻结 / 解冻、用户详情（KYC 等级 / 事件 / 手动调整、余额、委托、充提）；「KYC 审核」页签（批准 L1 / L2、拒绝）；全局余额；提现地址簿白名单 |
+| `#/users` | 用户与资产 | 用户搜索（含 KYC 等级列）、冻结 / 解冻、用户详情（KYC 等级 / 事件 / 手动调整、余额、委托、充提、设备与登录记录、退出设备）；「KYC 审核」页签（批准 L1 / L2、拒绝）；全局余额；提现地址簿白名单；「地址黑名单」页签（加入 / 移出必须填原因，`ops.risk.manage`，写审计；演示标签集） |
 | `#/trading` | 交易与结算 | 按市场查看订单（含止损单触发价与「待触发」状态、Post-Only / STP 标记和拒绝 / 过期原因）、成交、结算（失败结算可重试）；订单簿健康（DB 与撮合引擎对比、从 DB 重建引擎订单簿） |
 | `#/markets` | 市场管理 | 列出 `config/markets.json` 中的全部市场：当前状态 / 配置默认状态、步长、费率、参考价、运行时覆盖（原因 / 操作人 / 时间）；`暂停交易` / `恢复交易`（需 `ops.markets.manage`，写操作审计，经 risk-service 持久化） |
 | `#/trace` | 业务追踪 | 输入 userId / orderId / tradeId / depositId / withdrawalId / accountId / txHash（或自动识别），展示跨模块链路与命中对象；后台任意蓝色 ID 都可点击跳转到这里 |
@@ -73,6 +73,7 @@ pnpm -s ops:totp                              # 打印演示运营账户当前�
 - 总览：`GET /dashboard`、`GET /modules`、`GET /alerts`、`GET /business-trace`
 - 提现：`GET /withdrawals`、`GET /withdrawals/review-queue`、`GET /withdrawals/:id`（含审计与托管）、`POST /withdrawals/:id/approve|reject`、`POST /withdrawal-batches/approve|reject`
 - 用户与资产：`GET /users`、`POST /users/:id/freeze|unfreeze`、`GET /balances`、`GET /withdrawal-address-book`
+- 地址风险与登录安全（`src/http/ops-risk-security.controller.ts`）：`GET /risk/address-blacklist`、`POST /risk/address-blacklist`（`{ network, address, category, reason }`）、`POST /risk/address-blacklist/:entryId/remove`（`{ reason }`）、`GET /risk/address-labels`（`ops.risk.read` / `ops.risk.manage`，审计动作 `risk.blacklist.add|remove`）；`GET /users/:id/login-events`、`GET /users/:id/devices`（`ops.users.read`）、`POST /users/:id/devices/:deviceId/revoke`（`ops.users.freeze`，审计动作 `user.device.revoke`）；`GET /withdrawals` 与 `/withdrawals/review-queue` 支持 `riskLevel`
 - KYC：`GET /kyc/requests`、`POST /kyc/requests/:id/approve`（`{ tier, note }`）、`POST /kyc/requests/:id/reject`（`{ reason }`）、`GET /users/:id/kyc`、`POST /users/:id/kyc-tier`（`{ tier, reason }`）；写操作需要 `ops.users.manage`，审计动作 `user.kyc.approve|reject|set_tier`
 - 交易：`GET /spot/orders|trades|settlements`、`GET /spot/ops/overview|anomalies`（默认市场取 `config/markets.json` 的 `defaultMarket`）、`POST /spot/ops/replay-engine`
 - 市场：`GET /market-config`（配置中的市场 / 币种，供各页下拉框使用，页面不硬编码）、`GET /markets`（含 risk-service 实时状态；risk 不可用时回退为配置默认值并标记 `statusSource: "config"`）、`POST /markets/:market/status`（`{ status: "halted" | "listed", reason }`）

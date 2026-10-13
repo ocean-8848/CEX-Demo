@@ -86,7 +86,7 @@ flowchart TB
 | `trader-web` | 3013 | 无（会话放在 HttpOnly Cookie） | 用户侧交易前台。Node Web Host 提供 React SPA，并把 `/api/gateway/*` 代理到 `api-gateway`、`/api/market/*` 代理到 `market-data-service`、`/api/demo/*` 代理到 `demo-simulator`；`/api/realtime` 代理私有 WebSocket 并在服务端附加会话；CSRF double-submit。浏览器直连 `market-data-service` 的公共 WebSocket。 |
 | `ops-console` | 3006 | PostgreSQL `ops_action_audit_logs` | 运营后台（React + NestJS BFF）。登录（邮箱 + 密码 + TOTP）、提现审核与双人复核、KYC 审核、市场暂停/恢复、账本对账、恢复队列、故障实验室、操作审计。只通过 HTTP 调用各服务，不直接读别的服务的表。 |
 | `api-gateway` | 3007 | Redis（限流、幂等键） | 用户侧统一 REST 入口 `/api/v1/gateway/*` 与私有 WebSocket `/api/v1/gateway/realtime`。支持 Bearer 会话和 API Key + HMAC 两种认证，校验账户归属，下游调用 identity / wallet / ledger / order。每个响应带 `x-trace-id`（追踪开启时）。 |
-| `identity-service` | 3005 | PostgreSQL `identity_*`、`user_two_factor_profiles` | 用户与运营账号、密码与会话（`customer_web` / `ops_console` 两种 scope）、TOTP 2FA 与恢复码、RBAC（`ops_admin`、`ops_reviewer` 等 6 个角色）、API Key、KYC 等级（`unverified` / `L1` / `L2`）与审核、用户冻结。 |
+| `identity-service` | 3005 | PostgreSQL `identity_*`、`user_two_factor_profiles` | 用户与运营账号、密码与会话（`customer_web` / `ops_console` 两种 scope）、TOTP 2FA 与恢复码、RBAC（`ops_admin`、`ops_reviewer` 等 6 个角色）、API Key、KYC 等级（`unverified` / `L1` / `L2`）与审核、用户冻结、登录记录 / 设备 / 新设备提醒 / 登录失败锁定（`identity_login_events`、`identity_user_devices`）。 |
 
 ### 3.2 交易层
 
@@ -104,7 +104,7 @@ flowchart TB
 | --- | --- | --- | --- |
 | `ledger-service` | 3001 | PostgreSQL `accounts`、`balances`、`ledger_journals`、`ledger_entries`、`balance_locks`、`outbox_events` | 资金事实源。双分录记账（每笔 journal 借贷平衡、按 `idempotencyKey` 幂等）、冻结 / 解冻 / 消耗（消耗一定生成一笔 journal）、余额快照、对账与重放。每次资金变动在同一事务里写 outbox 事件。详见 [ledger-service-design.md](./ledger-service-design.md)。 |
 | `ledger-outbox-publisher` | 无 | 同上 | 常驻 worker（`ledger-service` 的 `publish-outbox` 脚本），把 `outbox_events` 投递到 Kafka `ledger.events`，失败退避重试，超过次数标记死信并尽力投递 `dead-letter.events`。 |
-| `wallet-service` | 3002 | PostgreSQL `wallet_addresses`、`deposits`、`withdrawals`、`withdrawal_address_book`、`withdrawal_audit_logs`、`wallet_notifications`；Redis | 充值地址分配（服务内生成地址）、充值单据与入账、提币申请 / 校验（白名单、2FA、KYC 限额、安全冷却期）/ 审核（大额双人复核）/ 广播 / 确认、站内通知。资金动作全部委托给 `ledger-service`。 |
+| `wallet-service` | 3002 | PostgreSQL `wallet_addresses`、`deposits`、`withdrawals`、`withdrawal_address_book`、`withdrawal_audit_logs`、`wallet_notifications`、`withdrawal_address_blacklist`；Redis | 充值地址分配（服务内生成地址）、充值单据与入账、提币申请 / 校验（简化 KYT 地址风险评分与黑名单、白名单、2FA、KYC 限额、安全冷却期）/ 审核（大额或高风险双人复核）/ 广播 / 确认、站内通知（含账户安全通知）。资金动作全部委托给 `ledger-service`。 |
 | `blockchain-indexer` | 3003 | PostgreSQL `blockchain_deposit_observations`、`blockchain_withdrawal_observations`、`blockchain_scan_cursors` | 记录链上观测事实（充值交易、提币交易的确认数和区块哈希），检测重组，达到确认阈值后调用 `wallet-service` 入账或确认提币。提供 `scan-evm` / `replay-evm` / `repair-backlog` 脚本对接真实 EVM RPC；演示环境中观测数据由 `demo-simulator` 推送。 |
 | `custody-adapter` | 3004 | PostgreSQL `custody_transfers`、`custody_transfer_attempts` | 托管供应商抽象：按网络路由 provider（默认 `mock-custody` → `mock-custody-backup` 故障切换，另有 `evm-hot-wallet`），广播、重试、状态回查、provider 健康检查与熔断。 |
 
@@ -156,7 +156,8 @@ flowchart TB
 | `settlement-service` | `order-service` | 回写 `settlementId`；`http` 传输模式下也从这里拉成交事件 |
 | `market-data-service` | `order-service` | 拉取订单（算深度）与成交 |
 | `wallet-service` | `ledger-service` | 充值入账、提币冻结 / 释放 / 消耗 |
-| `wallet-service` | `identity-service` | 校验 2FA、读 KYC 等级、安全变更冷却 |
+| `wallet-service` | `identity-service` | 校验 2FA、读 KYC 等级、安全变更冷却、（可选）新设备提现锁 |
+| `identity-service` | `wallet-service` | 新设备登录时写站内信 `security.new_device_login`（尽力而为，失败不影响登录） |
 | `wallet-service` | `custody-adapter` | `createTransfer` 广播提币 |
 | `blockchain-indexer` | `wallet-service` | `confirmDeposit`、`confirmWithdrawal` |
 | `ops-console` | identity / wallet / ledger / indexer / custody / order / settlement / risk / demo-simulator | 运营查询与处置 |
@@ -174,7 +175,7 @@ flowchart TB
 | 被调方 | 默认允许的调用方 |
 | --- | --- |
 | `identity-service` | api-gateway、wallet-service、ops-console、demo-scripts |
-| `wallet-service` | api-gateway、blockchain-indexer、ops-console、demo-scripts |
+| `wallet-service` | api-gateway、blockchain-indexer、identity-service、ops-console、demo-scripts |
 | `ledger-service` | api-gateway、wallet-service、order-service、settlement-service、risk-service、ops-console、demo-scripts |
 | `order-service` | api-gateway、settlement-service、market-data-service、ops-console、demo-scripts |
 | `settlement-service` | order-service、ops-console、demo-scripts |

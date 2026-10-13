@@ -16,11 +16,11 @@
 
 项目的目标是让学习者在一个可运行的系统里看到真实交易所常见的安全控制“长什么样、放在哪一层”：
 
-- 用户与运营人员的登录、会话、2FA、RBAC
+- 用户与运营人员的登录、会话、2FA、RBAC、登录记录、新设备提醒、登录失败锁定
 - 程序化交易的 API Key 签名、scope、防重放
 - 网关的限流、幂等、账户归属校验
 - 服务间请求的 HMAC 签名
-- 提现链路上的限额、KYC 分级、地址簿 / 白名单、冷却期、双人审批、审计日志
+- 提现链路上的限额、KYC 分级、地址簿 / 白名单、简化 KYT（地址风险评分与黑名单）、冷却期、双人审批、审计日志
 - 账本的借贷平衡、冻结 / 释放、幂等记账
 
 ### 1.2 明确不在保护范围内的东西
@@ -35,6 +35,8 @@
 | 基础设施 | `infra/local/docker-compose.yml` 使用默认账号密码（Postgres `web3/web3`），端口直接映射到宿主机，无 TLS |
 | 部署形态 | 单机、单进程、本地回环地址；不考虑多机房、高可用、WAF、CDN |
 | 真实身份核验 | KYC 只是一个分级状态机，证件号只做格式校验并脱敏存储，不接任何第三方核验 |
+| 地址风险情报 | KYT 只是规则评分：黑名单由运营维护（带 3 个虚构的演示种子），混币 / 高风险标签是代码里的虚构演示地址，不接任何链上分析供应商 |
+| 设备识别 | 设备 ID 是 trader-web 存在 localStorage 里的随机值，清除站点数据就会变成“新设备”；不是设备指纹 |
 
 一句话：这是一个跑在本机、用模拟链和测试资产的学习项目，不用于真实资金。
 
@@ -66,6 +68,10 @@
 - **客户自助 2FA**：开启、关闭、重新生成恢复码的接口只接受会话鉴权，API Key 无法关闭 2FA（`services/api-gateway/src/http/api-gateway.controller.ts`）。
 - **RBAC**（`domain/rbac.ts`）：6 个运营角色 `ops_admin / ops_reviewer / ops_finance_operator / ops_risk_operator / ops_platform_operator / ops_observer`，映射到细粒度权限（如 `ops.withdrawals.review`、`ops.ledger.execute`、`ops.users.freeze`）。未指定角色时默认 `ops_observer`（只读）。
 - **KYC 分级**（`domain/kyc.ts`）：`unverified → L1 → L2`，只能逐级申请、由运营审核；证件号脱敏后存储。
+- **登录记录**（`domain/login-security.ts`、`application/login-security-service.ts`）：每次密码登录（客户与运营）都写一条 `identity_login_events`：时间、IP、User-Agent、设备 ID、结果（`success / failure / locked`）与失败原因码，未注册的邮箱也会记录（不带 userId）。trader-web 在 localStorage 保存长期随机设备 ID 并随登录提交；没有设备 ID 的客户端（脚本）按 User-Agent 派生一个稳定 ID。用户在 trader-web「账户」页、运营在用户详情里可以看到登录记录和设备列表。
+- **新设备提醒**：账户已有其他设备时，第一次出现的设备会被标记为新设备（`identity_user_devices.flagged_new`），并通过内部 HMAC 调用 wallet-service 写一条站内信 `security.new_device_login`（失败不影响登录）。可选策略 `WITHDRAWAL_NEW_DEVICE_LOCK_SECONDS`（默认 0 关闭）在新设备登录后的 N 秒内拒绝提现（`WITHDRAWAL_NEW_DEVICE_LOCK`）。
+- **按设备吊销会话**：会话记录创建它的设备（`identity_ops_sessions.device_id`），用户或运营可以“退出该设备”，吊销该设备上的全部有效会话。
+- **登录失败锁定**：自上次成功登录起、`IDENTITY_LOGIN_FAILURE_WINDOW_SECONDS`（默认 900 秒）内累计 `IDENTITY_LOGIN_MAX_FAILURES`（默认 5）次密码 / 动态码 / 恢复码错误后，锁定 `IDENTITY_LOGIN_LOCK_SECONDS`（默认 300 秒），期间连正确密码也返回 `429 LOGIN_TEMPORARILY_LOCKED`；缺少动态码（需二次验证的提示）和动态码重复使用不计入；锁定检查在校验密码之前。设为 0 关闭。
 
 ### 2.3 客户入口（api-gateway）
 
@@ -120,7 +126,20 @@
 
 代码位置：`services/wallet-service/src/application/wallet-application-service.ts`、`src/domain/withdrawal-policy.ts`、`src/infrastructure/withdrawal-validation-rules.ts`。详见 [wallet-service README](../services/wallet-service/README.md)。
 
-提现申请的校验顺序大致为：资产 / 网络在 `config/markets.json` 中存在 → 安全冷却期 → 最小金额与手续费 → 白名单 → 单笔 / 日累计限额（含 KYC 分级）→ 2FA。动态码放在最后验证，避免被其他规则拒绝时白白消耗一次性动态码。
+提现申请的校验顺序大致为：资产 / 网络在 `config/markets.json` 中存在 → 地址格式 → KYT 地址风险评分（黑名单直接拦截）→ 安全冷却期 → 新设备提现锁（可选）→ 最小金额与手续费 → 白名单 → 单笔 / 日累计限额（含 KYC 分级）→ 2FA。动态码放在最后验证，避免被其他规则拒绝时白白消耗一次性动态码。
+
+**简化 KYT**（`src/domain/withdrawal-risk.ts`，纯函数，单测见 `src/__tests__/withdrawal-risk.test.ts`）。评分放在 wallet-service 而不是 risk-service：所需事实（地址簿、该用户的历史提现、黑名单）都是钱包自有数据，而且必须在冻结资金前同步判定，放进 risk-service 只会多一次同步网络调用并复制数据。
+
+| 规则 | 加分 | 说明 |
+| --- | --- | --- |
+| `BLACKLISTED_ADDRESS` | 直接 `blocked` | 地址在 `withdrawal_address_blacklist` 中且生效；请求返回 `403 WITHDRAWAL_ADDRESS_BLOCKED`，同时留下一条自动拒绝的提现记录（未冻结资金）并发站内信 |
+| `LABELLED_HIGH_RISK_ADDRESS` | +70 | 演示标签集中的混币 / 高风险 / 博彩地址（可用 `WITHDRAWAL_RISK_ADDRESS_LABELS` 追加） |
+| `WHITELISTED_ADDRESS` / `KNOWN_ADDRESS` | 0 | 已加白名单，或该用户曾成功提现到此地址；不再计算下面三条 |
+| `FIRST_TIME_ADDRESS` | +10 | 首次向该地址提现 |
+| `FIRST_TIME_LARGE_AMOUNT` | +40 | 首次地址且金额大于 `WITHDRAWAL_RISK_LARGE_AMOUNT_BY_ASSET`（默认 USDT 1000） |
+| `NEW_ADDRESS_COOLDOWN` | +30 | 地址簿条目创建未满 `WITHDRAWAL_RISK_NEW_ADDRESS_WINDOW_SECONDS`（默认 24 小时） |
+
+分数 ≥ 60 为 `high`、≥ 30 为 `medium`、其余为 `low`。分数、等级和原因列表在申请时写入 `withdrawals.risk_score / risk_level / risk_reasons`。`high` 无论金额都要求两名不同运营批准（审批策略带 `reason: "risk_high"`）。运营把地址加入黑名单时，wallet-service 会立即把发往该地址的待审核提现自动拒绝、解冻资金并通知用户；审批时也会再查一次黑名单。演示白名单地址 `0x1234…5678` 评分为 `low`。`WITHDRAWAL_RISK_ENABLED=false` 关闭评分。
 
 | 控制 | 规则 | 默认值 / 开关 |
 | --- | --- | --- |
@@ -131,12 +150,16 @@
 | 安全冷却期 | 新增提现地址或修改 2FA 后，在 `WITHDRAWAL_SECURITY_COOLDOWN_SECONDS` 内禁止提现 | 代码默认 86400 秒；`pnpm demo:up` 启动的演示栈传入 0 |
 | 双人审批 | 金额严格大于分资产阈值时需要两名不同运营批准；同一运营不能批两次；审批策略在申请时固化到记录里 | `USDT=5000, USDC=5000, ETH=2, BTC=0.1, SOL=50` |
 | 人工审核 | 所有提现申请都以 `requested / pending` 进入审核队列，审批人身份取自 `ops-console` 会话的 `userId` | 始终开启 |
+| KYT 地址风险 | 黑名单拦截、高风险强制双人复核、运营可按风险等级筛选 | 默认开启（`WITHDRAWAL_RISK_ENABLED`） |
+| 地址黑名单 | 运营在「用户与资产 → 地址黑名单」加入 / 移出，必须填原因，需要 `ops.risk.manage`，写操作审计；移出的记录保留操作人与原因 | 带 3 个演示种子 |
+| 新设备提现锁 | 新设备登录后 N 秒内禁止提现 | `WITHDRAWAL_NEW_DEVICE_LOCK_SECONDS=0`（关闭） |
 
 ### 2.8 审计与可追溯
 
 - `withdrawal_audit_logs`（`services/wallet-service/sql/006_add_withdrawal_audit_and_notifications.sql`）：记录提现 `requested / approved / rejected / broadcasted / confirmed`，含操作人、角色、`trace_id`、前后快照。
 - `ops_action_audit_logs`（`apps/ops-console/sql/001_init.sql`）：记录每个运营动作的操作人、角色、所用权限、目标、请求 / 响应、成功或失败；`ops-console` 中可按操作人、动作、目标检索。
-- identity 的 `identity_kyc_events` 记录 KYC 申请与审核过程。
+- identity 的 `identity_kyc_events` 记录 KYC 申请与审核过程；`identity_login_events` 记录每次登录尝试。
+- 黑名单的加入 / 移出写入 `ops_action_audit_logs`（`risk.blacklist.add / risk.blacklist.remove`），运营退出用户设备写 `user.device.revoke`；KYT 自动拒绝在 `withdrawal_audit_logs` 中以操作人 `system:kyt` 出现。
 - 服务链路接入 OpenTelemetry，可在 Jaeger 里按 trace 串起一次请求经过的服务。
 
 ### 2.9 托管与链上
@@ -153,12 +176,12 @@
 
 | 资产 | 威胁 | demo 中的现有缓解 | 真实 CEX 还会加什么 |
 | --- | --- | --- | --- |
-| 客户会话 | XSS / 恶意扩展窃取 token；CSRF 冒用会话 | HttpOnly + SameSite=Strict Cookie；double-submit CSRF；token 哈希存储、可吊销、冻结即失效 | CSP 与输入转义、设备绑定、新设备登录提醒、会话轮换、敏感操作 step-up |
-| 登录凭证 | 撞库、暴力破解 | PBKDF2 高迭代哈希；网关按 socket 对端 IP 限流（默认不信任 `X-Forwarded-For`）；可选 2FA | 登录失败锁定、验证码、风险评分、泄露密码库比对 |
+| 客户会话 | XSS / 恶意扩展窃取 token；CSRF 冒用会话 | HttpOnly + SameSite=Strict Cookie；double-submit CSRF；token 哈希存储、可吊销、冻结即失效；新设备登录站内提醒、按设备吊销会话 | CSP 与输入转义、设备绑定、会话轮换、敏感操作 step-up、新设备强制二次验证 |
+| 登录凭证 | 撞库、暴力破解 | PBKDF2 高迭代哈希；网关按 socket 对端 IP 限流（默认不信任 `X-Forwarded-For`）；可选 2FA；按账户的登录失败临时锁定；登录记录 | 验证码、风险评分、按 IP / 设备的信誉、泄露密码库比对 |
 | API Key | 泄露、重放、越权使用 | keyId + 加密 secret；nonce 防重放；5 分钟漂移窗口；`read/trade/withdraw` scope | IP 白名单、key 有效期、提现权限单独审批、异常调用告警 |
 | 2FA 种子 | 数据库泄露后可伪造动态码 | 动态码单次使用；恢复码哈希存储 | TOTP 种子加密存储或放入独立密钥服务；支持 WebAuthn / 硬件密钥 |
 | 运营会话与审批权 | 运营 token 被盗或内部人员作恶，批准恶意提现 | 运营强制 2FA；12 小时 TTL；RBAC 细粒度权限；大额双人审批；全量动作审计 | 审批时 step-up、硬件密钥、审批 IP / 设备绑定、批量审批分权、审计日志防篡改 |
-| 提现链路 | 账号被盗后快速提走资产 | 已开 2FA 必须带动态码；KYC 分级限额；安全冷却期；可选白名单 | 默认强制白名单与冷却期、地址风险筛查（制裁 / 混币）、行为风控、紧急全局暂停 |
+| 提现链路 | 账号被盗后快速提走资产；提往制裁 / 混币地址 | 已开 2FA 必须带动态码；KYC 分级限额；安全冷却期；可选白名单；简化 KYT（黑名单拦截、高风险双人复核）；可选新设备提现锁 | 默认强制白名单与冷却期、真实 KYT 情报与多跳溯源、行为风控、紧急全局暂停 |
 | 热钱包私钥 | 环境变量泄露、误把真实私钥 / RPC 配进来 | 默认走 mock provider；模拟链；无真实资产 | HSM / MPC / KMS 签名，冷热分离，热钱包余额上限，链上监控与对账 |
 | 账本 | 伪造记账、重复记账、绕过冻结 | 借贷平衡校验；幂等键；冻结 / 消耗状态校验；无直接改余额接口 | 定期账实对账、journal 不可变存储、独立对账系统与告警 |
 | 内部服务 | 内网横向移动后直接调用 ledger / wallet / custody / indexer 等接口 | HMAC 签名 + 30 秒时间窗 + 调用方允许列表（含 `custody-adapter`、`blockchain-indexer`）；全部服务默认回环监听 | mTLS 与每服务独立身份、按调用方最小权限、私网 ACL、密钥轮换 |
@@ -174,8 +197,8 @@
 1. **密钥托管**：移除 `custody-adapter` 从环境变量读私钥 / 助记词的路径，改用 HSM / MPC / KMS；冷热钱包分离，热钱包设余额上限。
 2. **服务身份**：把共享 HMAC 密钥升级为 mTLS 或每服务独立凭证，撮合 TCP 通道加认证；部署到多机时把各服务的 bind host 改为内网地址并配私网 ACL。
 3. **密钥与配置管理**：所有默认密钥（内部签名密钥、API Key 加密主密钥、数据库口令）进入密钥管理系统，可轮换；演示账号与固定 TOTP 种子不能出现在任何共享环境。
-4. **提现默认策略收紧**：默认强制 2FA、白名单和冷却期；审批时 step-up；引入地址风险筛查与紧急暂停开关。
-5. **账号安全**：登录失败锁定与验证码、设备管理、异常登录提醒；TOTP 种子加密存储；支持 WebAuthn。
+4. **提现默认策略收紧**：默认强制 2FA、白名单和冷却期；审批时 step-up；KYT 接入真实地址情报与制裁名单同步；紧急暂停开关。
+5. **账号安全**：验证码、按 IP 的登录限速、新设备强制二次验证、异常登录评分；TOTP 种子加密存储；支持 WebAuthn。
 6. **Web 安全头**：CSP、`X-Frame-Options`、HSTS；Cookie 默认 `Secure`；全站 HTTPS。
 7. **入口防护**：公共行情 WS 加连接与消息限流；私有 WS 去掉 query 参数认证；放在反向代理后时由代理覆盖（而不是追加）`X-Forwarded-For` 并开启 `GATEWAY_TRUST_PROXY`。
 8. **对账与监控**：链上余额、托管余额、账本余额三方对账，资金异常告警；审计日志写入不可篡改存储。

@@ -153,6 +153,36 @@ export class ApiGatewayController {
     return this.apiGatewayHttpService.regenerateRecoveryCodes(principal, body?.code);
   }
 
+  // Login history and device management: session-only, an API key cannot
+  // revoke the owner's browser sessions.
+  @SessionOnlyRoute()
+  @Get("/auth/login-events")
+  async listLoginEvents(
+    @CurrentGatewayAuth() principal: GatewayPrincipal,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string
+  ) {
+    return this.apiGatewayHttpService.listLoginEvents(principal, {
+      limit: parseOptionalNumber(limit),
+      offset: parseOptionalNumber(offset)
+    });
+  }
+
+  @SessionOnlyRoute()
+  @Get("/auth/devices")
+  async listDevices(@CurrentGatewayAuth() principal: GatewayPrincipal) {
+    return this.apiGatewayHttpService.listDevices(principal);
+  }
+
+  @SessionOnlyRoute()
+  @Post("/auth/devices/:deviceId/revoke")
+  async revokeDevice(
+    @CurrentGatewayAuth() principal: GatewayPrincipal,
+    @Param("deviceId") deviceId: string
+  ) {
+    return this.apiGatewayHttpService.revokeDevice(principal, deviceId);
+  }
+
   // M4-4 KYC tier (demo data only).
   @SessionOnlyRoute()
   @Get("/auth/kyc")

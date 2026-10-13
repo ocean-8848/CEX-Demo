@@ -29,7 +29,11 @@ export class WalletError extends Error {
       | "NOTIFICATION_NOT_FOUND"
       | "WITHDRAWAL_SECURITY_COOLDOWN"
       | "WITHDRAWAL_SAME_APPROVER"
-      | "WITHDRAWAL_APPROVER_REQUIRED",
+      | "WITHDRAWAL_APPROVER_REQUIRED"
+      | "WITHDRAWAL_ADDRESS_BLOCKED"
+      | "WITHDRAWAL_NEW_DEVICE_LOCK"
+      | "BLACKLIST_ENTRY_NOT_FOUND"
+      | "INVALID_BLACKLIST_ENTRY",
     message: string
   ) {
     super(message);

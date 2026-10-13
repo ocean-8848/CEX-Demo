@@ -29,6 +29,8 @@ import {
 import { useOpsAction, useOpsQuery } from "../state/hooks.js";
 import { useSession } from "../state/session.js";
 import { AssetOptions } from "../components/market-options.js";
+import { AddressBlacklistTab } from "./address-blacklist-tab.js";
+import { UserLoginSecuritySection } from "./user-login-security-section.js";
 
 const PAGE_SIZE = 20;
 
@@ -43,7 +45,7 @@ interface AddressBookEntry {
 }
 
 export function UsersPage(props: { initialUserId?: string }) {
-  const [tab, setTab] = useState<"users" | "kyc" | "balances" | "addresses">("users");
+  const [tab, setTab] = useState<"users" | "kyc" | "balances" | "addresses" | "blacklist">("users");
   return (
     <div className="page">
       <PageHeader title="用户与资产" subtitle="身份来自 identity-service，余额来自 ledger-service 账本" />
@@ -55,13 +57,15 @@ export function UsersPage(props: { initialUserId?: string }) {
           { value: "users", label: "用户" },
           { value: "kyc", label: "KYC 审核" },
           { value: "balances", label: "余额" },
-          { value: "addresses", label: "提现地址簿" }
+          { value: "addresses", label: "提现地址簿" },
+          { value: "blacklist", label: "地址黑名单" }
         ]}
       />
       {tab === "users" ? <UsersTab initialUserId={props.initialUserId} /> : null}
       {tab === "kyc" ? <KycTab /> : null}
       {tab === "balances" ? <BalancesTab /> : null}
       {tab === "addresses" ? <AddressBookTab /> : null}
+      {tab === "blacklist" ? <AddressBlacklistTab /> : null}
     </div>
   );
 }
@@ -203,6 +207,8 @@ function UserDrawer(props: { userId: string | undefined; onClose: () => void; on
               {record.userType !== "ops" ? (
                 <UserKycSection userId={record.userId} onChanged={() => { user.reload(); props.onChanged(); }} />
               ) : null}
+
+              <UserLoginSecuritySection userId={record.userId} />
 
               <section>
                 <h4>资产（账本）</h4>

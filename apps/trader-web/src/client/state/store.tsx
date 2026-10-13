@@ -22,6 +22,7 @@ import {
   takeLastTraceId,
   type ApiClient
 } from "../lib/api.js";
+import { getDeviceId } from "../lib/device.js";
 import { fetchTradeJournals, type TradeJournalView } from "../lib/journals.js";
 import { countNewUnread, keepReadMarkers } from "../lib/notifications.js";
 import { explainMatch, type MatchExplanation } from "../lib/match-explain.js";
@@ -53,6 +54,7 @@ import type {
   PrivateChannel,
   PrivateRealtimeMessage,
   PublicRealtimeMessage,
+  SessionDevice,
   SessionInfo,
   StpMode,
   TimeInForce,
@@ -634,15 +636,22 @@ function buildActions(
 
     async login(input: { email: string; password: string; twoFactorCode?: string }) {
       learn(learnEvent({ service: "identity-service", title: "POST /api/session → /auth/sessions", detail: "校验密码（以及可选的 TOTP 二次验证码）签发 Session Token；trader-web 的 Web Host 把它放进 HttpOnly Cookie，页面脚本读不到。" }));
-      const result = await fetchJson<SessionInfo>("/api/session", {
+      const result = await fetchJson<SessionInfo & { device?: SessionDevice }>("/api/session", {
         method: "POST",
-        body: { ...input, twoFactorCode: input.twoFactorCode || undefined }
+        body: { ...input, twoFactorCode: input.twoFactorCode || undefined, deviceId: getDeviceId() }
       });
+      if (result.device?.isNewDevice) {
+        learn(learnEvent({ service: "identity-service", title: "新设备登录", detail: `identity-service 第一次见到设备 ${result.device.deviceLabel}，记录登录事件并通过 wallet-service 站内信提醒；可在账户页「设备管理」退出该设备。` }));
+      }
       writeStorage(SIGNED_IN_KEY, "1");
       writeStorage(SEQUENCE_KEY, null);
       dispatch({ type: "sequence", sequence: 0 });
       dispatch({ type: "loggedIn", token: COOKIE_SESSION, session: result });
-      toast("positive", `欢迎回来，${result.displayName ?? result.email ?? ""}`);
+      toast(
+        "positive",
+        `欢迎回来，${result.displayName ?? result.email ?? ""}`,
+        result.device?.isNewDevice ? "检测到新设备登录，已发送站内通知" : undefined
+      );
       await refreshAccount(COOKIE_SESSION);
     },
 
@@ -850,7 +859,7 @@ function buildActions(
         learnEvent({
           service: "wallet-service",
           title: `提现申请 ${input.amount} ${input.assetCode}`,
-          detail: "校验白名单、限额和 2FA；通过后在账本中冻结 金额+手续费，进入人工审核队列。"
+          detail: "先做 KYT 地址风险评分（黑名单直接拦截、混币等高风险需双人复核），再校验白名单、限额和 2FA；通过后在账本中冻结 金额+手续费，进入人工审核队列。"
         })
       );
       const withdrawal = await api().gateway<WithdrawalRecord>("/withdrawals/request", {

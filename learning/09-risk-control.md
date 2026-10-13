@@ -350,14 +350,14 @@ flowchart LR
 | 交易前：参考价 | ⚠️ 来自环境变量 `RISK_REFERENCE_PRICE_*`，不是实时行情 | `services/risk-service/README.md` |
 | 限频 | ✅ 已实现。API 网关用**固定窗口计数器**：窗口 60 秒，匿名 30 次，已认证 120 次；超限返回 429 | `services/api-gateway/src/infrastructure/redis-rate-limiter.ts` |
 | 资金：提币审核 | ✅ 已有状态 `under_review` 和人工审核动作 | `services/wallet-service/src/domain/types.ts` |
-| 资金：限额、黑名单、KYT | ⚠️ 单笔 / 日累计限额和 KYC 分级限额已实现；地址黑名单、KYT 风险评分、按地址风险分流人工审核本仓库未实现 | `services/wallet-service/src/domain/withdrawal-policy.ts`；`docs/security.md` 第 2.7 节 |
+| 资金：限额、黑名单、KYT | ✅ 单笔 / 日累计限额和 KYC 分级限额；简化 KYT：规则评分（黑名单 → 拦截，混币 / 高风险标签 +70，首次地址 +10、首次且大额 +40、地址簿新地址 +30，白名单 / 已用过的地址不加分），≥60 高风险强制双人复核；运营后台「用户与资产 → 地址黑名单」维护黑名单（带原因、审计、`ops.risk.manage` 权限），新加入的地址会自动拒绝待审核提现并解冻资金。没有接入真实 KYT 供应商，地址标签是演示数据 | `services/wallet-service/src/domain/withdrawal-risk.ts`、`withdrawal-policy.ts`；`docs/security.md` 第 2.7 节 |
 | 交易中：STP、刷量监察 | ❌ 未实现 | — |
-| 账户：设备与盗号检测 | ❌ 本仓库未实现设备指纹、新设备二次校验和异常登录检测；现有防线是 2FA、会话吊销和账户冻结 | `docs/security.md` 第 2.2、3 节 |
+| 账户：设备与盗号检测 | ⚠️ 已实现登录记录、新设备识别与站内提醒、按设备吊销会话、登录失败临时锁定、可选的新设备提现锁（默认关闭）；没有设备指纹、IP 信誉和异常登录评分 | `services/identity-service/src/application/login-security-service.ts`；`docs/security.md` 第 2.2 节 |
 
 如果要补齐，建议按以下顺序：
 
 1. 把参考价切换到 market-data-service 的实时价格，并加"参考价过期即暂停"。
-2. 在 wallet-service 提币入口加一个风控调用：硬规则（冷却期、黑名单）→ 评分 → 决定 `requested` 还是 `under_review`。
+2. 把 wallet-service 内的规则评分接到真实 KYT 数据源（地址标签、资金来源多跳暴露），并支持影子模式试运行新规则。
 3. 把固定窗口限频改成令牌桶或滑动窗口。固定窗口在窗口边界允许 2 倍突发。
 4. 在撮合引擎加 STP 参数。
 5. 新增一个异步"市场监察"消费者，订阅成交事件。
