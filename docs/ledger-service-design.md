@@ -104,7 +104,7 @@
 1. 每条分录金额必须大于 0（`INVALID_AMOUNT`）
 2. **按资产**借贷平衡：每个资产的借方合计等于贷方合计（`JOURNAL_NOT_BALANCED`）。一个 journal 可以包含多个资产，但每个资产各自平衡
 3. 所有账户必须已存在（`ACCOUNT_NOT_FOUND`）
-4. 同一 `idempotencyKey` 已有 journal 时直接返回已有 journal，不重复记账
+4. 同一 `idempotencyKey` 已有 journal 时：内容一致则直接返回已有 journal，不重复记账；内容不同返回 `409 DUPLICATE_IDEMPOTENCY_KEY`（细节见第 8 节“需要了解的边界”）
 5. 记账方向对余额的影响：`credit` 增加 `available`，`debit` 减少 `available`。除 `opening_balance` 账户外，借记不能让 `available` 变负（`INSUFFICIENT_AVAILABLE_BALANCE`）
 6. journal、分录、余额更新和一条 `ledger.journal_posted` outbox 事件在同一个数据库事务中提交
 
@@ -178,6 +178,8 @@ journal 只会被追加，不会被修改或删除；纠错需要再记一笔反
 | `release` / `consume` 金额超过剩余 | `409 INVALID_BALANCE_LOCK_STATE` |
 | 对已 `released` 的冻结 `consume` | `409 INVALID_BALANCE_LOCK_STATE` |
 | `consume` 缺少 `settlementAccountId` | `400 SETTLEMENT_ACCOUNT_REQUIRED` |
+| 同一 `idempotencyKey` 重复 `POST /journals`，内容一致（含并发） | 返回原 journal |
+| 同一 `idempotencyKey` 重复 `POST /journals`，内容不同 | `409 DUPLICATE_IDEMPOTENCY_KEY` |
 
 ## 7. 典型资金流
 
@@ -256,7 +258,7 @@ settlement-service 对一笔成交（价格 `p`、数量 `q`、quote 金额 `p*q
 
 需要了解的边界：
 
-- `postJournal` 先查幂等键、后加锁。两个携带相同 `idempotencyKey` 的请求同时到达时，后到者会在插入 journal 时撞上 `unique (idempotency_key)` 并整体回滚、返回 500；重试即可拿到已存在的 journal。`DUPLICATE_IDEMPOTENCY_KEY` 错误码已定义但当前没有代码抛出
+- `postJournal` 的幂等键处理（`src/application/journal-idempotency.ts`）：事务开始先查一次幂等键，拿到余额行锁后再查一次（同键请求若触及相同余额，此时先到者已提交）；分录互不相交时由 `unique (idempotency_key)` 兜底，Postgres 仓储把这个唯一冲突转换成 `DuplicateJournalIdempotencyKeyError`，事务回滚后在事务外重读胜出的 journal。三条路径最终都比较请求“指纹”（`businessType`、`businessId` 与分录集合，分录顺序和金额写法不限，`traceId` / `description` 不参与）：一致则返回原 journal，不一致返回 409 `DUPLICATE_IDEMPOTENCY_KEY`，不会出现 500。`ledger-postgres-concurrency.test.ts` 覆盖了同余额并发重放与分录不相交时的唯一冲突两种情况
 - 内存仓储没有事务和行锁（`lockBalances` 为空实现，`withTransaction` 直接执行），中途失败不会回滚，只适合单测和单进程演示
 - `/ops/*` 接口与运维脚本只支持 Postgres 模式
 

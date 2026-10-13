@@ -21,6 +21,7 @@ import {
 import type { GatewayPrincipal } from "../domain/types.js";
 import { API_GATEWAY_IDEMPOTENT_ROUTE_KEY } from "./api-gateway-idempotency.decorator.js";
 import { ApiGatewayHttpService } from "./api-gateway-http.service.js";
+import { resolveClientIp } from "./client-ip.js";
 
 @Injectable()
 export class ApiGatewayIdempotencyInterceptor implements NestInterceptor {
@@ -63,7 +64,7 @@ export class ApiGatewayIdempotencyInterceptor implements NestInterceptor {
     return from(
       this.apiGatewayHttpService.beginIdempotentRequest({
         principal: request.gatewayAuth,
-        ipAddress: resolveIpAddress(request.headers, request.ip),
+        ipAddress: resolveClientIp(request),
         method: request.method,
         url: request.originalUrl,
         rawBody: request.rawBody,
@@ -92,7 +93,7 @@ export class ApiGatewayIdempotencyInterceptor implements NestInterceptor {
             from(
               this.apiGatewayHttpService.completeIdempotentRequest({
                 principal: request.gatewayAuth,
-                ipAddress: resolveIpAddress(request.headers, request.ip),
+                ipAddress: resolveClientIp(request),
                 method: request.method,
                 url: request.originalUrl,
                 rawBody: request.rawBody,
@@ -106,7 +107,7 @@ export class ApiGatewayIdempotencyInterceptor implements NestInterceptor {
             from(
               this.apiGatewayHttpService.abortIdempotentRequest({
                 principal: request.gatewayAuth,
-                ipAddress: resolveIpAddress(request.headers, request.ip),
+                ipAddress: resolveClientIp(request),
                 method: request.method,
                 url: request.originalUrl,
                 rawBody: request.rawBody,
@@ -128,18 +129,3 @@ function readHeader(
   return Array.isArray(value) ? value[0] : value;
 }
 
-function resolveIpAddress(
-  headers: Record<string, string | string[] | undefined>,
-  fallback: string | undefined
-): string {
-  const forwarded = readHeader(headers, "x-forwarded-for");
-  if (forwarded) {
-    const [first] = forwarded.split(",");
-    const trimmed = first?.trim();
-    if (trimmed) {
-      return trimmed;
-    }
-  }
-
-  return fallback ?? "0.0.0.0";
-}

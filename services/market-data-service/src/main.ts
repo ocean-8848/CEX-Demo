@@ -13,10 +13,11 @@ async function bootstrap(): Promise<void> {
   realtimeServer.attach(app.getHttpServer());
 
   const port = Number(process.env.PORT ?? "3012");
+  const host = process.env.MARKET_DATA_BIND_HOST ?? "127.0.0.1";
   app.enableShutdownHooks();
-  await app.listen(port);
+  await app.listen(port, host);
   Logger.log(
-    `market-data-service listening on http://127.0.0.1:${port}`,
+    `market-data-service listening on http://${host}:${port}`,
     "MarketDataBootstrap"
   );
 

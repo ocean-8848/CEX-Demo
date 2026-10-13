@@ -146,13 +146,19 @@ export class OrderApplicationService {
 
     await this.repository.saveOrder(order);
 
-    await this.ledgerClient.freezeBalance({
-      accountId: command.accountId,
-      assetCode: riskDecision.lockAssetCode,
-      amount: riskDecision.lockAmount,
-      referenceType: "spot_order",
-      referenceId: orderId
-    });
+    try {
+      await this.ledgerClient.freezeBalance({
+        accountId: command.accountId,
+        assetCode: riskDecision.lockAssetCode,
+        amount: riskDecision.lockAmount,
+        referenceType: "spot_order",
+        referenceId: orderId
+      });
+    } catch (error) {
+      // The order row already exists; never leave it stuck in pending_risk.
+      await this.rejectBeforeMatching(order, ORDER_FREEZE_FAILED, error);
+      throw buildPreMatchingError(order, ORDER_FREEZE_FAILED, error);
+    }
 
     let compensationRequired = false;
 
@@ -222,25 +228,51 @@ export class OrderApplicationService {
         await this.compensateByReplayingBook(order.market);
       }
 
+      await this.rejectBeforeMatching(order, null, error);
+
+      throw error;
+    }
+  }
+
+  /**
+   * Moves an order that never reached a durable matching outcome to the terminal
+   * `rejected` state: best-effort release of whatever was frozen for it, persist
+   * the rejection with a reason code and publish `order.rejected`. A failing
+   * release does not keep the order open; the leftover lock is visible on the
+   * ledger (reference spot_order/<orderId>) and the reason says so.
+   */
+  private async rejectBeforeMatching(
+    order: SpotOrderRecord,
+    reasonCode: string | null,
+    error: unknown
+  ): Promise<SpotOrderRecord> {
+    let releaseNote = "";
+    try {
       await this.ledgerClient.releaseBalance({
         accountId: order.accountId,
         assetCode: order.lockAssetCode,
         referenceType: "spot_order",
         referenceId: order.orderId
       });
-
-      const rejectedOrder: SpotOrderRecord = {
-        ...order,
-        status: "rejected",
-        restingQuantity: "0",
-        rejectedReason: readErrorMessage(error),
-        updatedAt: this.now().toISOString()
-      };
-      await this.repository.saveOrder(rejectedOrder);
-      await this.publishOrderEvent("order.rejected", rejectedOrder);
-
-      throw error;
+    } catch (releaseError) {
+      // A freeze that failed usually left no lock (BALANCE_LOCK_NOT_FOUND), so
+      // only surface release failures for orders that did freeze funds.
+      if (reasonCode !== ORDER_FREEZE_FAILED) {
+        releaseNote = ` (lock release failed: ${readErrorMessage(releaseError)})`;
+      }
     }
+
+    const message = readErrorMessage(error);
+    const rejectedOrder: SpotOrderRecord = {
+      ...order,
+      status: "rejected",
+      restingQuantity: "0",
+      rejectedReason: `${reasonCode ? `${reasonCode}: ` : ""}${message}${releaseNote}`,
+      updatedAt: this.now().toISOString()
+    };
+    await this.repository.saveOrder(rejectedOrder);
+    await this.publishOrderEvent("order.rejected", rejectedOrder);
+    return rejectedOrder;
   }
 
   async cancelOrder(command: CancelSpotOrderCommand): Promise<SpotOrderRecord> {
@@ -1266,6 +1298,25 @@ export class OrderApplicationService {
 
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown order error";
+}
+
+/** Reason code stored on orders rejected because the ledger freeze failed. */
+export const ORDER_FREEZE_FAILED = "ORDER_FREEZE_FAILED";
+
+function buildPreMatchingError(
+  order: SpotOrderRecord,
+  code: string,
+  error: unknown
+): OrderServiceError {
+  // Keep upstream 4xx (e.g. insufficient balance) as a client error; anything
+  // else means a dependency failed.
+  const upstreamStatus = error instanceof OrderServiceError ? error.statusCode : 0;
+  const statusCode = upstreamStatus >= 400 && upstreamStatus < 500 ? upstreamStatus : 502;
+  return new OrderServiceError(
+    code,
+    statusCode,
+    `Order ${order.orderId} rejected: balance freeze failed: ${readErrorMessage(error)}`
+  );
 }
 
 function createStableUuid(value: string): string {

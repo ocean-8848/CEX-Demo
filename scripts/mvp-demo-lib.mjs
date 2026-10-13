@@ -621,7 +621,9 @@ export async function ensureBalanceFloor(
     body: JSON.stringify({
       businessType: businessPrefix,
       businessId,
-      idempotencyKey: businessId,
+      // Each top-up moves a different amount; the ledger answers a reused key
+      // with a different payload with 409 DUPLICATE_IDEMPOTENCY_KEY.
+      idempotencyKey: `${businessId}:${now}`,
       traceId: `${businessPrefix}:${accountId}:${assetCode}`,
       description: `Seed ${assetCode} for ${accountId}`,
       entries: [

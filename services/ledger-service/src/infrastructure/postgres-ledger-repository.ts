@@ -1,7 +1,7 @@
 import type { AssetCode } from "@web3-cex/domain";
 import type { Pool, PoolClient } from "pg";
 
-import { LedgerError } from "../domain/errors.js";
+import { DuplicateJournalIdempotencyKeyError, LedgerError } from "../domain/errors.js";
 import { addAmounts } from "../domain/money.js";
 import type { LedgerRepository } from "../domain/repository.js";
 import type {
@@ -234,20 +234,27 @@ export class PostgresLedgerRepository implements LedgerRepository {
   }
 
   async saveJournal(journal: LedgerJournal): Promise<void> {
-    await this.db.query(
-      `insert into ledger_journals
-       (journal_id, business_type, business_id, idempotency_key, trace_id, description, created_at)
-       values ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        journal.journalId,
-        journal.businessType,
-        journal.businessId,
-        journal.idempotencyKey,
-        journal.traceId,
-        journal.description ?? null,
-        journal.createdAt
-      ]
-    );
+    try {
+      await this.db.query(
+        `insert into ledger_journals
+         (journal_id, business_type, business_id, idempotency_key, trace_id, description, created_at)
+         values ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          journal.journalId,
+          journal.businessType,
+          journal.businessId,
+          journal.idempotencyKey,
+          journal.traceId,
+          journal.description ?? null,
+          journal.createdAt
+        ]
+      );
+    } catch (error) {
+      if (isIdempotencyKeyUniqueViolation(error)) {
+        throw new DuplicateJournalIdempotencyKeyError(journal.idempotencyKey);
+      }
+      throw error;
+    }
 
     for (const entry of journal.entries) {
       await this.insertJournalEntry(journal.journalId, entry);
@@ -729,6 +736,22 @@ export class PostgresLedgerRepository implements LedgerRepository {
       entries: entriesResult.rows.map(mapJournalEntry)
     };
   }
+}
+
+/** unique_violation (23505) on ledger_journals.idempotency_key. */
+function isIdempotencyKeyUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const { code, constraint, detail } = error as {
+    code?: string;
+    constraint?: string;
+    detail?: string;
+  };
+  return (
+    code === "23505" &&
+    (constraint?.includes("idempotency_key") === true || detail?.includes("idempotency_key") === true)
+  );
 }
 
 function mapAccount(row: AccountRow | undefined): LedgerAccount {

@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   UseFilters,
   UseGuards,
   UseInterceptors
@@ -26,6 +27,7 @@ import { ApiGatewayHttpService } from "./api-gateway-http.service.js";
 import { GatewayIdempotentRoute } from "./api-gateway-idempotency.decorator.js";
 import { ApiGatewayIdempotencyInterceptor } from "./api-gateway-idempotency.interceptor.js";
 import { ApiGatewayRateLimitGuard } from "./api-gateway-rate-limit.guard.js";
+import { type ClientIpRequest, resolveSessionIp } from "./client-ip.js";
 import type {
   CreateApiKeyRequestDto,
   CreateCustomerSessionRequestDto,
@@ -65,13 +67,13 @@ export class ApiGatewayController {
   @Post("/auth/sessions")
   async createCustomerSession(
     @Body() body: CreateCustomerSessionRequestDto,
-    @Headers("user-agent") userAgent?: string,
-    @Headers("x-forwarded-for") forwardedFor?: string
+    @Req() request: ClientIpRequest,
+    @Headers("user-agent") userAgent?: string
   ) {
     return this.apiGatewayHttpService.createCustomerSession({
       ...body,
       userAgent,
-      ipAddress: parseForwardedFor(forwardedFor)
+      ipAddress: resolveSessionIp(request)
     });
   }
 
@@ -475,12 +477,3 @@ function readBearerToken(authorization: string | undefined): string {
   return authorization.slice("Bearer ".length).trim();
 }
 
-function parseForwardedFor(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const [first] = value.split(",");
-  const trimmed = first?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : undefined;
-}

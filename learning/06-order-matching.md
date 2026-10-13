@@ -404,7 +404,7 @@ sequenceDiagram
 | 数值 | `f64` + `0.00000001` 容差比较 | 生产级用整数 tick / step |
 | 恢复 | `order-service` 的 `POST /api/v1/orders/ops/replay-engine` 从数据库读出挂单，用 `seed` 重建订单簿 | 没有定序器和事件日志，重建依赖数据库快照，不是逐条重放 |
 | 精度校验 | `risk-service` 校验最小数量、价格 step、数量 step、价格偏离 | 与币安 filters 思路一致 |
-| 订单状态 | `order-service`：`pending_risk` → `accepted` / `partially_filled` → `filled` / `cancelled` / `rejected` | 多了 `pending_risk`、`recovery_pending` 等编排状态 |
+| 订单状态 | `order-service`：`pending_risk` → `accepted` / `partially_filled` → `filled` / `cancelled` / `rejected` | 多了 `pending_risk`、`recovery_pending` 等编排状态；`pending_risk` 只在一次下单请求内存在，冻结失败或撮合提交失败都会收敛到 `rejected`（冻结失败原因为 `ORDER_FREEZE_FAILED`） |
 
 相关文件：
 

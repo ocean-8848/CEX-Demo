@@ -47,6 +47,7 @@
 - 异常处理:
   - 若撮合或结算失败且可恢复，会把订单推进到 `recovery_pending` 并写入持久化 recovery queue
   - 若撮合或结算失败且不可恢复，会释放 taker 锁定资金并把订单标记为 `rejected`
+  - 若落单后 ledger 冻结失败，订单直接标记为 `rejected`（`rejectedReason` 以 `ORDER_FREEZE_FAILED:` 开头），尽力释放可能已部分写入的冻结，发布 `order.rejected`，并向调用方返回 `ORDER_FREEZE_FAILED`（上游 4xx 保留状态码，否则 502）；订单不会停留在 `pending_risk`
   - 可通过 `replay-engine` 重建指定市场订单簿
   - 可通过 `anomalies` 检测 DB 与撮合引擎快照不一致
 

@@ -43,6 +43,7 @@ import {
 
 const config = loadDemoConfig(process.env);
 const PORT = Number(process.env.DEMO_SIMULATOR_PORT ?? "3014");
+const HOST = process.env.DEMO_SIMULATOR_BIND_HOST ?? "127.0.0.1";
 const MAKER_INTERVAL_MS = Number(process.env.DEMO_MAKER_INTERVAL_MS ?? "2500");
 const BLOCK_MS = Number(process.env.DEMO_CHAIN_BLOCK_MS ?? "1500");
 const REQUIRED_CONFIRMATIONS = Number(process.env.DEMO_CHAIN_REQUIRED_CONFIRMATIONS ?? "12");
@@ -996,9 +997,9 @@ if (MAKERS_ENABLED) {
   timers.push(schedule(makerTick, MAKER_INTERVAL_MS));
 }
 
-server.listen(PORT, "127.0.0.1", () => {
+server.listen(PORT, HOST, () => {
   console.log(
-    `demo-simulator listening on http://127.0.0.1:${PORT} (block ${BLOCK_MS}ms, makers ${MAKERS_ENABLED ? "on" : "off"})`
+    `demo-simulator listening on http://${HOST}:${PORT} (block ${BLOCK_MS}ms, makers ${MAKERS_ENABLED ? "on" : "off"})`
   );
 });
 

@@ -3,7 +3,7 @@
 //
 //   node ./scripts/verify-feature-e2e.mjs [section...]
 //
-// Sections: apikey, websocket, fees, sol, notifications, security, lab.
+// Sections: apikey, websocket, fees, sol, notifications, security, lab, hardening.
 // Without arguments all sections run. The demo trader is restored afterwards
 // (2FA disabled, faults recovered); KYC tier and balances change, which
 // `pnpm demo:prepare` resets.
@@ -12,6 +12,7 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 
 import {
+  DEMO_OPENING_BALANCE_ACCOUNT_ID,
   DEMO_OPS,
   DEMO_OPS_REVIEWER,
   DEMO_TRADER,
@@ -391,6 +392,69 @@ const sections = {
 
     assert.equal((await ops(t, "/lab/recover-all", {})).status, 201);
     return "settlement pause/resume · custody failover · reorg ack · engine reset + self-heal";
+  },
+
+  /** Hardening: internal auth on custody/indexer, loopback binding, ledger key races, XFF trust. */
+  async hardening() {
+    const custody = process.env.DEMO_CUSTODY_URL ?? "http://127.0.0.1:3004";
+    for (const url of [`${custody}/api/v1/custody/providers/health`, `${config.indexerBaseUrl}/api/v1/indexer/ops/overview`]) {
+      assert.equal((await http(url)).status, 401, `unsigned ${url} is rejected`);
+      await fetchJson(url); // signed by mvp-demo-lib (caller demo-scripts)
+    }
+
+    // Edge and internal services listen on loopback only (default bind host).
+    const { networkInterfaces } = await import("node:os");
+    const { createConnection } = await import("node:net");
+    const lanAddress = Object.values(networkInterfaces()).flat().find((item) => item && item.family === "IPv4" && !item.internal)?.address;
+    let bindDetail = "no LAN address, bind check skipped";
+    if (lanAddress) {
+      for (const port of [3003, 3004, 3006, 3007, 3012, 3013]) {
+        const reachable = await new Promise((resolve) => {
+          const socket = createConnection({ host: lanAddress, port });
+          const done = (value) => { socket.destroy(); resolve(value); };
+          socket.setTimeout(1_000, () => done(false));
+          socket.once("connect", () => done(true));
+          socket.once("error", () => done(false));
+        });
+        assert.equal(reachable, false, `port ${port} must not listen on ${lanAddress}`);
+      }
+      bindDetail = `loopback-only on ${lanAddress}`;
+    }
+
+    // Same idempotency key: identical concurrent posts replay one journal; a
+    // different payload is a 409, never a 500.
+    const key = `e2e-hardening:${randomUUID()}`;
+    const journal = (amount) => ({
+      method: "POST",
+      body: JSON.stringify({
+        businessType: "e2e_hardening",
+        businessId: key,
+        idempotencyKey: key,
+        traceId: key,
+        entries: [
+          { accountId: DEMO_OPENING_BALANCE_ACCOUNT_ID, assetCode: "USDT", direction: "debit", amount, referenceType: "e2e_hardening", referenceId: key },
+          { accountId: DEMO_OPENING_BALANCE_ACCOUNT_ID, assetCode: "USDT", direction: "credit", amount, referenceType: "e2e_hardening", referenceId: key }
+        ]
+      })
+    });
+    const journals = await Promise.all([1, 2, 3].map(() => fetchJson(`${config.ledgerBaseUrl}/api/v1/ledger/journals`, journal("1"))));
+    assert.equal(new Set(journals.map((item) => item.journalId)).size, 1, "concurrent identical journals replay one result");
+    const conflict = await fetchJson(`${config.ledgerBaseUrl}/api/v1/ledger/journals`, journal("2")).catch((error) => error);
+    assert.equal(conflict.httpStatus, 409, `different payload: ${conflict.message}`);
+
+    // Without GATEWAY_TRUST_PROXY a spoofed X-Forwarded-For does not get a fresh bucket.
+    const attempt = (ip) => http(`${GATEWAY}/auth/sessions`, {
+      headers: { "x-forwarded-for": ip },
+      body: { email: `xff-${randomUUID()}@example.invalid`, password: "not-the-password" }
+    });
+    let sameBucket = false;
+    for (let round = 0; round < 2 && !sameBucket; round += 1) {
+      const first = Number((await attempt("198.51.100.10")).headers.get("x-rate-limit-remaining"));
+      const second = Number((await attempt("198.51.100.20")).headers.get("x-rate-limit-remaining"));
+      sameBucket = second < first;
+    }
+    assert.ok(sameBucket, "X-Forwarded-For must not select the rate-limit bucket by default");
+    return `custody/indexer unsigned 401 · ${bindDetail} · journal replay + 409 · XFF ignored`;
   }
 };
 

@@ -14,6 +14,7 @@ async function bootstrap(): Promise<void> {
     rawBody: true
   });
   const port = Number(process.env.PORT ?? "3007");
+  const host = process.env.GATEWAY_BIND_HOST ?? "127.0.0.1";
   const realtimePath = process.env.GATEWAY_WS_PATH ?? "/api/v1/gateway/realtime";
 
   app.enableShutdownHooks();
@@ -27,14 +28,14 @@ async function bootstrap(): Promise<void> {
     next();
   });
 
-  await app.listen(port);
+  await app.listen(port, host);
   const realtimeServer = new ApiGatewayRealtimeServer(app.get(ApiGatewayHttpService));
   realtimeServer.attach(app.getHttpServer() as HttpServer);
   app.getHttpServer().once("close", () => {
     void realtimeServer.close();
   });
   Logger.log(
-    `api-gateway listening on http://127.0.0.1:${port} and ws://127.0.0.1:${port}${realtimePath}`,
+    `api-gateway listening on http://${host}:${port} and ws://${host}:${port}${realtimePath}`,
     "ApiGatewayBootstrap"
   );
 }

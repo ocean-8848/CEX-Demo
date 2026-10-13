@@ -21,6 +21,7 @@ const telemetryPreloadArgs = ["--import", "@web3-cex/telemetry/register"];
 const internalCallerServiceIds = new Set([
   "api-gateway",
   "blockchain-indexer",
+  "custody-adapter",
   "identity-service",
   "ledger-service",
   "market-data-service",
@@ -31,6 +32,8 @@ const internalCallerServiceIds = new Set([
   "wallet-service"
 ]);
 const internalBindServiceIds = new Set([
+  "blockchain-indexer",
+  "custody-adapter",
   "identity-service",
   "ledger-service",
   "order-service",

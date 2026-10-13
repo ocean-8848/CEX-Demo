@@ -64,6 +64,7 @@ pnpm test:trader-web:local                    # 对真实全栈跑端到端（�
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `PORT` | `3013` | |
+| `TRADER_WEB_BIND_HOST` | `127.0.0.1` | 监听地址；局域网访问时设为 `0.0.0.0` |
 | `TRADER_WEB_TITLE` | `Web3 CEX Trader` | |
 | `TRADER_WEB_GATEWAY_URL` | `http://127.0.0.1:3007` | |
 | `TRADER_WEB_MARKET_DATA_URL` | `http://127.0.0.1:3012` | |

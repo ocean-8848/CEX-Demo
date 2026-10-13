@@ -59,7 +59,7 @@ pnpm -s ops:totp                              # 打印演示运营账户当前�
 
 示例见 [.env.example](.env.example)。
 
-- `PORT`（默认 `3006`）、`DATABASE_URL`
+- `PORT`（默认 `3006`）、`OPS_CONSOLE_BIND_HOST`（默认 `127.0.0.1`）、`DATABASE_URL`
 - 下游服务：`OPS_LEDGER_SERVICE_URL`、`OPS_WALLET_SERVICE_URL`、`OPS_INDEXER_SERVICE_URL`、`OPS_CUSTODY_SERVICE_URL`、`OPS_IDENTITY_SERVICE_URL`、`OPS_ORDER_SERVICE_URL`（默认 `http://127.0.0.1:3009`）、`OPS_SETTLEMENT_SERVICE_URL`（默认 `http://127.0.0.1:3010`）、`OPS_RISK_SERVICE_URL`（默认 `http://127.0.0.1:3008`，市场状态）、`OPS_DEMO_SIMULATOR_URL`（故障实验室，默认 `http://127.0.0.1:3014`）
 - `OPS_CONSOLE_AUDIT_STORE`（`postgres` 默认，`memory` 可回退为内存审计）
 - `OPS_ALERT_SINKS_JSON`（告警投递目标，默认 `[]`）

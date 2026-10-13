@@ -8,6 +8,7 @@ import {
 
 import type { GatewayPrincipal, RateLimitDecision } from "../domain/types.js";
 import { ApiGatewayHttpService } from "./api-gateway-http.service.js";
+import { resolveClientIp } from "./client-ip.js";
 
 @Injectable()
 export class ApiGatewayRateLimitGuard implements CanActivate {
@@ -27,7 +28,7 @@ export class ApiGatewayRateLimitGuard implements CanActivate {
 
     const decision = await this.apiGatewayHttpService.consumeRateLimit({
       principal: request.gatewayAuth,
-      ipAddress: resolveIpAddress(request.headers, request.ip)
+      ipAddress: resolveClientIp(request)
     });
 
     request.gatewayRateLimit = decision;
@@ -46,19 +47,3 @@ export class ApiGatewayRateLimitGuard implements CanActivate {
   }
 }
 
-function resolveIpAddress(
-  headers: Record<string, string | string[] | undefined>,
-  fallback: string | undefined
-): string {
-  const forwarded = headers["x-forwarded-for"];
-  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  if (raw) {
-    const [first] = raw.split(",");
-    const trimmed = first?.trim();
-    if (trimmed) {
-      return trimmed;
-    }
-  }
-
-  return fallback ?? "0.0.0.0";
-}
