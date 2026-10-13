@@ -175,14 +175,14 @@ export const TOURS: TourDefinition[] = [
       {
         id: "request",
         title: "提交提现申请",
-        body: "填写数量后提交。账本冻结 金额 + 手续费，申请进入人工审核队列。",
+        body: "填写数量后提交。wallet-service 先给目标地址做 KYT 风险评分（白名单地址为低风险，黑名单地址直接拦截），再由账本冻结 金额 + 手续费，申请进入人工审核队列。",
         target: "#withdraw-submit",
         done: (context) => newWithdrawals(context).length > 0
       },
       {
         id: "approve",
         title: "在运营后台批准",
-        body: "打开运营后台（ops-console），在「提现审核」里批准这笔申请。",
+        body: "打开运营后台（ops-console），在「提现审核」里查看风险等级与原因后批准这笔申请（高风险需两名运营复核）。",
         link: { label: "打开运营后台", external: "{ops}/#/withdrawals" },
         done: (context) =>
           newWithdrawals(context).some((withdrawal) =>

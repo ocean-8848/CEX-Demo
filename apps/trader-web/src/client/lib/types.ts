@@ -63,6 +63,13 @@ export interface LoginResult extends SessionInfo {
   token: string;
 }
 
+/** Returned with a new session by identity-service (login security). */
+export interface SessionDevice {
+  deviceId: string;
+  deviceLabel: string;
+  isNewDevice: boolean;
+}
+
 export type ApiKeyScope = "read" | "trade" | "withdraw";
 
 export interface ApiKeyRecord {
@@ -215,6 +222,8 @@ export interface WithdrawalRecord {
   confirmedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** KYT level fixed at request time: low / medium / high / blocked. */
+  riskLevel?: string;
 }
 
 export interface AddressBookEntry {
@@ -390,4 +399,31 @@ export interface PrivateRealtimeMessage {
   items?: unknown[];
   sequence?: number;
   message?: string;
+}
+
+/** identity-service login event (账户 → 登录记录). */
+export interface LoginEventRecord {
+  eventId: string;
+  scope?: string;
+  deviceId: string;
+  deviceLabel?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  outcome: "success" | "failure" | "locked";
+  failureCode?: string;
+  isNewDevice?: boolean;
+  createdAt: string;
+}
+
+/** identity-service device registry entry (账户 → 设备管理). */
+export interface UserDeviceRecord {
+  deviceId: string;
+  deviceLabel?: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastIpAddress?: string;
+  loginCount?: number;
+  flaggedNew?: boolean;
+  revokedAt?: string;
+  activeSessionCount?: number;
 }

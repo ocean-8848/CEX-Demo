@@ -123,6 +123,7 @@ export class ApiGatewayApplicationService {
     twoFactorCode?: string;
     userAgent?: string;
     ipAddress?: string;
+    deviceId?: string;
   }) {
     return this.identityClient.createCustomerSession(command);
   }
@@ -321,6 +322,38 @@ export class ApiGatewayApplicationService {
       fullName: String(command.fullName ?? ""),
       idNumber: String(command.idNumber ?? "")
     });
+  }
+
+  // --- login security (session only) ----------------------------------------
+
+  async listLoginEvents(principal: GatewayPrincipal, query: { limit?: number; offset?: number }) {
+    this.assertCustomerSession(principal);
+    return this.requireIdentityMethod(this.identityClient.listLoginEvents).call(
+      this.identityClient,
+      principal.userId,
+      query
+    );
+  }
+
+  async listDevices(principal: GatewayPrincipal) {
+    this.assertCustomerSession(principal);
+    return this.requireIdentityMethod(this.identityClient.listDevices).call(this.identityClient, principal.userId);
+  }
+
+  async revokeDevice(principal: GatewayPrincipal, deviceId: string) {
+    this.assertCustomerSession(principal);
+    return this.requireIdentityMethod(this.identityClient.revokeDevice).call(
+      this.identityClient,
+      principal.userId,
+      deviceId
+    );
+  }
+
+  private requireIdentityMethod<T>(method: T | undefined): T {
+    if (!method) {
+      throw new ApiGatewayError("IDENTITY_UPSTREAM_FAILED", 501, "Identity client does not support login security");
+    }
+    return method;
   }
 
   /** Tier, per-asset limits, today's usage and cooldown (session or API key with read). */

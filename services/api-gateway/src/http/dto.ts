@@ -18,6 +18,8 @@ export interface CreateCustomerSessionRequestDto {
   email: string;
   password: string;
   twoFactorCode?: string;
+  /** Long-lived random id trader-web keeps in localStorage (new-device detection). */
+  deviceId?: string;
 }
 
 export interface TwoFactorCodeRequestDto {
