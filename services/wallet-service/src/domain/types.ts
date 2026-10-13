@@ -5,6 +5,14 @@ import type {
   KycTier,
   KycTierLimitTable
 } from "./withdrawal-policy.js";
+import type {
+  AddressBlacklistCategory,
+  AddressBlacklistStatus,
+  WithdrawalRiskAssessment,
+  WithdrawalRiskLevel,
+  WithdrawalRiskReason,
+  WithdrawalRiskRules
+} from "./withdrawal-risk.js";
 
 export type DepositStatus = "detected" | "confirming" | "confirmed" | "credited" | "failed";
 export type WithdrawalStatus =
@@ -35,9 +43,12 @@ export type WithdrawalNotificationEventType =
   | "withdrawal.broadcasted"
   | "withdrawal.confirmed";
 export type DepositNotificationEventType = "deposit.credited";
+/** Account security events pushed by identity-service (new device login). */
+export type SecurityNotificationEventType = "security.new_device_login";
 export type WalletNotificationEventType =
   | WithdrawalNotificationEventType
-  | DepositNotificationEventType;
+  | DepositNotificationEventType
+  | SecurityNotificationEventType;
 export type WalletNotificationReadState = "read" | "unread";
 export type WalletNotificationChannel = "inbox";
 export type WalletNotificationStatus = "pending" | "delivered" | "failed";
@@ -171,6 +182,8 @@ export interface ListWithdrawalsQuery {
   reviewStatuses?: WithdrawalReviewStatus[];
   txHash?: string;
   toAddress?: string;
+  /** KYT risk level stored at request time. */
+  riskLevel?: WithdrawalRiskLevel;
   limit?: number;
   offset?: number;
 }
@@ -256,11 +269,17 @@ export interface WithdrawalValidationRules {
   dualApprovalThresholdByAsset?: Partial<Record<AssetCode, string>>;
   /** M5-2: lock withdrawals after a security change (0 disables). */
   securityCooldownSeconds?: number;
+  /** KYT rules; omitted = DEFAULT_WITHDRAWAL_RISK_RULES. */
+  riskRules?: WithdrawalRiskRules;
+  /** Lock withdrawals for N seconds after a login from a new device (0 / omitted disables). */
+  newDeviceLockSeconds?: number;
 }
 
 export interface WithdrawalValidationResult {
   valid: true;
   frozenAmount: string;
+  /** KYT assessment of the destination (blocked addresses never get here). */
+  risk?: WithdrawalRiskAssessment;
   appliedRules: {
     requireTwoFactor: boolean;
     requireWhitelist: boolean;
@@ -274,7 +293,10 @@ export interface WithdrawalValidationResult {
     tierDailyLimit?: string;
     requiredApprovals?: 1 | 2;
     dualApprovalThreshold?: string;
+    /** Why two approvers are needed: amount above threshold or KYT level high. */
+    dualApprovalReason?: "amount" | "risk_high";
     securityCooldownSeconds?: number;
+    newDeviceLockSeconds?: number;
   };
 }
 
@@ -299,6 +321,8 @@ export interface WithdrawalLimitsView {
   requireWhitelist: boolean;
   dayWindow: { startAt: string; endAt: string };
   cooldown: CooldownStatus;
+  /** Optional lock after a new-device login (only when the policy is enabled). */
+  newDeviceLock?: CooldownStatus;
   assets: WithdrawalAssetLimitView[];
 }
 
@@ -346,6 +370,10 @@ export interface WithdrawalRecord {
   confirmedAt?: string;
   custodyRequestId?: string;
   txHash?: string;
+  /** KYT score / level / reasons fixed at request time (undefined for legacy rows). */
+  riskScore?: number;
+  riskLevel?: WithdrawalRiskLevel;
+  riskReasons?: WithdrawalRiskReason[];
   metadata: Record<string, unknown>;
 }
 
@@ -396,4 +424,35 @@ export interface MarkWalletNotificationsReadResult {
   updated: number;
   readAt: string;
   unreadCount: number;
+}
+
+export interface ListAddressBlacklistQuery {
+  network?: Network;
+  address?: string;
+  status?: AddressBlacklistStatus;
+  category?: AddressBlacklistCategory;
+  limit?: number;
+  offset?: number;
+}
+
+export interface AddAddressBlacklistEntryCommand {
+  network: Network;
+  address: string;
+  category: AddressBlacklistCategory | string;
+  reason: string;
+  createdBy?: string;
+}
+
+export interface RemoveAddressBlacklistEntryCommand {
+  entryId: string;
+  reason: string;
+  removedBy?: string;
+}
+
+export interface CreateSecurityNotificationCommand {
+  userId: string;
+  eventType: SecurityNotificationEventType;
+  subject: string;
+  body: string;
+  payload?: Record<string, unknown>;
 }

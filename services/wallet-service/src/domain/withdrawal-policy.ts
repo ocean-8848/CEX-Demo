@@ -266,7 +266,7 @@ export function readApprovalPolicy(
 // Security cooldown (M5-2)
 // ---------------------------------------------------------------------------
 
-export type SecurityChangeKind = "withdrawal_address_added" | "two_factor_changed";
+export type SecurityChangeKind = "withdrawal_address_added" | "two_factor_changed" | "new_device_login";
 
 export interface SecurityChange {
   kind: SecurityChangeKind;
@@ -334,7 +334,9 @@ export function describeCooldown(status: CooldownStatus): string {
   const reason =
     status.reason === "two_factor_changed"
       ? "a two-factor authentication change"
-      : "adding a new withdrawal address";
+      : status.reason === "new_device_login"
+        ? "a login from a new device"
+        : "adding a new withdrawal address";
   return (
     `Withdrawals are locked for ${formatDuration(status.cooldownSeconds)} after ${reason}; ` +
     `${formatDuration(status.remainingSeconds)} remaining (remainingSeconds=${status.remainingSeconds}, until ${status.until})`
