@@ -10,11 +10,12 @@ import { MarketsPage } from "./features/markets-page.js";
 import { SystemPage } from "./features/system-page.js";
 import { TracePage } from "./features/trace-page.js";
 import { TradingPage } from "./features/trading-page.js";
+import { TreasuryPage } from "./features/treasury-page.js";
 import { UsersPage } from "./features/users-page.js";
 import { WithdrawalsPage } from "./features/withdrawals-page.js";
 import { SessionProvider, useSession } from "./state/session.js";
 
-const PAGES: PageKey[] = ["dashboard", "withdrawals", "users", "deposits", "trading", "markets", "trace", "ledger", "system", "audit"];
+const PAGES: PageKey[] = ["dashboard", "withdrawals", "users", "deposits", "trading", "markets", "trace", "ledger", "system", "audit", "treasury"];
 
 export function App() {
   return (
@@ -54,6 +55,7 @@ function Root() {
       {page === "markets" ? <MarketsPage /> : null}
       {page === "trace" ? <TracePage query={route.query} /> : null}
       {page === "ledger" ? <LedgerPage /> : null}
+      {page === "treasury" ? <TreasuryPage /> : null}
       {page === "system" ? <SystemPage /> : null}
       {page === "audit" ? <AuditPage /> : null}
     </Shell>

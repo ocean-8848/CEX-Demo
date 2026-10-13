@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 
 import { FaultLabApplicationService } from "../application/fault-lab-application-service.js";
 import { OpsConsoleApplicationService } from "../application/ops-console-application-service.js";
+import { TreasuryApplicationService } from "../application/treasury-application-service.js";
 import type { OpsActionAuditLogQuery } from "../domain/action-audit.js";
 import type {
   OpsApproveWithdrawalCommand,
@@ -60,6 +61,7 @@ import { HttpLedgerOpsClient } from "../infrastructure/http-ledger-ops-client.js
 import { HttpOrderOpsClient } from "../infrastructure/http-order-ops-client.js";
 import { HttpRiskMarketClient } from "../infrastructure/http-risk-market-client.js";
 import { HttpSettlementOpsClient } from "../infrastructure/http-settlement-ops-client.js";
+import { HttpTreasuryClient } from "../infrastructure/http-treasury-client.js";
 import { HttpWalletOpsClient } from "../infrastructure/http-wallet-ops-client.js";
 import { InMemoryOpsActionAuditRepository } from "../infrastructure/in-memory-ops-action-audit-repository.js";
 import { PostgresOpsActionAuditRepository } from "../infrastructure/postgres-ops-action-audit-repository.js";
@@ -69,6 +71,7 @@ import { createOpsConsolePool } from "../infrastructure/postgres.js";
 export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
   private readonly applicationService: OpsConsoleApplicationService;
   readonly faultLab: FaultLabApplicationService;
+  readonly treasury: TreasuryApplicationService;
   private readonly pool?: Pool;
   private schedulerTimer?: NodeJS.Timeout;
 
@@ -119,6 +122,10 @@ export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
         simulatorBaseUrl
       }),
       orderClient,
+      (options, operation) => this.applicationService.runAuditedAction(options, operation)
+    );
+    this.treasury = new TreasuryApplicationService(
+      new HttpTreasuryClient(walletBaseUrl),
       (options, operation) => this.applicationService.runAuditedAction(options, operation)
     );
   }

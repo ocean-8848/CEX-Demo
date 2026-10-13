@@ -16,7 +16,8 @@ export type PageKey =
   | "trace"
   | "ledger"
   | "system"
-  | "audit";
+  | "audit"
+  | "treasury";
 
 interface NavItem {
   page: PageKey;
@@ -47,6 +48,7 @@ const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     title: "风控与运维",
     items: [
       { page: "ledger", label: "账本对账", icon: "≡", permission: "ops.ledger.read" },
+      { page: "treasury", label: "钱包与储备金", icon: "◇", permission: "ops.ledger.read" },
       { page: "system", label: "系统运维", icon: "⚙", permission: "ops.dashboard.read" },
       { page: "audit", label: "操作审计", icon: "✎", permission: "ops.audit.read" }
     ]
