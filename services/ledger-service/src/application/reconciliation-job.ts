@@ -3,6 +3,7 @@ import type { AssetCode } from "@web3-cex/domain";
 import type { LedgerBalanceReconciliationReport } from "./ledger-ops.js";
 import {
   buildOrderLockReconciliationReport,
+  listOrderFillSettlementKeys,
   type LedgerLockedBalance,
   type LedgerOrderLock,
   type OrderLockDifference,
@@ -97,11 +98,15 @@ export interface ReconciliationRunRepository {
 
 export interface ReconciliationLedgerReader {
   reconcileBalances(params: { includeMatched?: boolean; generatedAt?: string }): Promise<LedgerBalanceReconciliationReport>;
-  collectOrderLockSnapshot(): Promise<{
-    snapshotAt: string;
-    locks: LedgerOrderLock[];
-    lockedBalances: LedgerLockedBalance[];
-  }>;
+  /** Runs `work` inside one ledger snapshot (see LedgerOpsReporter.withOrderLockSnapshot). */
+  withOrderLockSnapshot<T>(
+    work: (snapshot: {
+      snapshotAt: string;
+      locks: LedgerOrderLock[];
+      lockedBalances: LedgerLockedBalance[];
+      findConsumedFillKeys(keys: string[]): Promise<Set<string>>;
+    }) => Promise<T>
+  ): Promise<T>;
 }
 
 export interface OrderLockExpectationClient {
@@ -217,19 +222,25 @@ export class ReconciliationJob {
 
     if (this.deps.orders) {
       try {
-        const snapshot = await this.deps.ledger.collectOrderLockSnapshot();
-        const expectations = await this.deps.orders.getLockExpectations(snapshot.locks.map((lock) => lock.orderId));
-        run.orderLock = summarizeOrderLock(
-          buildOrderLockReconciliationReport({
-            generatedAt: this.now().toISOString(),
-            ledgerSnapshotAt: snapshot.snapshotAt,
-            locks: snapshot.locks,
-            lockedBalances: snapshot.lockedBalances,
-            expectations,
-            graceMs: this.deps.config.graceMs,
-            maxDifferences: MAX_STORED_DIFFERENCES
-          })
-        );
+        const orders = this.deps.orders;
+        // order-service is called while the ledger snapshot is open, so the
+        // "already consumed" lookup sees exactly the locks it compares against.
+        run.orderLock = await this.deps.ledger.withOrderLockSnapshot(async (snapshot) => {
+          const expectations = await orders.getLockExpectations(snapshot.locks.map((lock) => lock.orderId));
+          const consumedFillKeys = await snapshot.findConsumedFillKeys(listOrderFillSettlementKeys(expectations));
+          return summarizeOrderLock(
+            buildOrderLockReconciliationReport({
+              generatedAt: this.now().toISOString(),
+              ledgerSnapshotAt: snapshot.snapshotAt,
+              locks: snapshot.locks,
+              lockedBalances: snapshot.lockedBalances,
+              expectations,
+              consumedFillKeys,
+              graceMs: this.deps.config.graceMs,
+              maxDifferences: MAX_STORED_DIFFERENCES
+            })
+          );
+        });
       } catch (error) {
         run.orderLockError = readMessage(error);
       }

@@ -127,7 +127,7 @@ HTTP 接口:
 - `GET /api/v1/orders/ops/overview`
 - `GET /api/v1/orders/ops/anomalies`
 - `POST /api/v1/orders/ops/replay-engine`
-- `POST /api/v1/orders/ops/lock-expectations`（ledger-service 委托冻结对账的输入，`{ orderIds?(≤2000), includeOpenOrders? }`：每笔委托账本冻结应有的金额 = 未成交部分冻结 + 已成交未结算部分；`pending_risk` / `recovery_pending` 标记为在途。逻辑在 `src/application/order-lock-expectations.ts`）
+- `POST /api/v1/orders/ops/lock-expectations`（ledger-service 委托冻结对账的输入，`{ orderIds?(≤2000), includeOpenOrders? }`：每笔委托未成交部分的冻结、全部成交及其消耗的冻结金额（ledger-service 在自己的快照里判断哪些成交已被消耗）；`pending_risk` / `recovery_pending` 标记为在途。逻辑在 `src/application/order-lock-expectations.ts`）
 - `POST /api/v1/orders/ops/lab/engine-reset`（故障实验室：`market`、`resetSequences`；仅清空订单簿时需手动 replay-engine 修复，重置序号时由自动同步自愈，详见 [fault-lab.md](../../docs/fault-lab.md)）
 - `GET /api/v1/orders/ops/recovery-jobs`
 - `GET /api/v1/orders/ops/recovery-metrics`

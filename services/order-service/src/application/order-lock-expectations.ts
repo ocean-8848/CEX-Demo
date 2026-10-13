@@ -19,6 +19,11 @@ import type { SpotOrderRecord, SpotTradeRecord } from "../domain/types.js";
  * Orders that are still moving between services are flagged `inFlight` and
  * excluded from mismatch counting: `pending_risk` (lock may or may not exist
  * yet) and `recovery_pending` (matched outcome not persisted yet).
+ *
+ * `fills` lists every fill with the lock amount it consumes. The ledger uses
+ * them instead of `unsettledAmount`: it checks in its own snapshot which
+ * fills were already consumed, so a lost settlement acknowledgement (or a
+ * fill settled by the recovery worker) cannot look like a mismatch.
  */
 export interface OrderLockExpectation {
   orderId: string;
@@ -35,6 +40,8 @@ export interface OrderLockExpectation {
   /** Part of `expectedLockAmount` that unsettled fills will consume. */
   unsettledAmount: string;
   unsettledTradeCount: number;
+  /** Every fill of this order: lock amount it consumes and whether settlement acknowledged it. */
+  fills: Array<{ tradeId: string; amount: string; acknowledged: boolean }>;
   inFlight: boolean;
   inFlightReason?: "pending_risk" | "recovery_pending";
   updatedAt: string;
@@ -77,6 +84,7 @@ export function computeOrderLockExpectation(params: {
   let unsettledAmount = "0";
   let unsettledTradeCount = 0;
   let lastTradeAt: string | undefined;
+  const fills: OrderLockExpectation["fills"] = [];
   for (const trade of params.trades) {
     if (trade.buyerOrderId !== order.orderId && trade.sellerOrderId !== order.orderId) {
       continue;
@@ -84,8 +92,11 @@ export function computeOrderLockExpectation(params: {
     if (!lastTradeAt || trade.executedAt > lastTradeAt) {
       lastTradeAt = trade.executedAt;
     }
-    if (!params.isTradeSettled(trade)) {
-      unsettledAmount = addAmounts(unsettledAmount, fillLockConsumption(order, trade));
+    const amount = fillLockConsumption(order, trade);
+    const acknowledged = params.isTradeSettled(trade);
+    fills.push({ tradeId: trade.tradeId, amount, acknowledged });
+    if (!acknowledged) {
+      unsettledAmount = addAmounts(unsettledAmount, amount);
       unsettledTradeCount += 1;
     }
   }
@@ -103,6 +114,7 @@ export function computeOrderLockExpectation(params: {
     openLockAmount: open,
     unsettledAmount,
     unsettledTradeCount,
+    fills,
     inFlight,
     inFlightReason: inFlight ? (order.status as "pending_risk" | "recovery_pending") : undefined,
     updatedAt: order.updatedAt,

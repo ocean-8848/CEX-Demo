@@ -78,6 +78,7 @@ test("a partially filled buy adds the unsettled fill at the trade price, not the
   assert.equal(unsettled.unsettledAmount, "1196");
   assert.equal(unsettled.expectedLockAmount, "2996");
   assert.equal(unsettled.unsettledTradeCount, 1);
+  assert.deepEqual(unsettled.fills, [{ tradeId: "t-1", amount: "1196", acknowledged: false }]);
   assert.equal(unsettled.lastTradeAt, "2026-01-01T00:00:05.000Z");
 
   const settled = computeOrderLockExpectation({

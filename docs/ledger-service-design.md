@@ -363,12 +363,14 @@ ledger-service 进程内的 `ReconciliationJob`（`src/application/reconciliatio
 每一轮做三件事：
 
 1. **余额对账**：即 11.1 节，在同一个 REPEATABLE READ 快照内完成，不存在时序误差。
-2. **委托冻结对账**（`src/application/order-lock-reconciliation.ts`）：在一个快照内读出全部活跃的 `spot_order` 冻结（`remaining_amount`）和各账户币种的 `locked`（拆成委托冻结与提现等其他冻结），再按冻结的委托 ID 分批（每批 ≤ 2000）调用 order-service `POST /api/v1/orders/ops/lock-expectations`。order-service 对每笔委托给出账本冻结应有的金额：
+2. **委托冻结对账**（`src/application/order-lock-reconciliation.ts`）：打开一个 REPEATABLE READ 快照，读出全部活跃的 `spot_order` 冻结（`remaining_amount`）和各账户币种的 `locked`（拆成委托冻结与提现等其他冻结）；在快照仍打开时按冻结的委托 ID 分批（每批 ≤ 2000）调用 order-service `POST /api/v1/orders/ops/lock-expectations`，拿到每笔委托未成交部分的冻结和全部成交（每笔成交会消耗的冻结金额）；再在同一快照里按消耗 journal 的幂等键 `spot_order:<orderId>:<asset>:settlement:<tradeId>` 查出哪些成交已经被账本消耗：
 
    ```text
    expected = 未成交部分的冻结（买：限价 × resting，卖：resting）
-            + 已成交但结算尚未消耗的部分（买：成交价 × 数量，卖：数量）
+            + 该委托中账本快照里尚未消耗的成交（买：成交价 × 数量，卖：数量）
    ```
+
+   「是否已消耗」以账本快照为准，而不是结算服务回写给 order-service 的确认，所以确认丢失、由恢复任务补结算的成交都不会被误判。
 
    逐笔比较后按账户 + 币种汇总（`ledgerLocked`、`ledgerOrderLocked`、`ledgerOtherLocked`、`orderExpectedLocked`、差额）。差异类型：`lock_amount_mismatch`、`missing_ledger_lock`（委托仍需冻结但账本没有冻结）、`orphan_ledger_lock`（账本有冻结但委托不存在）。
 

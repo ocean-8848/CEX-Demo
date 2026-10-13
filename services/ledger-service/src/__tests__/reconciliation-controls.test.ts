@@ -4,6 +4,9 @@ import test from "node:test";
 import type { LedgerBalanceReconciliationReport } from "../application/ledger-ops.js";
 import {
   buildOrderLockReconciliationReport,
+  expectedLedgerLock,
+  listOrderFillSettlementKeys,
+  orderFillSettlementKey,
   type LedgerOrderLock,
   type OrderLockExpectationInput
 } from "../application/order-lock-reconciliation.js";
@@ -100,6 +103,38 @@ test("order-vs-lock: differences explained by timing are in flight, not mismatch
   assert.equal(result.items[0]?.status, "in_flight");
 });
 
+test("order-vs-lock: fills count until the ledger snapshot has consumed them (acks are not trusted)", () => {
+  // Partially filled buy: 60 still open, two fills of 20 each. Settlement consumed t1 in
+  // the ledger but its acknowledgement to order-service was lost (order-service still
+  // reports it unsettled); t2 is not consumed yet.
+  const item = expectation("o1", "100", {
+    status: "partially_filled",
+    openLockAmount: "60",
+    fills: [
+      { tradeId: "t1", amount: "20" },
+      { tradeId: "t2", amount: "20" }
+    ]
+  });
+  assert.deepEqual(listOrderFillSettlementKeys([item]), [
+    "spot_order:o1:USDT:settlement:t1",
+    "spot_order:o1:USDT:settlement:t2"
+  ]);
+  const consumed = new Set([orderFillSettlementKey("o1", "USDT", "t1")]);
+  assert.equal(expectedLedgerLock(item, consumed), "80");
+  assert.equal(expectedLedgerLock(item), "100", "falls back to order-service's estimate without a ledger lookup");
+  const result = buildOrderLockReconciliationReport({
+    generatedAt: SNAPSHOT,
+    ledgerSnapshotAt: SNAPSHOT,
+    locks: [lock("o1", "80")],
+    lockedBalances: [],
+    expectations: [item],
+    consumedFillKeys: consumed,
+    graceMs: 15_000
+  });
+  assert.equal(result.mismatchCount, 0);
+  assert.equal(result.matchedCount, 1);
+});
+
 test("breaker: balance mismatches trip at once, order-lock mismatches need the same order in N runs", () => {
   const first = evaluateReconciliationBreaker({
     current: { balanceMismatchedAssets: ["ETH"], orderLockMismatches: { USDT: ["o1", "o2"] } },
@@ -165,8 +200,8 @@ test("job: a healthy run stores ok and pauses nothing; a drift pauses the asset 
       async reconcileBalances() {
         return balanceReport(mismatched);
       },
-      async collectOrderLockSnapshot() {
-        return { snapshotAt: SNAPSHOT, locks: [lock("o1", "100")], lockedBalances: [] };
+      async withOrderLockSnapshot(work) {
+        return work({ snapshotAt: SNAPSHOT, locks: [lock("o1", "100")], lockedBalances: [], findConsumedFillKeys: async () => new Set<string>() });
       }
     },
     orders: {
@@ -216,8 +251,8 @@ test("job: order-service down gives a partial run; breaker disabled only reports
       async reconcileBalances() {
         return balanceReport(["ETH"]);
       },
-      async collectOrderLockSnapshot() {
-        return { snapshotAt: SNAPSHOT, locks: [], lockedBalances: [] };
+      async withOrderLockSnapshot(work) {
+        return work({ snapshotAt: SNAPSHOT, locks: [], lockedBalances: [], findConsumedFillKeys: async () => new Set<string>() });
       }
     },
     orders: {

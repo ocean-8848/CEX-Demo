@@ -22,6 +22,14 @@ import { Pool } from "pg";
 
 import type { LedgerLockedBalance, LedgerOrderLock } from "../application/order-lock-reconciliation.js";
 
+export interface OrderLockSnapshot {
+  snapshotAt: string;
+  locks: LedgerOrderLock[];
+  lockedBalances: LedgerLockedBalance[];
+  /** Which of these consume-journal idempotency keys exist in the same snapshot. */
+  findConsumedFillKeys(keys: string[]): Promise<Set<string>>;
+}
+
 import type { SqlClient } from "./postgres.js";
 
 interface BalanceAggregateRow {
@@ -151,15 +159,14 @@ export class LedgerOpsReporter {
   }
 
   /**
-   * Order ↔ lock reconciliation input: every active `spot_order` lock plus the
-   * locked balance per account + asset (split into order / other locks), read
-   * from one snapshot. `snapshotAt` is the database clock at the first read.
+   * Order ↔ lock reconciliation input, read inside ONE repeatable-read
+   * snapshot: every active `spot_order` lock, the locked balance per
+   * account + asset (split into order / other locks), and — through
+   * `findConsumedFillKeys`, called by `work` once it knows the fills from
+   * order-service — which fills that snapshot has already consumed.
+   * `snapshotAt` is the database clock at the first read.
    */
-  async collectOrderLockSnapshot(): Promise<{
-    snapshotAt: string;
-    locks: LedgerOrderLock[];
-    lockedBalances: LedgerLockedBalance[];
-  }> {
+  async withOrderLockSnapshot<T>(work: (snapshot: OrderLockSnapshot) => Promise<T>): Promise<T> {
     return this.inSnapshot(async (reader) => {
       const clock = await reader.db.query<{ now: Date }>("select clock_timestamp() as now");
       const locks = await reader.db.query<{
@@ -197,7 +204,7 @@ export class LedgerOpsReporter {
                 where l.account_id = b.account_id and l.asset_code = b.asset_code and l.status = 'locked'
              )`
       );
-      return {
+      return work({
         snapshotAt: (clock.rows[0]?.now ?? new Date()).toISOString(),
         locks: locks.rows.map((row) => ({
           orderId: row.reference_id,
@@ -211,8 +218,22 @@ export class LedgerOpsReporter {
           assetCode: row.asset_code,
           locked: row.locked,
           otherLocked: row.other_locked
-        }))
-      };
+        })),
+        findConsumedFillKeys: async (keys) => {
+          const consumed = new Set<string>();
+          // Unique index on idempotency_key; batch to keep parameter arrays small.
+          for (let index = 0; index < keys.length; index += 5000) {
+            const result = await reader.db.query<{ idempotency_key: string }>(
+              `select idempotency_key from ledger_journals where idempotency_key = any($1::text[])`,
+              [keys.slice(index, index + 5000)]
+            );
+            for (const row of result.rows) {
+              consumed.add(row.idempotency_key);
+            }
+          }
+          return consumed;
+        }
+      });
     });
   }
 

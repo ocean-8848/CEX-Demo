@@ -347,7 +347,7 @@ risk-service 持有三个开关，开启时各有一行 `risk_control_switches`�
 | 提币状态迁移可追溯 | 每次迁移写 `withdrawal_audit_logs`（含前后快照、操作人） |
 | 大额提币需两名不同审核人 | `applyApproval` 拒绝同一人第二次批准（`WITHDRAWAL_SAME_APPROVER`） |
 | 余额快照 = 分录净额 − 活跃冻结 | 定时余额对账；不平立即暂停该币种提现（对账熔断） |
-| 委托的账本冻结 = 未成交部分冻结 + 已成交未结算部分 | 定时委托冻结对账（ledger-service ↔ order-service）；同一委托连续 2 轮不一致时熔断 |
+| 委托的账本冻结 = 未成交部分冻结 + 账本尚未消耗的成交 | 定时委托冻结对账（ledger-service ↔ order-service）；同一委托连续 2 轮不一致时熔断 |
 
 ## 10. 共享事件信封
 

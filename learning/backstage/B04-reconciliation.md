@@ -337,7 +337,7 @@ flowchart LR
 | R4 流水 ↔ 快照 | `ledger-service` 的 `reconcile-balances` 脚本：对每个 `(account_id, asset_code)`，用 `ledger_entries` 净额减去活跃 `balance_locks`，得到期望可用和期望冻结，与 `balances` 快照比较；差异原因为 `available_mismatch` / `locked_mismatch` / `total_mismatch` | 已实现 |
 | 单账户定位 | `replay-account` 脚本：按时间序回放 `entry_credit`、`entry_debit`、`lock`、`release`、`consume`，输出每一步后的余额，并与快照比较 | 已实现 |
 | 对账告警阈值 | `check-alerts` 中 `LEDGER_ALERT_MAX_BALANCE_MISMATCHES`、负余额、超时锁等阈值；ops-console 把对账差异、负余额定为 P1 | 已实现 |
-| 订单冻结 ↔ 账本冻结 | `ledger-service` 的 `order-lock-reconciliation.ts`：对每个账户 + 币种，比较 order-service 给出的「未成交部分冻结 + 已成交未结算部分」与账本 `spot_order` 冻结；刚下单 / 刚成交 / 恢复中的委托按在途处理（第 5.4 节的「能被在途清单解释」） | 已实现 |
+| 订单冻结 ↔ 账本冻结 | `ledger-service` 的 `order-lock-reconciliation.ts`：对每个账户 + 币种，比较「order-service 的未成交部分冻结 + 账本快照中尚未消耗的成交」与账本 `spot_order` 冻结；刚下单 / 刚成交 / 恢复中的委托按在途处理（第 5.4 节的「能被在途清单解释」） | 已实现 |
 | 定时对账 | `ledger-service` 的 `reconciliation-job.ts`：每 `RECONCILIATION_INTERVAL_SECONDS`（演示栈 30 秒）跑余额对账 + 订单冻结对账，结果写入 `ledger_reconciliation_runs`，ops-console「账本对账」展示历史 | 已实现 |
 | 熔断：对账不平就停提币 | `reconciliation-breaker.ts`：余额对账不平立即暂停该币种提币；订单冻结不一致需同一委托连续 2 轮才触发，首轮只告警 P2；经 `risk-service` 紧急开关自动暂停（来源「对账熔断」）并告警 P1；恢复必须人工，且要有一轮一致的对账（第 5.4 节最后一条）。故障实验室可注入差额演示 | 已实现。对账任务失败时本仓库按「部分完成 / 失败」告警，不按不平处理（未 Fail-Closed） |
 | 对账 HTTP 接口 | `GET/POST /api/v1/ledger/ops/reconciliation`、`/ops/replay` | 已实现 |

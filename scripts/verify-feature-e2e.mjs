@@ -486,6 +486,7 @@ const sections = {
 
       // A1c: API write freeze — new orders / withdrawal requests 409, cancels still work
       const market = config.demoMarket;
+      await bestAsk(market); // makers are quoting
       const depth = await fetchJson(`${config.marketDataBaseUrl}/api/v1/market-data/depth?market=${market}`);
       const restPrice = (Number(depth.bids[0].price) * 0.95).toFixed(2);
       const resting = await placeOrder(ctx.token, ctx.accountId, { market, price: restPrice, timeInForce: "gtc", quantity: "0.01" });
@@ -529,8 +530,11 @@ const sections = {
       });
       const drift = await ops(t, "/lab/reconciliation/drift", { assetCode: breakerAsset, amount: "1" });
       assert.equal(drift.status, 201, JSON.stringify(drift.body));
-      const tripped = await runReconciliation();
-      assert.equal(tripped.status, "mismatch");
+      // A run already in progress is joined, so retry until one has seen the drift.
+      const tripped = await waitFor("a reconciliation run that sees the drift", async () => {
+        const run = await runReconciliation();
+        return run.status === "mismatch" ? run : null;
+      }, 30_000, 1_000);
       assert.ok(
         tripped.breaker.actions.some((action) => action.assetCode === breakerAsset && ["paused", "already_paused"].includes(action.outcome)),
         `breaker paused ${breakerAsset}: ${JSON.stringify(tripped.breaker)}`
@@ -549,7 +553,10 @@ const sections = {
       assert.equal(codeOf(early), "RECONCILIATION_NOT_CLEAN", "resume needs a clean run first");
 
       assert.equal((await ops(t, "/lab/reconciliation/clear", {})).status, 201);
-      const clean = await runReconciliation();
+      const clean = await waitFor("a clean run after the drift is removed", async () => {
+        const run = await runReconciliation();
+        return run.balance?.mismatchCount === 0 ? run : null;
+      }, 30_000, 1_000);
       assert.equal(clean.balance.mismatchCount, 0, "clean after the drift is removed");
       const resumed = await setControl({ scope: "withdrawals_asset", assetCode: breakerAsset, enabled: false, reason: "e2e: drift removed, run clean" });
       assert.equal(resumed.status, 201, JSON.stringify(resumed.body));

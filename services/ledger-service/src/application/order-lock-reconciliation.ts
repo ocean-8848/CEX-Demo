@@ -9,8 +9,14 @@ const BASE = 10n ** SCALE;
  * actually holds in `spot_order` locks:
  *
  *   ledger side : remaining_amount of every active (`locked`) spot_order lock
- *   order side  : open quantity lock + fills not yet consumed by settlement
- *                 (order-service `/orders/ops/lock-expectations`)
+ *   order side  : open quantity lock (order-service `/orders/ops/lock-expectations`)
+ *                 + every fill of the order that the ledger has NOT consumed
+ *                 yet in the same snapshot (consume journal idempotency key
+ *                 `spot_order:<orderId>:<asset>:settlement:<tradeId>`)
+ *
+ * Deciding "consumed" from the ledger snapshot (not from settlement's
+ * acknowledgement to order-service) keeps both sides on one point in time
+ * and survives lost acknowledgements.
  *
  * The comparison runs per order, then rolls up per account + asset. The
  * ledger's total `locked` balance is reported next to it (order locks +
@@ -54,7 +60,12 @@ export interface OrderLockExpectationInput {
   accountId: string;
   lockAssetCode: string;
   status: string;
+  /** order-service's own estimate (open lock + fills settlement has not acknowledged). Fallback when `fills` is absent. */
   expectedLockAmount: string;
+  /** Lock backing the still-open quantity. */
+  openLockAmount?: string;
+  /** Every fill with the lock amount it consumes. */
+  fills?: Array<{ tradeId: string; amount: string }>;
   unsettledAmount?: string;
   inFlight: boolean;
   inFlightReason?: string;
@@ -116,12 +127,40 @@ export interface OrderLockReconciliationReport {
   inFlight: OrderLockDifference[];
 }
 
+/** Idempotency key of the ledger journal that consumes a fill from an order lock. */
+export function orderFillSettlementKey(orderId: string, assetCode: string, tradeId: string): string {
+  return ["spot_order", orderId, assetCode, "settlement", tradeId].join(":");
+}
+
+/** Keys the ledger has to look up to know which fills it already consumed. */
+export function listOrderFillSettlementKeys(expectations: OrderLockExpectationInput[]): string[] {
+  return expectations.flatMap((item) =>
+    (item.fills ?? []).map((fill) => orderFillSettlementKey(item.orderId, item.lockAssetCode, fill.tradeId))
+  );
+}
+
+/** What the ledger lock should hold: open lock + fills not consumed in the ledger snapshot. */
+export function expectedLedgerLock(item: OrderLockExpectationInput, consumedFillKeys?: ReadonlySet<string>): string {
+  if (!item.fills || item.openLockAmount === undefined || !consumedFillKeys) {
+    return item.expectedLockAmount;
+  }
+  let expected = toUnits(item.openLockAmount);
+  for (const fill of item.fills) {
+    if (!consumedFillKeys.has(orderFillSettlementKey(item.orderId, item.lockAssetCode, fill.tradeId))) {
+      expected += toUnits(fill.amount);
+    }
+  }
+  return fromUnits(expected);
+}
+
 export function buildOrderLockReconciliationReport(params: {
   generatedAt: string;
   ledgerSnapshotAt: string;
   locks: LedgerOrderLock[];
   lockedBalances: LedgerLockedBalance[];
   expectations: OrderLockExpectationInput[];
+  /** Fill settlement keys already consumed in the ledger snapshot (see orderFillSettlementKey). */
+  consumedFillKeys?: ReadonlySet<string>;
   graceMs: number;
   includeMatched?: boolean;
   maxDifferences?: number;
@@ -190,7 +229,7 @@ export function buildOrderLockReconciliationReport(params: {
     const accountId = lock?.accountId ?? expectation?.accountId ?? "";
     const assetCode = lock?.assetCode ?? expectation?.lockAssetCode ?? "";
     const ledgerLocked = toUnits(lock?.remainingAmount ?? "0");
-    const expectedLocked = toUnits(expectation?.expectedLockAmount ?? "0");
+    const expectedLocked = toUnits(expectation ? expectedLedgerLock(expectation, params.consumedFillKeys) : "0");
     const rollup = rollupFor(accountId, assetCode);
     rollup.orderCount += 1;
     rollup.ledgerOrderLocked += ledgerLocked;

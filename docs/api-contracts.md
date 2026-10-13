@@ -831,7 +831,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | --- | --- | --- |
 | GET | `/overview`、`/anomalies` | 总览与异常 |
 | POST | `/replay-engine` | 用持久化挂单重建撮合订单簿 |
-| POST | `/lock-expectations` | 委托冻结对账输入（调用方 ledger-service）：`{ orderIds?: string[] (≤2000), includeOpenOrders?: boolean }`，返回每笔委托账本冻结应有的金额 `expectedLockAmount` = 未成交部分冻结 + 已成交未结算部分，以及 `inFlight`（`pending_risk` / `recovery_pending`）、`updatedAt`、`lastTradeAt` |
+| POST | `/lock-expectations` | 委托冻结对账输入（调用方 ledger-service）：`{ orderIds?: string[] (≤2000), includeOpenOrders?: boolean }`，返回每笔委托的 `openLockAmount`（未成交部分冻结）、`fills[]`（`tradeId`、该成交消耗的冻结 `amount`、结算是否已回写 `acknowledged`）、order-service 自己的估算 `expectedLockAmount`（= 未成交部分 + 未回写确认的成交），以及 `inFlight`（`pending_risk` / `recovery_pending`）、`updatedAt`、`lastTradeAt`；ledger-service 以自己快照中的消耗记录判断哪些成交已结算 |
 | POST | `/lab/engine-reset` | 故障实验：清空引擎订单簿 |
 | GET | `/recovery-jobs`、`/recovery-metrics`、`/recovery-governance`、`/automation-executions` | 恢复任务与治理 |
 | POST | `/recovery-jobs/process`、`/recovery-jobs/:jobId/recover` | 处理恢复任务 |

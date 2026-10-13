@@ -139,7 +139,7 @@ export function ReconciliationJobPanel() {
       {detail ? <RunDetail run={detail} /> : null}
       <ol className="explain-steps">
         <li><b>余额对账</b>：同一快照内比较分录净额、活跃冻结与余额快照；不一致说明账本本身出错，熔断立即暂停该币种提现。</li>
-        <li><b>委托冻结对账</b>：order-service 给出每笔委托仍需冻结的金额（未成交部分 + 已成交未结算部分），与账本 spot_order 冻结逐笔比较。</li>
+        <li><b>委托冻结对账</b>：order-service 给出每笔委托未成交部分的冻结和全部成交，账本在同一快照里扣掉已经消耗的成交，得到应有冻结，与 spot_order 冻结逐笔比较。</li>
         <li><b>在途处理</b>：两边读取有先后，刚下单、刚成交、恢复中的委托算「在途」不计入；同一委托连续多轮不一致才触发熔断，首次只给 P2 告警。</li>
         <li><b>恢复</b>：熔断暂停只能人工恢复，且必须在之后至少一轮对账恢复一致。</li>
       </ol>
