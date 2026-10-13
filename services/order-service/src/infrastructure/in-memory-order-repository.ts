@@ -43,6 +43,18 @@ export class InMemoryOrderRepository implements OrderRepository {
     this.idempotency.set(order.idempotencyKey, order.orderId);
   }
 
+  async saveOrderIfStatus(
+    order: SpotOrderRecord,
+    expectedStatus: SpotOrderRecord["status"]
+  ): Promise<boolean> {
+    const current = this.orders.get(order.orderId);
+    if (!current || current.status !== expectedStatus) {
+      return false;
+    }
+    this.orders.set(order.orderId, order);
+    return true;
+  }
+
   async listOrders(query: ListSpotOrdersQuery): Promise<SpotOrderRecord[]> {
     return paginate(
       [...this.orders.values()].filter((item) => {
@@ -67,6 +79,16 @@ export class InMemoryOrderRepository implements OrderRepository {
 
   async saveTrade(trade: SpotTradeRecord): Promise<void> {
     this.trades.set(trade.tradeId, trade);
+  }
+
+  async findLatestTrade(market: SpotMarket): Promise<SpotTradeRecord | null> {
+    let latest: SpotTradeRecord | null = null;
+    for (const trade of this.trades.values()) {
+      if (trade.market === market && (!latest || trade.executionSequence > latest.executionSequence)) {
+        latest = trade;
+      }
+    }
+    return latest;
   }
 
   async findTradeById(tradeId: string): Promise<SpotTradeRecord | null> {

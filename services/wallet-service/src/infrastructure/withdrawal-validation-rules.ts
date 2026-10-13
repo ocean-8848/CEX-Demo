@@ -6,6 +6,13 @@ import {
   parseTierLimitOverrides,
   type KycTierLimitTable
 } from "../domain/withdrawal-policy.js";
+import {
+  DEFAULT_WITHDRAWAL_RISK_LARGE_AMOUNT_BY_ASSET,
+  DEFAULT_WITHDRAWAL_RISK_NEW_ADDRESS_WINDOW_SECONDS,
+  DEMO_ADDRESS_RISK_LABELS,
+  parseAddressRiskLabels,
+  type WithdrawalRiskRules
+} from "../domain/withdrawal-risk.js";
 
 // Assets come from config/markets.json; networks are the code-level set.
 const ASSET_CODES: AssetCode[] = listAssetCodes();
@@ -45,7 +52,26 @@ export function loadWithdrawalValidationRulesFromEnv(): WithdrawalValidationRule
     securityCooldownSeconds: parseNonNegativeInteger(
       process.env.WITHDRAWAL_SECURITY_COOLDOWN_SECONDS,
       DEFAULT_SECURITY_COOLDOWN_SECONDS
-    )
+    ),
+    riskRules: loadWithdrawalRiskRulesFromEnv(),
+    // Default 0 = off: a new-device login does not block withdrawals.
+    newDeviceLockSeconds: parseNonNegativeInteger(process.env.WITHDRAWAL_NEW_DEVICE_LOCK_SECONDS, 0)
+  };
+}
+
+/** Simplified KYT rules; labels from env are appended to the demo label set. */
+export function loadWithdrawalRiskRulesFromEnv(env: NodeJS.ProcessEnv = process.env): WithdrawalRiskRules {
+  return {
+    enabled: env.WITHDRAWAL_RISK_ENABLED !== "false",
+    largeAmountByAsset: parseKeyValueMap<AssetCode>(
+      env.WITHDRAWAL_RISK_LARGE_AMOUNT_BY_ASSET ?? DEFAULT_WITHDRAWAL_RISK_LARGE_AMOUNT_BY_ASSET,
+      ASSET_CODES
+    ),
+    newAddressWindowSeconds: parseNonNegativeInteger(
+      env.WITHDRAWAL_RISK_NEW_ADDRESS_WINDOW_SECONDS,
+      DEFAULT_WITHDRAWAL_RISK_NEW_ADDRESS_WINDOW_SECONDS
+    ),
+    labels: [...DEMO_ADDRESS_RISK_LABELS, ...parseAddressRiskLabels(env.WITHDRAWAL_RISK_ADDRESS_LABELS)]
   };
 }
 

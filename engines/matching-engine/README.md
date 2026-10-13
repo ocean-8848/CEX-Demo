@@ -13,9 +13,17 @@ Rust 实现的现货撮合引擎，`order-service` 通过 TCP（按行 JSON）�
 
 - 每个市场一本内存订单簿（`bids` / `asks` 两个有序列表），按 symbol 首次使用时自动建簿
 - 价格优先 / 时间优先撮合，支持 `limit` / `market` 与 `gtc` / `ioc` / `fok`
+- Post-Only：`submit` 带 `post_only: true` 时，若到达即与对手盘最优价交叉则整单返回 `cancelled`（`reason: post_only_would_take`），订单簿不变；市价单带 post-only 返回 `post_only_requires_limit`
+- 自成交保护（STP）：`submit` / `seed` 可带 `owner_id`（order-service 传账户 ID），`submit` 可带 `stp_mode`：
+  - `expire_taker`（默认）：遇到同一 owner 的挂单就停止撮合，taker 剩余部分过期（`reason: stp_expired_taker`），挂单保留
+  - `expire_maker`：把同一 owner 的挂单移出订单簿，放进响应的 `expiredMakers: [{orderId, quantity, reason}]`，继续与其他挂单撮合
+  - `expire_both`：移除该挂单并让 taker 剩余部分过期（`reason: stp_expired_both`）
+  - FOK 计算可成交量时同样跳过（`expire_maker`）或止步于（其他模式）自己的挂单；FOK 失败时订单簿不变
+  - 不带 `owner_id` 的旧指令（如 `scripts/test-trade-domain-replay.mjs`）不参与 STP，协议向后兼容；快照中的挂单在有 owner 时带 `ownerId`
+  - 止损单不在引擎内：由 order-service 触发后以普通 `limit` / `market` 提交
 - 指令（JSON 字段 `action`）：`submit`、`seed`（回放挂单，不触发撮合）、`cancel`、`snapshot`、`reset`（清簿，可选重置序号）、`restore`（恢复 execution / batch 序号）
 - 成交回报带递增的 execution / batch 序号，配合 `order-service` 的 `replay-engine` 从数据库重建订单簿
-- 单元测试覆盖撮合规则、定点数解析与确定性回放：`cargo test --manifest-path engines/matching-engine/Cargo.toml`
+- 单元测试覆盖撮合规则、定点数解析、Post-Only、三种 STP 模式与确定性回放（含 STP 回放脚本 `stp_and_post_only_replay_is_byte_identical`）：`cargo test --manifest-path engines/matching-engine/Cargo.toml`
 
 运行:
 

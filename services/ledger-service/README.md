@@ -17,7 +17,7 @@
 - 账本流水 append-only
 - 通过 `journal + entries` 保证借贷平衡
 - 余额快照可由流水重建
-- 所有资金动作必须带幂等键
+- 所有资金动作必须带幂等键；`POST /journals` 同键同内容（含并发）返回原 journal，同键不同内容返回 409 `DUPLICATE_IDEMPOTENCY_KEY`（`src/application/journal-idempotency.ts`）
 
 核心操作（`src/application/ledger-application-service.ts`）:
 

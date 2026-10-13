@@ -5,6 +5,8 @@ import {
   compareAmounts,
   divideAmounts,
   isPositiveAmount,
+  isStopOrderType,
+  isStpMode,
   multiplyAmounts,
   referencePriceEnvKey,
   subtractAmounts,
@@ -115,8 +117,17 @@ export class RiskApplicationService {
       );
     }
 
-    const timeInForce =
-      command.type === "market" ? (command.timeInForce ?? "ioc") : (command.timeInForce ?? "gtc");
+    if (!["limit", "market", "stop_limit", "stop_market"].includes(command.type)) {
+      throw new RiskServiceError("UNSUPPORTED_ORDER_TYPE", 400, `Unsupported order type ${command.type}`);
+    }
+    const isStop = isStopOrderType(command.type);
+    // Limit-priced orders: limit and stop_limit; market-priced: market and stop_market.
+    const isLimitPriced = command.type === "limit" || command.type === "stop_limit";
+    const postOnly = command.postOnly === true || (command.postOnly as unknown) === "true";
+
+    const timeInForce = !isLimitPriced
+      ? (command.timeInForce ?? "ioc")
+      : (command.timeInForce ?? "gtc");
     if (!["gtc", "ioc", "fok"].includes(timeInForce)) {
       throw new RiskServiceError(
         "UNSUPPORTED_TIME_IN_FORCE",
@@ -125,7 +136,7 @@ export class RiskApplicationService {
       );
     }
 
-    if (command.type === "market" && timeInForce === "gtc") {
+    if (!isLimitPriced && timeInForce === "gtc") {
       throw new RiskServiceError(
         "UNSUPPORTED_TIME_IN_FORCE",
         400,
@@ -133,8 +144,42 @@ export class RiskApplicationService {
       );
     }
 
-    if (command.type === "limit" && !command.price) {
+    if (isLimitPriced && !command.price) {
       throw new RiskServiceError("PRICE_REQUIRED", 400, "Limit order price is required");
+    }
+
+    if (postOnly && (command.type !== "limit" || timeInForce !== "gtc")) {
+      throw new RiskServiceError(
+        "POST_ONLY_REQUIRES_GTC_LIMIT",
+        400,
+        "Post-only is only supported for GTC limit orders"
+      );
+    }
+
+    if (command.stpMode !== undefined && !isStpMode(command.stpMode)) {
+      throw new RiskServiceError(
+        "INVALID_STP_MODE",
+        400,
+        `Unsupported stpMode ${String(command.stpMode)} (expire_taker | expire_maker | expire_both)`
+      );
+    }
+
+    if (isStop && !command.triggerPrice) {
+      throw new RiskServiceError("TRIGGER_PRICE_REQUIRED", 400, "Stop orders require triggerPrice");
+    }
+    if (!isStop && command.triggerPrice) {
+      throw new RiskServiceError(
+        "TRIGGER_PRICE_NOT_ALLOWED",
+        400,
+        "triggerPrice is only valid for stop_limit / stop_market orders"
+      );
+    }
+    if (isStop && command.triggerPrice && !isPositiveAmount(command.triggerPrice)) {
+      throw new RiskServiceError(
+        "INVALID_TRIGGER_PRICE",
+        400,
+        "Trigger price must be greater than zero"
+      );
     }
 
     if (!isPositiveAmount(command.quantity)) {
@@ -155,8 +200,11 @@ export class RiskApplicationService {
 
     const checks: RiskCheckResult[] = [];
     this.assertStepAlignment("quantity_precision", command.quantity, market.quantityStep, checks);
-    if (command.type === "limit" && command.price) {
+    if (isLimitPriced && command.price) {
       this.assertStepAlignment("price_precision", command.price, market.priceStep, checks);
+    }
+    if (isStop && command.triggerPrice) {
+      this.assertStepAlignment("trigger_price_precision", command.triggerPrice, market.priceStep, checks);
     }
 
     if (compareAmounts(command.quantity, market.minQuantity) < 0) {
@@ -174,6 +222,42 @@ export class RiskApplicationService {
 
     const reference = await this.resolveReferencePrice(command.market, command.referencePrice);
     const referencePrice = reference?.price;
+    if (isStop && command.triggerPrice && reference) {
+      // The trigger must sit within the same band as a limit price, so a stop
+      // cannot be parked at an absurd level.
+      const deviation = this.calculateDeviationRatio(command.triggerPrice, reference.price);
+      if (compareAmounts(deviation, market.maxPriceDeviationRatio) > 0) {
+        throw new RiskServiceError(
+          "TRIGGER_PRICE_DEVIATION_TOO_HIGH",
+          400,
+          `Trigger price deviation ${deviation} exceeds limit ${market.maxPriceDeviationRatio} (reference ${reference.price} from ${reference.source})`
+        );
+      }
+      checks.push({
+        name: "trigger_price_deviation",
+        status: "passed",
+        detail: `trigger ${command.triggerPrice} within ${market.maxPriceDeviationRatio} of reference ${reference.price} (${reference.source})`
+      });
+    }
+
+    if (command.type === "stop_limit" && command.price && command.triggerPrice) {
+      // A stop-limit executes around its trigger, so its limit price is
+      // bounded against the trigger rather than today's price.
+      const deviation = this.calculateDeviationRatio(command.price, command.triggerPrice);
+      if (compareAmounts(deviation, market.maxPriceDeviationRatio) > 0) {
+        throw new RiskServiceError(
+          "PRICE_DEVIATION_TOO_HIGH",
+          400,
+          `Stop-limit price deviation ${deviation} from trigger ${command.triggerPrice} exceeds limit ${market.maxPriceDeviationRatio}`
+        );
+      }
+      checks.push({
+        name: "price_deviation",
+        status: "passed",
+        detail: `stop-limit price within ${market.maxPriceDeviationRatio} of trigger ${command.triggerPrice}`
+      });
+    }
+
     if (command.type === "limit" && command.price && reference) {
       const deviation = this.calculateDeviationRatio(command.price, reference.price);
       if (compareAmounts(deviation, market.maxPriceDeviationRatio) > 0) {
@@ -220,6 +304,7 @@ export class RiskApplicationService {
       feeRate: market.takerFeeRate,
       referencePrice: reference?.price,
       referencePriceSource: reference?.source,
+      ...(isStop ? { triggerPrice: command.triggerPrice } : {}),
       checks
     };
   }
@@ -263,11 +348,13 @@ export class RiskApplicationService {
       return command.quantity;
     }
 
-    if (command.type === "limit") {
+    if (command.type === "limit" || command.type === "stop_limit") {
       return multiplyAmounts(command.price ?? "0", command.quantity);
     }
 
-    const priceForLock = referencePrice;
+    // stop_market buys execute once the price reached the trigger, so the
+    // cap is computed from the trigger price instead of today's price.
+    const priceForLock = command.type === "stop_market" ? command.triggerPrice : referencePrice;
     if (!priceForLock || !isPositiveAmount(priceForLock)) {
       throw new RiskServiceError(
         "REFERENCE_PRICE_REQUIRED",

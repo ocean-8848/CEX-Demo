@@ -88,6 +88,7 @@ export interface ListWithdrawalsQueryDto {
   reviewStatus?: WithdrawalReviewStatus;
   txHash?: string;
   toAddress?: string;
+  riskLevel?: string;
   limit?: string;
   offset?: string;
 }
@@ -153,4 +154,34 @@ export interface ReconcileStaleWithdrawalsRequestDto {
   forceBlockNumber?: number;
   pageSize?: number;
   operatorId?: string;
+}
+
+export interface ListAddressBlacklistQueryDto {
+  network?: Network;
+  address?: string;
+  status?: string;
+  category?: string;
+  limit?: string;
+  offset?: string;
+}
+
+export interface AddAddressBlacklistEntryRequestDto {
+  network?: Network;
+  address?: string;
+  category?: string;
+  reason?: string;
+  createdBy?: string;
+}
+
+export interface RemoveAddressBlacklistEntryRequestDto {
+  reason?: string;
+  removedBy?: string;
+}
+
+export interface CreateSecurityNotificationRequestDto {
+  userId?: string;
+  eventType?: string;
+  subject?: string;
+  body?: string;
+  payload?: Record<string, unknown>;
 }

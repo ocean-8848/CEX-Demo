@@ -657,6 +657,22 @@
   font-size: 12px;
 }
 
+.option-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.option-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
 .avail {
   display: flex;
   justify-content: space-between;

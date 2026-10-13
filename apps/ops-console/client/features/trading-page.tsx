@@ -21,12 +21,31 @@ import { useSession } from "../state/session.js";
 
 const PAGE_SIZE = 30;
 
+const ORDER_TYPE_LABELS: Record<string, string> = {
+  limit: "限价",
+  market: "市价",
+  stop_limit: "止损限价",
+  stop_market: "止损市价"
+};
+
+function describeOrderType(order: OrderRecord): string {
+  const parts = [ORDER_TYPE_LABELS[order.type ?? ""] ?? order.type ?? "--", order.timeInForce?.toUpperCase()];
+  if (order.postOnly) {
+    parts.push("Post-Only");
+  }
+  if (order.stpMode && order.stpMode !== "expire_taker") {
+    parts.push(`STP ${order.stpMode}`);
+  }
+  return parts.filter(Boolean).join(" · ");
+}
+
 interface BookOverview {
   market: string;
   openOrderCount?: number;
   filledOrderCount?: number;
   cancelledOrderCount?: number;
   rejectedOrderCount?: number;
+  pendingTriggerOrderCount?: number;
   tradeCount?: number;
   engineBidCount?: number;
   engineAskCount?: number;
@@ -121,6 +140,7 @@ function OrdersTable(props: { market: string }) {
         <div className="filters">
           <select value={status} onChange={(event) => { setStatus(event.target.value); setOffset(0); }} aria-label="状态">
             <option value="">全部状态</option>
+            <option value="pending_trigger">待触发</option>
             <option value="accepted">挂单中</option>
             <option value="partially_filled">部分成交</option>
             <option value="filled">完全成交</option>
@@ -138,7 +158,7 @@ function OrdersTable(props: { market: string }) {
           <div className="table-scroll">
             <table className="data-table" id="orders-table">
               <thead>
-                <tr><th>时间</th><th>订单</th><th>用户</th><th>方向</th><th>类型</th><th className="num">价格</th><th className="num">数量</th><th className="num">已成交</th><th>状态</th></tr>
+                <tr><th>时间</th><th>订单</th><th>用户</th><th>方向</th><th>类型</th><th className="num">价格</th><th className="num">触发价</th><th className="num">数量</th><th className="num">已成交</th><th>状态</th><th>原因</th></tr>
               </thead>
               <tbody>
                 {rows.map((order) => (
@@ -147,11 +167,15 @@ function OrdersTable(props: { market: string }) {
                     <td><IdLink id={order.orderId} kind="orderId" /></td>
                     <td><IdLink id={order.userId} kind="userId" /></td>
                     <td className={order.side === "sell" ? "down" : "up"}>{order.side === "sell" ? "卖出" : "买入"}</td>
-                    <td className="muted">{order.type} · {order.timeInForce?.toUpperCase()}</td>
-                    <td className="num">{order.type === "market" ? "市价" : formatAmount(order.price, 2)}</td>
+                    <td className="muted">{describeOrderType(order)}</td>
+                    <td className="num">{order.type === "market" || order.type === "stop_market" ? "市价" : formatAmount(order.price, 2)}</td>
+                    <td className="num" title={order.triggeredAt ? `已于 ${order.triggeredAt} 触发` : undefined}>
+                      {order.triggerPrice ? formatAmount(order.triggerPrice, 2) : "--"}
+                    </td>
                     <td className="num">{formatAmount(order.quantity)}</td>
                     <td className="num">{formatAmount(order.filledQuantity ?? "0")}</td>
                     <td><StatusBadge status={order.status} /></td>
+                    <td className="muted small">{order.rejectedReason ?? "--"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -283,9 +307,11 @@ function BookHealth(props: { market: string }) {
                 <StatCard label="引擎买单" value={data.engineBidCount ?? "--"} />
                 <StatCard label="引擎卖单" value={data.engineAskCount ?? "--"} />
                 <StatCard label="异常" value={data.anomalyCount ?? 0} tone={data.anomalyCount ? "negative" : "positive"} />
+                <StatCard label="待触发止损单" value={data.pendingTriggerOrderCount ?? 0} hint="不在引擎订单簿中" />
               </div>
               <p className="muted small">
                 撮合引擎的订单簿在内存中；order-service 的数据库是事实源。两者不一致时（例如引擎重启），可以用数据库中的挂单重建引擎订单簿。
+                止损单在触发前只存在于数据库（pending_trigger），由 order-service 的触发器按最新成交价提交到引擎；重建时会带上账户 ID，自成交保护（STP）继续生效。
               </p>
               <Button variant="primary" disabled={!can("ops.ledger.execute")} onClick={() => setConfirm(true)}>
                 从数据库重建引擎订单簿

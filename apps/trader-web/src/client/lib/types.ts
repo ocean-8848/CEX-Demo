@@ -63,6 +63,13 @@ export interface LoginResult extends SessionInfo {
   token: string;
 }
 
+/** Returned with a new session by identity-service (login security). */
+export interface SessionDevice {
+  deviceId: string;
+  deviceLabel: string;
+  isNewDevice: boolean;
+}
+
 export type ApiKeyScope = "read" | "trade" | "withdraw";
 
 export interface ApiKeyRecord {
@@ -131,7 +138,9 @@ export interface BalanceRecord {
 }
 
 export type OrderSide = "buy" | "sell";
-export type OrderType = "limit" | "market";
+export type OrderType = "limit" | "market" | "stop_limit" | "stop_market";
+/** Self-trade prevention mode (matching engine). */
+export type StpMode = "expire_taker" | "expire_maker" | "expire_both";
 export type TimeInForce = "gtc" | "ioc" | "fok";
 
 export interface OrderRecord {
@@ -151,6 +160,11 @@ export interface OrderRecord {
   lockAmount?: string;
   createdAt?: string;
   updatedAt?: string;
+  postOnly?: boolean;
+  stpMode?: StpMode;
+  /** Stop orders: waits in pending_trigger until the last price crosses it. */
+  triggerPrice?: string;
+  triggeredAt?: string;
 }
 
 export interface TradeRecord {
@@ -215,6 +229,8 @@ export interface WithdrawalRecord {
   confirmedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** KYT level fixed at request time: low / medium / high / blocked. */
+  riskLevel?: string;
 }
 
 export interface AddressBookEntry {
@@ -390,6 +406,33 @@ export interface PrivateRealtimeMessage {
   items?: unknown[];
   sequence?: number;
   message?: string;
+}
+
+/** identity-service login event (账户 → 登录记录). */
+export interface LoginEventRecord {
+  eventId: string;
+  scope?: string;
+  deviceId: string;
+  deviceLabel?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  outcome: "success" | "failure" | "locked";
+  failureCode?: string;
+  isNewDevice?: boolean;
+  createdAt: string;
+}
+
+/** identity-service device registry entry (账户 → 设备管理). */
+export interface UserDeviceRecord {
+  deviceId: string;
+  deviceLabel?: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastIpAddress?: string;
+  loginCount?: number;
+  flaggedNew?: boolean;
+  revokedAt?: string;
+  activeSessionCount?: number;
 }
 
 // ---------------------------------------------------------------------------

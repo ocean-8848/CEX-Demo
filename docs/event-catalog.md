@@ -60,11 +60,11 @@ flowchart LR
 | `eventType` | 触发时机 | `aggregateType` / `aggregateId` |
 | --- | --- | --- |
 | `order.accepted` | 引擎返回 `resting`，订单挂入订单簿 | `spot_order` / `orderId` |
-| `order.updated` | 撮合后订单进入 `partially_filled`、`filled`、`recovery_pending` 等状态（taker 和被吃的 maker 各发一条） | 同上 |
-| `order.cancelled` | 用户撤单成功；或 IOC 部分成交后剩余取消 | 同上 |
-| `order.rejected` | 引擎无成交（IOC / FOK / 市价无流动性）或下单过程异常 | 同上 |
+| `order.updated` | 撮合后订单进入 `partially_filled`、`filled`、`recovery_pending` 等状态（taker 和被吃的 maker 各发一条）；止损单下单后进入 `pending_trigger` | 同上 |
+| `order.cancelled` | 用户撤单成功（含撤销待触发的止损单）；IOC 部分成交后剩余取消；挂单被同账户新订单按 STP `expire_maker` 撤销 | 同上 |
+| `order.rejected` | 引擎无成交（IOC / FOK / 市价无流动性、Post-Only 会吃单、STP 过期）或落单后冻结失败（`rejectedReason` 以 `ORDER_FREEZE_FAILED:` 开头）、撮合提交异常 | 同上 |
 
-`payload.order` 字段：`orderId`、`userId`、`market`、`side`、`type`、`price`（市价单为 `null`）、`quantity`、`filledQuantity`、`restingQuantity`、`timeInForce`、`status`、`createdAt`。
+`payload.order` 字段：`orderId`、`userId`、`market`、`side`、`type`（`limit` / `market` / `stop_limit` / `stop_market`）、`price`（市价单、止损市价单为 `null`）、`quantity`、`filledQuantity`、`restingQuantity`、`timeInForce`、`status`、`createdAt`，以及可选的 `postOnly`、`stpMode`、`triggerPrice`、`triggeredAt`、`rejectedReason`。
 
 这些事件只通过 Pub/Sub `web3-cex:trading.events` 发布。
 
@@ -116,7 +116,7 @@ Stream 以 `MAXLEN ~ 10000`（`ORDER_EVENT_STREAM_MAX_LEN`）近似裁剪。orde
 | `wallet.withdrawal.updated` | 提币每次状态迁移后（requested / first_approved / approved / broadcasted / confirmed / rejected） | 完整提币单：`withdrawalId`、`userId`、`status`、`reviewStatus`、`amount`、`fee`、`toAddress`、`txHash`、`custodyRequestId` 等 |
 | `wallet.notification.created` | 写入一条站内通知后 | 通知记录：`notificationId`、`userId`、`eventType`（见下）、`subject`、`body`、`payload` |
 
-站内通知（`wallet_notifications` 表）的 `eventType`：`deposit.credited`、`withdrawal.requested`、`withdrawal.approved`、`withdrawal.rejected`、`withdrawal.broadcasted`、`withdrawal.confirmed`。它们是数据库记录而非消息主题，与状态变更在同一事务中提交，用户通过网关的通知接口读取；`deliver-notifications` 脚本会把 `pending` 通知交给投递通道（演示中只输出到控制台）并标记 `delivered` / `failed`。
+站内通知（`wallet_notifications` 表）的 `eventType`：`deposit.credited`、`withdrawal.requested`、`withdrawal.approved`、`withdrawal.rejected`、`withdrawal.broadcasted`、`withdrawal.confirmed`、`security.new_device_login`。`security.*` 通知不关联提币或充值，由 identity-service 在识别到新设备登录时通过内部 HMAC 接口 `POST /api/v1/wallet/notifications/security` 写入（`payload` 含 `deviceId`、`deviceLabel`、`ipAddress`、`loggedInAt`）；KYT 自动拒绝的提现仍发 `withdrawal.rejected`，`payload.riskLevel` 为 `blocked`。它们是数据库记录而非消息主题，与状态变更在同一事务中提交，用户通过网关的通知接口读取；`deliver-notifications` 脚本会把 `pending` 通知交给投递通道（演示中只输出到控制台）并标记 `delivered` / `failed`。
 
 发布失败只打印告警（`event publish degraded`），不影响业务事务。
 

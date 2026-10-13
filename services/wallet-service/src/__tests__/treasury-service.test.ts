@@ -218,6 +218,24 @@ test("withdrawals are paid from the hot wallet and counted in flight until confi
     txHash: "0xw1",
     metadata: {}
   });
+  // A withdrawal auto-rejected by the KYT blacklist never left the hot wallet.
+  await walletRepository.saveWithdrawal({
+    withdrawalId: "w-blocked",
+    userId: "u1",
+    ledgerAccountId: "acct-1",
+    assetCode: "USDT",
+    network: "ethereum",
+    toAddress: "0xbad0000000000000000000000000000000000001",
+    amount: "500",
+    fee: "1",
+    frozenAmount: "0",
+    freezeReferenceId: "w-blocked",
+    status: "rejected",
+    reviewStatus: "rejected",
+    requestedAt: "2026-01-01T00:00:00.000Z",
+    riskLevel: "blocked",
+    metadata: {}
+  } as Parameters<typeof walletRepository.saveWithdrawal>[0]);
   const report = await service.getReconciliation();
   const usdt = report.items.find((item) => item.assetCode === "USDT")!;
   assert.equal(usdt.hot, "1700");

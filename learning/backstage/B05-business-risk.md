@@ -329,13 +329,13 @@ flowchart LR
 
 ## 8. 本仓库对照
 
-本仓库（`CEX Demo`）的风控集中在**交易前**校验，没有业务风控。
+本仓库（`CEX Demo`）的风控集中在**交易前**校验和撮合内的自成交预防，没有业务风控。
 
 | 本章概念 | 本仓库实现 | 状态 |
 |---|---|---|
 | 价格保护带 | `risk-service` 校验价格偏离参考价上限；参考价来自本地配置（`RISK_REFERENCE_PRICE_BTC_USDT` 等） | 已实现（简化） |
-| 下单规则 | `risk-service` 校验最小数量、价格 / 数量 step、可用余额 | 已实现 |
-| 自成交预防 STP | — | 未实现 |
+| 下单规则 | `risk-service` 校验最小数量、价格 / 数量 step、可用余额；Post-Only 仅限 GTC 限价单；止损单的触发价必须在参考价偏离上限内、止损限价的委托价相对触发价也受同一上限约束 | 已实现 |
+| 自成交预防 STP | 撮合引擎按账户 ID（`owner_id`）阻止同一账户的买卖单互相成交，模式 `expire_taker`（默认）/ `expire_maker` / `expire_both`；下单时可传 `stpMode`，被过期的订单在历史委托中显示原因（`engines/matching-engine/src/main.rs`、`services/order-service/src/application/order-application-service.ts`） | 已实现（按账户；未实现按用户组 / 关联账户） |
 | 市场监控（幌骗 / 对敲 / 拉盘） | — | 未实现；可用 `order-service` 的成交记录和订单事件作为数据源 |
 | 营销反作弊、关联图 | — | 未实现（本仓库没有营销活动） |
 | 信用风险 / 保险基金 | — | 未实现（本仓库只有现货） |

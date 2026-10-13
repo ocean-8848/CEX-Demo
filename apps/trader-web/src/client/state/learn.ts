@@ -5,6 +5,7 @@
 import { formatAmount, marketLabel } from "@web3-cex/web-ui";
 
 import { describeFundingStatus, describeOrderStatus } from "../lib/records.js";
+import { describeOrderReason } from "../lib/order-options.js";
 import type {
   BalanceRecord,
   DepositRecord,
@@ -80,7 +81,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     layer: "交易层",
     summary: "订单生命周期编排",
     detail:
-      "交易主链的编排者：调风控 → 调账本冻结资金 → 把订单送进撮合引擎 → 把成交交给结算 → 推送订单/成交事件。异常时进入可重试的恢复队列。",
+      "交易主链的编排者：调风控 → 调账本冻结资金 → 把订单送进撮合引擎 → 把成交交给结算 → 推送订单/成交事件。异常时进入可重试的恢复队列。止损单先以「待触发」保存，StopOrderTriggerWorker 按最新成交价触发后再送进撮合引擎。",
     code: "services/order-service"
   },
   "ledger-service": {
@@ -98,7 +99,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     layer: "交易层",
     summary: "Rust 撮合引擎",
     detail:
-      "内存订单簿，按「价格优先、时间优先」撮合。支持 limit / market 与 GTC / IOC / FOK。它只负责撮合，不碰资金。",
+      "内存订单簿，按「价格优先、时间优先」撮合。支持 limit / market 与 GTC / IOC / FOK，以及只做 Maker（post-only）和自成交保护（STP，同一账户的买卖单不互相成交）。它只负责撮合，不碰资金。",
     code: "engines/matching-engine"
   },
   "settlement-service": {
@@ -179,11 +180,13 @@ export function explainPrivateItems(channel: PrivateChannel, items: unknown[]): 
       case "orders": {
         const order = raw as OrderRecord;
         const status = describeOrderStatus(order.status);
+        const reason = describeOrderReason(order.rejectedReason);
+        const triggered = order.triggeredAt && order.status !== "pending_trigger";
         return [
           learnEvent({
             service: "order-service",
-            title: `订单${status.label}：${order.side === "sell" ? "卖出" : "买入"} ${formatAmount(order.quantity)} ${marketLabel(order.market ?? "")}`,
-            detail: status.hint,
+            title: `${triggered ? "止损单已触发，" : ""}订单${status.label}：${order.side === "sell" ? "卖出" : "买入"} ${formatAmount(order.quantity)} ${marketLabel(order.market ?? "")}`,
+            detail: reason ? `${status.hint}。原因：${reason}` : status.hint,
             tone: status.tone === "negative" ? "negative" : status.tone === "positive" ? "positive" : "neutral"
           })
         ];

@@ -6,6 +6,7 @@ import { readErrorMessage } from "../../lib/api.js";
 import { navigate } from "../../lib/router.js";
 import type { ApiKeyRecord, ApiKeyScope } from "../../lib/types.js";
 import { useExchange } from "../../state/store.js";
+import { LoginSecurityPanels } from "./device-panels.js";
 import { KycPanel, TwoFactorPanel } from "./security-panels.js";
 
 export function AccountPage() {
@@ -120,6 +121,8 @@ export function AccountPage() {
         <TwoFactorPanel />
         <KycPanel />
       </div>
+
+      <LoginSecurityPanels />
 
       <Panel
         title="API Key"

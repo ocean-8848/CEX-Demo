@@ -393,7 +393,7 @@ sequenceDiagram
 |---|---|
 | 双分录 | `postJournal`：一个 journal 带多条 entries，校验同一资产借贷平衡（错误码 `JOURNAL_NOT_BALANCED`） |
 | 借贷方向 | 用户账户按负债类处理：`credit` 增加可用余额，`debit` 减少 |
-| 幂等 | `ledger_journals.idempotency_key` 有唯一约束；重复执行返回 `DUPLICATE_IDEMPOTENCY_KEY` |
+| 幂等 | `ledger_journals.idempotency_key` 有唯一约束；同键同内容（含并发）返回原 journal，同键不同内容返回 409 `DUPLICATE_IDEMPOTENCY_KEY`，并发撞唯一索引也不会变成 500（[`journal-idempotency.ts`](../services/ledger-service/src/application/journal-idempotency.ts)） |
 | 冻结状态机 | `balance_locks` 表，状态 `locked` → `consumed` / `released`；`remaining_amount` 支持部分成交 |
 | 余额分层 | `balances` 表的 `available` 和 `locked` 两列 |
 | 快照可重建 | `reconcile-balances` 脚本用 `ledger_entries` + 活跃锁重算快照 |

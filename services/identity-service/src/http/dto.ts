@@ -57,12 +57,14 @@ export interface CreateOpsSessionRequestDto {
   email: string;
   password: string;
   twoFactorCode?: string;
+  deviceId?: string;
 }
 
 export interface CreateCustomerSessionRequestDto {
   email: string;
   password: string;
   twoFactorCode?: string;
+  deviceId?: string;
 }
 
 export interface CreateApiKeyRequestDto {

@@ -16,7 +16,7 @@ import {
 
 const POSITIVE = /^(ok|listed|active|healthy|settled|credited|confirmed|completed|succeeded|filled|approved|closed_circuit|matched|published|delivered)$/;
 const NEGATIVE = /^(alert|failed|rejected|dead_lettered|dead|open|frozen|suspended|unhealthy|error|mismatch|cancelled_failed)$/;
-const WARNING = /^(halted|pending|requested|under_review|processing|partially_filled|retrying|recovery_pending|pending_recovery|warning|degraded|confirming|detected|half_open|leased|partial)$/;
+const WARNING = /^(halted|pending|pending_trigger|requested|under_review|processing|partially_filled|retrying|recovery_pending|pending_recovery|warning|degraded|confirming|detected|half_open|leased|partial)$/;
 
 const LABELS: Record<string, string> = {
   ok: "正常",
@@ -50,7 +50,8 @@ const LABELS: Record<string, string> = {
   open: "熔断",
   listed: "交易中",
   halted: "已暂停",
-  delisted: "已下架"
+  delisted: "已下架",
+  pending_trigger: "待触发"
 };
 
 export function statusTone(status: string | undefined): Tone {

@@ -115,17 +115,20 @@ rm -rf .runtime/full-stack
 
 ## 4. 内部服务鉴权
 
-`identity-service`、`wallet-service`、`ledger-service`、`order-service`、`settlement-service`、`risk-service` 要求 HMAC 签名头，且默认只监听 `127.0.0.1`。用 `pnpm stack:start` 启动时密钥会自动注入；单独启动服务或脚本时最容易在这里出错。
+`identity-service`、`wallet-service`、`ledger-service`、`order-service`、`settlement-service`、`risk-service`、`blockchain-indexer`、`custody-adapter` 要求 HMAC 签名头，且默认只监听 `127.0.0.1`。用 `pnpm stack:start` 启动时密钥会自动注入；单独启动服务或脚本时最容易在这里出错。
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 被调服务返回 `503` `INTERNAL_SERVICE_AUTH_SECRET is not configured` | 被调服务启动时没有设置密钥（服务端没有默认值） | 以 `INTERNAL_SERVICE_AUTH_SECRET=web3-cex-local-internal-auth` 重新启动该服务 |
-| 调用方报错 `INTERNAL_SERVICE_AUTH_SECRET is required for internal service calls` | 调用方（如 `api-gateway`、`ops-console`、`blockchain-indexer`）没有设置密钥 | 同上，为调用方设置相同的密钥 |
+| 调用方报错 `INTERNAL_SERVICE_AUTH_SECRET is required for internal service calls` | 调用方（如 `api-gateway`、`ops-console`、`wallet-service`、`blockchain-indexer`）没有设置密钥 | 同上，为调用方设置相同的密钥 |
 | `401` `Internal service request signature is invalid` | 调用方与被调方的密钥不一致 | 两边使用同一个值；根目录脚本未设置时默认 `web3-cex-local-internal-auth` |
 | `401` `Missing internal service authentication headers` | 用 `curl` 等工具直接访问内部服务 | 改走 `api-gateway`（`3007`）或 `ops-console`（`3006`）；脚本里使用 `scripts/internal-service-auth.mjs` 生成签名头 |
 | `401` `Caller <name> is not allowed` | 调用方名称不在被调服务白名单中 | 检查 `INTERNAL_SERVICE_CALLER_NAME`，或在被调方设置 `INTERNAL_SERVICE_ALLOWED_CALLERS` |
 | `401` `Internal service request timestamp is stale` | 签名时间与服务器时间相差超过 30 秒 | 校准系统时间，或调大 `INTERNAL_SERVICE_AUTH_MAX_SKEW_MS` |
 | 从容器或其他机器访问内部服务连接被拒绝 | 内部服务只监听 `127.0.0.1` | 本地学习场景下应在本机访问；确有需要时设置 `INTERNAL_SERVICE_BIND_HOST` |
+| 从手机或局域网其他机器打不开 `trader-web` / `ops-console` / 网关 | 所有入口默认只监听 `127.0.0.1`（启动日志会打印实际地址） | 设置 `TRADER_WEB_BIND_HOST=0.0.0.0`、`OPS_CONSOLE_BIND_HOST=0.0.0.0` 或 `GATEWAY_BIND_HOST=0.0.0.0` 后重启，并自行加防火墙 |
+| 本机脚本访问 `http://localhost:<port>` 连接被拒绝 | 某些系统把 `localhost` 优先解析为 IPv6 `::1`，而服务只监听 IPv4 回环 | 改用 `http://127.0.0.1:<port>`（浏览器会自动回退，一般不受影响） |
+| 网关匿名限流不区分客户端，`X-Forwarded-For` 不起作用 | 默认不信任 `X-Forwarded-For`，按 socket 对端地址限流；经 `trader-web` 代理的请求都来自 `127.0.0.1` | 只有网关前确有可信反向代理时才设置 `GATEWAY_TRUST_PROXY=true` |
 
 各服务的维护脚本（`pnpm --filter <包名> <脚本>`）如果需要调用受保护服务，也要在同一个 shell 中导出相同的 `INTERNAL_SERVICE_AUTH_SECRET`。
 

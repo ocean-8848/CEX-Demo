@@ -7,10 +7,12 @@ import type {
   OrderStatus,
   OrderType,
   SpotMarket,
+  StpMode,
   TimeInForce
 } from "@web3-cex/domain";
 
 import { ApiGatewayError } from "../domain/errors.js";
+import { normalizeOrderOptions } from "./order-options.js";
 import type {
   ApiKeyScope,
   GatewayAccountStatementQuery,
@@ -123,6 +125,7 @@ export class ApiGatewayApplicationService {
     twoFactorCode?: string;
     userAgent?: string;
     ipAddress?: string;
+    deviceId?: string;
   }) {
     return this.identityClient.createCustomerSession(command);
   }
@@ -332,6 +335,38 @@ export class ApiGatewayApplicationService {
       throw new ApiGatewayError("PROOF_OF_RESERVES_UNAVAILABLE", 503, "Proof of reserves is not available");
     }
     return this.walletClient.getProofOfReserves(principal.userId);
+  }
+
+  // --- login security (session only) ----------------------------------------
+
+  async listLoginEvents(principal: GatewayPrincipal, query: { limit?: number; offset?: number }) {
+    this.assertCustomerSession(principal);
+    return this.requireIdentityMethod(this.identityClient.listLoginEvents).call(
+      this.identityClient,
+      principal.userId,
+      query
+    );
+  }
+
+  async listDevices(principal: GatewayPrincipal) {
+    this.assertCustomerSession(principal);
+    return this.requireIdentityMethod(this.identityClient.listDevices).call(this.identityClient, principal.userId);
+  }
+
+  async revokeDevice(principal: GatewayPrincipal, deviceId: string) {
+    this.assertCustomerSession(principal);
+    return this.requireIdentityMethod(this.identityClient.revokeDevice).call(
+      this.identityClient,
+      principal.userId,
+      deviceId
+    );
+  }
+
+  private requireIdentityMethod<T>(method: T | undefined): T {
+    if (!method) {
+      throw new ApiGatewayError("IDENTITY_UPSTREAM_FAILED", 501, "Identity client does not support login security");
+    }
+    return method;
   }
 
   /** Tier, per-asset limits, today's usage and cooldown (session or API key with read). */
@@ -658,12 +693,15 @@ export class ApiGatewayApplicationService {
       quantity: string;
       idempotencyKey: string;
       traceId?: string;
+      postOnly?: boolean;
+      stpMode?: StpMode;
+      triggerPrice?: string;
     }
   ) {
     await this.assertAccountOwnership(command.accountId, principal.userId);
     return this.orderClient.createOrder({
       userId: principal.userId,
-      ...command
+      ...normalizeOrderOptions(command)
     });
   }
 

@@ -3,23 +3,25 @@
 //
 //   node ./scripts/verify-feature-e2e.mjs [section...]
 //
-// Sections: apikey, websocket, fees, sol, notifications, security, lab, reserves.
+// Sections: apikey, websocket, fees, sol, notifications, security, lab, hardening, matching, risk-security, reserves.
 // Without arguments all sections run. The demo trader is restored afterwards
 // (2FA disabled, faults recovered); KYC tier and balances change, which
 // `pnpm demo:prepare` resets.
 import assert from "node:assert/strict";
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 
 import {
   DEMO_MAKERS,
+  DEMO_OPENING_BALANCE_ACCOUNT_ID,
   DEMO_OPS,
   DEMO_OPS_REVIEWER,
   DEMO_TRADER,
   DEMO_WITHDRAWAL_ADDRESS,
   fetchJson,
   generateTotpCode,
-  loadDemoConfig
+  loadDemoConfig,
+  setDemoMakersPaused
 } from "./mvp-demo-lib.mjs";
 
 const config = loadDemoConfig();
@@ -392,6 +394,272 @@ const sections = {
 
     assert.equal((await ops(t, "/lab/recover-all", {})).status, 201);
     return "settlement pause/resume · custody failover · reorg ack · engine reset + self-heal";
+  },
+
+  /** Hardening: internal auth on custody/indexer, loopback binding, ledger key races, XFF trust. */
+  async hardening() {
+    const custody = process.env.DEMO_CUSTODY_URL ?? "http://127.0.0.1:3004";
+    for (const url of [`${custody}/api/v1/custody/providers/health`, `${config.indexerBaseUrl}/api/v1/indexer/ops/overview`]) {
+      assert.equal((await http(url)).status, 401, `unsigned ${url} is rejected`);
+      await fetchJson(url); // signed by mvp-demo-lib (caller demo-scripts)
+    }
+
+    // Edge and internal services listen on loopback only (default bind host).
+    const { networkInterfaces } = await import("node:os");
+    const { createConnection } = await import("node:net");
+    const lanAddress = Object.values(networkInterfaces()).flat().find((item) => item && item.family === "IPv4" && !item.internal)?.address;
+    let bindDetail = "no LAN address, bind check skipped";
+    if (lanAddress) {
+      for (const port of [3003, 3004, 3006, 3007, 3012, 3013]) {
+        const reachable = await new Promise((resolve) => {
+          const socket = createConnection({ host: lanAddress, port });
+          const done = (value) => { socket.destroy(); resolve(value); };
+          socket.setTimeout(1_000, () => done(false));
+          socket.once("connect", () => done(true));
+          socket.once("error", () => done(false));
+        });
+        assert.equal(reachable, false, `port ${port} must not listen on ${lanAddress}`);
+      }
+      bindDetail = `loopback-only on ${lanAddress}`;
+    }
+
+    // Same idempotency key: identical concurrent posts replay one journal; a
+    // different payload is a 409, never a 500.
+    const key = `e2e-hardening:${randomUUID()}`;
+    const journal = (amount) => ({
+      method: "POST",
+      body: JSON.stringify({
+        businessType: "e2e_hardening",
+        businessId: key,
+        idempotencyKey: key,
+        traceId: key,
+        entries: [
+          { accountId: DEMO_OPENING_BALANCE_ACCOUNT_ID, assetCode: "USDT", direction: "debit", amount, referenceType: "e2e_hardening", referenceId: key },
+          { accountId: DEMO_OPENING_BALANCE_ACCOUNT_ID, assetCode: "USDT", direction: "credit", amount, referenceType: "e2e_hardening", referenceId: key }
+        ]
+      })
+    });
+    const journals = await Promise.all([1, 2, 3].map(() => fetchJson(`${config.ledgerBaseUrl}/api/v1/ledger/journals`, journal("1"))));
+    assert.equal(new Set(journals.map((item) => item.journalId)).size, 1, "concurrent identical journals replay one result");
+    const conflict = await fetchJson(`${config.ledgerBaseUrl}/api/v1/ledger/journals`, journal("2")).catch((error) => error);
+    assert.equal(conflict.httpStatus, 409, `different payload: ${conflict.message}`);
+
+    // Without GATEWAY_TRUST_PROXY a spoofed X-Forwarded-For does not get a fresh bucket.
+    const attempt = (ip) => http(`${GATEWAY}/auth/sessions`, {
+      headers: { "x-forwarded-for": ip },
+      body: { email: `xff-${randomUUID()}@example.invalid`, password: "not-the-password" }
+    });
+    let sameBucket = false;
+    for (let round = 0; round < 2 && !sameBucket; round += 1) {
+      const first = Number((await attempt("198.51.100.10")).headers.get("x-rate-limit-remaining"));
+      const second = Number((await attempt("198.51.100.20")).headers.get("x-rate-limit-remaining"));
+      sameBucket = second < first;
+    }
+    assert.ok(sameBucket, "X-Forwarded-For must not select the rate-limit bucket by default");
+    return `custody/indexer unsigned 401 · ${bindDetail} · journal replay + 409 · XFF ignored`;
+  },
+
+  /** Matching enhancements: post-only, self-trade prevention, stop orders. */
+  async matching(ctx) {
+    const market = config.demoMarket;
+    const getOrder = async (orderId) => (await gateway(`/orders/${orderId}`, { token: ctx.token })).body;
+    const depth = async () => fetchJson(`${config.marketDataBaseUrl}/api/v1/market-data/depth?market=${market}`);
+    const cancel = async (orderId) => gateway(`/orders/${orderId}/cancel`, { token: ctx.token, body: {} });
+
+    // Malformed options are rejected before they reach risk / the engine.
+    const badStp = await placeOrder(ctx.token, ctx.accountId, { market, price: await bestAsk(market), stpMode: "nope" });
+    assert.equal(badStp.status, 400, JSON.stringify(badStp.body));
+    const noTrigger = await placeOrder(ctx.token, ctx.accountId, { market, type: "stop_limit", price: await bestAsk(market), timeInForce: "gtc" });
+    assert.equal(noTrigger.status, 400, JSON.stringify(noTrigger.body));
+
+    // Own some base asset for the sell-side checks.
+    const bought = await placeOrder(ctx.token, ctx.accountId, { market, price: await bestAsk(market), quantity: "0.05" });
+    assert.equal(bought.body.status, "filled", JSON.stringify(bought.body));
+    await waitSettled(bought.body.orderId);
+
+    // Freeze the maker ladder so the book cannot move under the STP checks.
+    await setDemoMakersPaused(config, true);
+    const created = [];
+    try {
+      await sleep(1_500);
+      // 1. Post-only that would take liquidity is rejected and fully released.
+      const takingPostOnly = await placeOrder(ctx.token, ctx.accountId, {
+        market, price: await bestAsk(market), timeInForce: "gtc", postOnly: true
+      });
+      assert.equal(takingPostOnly.status, 201, JSON.stringify(takingPostOnly.body));
+      assert.equal(takingPostOnly.body.status, "rejected");
+      assert.equal(takingPostOnly.body.rejectedReason, "post_only_would_take");
+      assert.equal(takingPostOnly.body.filledQuantity, "0");
+
+      // 2. Post-only inside the spread rests as the best bid.
+      const book = await depth();
+      const bid = Number(book.bids[0].price);
+      const ask = Number(book.asks[0].price);
+      assert.ok(ask - bid >= 0.02, `spread ${bid}/${ask} leaves room inside`);
+      const inside = (Math.floor(((bid + ask) / 2) * 100) / 100).toFixed(2);
+      const ownBid = await placeOrder(ctx.token, ctx.accountId, { market, price: inside, timeInForce: "gtc", postOnly: true });
+      assert.equal(ownBid.body.status, "accepted", JSON.stringify(ownBid.body));
+      assert.equal(ownBid.body.postOnly, true);
+      created.push(ownBid.body.orderId);
+
+      // 3. STP expire_taker (default): a sell that would hit the own bid expires.
+      const selfSell = await placeOrder(ctx.token, ctx.accountId, { market, side: "sell", price: inside, timeInForce: "ioc" });
+      assert.equal(selfSell.body.status, "rejected", JSON.stringify(selfSell.body));
+      assert.equal(selfSell.body.rejectedReason, "stp_expired_taker");
+      assert.equal((await getOrder(ownBid.body.orderId)).status, "accepted", "own resting bid is kept");
+
+      // 4. STP expire_maker: the own bid is cancelled, the sell keeps going and rests.
+      const makerExpiry = await placeOrder(ctx.token, ctx.accountId, {
+        market, side: "sell", price: inside, timeInForce: "gtc", stpMode: "expire_maker"
+      });
+      assert.equal(makerExpiry.body.status, "accepted", JSON.stringify(makerExpiry.body));
+      created.push(makerExpiry.body.orderId);
+      const expiredBid = await getOrder(ownBid.body.orderId);
+      assert.equal(expiredBid.status, "cancelled");
+      assert.equal(expiredBid.rejectedReason, "stp_expired_maker");
+      assert.equal((await cancel(makerExpiry.body.orderId)).body.status, "cancelled");
+    } finally {
+      for (const orderId of created) {
+        await cancel(orderId).catch(() => undefined);
+      }
+      await setDemoMakersPaused(config, false);
+    }
+
+    // 5. Stop-limit far above the market waits in pending_trigger; cancel releases it.
+    const askNow = Number(await bestAsk(market));
+    const farTrigger = (askNow * 1.1).toFixed(2);
+    const waiting = await placeOrder(ctx.token, ctx.accountId, {
+      market, type: "stop_limit", timeInForce: "gtc", triggerPrice: farTrigger, price: (askNow * 1.11).toFixed(2)
+    });
+    assert.equal(waiting.status, 201, JSON.stringify(waiting.body));
+    assert.equal(waiting.body.status, "pending_trigger");
+    assert.equal(Number(waiting.body.triggerPrice), Number(farTrigger));
+    const openStops = items((await gateway(`/orders?market=${market}&status=pending_trigger`, { token: ctx.token })).body);
+    assert.ok(openStops.some((order) => order.orderId === waiting.body.orderId), "listed as pending_trigger");
+    const cancelledStop = await cancel(waiting.body.orderId);
+    assert.equal(cancelledStop.body.status, "cancelled");
+
+    // 6. Stop-market sell whose trigger is already above the last price fires on
+    //    the next trigger pass and executes as a market order.
+    const firing = await placeOrder(ctx.token, ctx.accountId, {
+      market, side: "sell", type: "stop_market", timeInForce: "ioc", triggerPrice: (askNow * 1.05).toFixed(2), price: undefined
+    });
+    assert.equal(firing.body.status, "pending_trigger", JSON.stringify(firing.body));
+    const fired = await waitFor("stop-market trigger", async () => {
+      const order = await getOrder(firing.body.orderId);
+      return order.status !== "pending_trigger" && order.status !== "pending_risk" ? order : null;
+    }, 20_000, 500);
+    assert.ok(fired.triggeredAt, "triggeredAt is recorded");
+    assert.equal(fired.status, "filled", JSON.stringify(fired));
+    await waitSettled(firing.body.orderId);
+    return "post-only reject/rest · STP expire_taker + expire_maker · stop pending/cancel · stop-market fired + settled";
+  },
+
+  /**
+   * Withdrawal address risk (simplified KYT) and device / login security:
+   * scoring, blocked addresses, blacklist sweep, new-device notice, device
+   * revoke, failed-login lock. Assumes 2FA is off for the demo trader.
+   */
+  async "risk-security"(ctx) {
+    const SANCTIONED = "0xbad0000000000000000000000000000000000001"; // seeded in wallet sql/010
+    const MIXER = "0xdeadbeef00000000000000000000000000000001"; // demo label set
+    const withdrawBody = (toAddress, amount = "10") => ({
+      ledgerAccountId: ctx.accountId,
+      assetCode: "USDT",
+      network: config.demoNetwork,
+      toAddress,
+      amount,
+      fee: "1"
+    });
+
+    // 1. KYT scoring at validate time.
+    const safe = await gateway("/withdrawals/validate", { token: ctx.token, body: withdrawBody(config.withdrawalAddress ?? DEMO_WITHDRAWAL_ADDRESS) });
+    assert.equal(safe.status, 201, JSON.stringify(safe.body));
+    assert.equal(safe.body.risk?.level, "low", "the demo whitelisted address scores low");
+    const mixer = await gateway("/withdrawals/validate", { token: ctx.token, body: withdrawBody(MIXER) });
+    assert.equal(mixer.status, 201, JSON.stringify(mixer.body));
+    assert.equal(mixer.body.risk?.level, "high", "mixer-labelled address scores high");
+    assert.equal(mixer.body.appliedRules?.requiredApprovals, 2, "high risk needs dual approval regardless of amount");
+    const blockedCheck = await gateway("/withdrawals/validate", { token: ctx.token, body: withdrawBody(SANCTIONED) });
+    assert.equal(blockedCheck.status, 403);
+    assert.match(JSON.stringify(blockedCheck.body), /WITHDRAWAL_ADDRESS_BLOCKED/);
+
+    // 2. A real request to a blacklisted address is refused and kept as an auto-rejected withdrawal.
+    const blocked = await gateway("/withdrawals/request", {
+      token: ctx.token,
+      headers: { "idempotency-key": randomUUID() },
+      body: withdrawBody(SANCTIONED)
+    });
+    assert.equal(blocked.status, 403, JSON.stringify(blocked.body));
+    const blockedRecord = await waitFor("blocked withdrawal record", async () =>
+      items((await gateway(`/withdrawals?toAddress=${SANCTIONED}&limit=5`, { token: ctx.token })).body).find(
+        (item) => item.riskLevel === "blocked" && item.status === "rejected"
+      ), 10_000);
+    assert.equal(Number(blockedRecord.frozenAmount), 0, "nothing was frozen for a blocked request");
+
+    // 3. Blacklisting an address sweeps pending withdrawals to it (funds released, user notified).
+    const fresh = `0x${randomBytes(20).toString("hex")}`;
+    const pending = await gateway("/withdrawals/request", {
+      token: ctx.token,
+      headers: { "idempotency-key": randomUUID() },
+      body: withdrawBody(fresh)
+    });
+    assert.equal(pending.status, 201, JSON.stringify(pending.body));
+    assert.equal(pending.body.riskLevel, "low");
+    const added = await ops(ctx.opsToken, "/risk/address-blacklist", { network: config.demoNetwork, address: fresh, category: "scam", reason: "e2e risk-security" });
+    assert.equal(added.status, 201, JSON.stringify(added.body));
+    assert.deepEqual(added.body.autoRejectedWithdrawalIds, [pending.body.withdrawalId]);
+    const swept = await waitFor("swept withdrawal rejected", async () =>
+      items((await gateway("/withdrawals?limit=10", { token: ctx.token })).body).find(
+        (item) => item.withdrawalId === pending.body.withdrawalId && item.status === "rejected"
+      ), 10_000);
+    assert.equal(swept.riskLevel, "blocked");
+    const blockedFilter = await ops(ctx.opsToken, `/withdrawals?riskLevel=blocked&userId=${DEMO_TRADER.userId}&limit=50`);
+    assert.ok(items(blockedFilter.body).some((item) => item.withdrawalId === pending.body.withdrawalId), "ops filter by risk level");
+    const removed = await ops(ctx.opsToken, `/risk/address-blacklist/${added.body.entry.entryId}/remove`, { reason: "e2e cleanup" });
+    assert.equal(removed.body.status, "removed");
+    const audit = await ops(ctx.opsToken, "/audit-logs/actions?action=risk.blacklist.add&limit=5");
+    if (audit.status === 200) {
+      assert.ok(items(audit.body).some((item) => item.targetId === `${config.demoNetwork}:${fresh}`), "blacklist add is audited");
+    }
+
+    // 4. New device: login with an unseen device id -> flagged + inbox notice; then revoke it.
+    const deviceId = `e2e_${randomBytes(8).toString("hex")}`;
+    const runtime = await fetchJson(`${TRADER_WEB}/api/config`);
+    const account = runtime.demo?.account ?? { email: DEMO_TRADER.email, password: DEMO_TRADER.password };
+    const newDevice = await gateway("/auth/sessions", { body: { ...account, deviceId } });
+    assert.equal(newDevice.status, 201, JSON.stringify(newDevice.body));
+    assert.equal(newDevice.body.device?.isNewDevice, true, "unseen device is flagged as new");
+    await waitFor("new-device notification", async () =>
+      items((await gateway("/notifications?eventType=security.new_device_login&limit=10", { token: ctx.token })).body).some(
+        (item) => item.payload?.deviceId === deviceId
+      ), 15_000);
+    const devices = await gateway("/auth/devices", { token: ctx.token });
+    assert.ok(items(devices.body).some((item) => item.deviceId === deviceId && item.flaggedNew), "device list shows the new device");
+    const history = await gateway("/auth/login-events?limit=5", { token: ctx.token });
+    assert.ok(items(history.body).some((item) => item.deviceId === deviceId && item.outcome === "success" && item.isNewDevice));
+    const opsDevices = await ops(ctx.opsToken, `/users/${DEMO_TRADER.userId}/devices`);
+    assert.ok(items(opsDevices.body).some((item) => item.deviceId === deviceId), "ops user detail lists devices");
+    assert.equal((await ops(ctx.opsToken, `/users/${DEMO_TRADER.userId}/login-events?limit=5`)).status, 200);
+    const revoked = await gateway(`/auth/devices/${deviceId}/revoke`, { token: ctx.token, body: {} });
+    assert.equal(revoked.status, 201, JSON.stringify(revoked.body));
+    assert.ok(revoked.body.revokedSessionCount >= 1);
+    assert.equal((await gateway("/auth/me", { token: newDevice.body.token })).status, 401, "revoked device session is dead");
+    assert.equal((await gateway("/auth/me", { token: ctx.token })).status, 200, "other devices stay signed in");
+
+    // 5. Failed-login lock on a throwaway account (default 5 failures / 5 minutes).
+    const email = `e2e-lock-${Date.now()}@example.com`;
+    const password = "E2eLockPass123!";
+    const registered = await gateway("/auth/register", { body: { email, password, displayName: "E2E Lock" } });
+    assert.equal(registered.status, 201, JSON.stringify(registered.body));
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      assert.equal((await gateway("/auth/sessions", { body: { email, password: "wrong-password" } })).status, 401);
+    }
+    const locked = await gateway("/auth/sessions", { body: { email, password } });
+    assert.equal(locked.status, 429, JSON.stringify(locked.body));
+    assert.match(JSON.stringify(locked.body), /LOGIN_TEMPORARILY_LOCKED/);
+
+    return "whitelisted low · mixer high (2 approvals) · blacklisted 403 + auto-rejected · sweep releases pending · new device notified + revoked · 5 failures lock 429";
   },
 
   /** Custody layering: sweep, hot -> cold approval, wallet-vs-ledger reconciliation, proof of reserves. */

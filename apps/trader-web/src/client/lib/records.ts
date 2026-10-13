@@ -48,6 +48,7 @@ export function timeOf(value: unknown): number {
 // ---------------------------------------------------------------------------
 
 export const OPEN_ORDER_STATUSES = new Set([
+  "pending_trigger",
   "pending_risk",
   "accepted",
   "partially_filled",
@@ -59,6 +60,11 @@ export function isOpenOrder(order: OrderRecord): boolean {
 }
 
 const ORDER_STATUS: Record<string, { label: string; tone: Tone; hint: string }> = {
+  pending_trigger: {
+    label: "待触发",
+    tone: "info",
+    hint: "止损单已冻结资金，等待最新成交价触及触发价后再提交到撮合引擎"
+  },
   pending_risk: {
     label: "风控中",
     tone: "info",

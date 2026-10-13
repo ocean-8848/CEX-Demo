@@ -160,6 +160,8 @@ const RESET_TABLES = [
   "ledger_journals",
   "balances",
   "accounts",
+  "identity_login_events",
+  "identity_user_devices",
   "identity_kyc_events",
   "identity_kyc_requests",
   "identity_two_factor_recovery_codes",
@@ -634,7 +636,9 @@ export async function ensureBalanceFloor(
     body: JSON.stringify({
       businessType: businessPrefix,
       businessId,
-      idempotencyKey: businessId,
+      // Each top-up moves a different amount; the ledger answers a reused key
+      // with a different payload with 409 DUPLICATE_IDEMPOTENCY_KEY.
+      idempotencyKey: `${businessId}:${now}`,
       traceId: `${businessPrefix}:${accountId}:${assetCode}`,
       description: `Seed ${assetCode} for ${accountId}`,
       entries: [

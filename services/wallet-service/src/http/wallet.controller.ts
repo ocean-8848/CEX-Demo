@@ -28,6 +28,7 @@ import type {
   RejectWithdrawalRequestDto,
   RequestWithdrawalRequestDto
 } from "./dto.js";
+import { isWithdrawalRiskLevel, type WithdrawalRiskLevel } from "../domain/withdrawal-risk.js";
 import { WalletExceptionFilter } from "./wallet-exception.filter.js";
 import { WalletHttpService } from "./wallet-http.service.js";
 
@@ -144,6 +145,7 @@ export class WalletController {
       reviewStatus: query.reviewStatus,
       txHash: query.txHash,
       toAddress: query.toAddress,
+      riskLevel: parseRiskLevel(query.riskLevel),
       limit: parseOptionalNumber(query.limit),
       offset: parseOptionalNumber(query.offset)
     });
@@ -159,6 +161,7 @@ export class WalletController {
       status: query.status,
       txHash: query.txHash,
       toAddress: query.toAddress,
+      riskLevel: parseRiskLevel(query.riskLevel),
       limit: parseOptionalNumber(query.limit),
       offset: parseOptionalNumber(query.offset)
     });
@@ -306,4 +309,8 @@ function parseOptionalBoolean(value: string | undefined): boolean | undefined {
   }
 
   return undefined;
+}
+
+function parseRiskLevel(value: string | undefined): WithdrawalRiskLevel | undefined {
+  return isWithdrawalRiskLevel(value) ? value : undefined;
 }

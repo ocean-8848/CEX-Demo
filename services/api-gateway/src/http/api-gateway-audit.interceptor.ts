@@ -8,6 +8,7 @@ import { Observable, catchError, tap, throwError } from "rxjs";
 
 import type { GatewayPrincipal, RateLimitDecision } from "../domain/types.js";
 import { ApiGatewayHttpService } from "./api-gateway-http.service.js";
+import { resolveClientIp } from "./client-ip.js";
 
 @Injectable()
 export class ApiGatewayAuditInterceptor implements NestInterceptor {
@@ -72,7 +73,7 @@ export class ApiGatewayAuditInterceptor implements NestInterceptor {
       at: new Date().toISOString(),
       method: params.request.method,
       path: params.request.originalUrl,
-      ipAddress: resolveIpAddress(params.request.headers, params.request.ip),
+      ipAddress: resolveClientIp(params.request),
       authType: params.request.gatewayAuth?.authType ?? "public",
       userId: params.request.gatewayAuth?.userId,
       apiKeyId: params.request.gatewayAuth?.apiKeyId,
@@ -96,18 +97,3 @@ function readHeader(
   return Array.isArray(value) ? value[0] : value;
 }
 
-function resolveIpAddress(
-  headers: Record<string, string | string[] | undefined>,
-  fallback: string | undefined
-): string {
-  const forwarded = readHeader(headers, "x-forwarded-for");
-  if (forwarded) {
-    const [first] = forwarded.split(",");
-    const trimmed = first?.trim();
-    if (trimmed) {
-      return trimmed;
-    }
-  }
-
-  return fallback ?? "0.0.0.0";
-}
