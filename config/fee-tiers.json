@@ -1,0 +1,24 @@
+{
+  "$schema": "./fee-tiers.schema.json",
+  "version": 1,
+  "volumeAsset": "USDT",
+  "volumeWindowDays": 30,
+  "tiers": [
+    { "tier": "VIP0", "name": "普通用户", "minVolume": "0", "makerFeeRate": "0.0005", "takerFeeRate": "0.001" },
+    { "tier": "VIP1", "name": "VIP 1", "minVolume": "100000", "makerFeeRate": "0.0004", "takerFeeRate": "0.0009" },
+    { "tier": "VIP2", "name": "VIP 2", "minVolume": "500000", "makerFeeRate": "0.0003", "takerFeeRate": "0.0008" },
+    { "tier": "VIP3", "name": "VIP 3", "minVolume": "2000000", "makerFeeRate": "0.0002", "takerFeeRate": "0.0006" }
+  ],
+  "marketMakers": [
+    {
+      "userId": "10000000-0000-0000-0000-000000000301",
+      "label": "做市商 Ask",
+      "feeTier": "VIP0"
+    },
+    {
+      "userId": "10000000-0000-0000-0000-000000000302",
+      "label": "做市商 Bid",
+      "feeTier": "VIP0"
+    }
+  ]
+}

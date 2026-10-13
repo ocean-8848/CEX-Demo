@@ -39,6 +39,8 @@ export type IdentityOpsPermission =
   | "ops.alerts.read"
   | "ops.markets.read"
   | "ops.markets.manage"
+  | "ops.risk.read"
+  | "ops.risk.manage"
   | "ops.controls.manage";
 export type IdentitySessionScope = "ops_console" | "customer_web";
 export type IdentityApiKeyStatus = "active" | "revoked";
@@ -254,6 +256,8 @@ export interface CreateOpsSessionCommand {
   twoFactorCode?: string;
   userAgent?: string;
   ipAddress?: string;
+  /** Long-lived client device id (login security / new-device detection). */
+  deviceId?: string;
 }
 
 export interface RegisterCustomerCommand {
@@ -268,6 +272,15 @@ export interface CreateCustomerSessionCommand {
   twoFactorCode?: string;
   userAgent?: string;
   ipAddress?: string;
+  /** Long-lived client device id (trader-web localStorage). */
+  deviceId?: string;
+}
+
+/** Device facts returned with a new session. */
+export interface SessionDeviceInfo {
+  deviceId: string;
+  deviceLabel: string;
+  isNewDevice: boolean;
 }
 
 export interface PersistedOpsSession {
@@ -324,6 +337,7 @@ export interface OpsSessionInfo {
 
 export interface CreatedOpsSession extends OpsSessionInfo {
   token: string;
+  device?: SessionDeviceInfo;
 }
 
 export interface CustomerSessionInfo extends IdentitySessionInfo {
@@ -332,6 +346,7 @@ export interface CustomerSessionInfo extends IdentitySessionInfo {
 
 export interface CreatedCustomerSession extends CustomerSessionInfo {
   token: string;
+  device?: SessionDeviceInfo;
 }
 
 export interface CreateApiKeyCommand {

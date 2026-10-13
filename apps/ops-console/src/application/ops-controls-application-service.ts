@@ -66,6 +66,14 @@ export class OpsControlsApplicationService {
       }>;
       settlementReport?: () => Promise<Record<string, unknown>>;
       settlementConsumer?: () => Promise<Record<string, unknown>>;
+      /** wallet-service treasury: wallet-vs-ledger reconciliation and failed transfers / sweeps. */
+      treasuryReconciliation?: () => Promise<Record<string, unknown>>;
+      failedTreasuryTransfers?: () => Promise<unknown>;
+      /** wallet-service KYT: recent blocked withdrawals and high-risk ones waiting for review. */
+      blockedWithdrawals?: () => Promise<unknown>;
+      highRiskReviewQueue?: () => Promise<unknown>;
+      /** risk-service market surveillance overview (open alerts by type). */
+      surveillanceOverview?: () => Promise<Record<string, unknown>>;
       now?: () => Date;
     }
   ) {
@@ -153,11 +161,14 @@ export class OpsControlsApplicationService {
 
   /** Existing sources + emergency switches + reconciliation + trading, each alert with a P-level. */
   async getAlertsOverview(): Promise<AlertsOverviewView> {
-    const [base, controls, reconciliation, trading] = await Promise.all([
+    const [base, controls, reconciliation, trading, treasury, withdrawalRisk, surveillance] = await Promise.all([
       this.deps.baseAlerts(),
       this.controlsSource(),
       this.reconciliationSource(),
-      this.tradingSource()
+      this.tradingSource(),
+      this.treasurySource(),
+      this.withdrawalRiskSource(),
+      this.surveillanceSource()
     ]);
     const sources: AlertSourceView[] = [
       ...base.sources.map((source) =>
@@ -168,7 +179,8 @@ export class OpsControlsApplicationService {
       ),
       reconciliation,
       controls,
-      trading
+      trading,
+      ...[treasury, withdrawalRisk, surveillance].filter((source): source is AlertSourceView => source !== null)
     ];
     const summary = summarizeAlerts(sources.flatMap((source) => source.items ?? []));
     return {
@@ -288,6 +300,97 @@ export class OpsControlsApplicationService {
     }
   }
 
+  /**
+   * Treasury: a coverage shortfall (reserves below net liabilities) is P1 but
+   * deliberately only an alert — the automatic breaker reacts to ledger
+   * reconciliation, not to the wallet-vs-ledger coverage report.
+   */
+  private async treasurySource(): Promise<AlertSourceView | null> {
+    if (!this.deps.treasuryReconciliation && !this.deps.failedTreasuryTransfers) {
+      return null;
+    }
+    const items: ClassifiedAlert[] = [];
+    const summary: Record<string, unknown> = {};
+    try {
+      if (this.deps.treasuryReconciliation) {
+        const report = await this.deps.treasuryReconciliation();
+        const rows = Array.isArray(report.items) ? (report.items as Array<Record<string, unknown>>) : [];
+        summary.coverage = { status: report.status, shortfallCount: report.shortfallCount };
+        for (const row of rows.filter((item) => item.status === "shortfall")) {
+          items.push(
+            classifyAlert(
+              "treasury",
+              `reserve_coverage_shortfall:${String(row.assetCode)}=${String(row.surplus)} (reserves ${String(row.reserves)} < net liabilities ${String(row.netLiabilities)})`
+            )
+          );
+        }
+      }
+      if (this.deps.failedTreasuryTransfers) {
+        const failed = listItems(await this.deps.failedTreasuryTransfers()).filter((item) => item.status === "failed");
+        const sweeps = failed.filter((item) => item.kind === "sweep").length;
+        const transfers = failed.length - sweeps;
+        summary.failedSweeps = sweeps;
+        summary.failedTransfers = transfers;
+        if (transfers > 0) {
+          items.push(classifyAlert("treasury", `treasury_transfer_failed=${transfers} exceeds threshold 0`));
+        }
+        if (sweeps > 0) {
+          items.push(classifyAlert("treasury", `treasury_sweep_failed=${sweeps} exceeds threshold 0`));
+        }
+      }
+      return withItems({ source: "treasury", status: "ok", alerts: [], summary }, items);
+    } catch (error) {
+      return unavailable("treasury", error);
+    }
+  }
+
+  private async withdrawalRiskSource(): Promise<AlertSourceView | null> {
+    if (!this.deps.blockedWithdrawals && !this.deps.highRiskReviewQueue) {
+      return null;
+    }
+    const items: ClassifiedAlert[] = [];
+    const summary: Record<string, unknown> = {};
+    try {
+      if (this.deps.blockedWithdrawals) {
+        const since = this.now().getTime() - 24 * 3600_000;
+        const blocked = listItems(await this.deps.blockedWithdrawals()).filter(
+          (item) => item.riskLevel === "blocked" && Date.parse(String(item.requestedAt ?? "")) >= since
+        ).length;
+        summary.blockedLast24h = blocked;
+        if (blocked > 0) {
+          items.push(classifyAlert("withdrawal_risk", `blocked_withdrawals_24h=${blocked} exceeds threshold 0`));
+        }
+      }
+      if (this.deps.highRiskReviewQueue) {
+        const queue = await this.deps.highRiskReviewQueue();
+        const pending = totalOf(queue);
+        summary.highRiskPendingReview = pending;
+        if (pending > 0) {
+          items.push(classifyAlert("withdrawal_risk", `high_risk_withdrawals_pending=${pending} exceeds threshold 0`));
+        }
+      }
+      return withItems({ source: "withdrawal_risk", status: "ok", alerts: [], summary }, items);
+    } catch (error) {
+      return unavailable("withdrawal_risk", error);
+    }
+  }
+
+  private async surveillanceSource(): Promise<AlertSourceView | null> {
+    if (!this.deps.surveillanceOverview) {
+      return null;
+    }
+    try {
+      const overview = await this.deps.surveillanceOverview();
+      const openByType = (overview.openByType ?? {}) as Record<string, number>;
+      const items = Object.entries(openByType)
+        .filter(([, count]) => Number(count) > 0)
+        .map(([type, count]) => classifyAlert("surveillance", `surveillance_open_${type}=${count} exceeds threshold 0`));
+      return withItems({ source: "surveillance", status: "ok", alerts: [], summary: { openByType } }, items);
+    } catch (error) {
+      return unavailable("surveillance", error);
+    }
+  }
+
   private async tradingSource(): Promise<AlertSourceView> {
     const items: ClassifiedAlert[] = [];
     const summary: Record<string, unknown> = {};
@@ -338,6 +441,19 @@ export class OpsControlsApplicationService {
     const view = withItems({ source: "trading", status: "ok", alerts: [], summary }, items);
     return errors.length > 0 && items.length === 0 ? { ...view, status: "unknown" } : view;
   }
+}
+
+function listItems(value: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(value)) {
+    return value as Array<Record<string, unknown>>;
+  }
+  const items = (value as { items?: unknown } | null)?.items;
+  return Array.isArray(items) ? (items as Array<Record<string, unknown>>) : [];
+}
+
+function totalOf(value: unknown): number {
+  const total = (value as { total?: unknown } | null)?.total;
+  return typeof total === "number" ? total : listItems(value).length;
 }
 
 function withItems(source: AlertSourceView, items: ClassifiedAlert[]): AlertSourceView {

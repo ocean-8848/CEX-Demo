@@ -13,6 +13,8 @@ export interface OpsReviewQueueQuery {
   status?: string;
   txHash?: string;
   toAddress?: string;
+  /** KYT risk level: low / medium / high / blocked. */
+  riskLevel?: string;
   limit?: number;
   offset?: number;
 }

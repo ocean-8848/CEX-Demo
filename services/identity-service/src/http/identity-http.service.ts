@@ -2,6 +2,11 @@ import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import type { Pool } from "pg";
 
 import { IdentityApplicationService } from "../application/identity-application-service.js";
+import { LoginSecurityService } from "../application/login-security-service.js";
+import { DEFAULT_LOGIN_LOCK_POLICY, type LoginSecurityRepository } from "../domain/login-security.js";
+import { HttpWalletSecurityNotifier } from "../infrastructure/http-wallet-security-notifier.js";
+import { InMemoryLoginSecurityRepository } from "../infrastructure/in-memory-login-security-repository.js";
+import { PostgresLoginSecurityRepository } from "../infrastructure/postgres-login-security-repository.js";
 import type {
   ApiKeyAuthInfo,
   CreateApiKeyCommand,
@@ -44,18 +49,46 @@ import { PostgresIdentityRepository } from "../infrastructure/postgres-identity-
 @Injectable()
 export class IdentityHttpService implements OnModuleDestroy {
   private readonly applicationService: IdentityApplicationService;
+  /** Login events, devices, failed-login lock (used by LoginSecurityController). */
+  readonly loginSecurity: LoginSecurityService;
   private readonly repository: IdentityRepository;
   private readonly pool?: Pool;
 
   constructor() {
     const repositoryMode = process.env.IDENTITY_REPOSITORY ?? "postgres";
 
+    let loginSecurityRepository: LoginSecurityRepository;
     if (repositoryMode === "memory") {
       this.repository = new InMemoryIdentityRepository();
+      loginSecurityRepository = new InMemoryLoginSecurityRepository();
     } else {
       this.pool = createIdentityPool();
       this.repository = new PostgresIdentityRepository(this.pool, this.pool);
+      loginSecurityRepository = new PostgresLoginSecurityRepository(this.pool);
     }
+
+    this.loginSecurity = new LoginSecurityService(loginSecurityRepository, this.repository, {
+      lockPolicy: {
+        maxFailures: readNonNegativeInteger(
+          process.env.IDENTITY_LOGIN_MAX_FAILURES,
+          DEFAULT_LOGIN_LOCK_POLICY.maxFailures
+        ),
+        windowSeconds: readNonNegativeInteger(
+          process.env.IDENTITY_LOGIN_FAILURE_WINDOW_SECONDS,
+          DEFAULT_LOGIN_LOCK_POLICY.windowSeconds
+        ),
+        lockSeconds: readNonNegativeInteger(
+          process.env.IDENTITY_LOGIN_LOCK_SECONDS,
+          DEFAULT_LOGIN_LOCK_POLICY.lockSeconds
+        )
+      },
+      notifier:
+        process.env.IDENTITY_NEW_DEVICE_NOTIFY === "false"
+          ? undefined
+          : new HttpWalletSecurityNotifier(
+              process.env.IDENTITY_WALLET_SERVICE_BASE_URL ?? "http://127.0.0.1:3002"
+            )
+    });
 
     this.applicationService = new IdentityApplicationService(this.repository, {
       issuer: process.env.TWO_FACTOR_ISSUER ?? "Web3 CEX",
@@ -65,7 +98,8 @@ export class IdentityHttpService implements OnModuleDestroy {
       opsSessionTtlHours: Number(process.env.OPS_SESSION_TTL_HOURS ?? "12"),
       customerSessionTtlHours: Number(process.env.CUSTOMER_SESSION_TTL_HOURS ?? String(24 * 7)),
       requireOpsTwoFactor: process.env.OPS_REQUIRE_TWO_FACTOR !== "false",
-      apiKeyEncryptionKey: process.env.IDENTITY_API_KEY_ENCRYPTION_KEY
+      apiKeyEncryptionKey: process.env.IDENTITY_API_KEY_ENCRYPTION_KEY,
+      loginSecurity: this.loginSecurity
     });
   }
 
@@ -192,4 +226,12 @@ export class IdentityHttpService implements OnModuleDestroy {
   async setKycTier(command: SetKycTierCommand): Promise<KycProfile> {
     return this.applicationService.setKycTier(command);
   }
+}
+
+function readNonNegativeInteger(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
 }

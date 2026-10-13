@@ -43,6 +43,10 @@ interface OrderRow {
   cancelled_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  post_only?: boolean | null;
+  stp_mode?: string | null;
+  trigger_price?: string | null;
+  triggered_at?: Date | string | null;
 }
 
 interface TradeRow {
@@ -60,6 +64,8 @@ interface TradeRow {
   seller_account_id: string;
   seller_fee_rate: string;
   buyer_fee_rate?: string | null;
+  buyer_fee_tier?: string | null;
+  seller_fee_tier?: string | null;
   execution_id: string;
   execution_batch_id: string;
   execution_sequence: string;
@@ -143,7 +149,7 @@ export class PostgresOrderRepository implements OrderRepository {
     const result = await this.db.query<OrderRow>(
       `select * from spot_orders
         where order_id = any($1::uuid[])
-           or ($2::boolean and status in ('accepted', 'partially_filled', 'pending_risk', 'recovery_pending'))`,
+           or ($2::boolean and status in ('accepted', 'partially_filled', 'pending_trigger', 'pending_risk', 'recovery_pending'))`,
       [ids, params.includeOpen]
     );
     return result.rows.map(mapOrder);
@@ -176,12 +182,14 @@ export class PostgresOrderRepository implements OrderRepository {
       `insert into spot_orders (
          order_id, idempotency_key, trace_id, user_id, account_id, market, side, type,
          time_in_force, price, quantity, filled_quantity, resting_quantity, status, lock_asset_code, lock_amount,
-         rejected_reason, cancelled_at, created_at, updated_at, otel_trace_id
+         rejected_reason, cancelled_at, created_at, updated_at, otel_trace_id,
+         post_only, stp_mode, trigger_price, triggered_at
        )
        values (
          $1, $2, $3, $4, $5, $6, $7, $8,
          $9, $10, $11, $12, $13, $14, $15, $16,
-         $17, $18, $19, $20, $21
+         $17, $18, $19, $20, $21,
+         $22, $23, $24, $25
        )
        on conflict (order_id) do update set
          filled_quantity = excluded.filled_quantity,
@@ -189,31 +197,39 @@ export class PostgresOrderRepository implements OrderRepository {
          status = excluded.status,
          rejected_reason = excluded.rejected_reason,
          cancelled_at = excluded.cancelled_at,
-         updated_at = excluded.updated_at`,
+         updated_at = excluded.updated_at,
+         triggered_at = excluded.triggered_at`,
+      orderValues(order)
+    );
+  }
+
+  async saveOrderIfStatus(
+    order: SpotOrderRecord,
+    expectedStatus: SpotOrderRecord["status"]
+  ): Promise<boolean> {
+    const result = await this.db.query(
+      `update spot_orders set
+         filled_quantity = $2,
+         resting_quantity = $3,
+         status = $4,
+         rejected_reason = $5,
+         cancelled_at = $6,
+         updated_at = $7,
+         triggered_at = $8
+       where order_id = $1 and status = $9`,
       [
         order.orderId,
-        order.idempotencyKey,
-        order.traceId,
-        order.userId,
-        order.accountId,
-        order.market,
-        order.side,
-        order.type,
-        order.timeInForce,
-        order.price,
-        order.quantity,
         order.filledQuantity,
         order.restingQuantity,
         order.status,
-        order.lockAssetCode,
-        order.lockAmount,
         order.rejectedReason ?? null,
         order.cancelledAt ?? null,
-        order.createdAt,
         order.updatedAt,
-        order.otelTraceId ?? null
+        order.triggeredAt ?? null,
+        expectedStatus
       ]
     );
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getExecutionCursor(market: SpotMarket): Promise<MarketExecutionCursor> {
@@ -278,14 +294,16 @@ export class PostgresOrderRepository implements OrderRepository {
          buyer_order_id, seller_order_id, buyer_user_id, seller_user_id,
          buyer_account_id, seller_account_id, seller_fee_rate, execution_id,
          execution_batch_id, execution_sequence, execution_batch_sequence,
-         replay_cursor, protocol_version, settlement_id, executed_at, buyer_fee_rate
+         replay_cursor, protocol_version, settlement_id, executed_at, buyer_fee_rate,
+         buyer_fee_tier, seller_fee_tier
        )
        values (
          $1, $2, $3, $4, $5, $6,
          $7, $8, $9, $10,
          $11, $12, $13, $14,
          $15, $16, $17, $18,
-         $19, $20, $21, $22
+         $19, $20, $21, $22,
+         $23, $24
        )
        on conflict (trade_id) do nothing`,
       [
@@ -310,9 +328,19 @@ export class PostgresOrderRepository implements OrderRepository {
         trade.protocolVersion,
         trade.settlementId,
         trade.executedAt,
-        trade.buyerFeeRate ?? "0"
+        trade.buyerFeeRate ?? "0",
+        trade.buyerFeeTier ?? null,
+        trade.sellerFeeTier ?? null
       ]
     );
+  }
+
+  async findLatestTrade(market: SpotMarket): Promise<SpotTradeRecord | null> {
+    const result = await this.db.query<TradeRow>(
+      `select * from spot_trades where market = $1 order by execution_sequence desc limit 1`,
+      [market]
+    );
+    return result.rows[0] ? mapTrade(result.rows[0]) : null;
   }
 
   async findTradeById(tradeId: string): Promise<SpotTradeRecord | null> {
@@ -721,8 +749,42 @@ function mapOrder(row: OrderRow): SpotOrderRecord {
     rejectedReason: row.rejected_reason ?? undefined,
     cancelledAt: row.cancelled_at ? new Date(row.cancelled_at).toISOString() : undefined,
     createdAt: new Date(row.created_at).toISOString(),
-    updatedAt: new Date(row.updated_at).toISOString()
+    updatedAt: new Date(row.updated_at).toISOString(),
+    postOnly: row.post_only ? true : undefined,
+    stpMode: (row.stp_mode ?? undefined) as SpotOrderRecord["stpMode"],
+    triggerPrice: row.trigger_price ?? undefined,
+    triggeredAt: row.triggered_at ? new Date(row.triggered_at).toISOString() : undefined
   };
+}
+
+function orderValues(order: SpotOrderRecord): unknown[] {
+  return [
+    order.orderId,
+    order.idempotencyKey,
+    order.traceId,
+    order.userId,
+    order.accountId,
+    order.market,
+    order.side,
+    order.type,
+    order.timeInForce,
+    order.price,
+    order.quantity,
+    order.filledQuantity,
+    order.restingQuantity,
+    order.status,
+    order.lockAssetCode,
+    order.lockAmount,
+    order.rejectedReason ?? null,
+    order.cancelledAt ?? null,
+    order.createdAt,
+    order.updatedAt,
+    order.otelTraceId ?? null,
+    order.postOnly === true,
+    order.stpMode ?? null,
+    order.triggerPrice ?? null,
+    order.triggeredAt ?? null
+  ];
 }
 
 function mapTrade(row: TradeRow): SpotTradeRecord {
@@ -741,6 +803,8 @@ function mapTrade(row: TradeRow): SpotTradeRecord {
     sellerAccountId: row.seller_account_id,
     sellerFeeRate: row.seller_fee_rate,
     buyerFeeRate: row.buyer_fee_rate ?? "0",
+    ...(row.seller_fee_tier ? { sellerFeeTier: row.seller_fee_tier } : {}),
+    ...(row.buyer_fee_tier ? { buyerFeeTier: row.buyer_fee_tier } : {}),
     executionId: row.execution_id,
     executionBatchId: row.execution_batch_id,
     executionSequence: Number(row.execution_sequence),

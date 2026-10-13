@@ -29,7 +29,7 @@ interface EventRow {
   created_at: Date | string;
 }
 
-/** Tables `risk_control_switches` + `risk_control_switch_events` (sql/002_control_switches.sql). */
+/** Tables `risk_control_switches` + `risk_control_switch_events` (sql/003_control_switches.sql). */
 export class PostgresControlSwitchRepository implements ControlSwitchRepository {
   constructor(private readonly pool: Pool) {}
 

@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 const SUITES = [
   ["demo:verify", "standard demo baseline"],
   ["demo:verify:flow", "deposit -> trade -> withdrawal main flow (API)"],
-  ["test:features", "M2–M5 features: API keys, WS hardening, fees + T-accounts, SOL-USDT, notifications, 2FA/KYC/dual approval, fault lab"],
+  ["test:features", "M2–M5 features: API keys, WS hardening, fees + T-accounts, SOL-USDT, notifications, 2FA/KYC/dual approval, fault lab, KYT + device security, custody layering + PoR"],
   ["test:trader-web:local", "trader-web UI end to end"],
   ["test:ops-console:local", "ops-console UI end to end"]
 ];

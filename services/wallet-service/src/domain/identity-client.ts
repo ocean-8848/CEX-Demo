@@ -13,6 +13,12 @@ export interface IdentityKycProfile {
   tierUpdatedAt?: string;
 }
 
+/** Login security facts used by the optional new-device withdrawal lock. */
+export interface IdentityLoginSecuritySummary {
+  userId: string;
+  lastNewDeviceLoginAt?: string;
+}
+
 export interface VerifyIdentityTwoFactorCommand {
   userId: string;
   code: string;
@@ -22,6 +28,8 @@ export interface VerifyIdentityTwoFactorCommand {
 export interface IdentityClient {
   getTwoFactorStatus(userId: string): Promise<IdentityTwoFactorStatus>;
   getKycProfile(userId: string): Promise<IdentityKycProfile>;
+  /** Optional: only called when WITHDRAWAL_NEW_DEVICE_LOCK_SECONDS > 0. */
+  getLoginSecuritySummary?(userId: string): Promise<IdentityLoginSecuritySummary>;
   verifyTwoFactor(command: VerifyIdentityTwoFactorCommand): Promise<{
     verifiedAt: string;
     purpose?: string;

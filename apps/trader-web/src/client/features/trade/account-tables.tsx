@@ -15,6 +15,7 @@ import {
 } from "@web3-cex/web-ui";
 
 import { readErrorMessage } from "../../lib/api.js";
+import { formatRate, userTradeFeeRate } from "../../lib/fee-tier.js";
 import {
   describeOrderStatus,
   filledRatio,
@@ -22,6 +23,7 @@ import {
   userTradeFee,
   userTradeSide
 } from "../../lib/records.js";
+import { describeOrderReason, describeOrderType, engineTypeOf } from "../../lib/order-options.js";
 import { href, navigate } from "../../lib/router.js";
 import type { MarketDefinition, OrderRecord } from "../../lib/types.js";
 import { useExchange } from "../../state/store.js";
@@ -66,7 +68,7 @@ export function OpenOrdersTable(props: { market?: string }) {
     (order) => isOpenOrder(order) && (!props.market || order.market === props.market)
   );
   if (orders.length === 0) {
-    return <Empty icon="☰" title="暂无当前委托" hint="挂单（未成交或部分成交的限价单）会显示在这里。" />;
+    return <Empty icon="☰" title="暂无当前委托" hint="挂单（未成交或部分成交的限价单）和待触发的止损单会显示在这里。" />;
   }
 
   const cancel = async (orderId: string) => {
@@ -90,6 +92,7 @@ export function OpenOrdersTable(props: { market?: string }) {
             <th>方向</th>
             <th>类型</th>
             <th className="num">价格</th>
+            <th className="num">触发价</th>
             <th className="num">数量</th>
             <th>成交进度</th>
             <th>状态</th>
@@ -109,8 +112,11 @@ export function OpenOrdersTable(props: { market?: string }) {
                 <td className="muted">{formatDateTime(order.createdAt)}</td>
                 <td>{marketLabel(order.market ?? "")}</td>
                 <td className={order.side === "sell" ? "down" : "up"}>{order.side === "sell" ? "卖出" : "买入"}</td>
-                <td>{order.type === "market" ? "市价" : `限价 · ${order.timeInForce?.toUpperCase() ?? "GTC"}`}</td>
-                <td className="num">{formatFixed(order.price, d.price)}</td>
+                <td>{describeOrderType(order)}</td>
+                <td className="num">{engineTypeOf(order.type) === "market" ? "市价" : formatFixed(order.price, d.price)}</td>
+                <td className="num" data-trigger-price>
+                  {order.triggerPrice ? formatFixed(order.triggerPrice, d.price) : "--"}
+                </td>
                 <td className="num">{formatFixed(order.quantity, d.quantity)}</td>
                 <td>
                   <FillBar order={order} />
@@ -175,9 +181,11 @@ export function OrderHistoryTable(props: { market?: string; limit?: number; stat
             <th>方向</th>
             <th>类型</th>
             <th className="num">委托价</th>
+            <th className="num">触发价</th>
             <th className="num">委托量</th>
             <th className="num">已成交</th>
             <th>状态</th>
+            <th>原因</th>
           </tr>
         </thead>
         <tbody>
@@ -189,14 +197,18 @@ export function OrderHistoryTable(props: { market?: string; limit?: number; stat
                 <td className="muted">{formatDateTime(order.updatedAt ?? order.createdAt)}</td>
                 <td>{marketLabel(order.market ?? "")}</td>
                 <td className={order.side === "sell" ? "down" : "up"}>{order.side === "sell" ? "卖出" : "买入"}</td>
-                <td>{order.type === "market" ? "市价" : `限价 · ${order.timeInForce?.toUpperCase() ?? "GTC"}`}</td>
-                <td className="num">{order.type === "market" ? "市价" : formatFixed(order.price, d.price)}</td>
+                <td>{describeOrderType(order)}</td>
+                <td className="num">{engineTypeOf(order.type) === "market" ? "市价" : formatFixed(order.price, d.price)}</td>
+                <td className="num">{order.triggerPrice ? formatFixed(order.triggerPrice, d.price) : "--"}</td>
                 <td className="num">{formatFixed(order.quantity, d.quantity)}</td>
                 <td className="num">{formatFixed(order.filledQuantity ?? "0", d.quantity)}</td>
                 <td>
                   <Badge tone={status.tone} title={order.rejectedReason ?? status.hint}>
                     {status.label}
                   </Badge>
+                </td>
+                <td className="muted" data-order-reason title={order.rejectedReason}>
+                  {describeOrderReason(order.rejectedReason) ?? "--"}
                 </td>
               </tr>
             );
@@ -244,6 +256,7 @@ export function TradeHistoryTable(props: { market?: string; limit?: number }) {
             const myOrderId = side === "buy" ? trade.buyerOrderId : trade.sellerOrderId;
             const role = myOrderId && myOrderId === trade.makerOrderId ? "Maker" : "Taker";
             const fee = userTradeFee(trade, userId);
+            const feeRate = userTradeFeeRate(trade, userId);
             return (
               <tr
                 key={trade.tradeId}
@@ -263,10 +276,15 @@ export function TradeHistoryTable(props: { market?: string; limit?: number }) {
                 <td className="num">{formatFixed(trade.price, d.price)}</td>
                 <td className="num">{formatFixed(trade.quantity, d.quantity)}</td>
                 <td className="num">{formatFixed(toNumber(trade.price) * toNumber(trade.quantity), 2)}</td>
-                <td className="num muted">
+                <td className="num muted" title={feeRate.tier ? `${feeRate.tier} 等级费率` : "成交时记录的费率"}>
                   {fee.amount > 0
                     ? `${formatAmount(fee.amount, 8)} ${fee.asset === "base" ? splitMarket(trade.market ?? "").base : splitMarket(trade.market ?? "").quote}`
                     : "0"}
+                  <span className="fee-rate small" data-fee-rate={feeRate.rate}>
+                    {" "}
+                    · {feeRate.tier ? `${feeRate.tier} ` : ""}
+                    {formatRate(feeRate.rate)}
+                  </span>
                 </td>
                 <td className="num">
                   <Button

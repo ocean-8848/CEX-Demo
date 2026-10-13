@@ -16,11 +16,11 @@
 
 项目的目标是让学习者在一个可运行的系统里看到真实交易所常见的安全控制“长什么样、放在哪一层”：
 
-- 用户与运营人员的登录、会话、2FA、RBAC
+- 用户与运营人员的登录、会话、2FA、RBAC、登录记录、新设备提醒、登录失败锁定
 - 程序化交易的 API Key 签名、scope、防重放
 - 网关的限流、幂等、账户归属校验
 - 服务间请求的 HMAC 签名
-- 提现链路上的限额、KYC 分级、地址簿 / 白名单、冷却期、双人审批、审计日志
+- 提现链路上的限额、KYC 分级、地址簿 / 白名单、简化 KYT（地址风险评分与黑名单）、冷却期、双人审批、审计日志
 - 账本的借贷平衡、冻结 / 释放、幂等记账
 - 紧急开关（全站 / 单币种提现暂停、API 写入冻结）、定时对账与对账熔断、P1/P2/P3 告警分级
 
@@ -36,6 +36,8 @@
 | 基础设施 | `infra/local/docker-compose.yml` 使用默认账号密码（Postgres `web3/web3`），端口直接映射到宿主机，无 TLS |
 | 部署形态 | 单机、单进程、本地回环地址；不考虑多机房、高可用、WAF、CDN |
 | 真实身份核验 | KYC 只是一个分级状态机，证件号只做格式校验并脱敏存储，不接任何第三方核验 |
+| 地址风险情报 | KYT 只是规则评分：黑名单由运营维护（带 3 个虚构的演示种子），混币 / 高风险标签是代码里的虚构演示地址，不接任何链上分析供应商 |
+| 设备识别 | 设备 ID 是 trader-web 存在 localStorage 里的随机值，清除站点数据就会变成“新设备”；不是设备指纹 |
 
 一句话：这是一个跑在本机、用模拟链和测试资产的学习项目，不用于真实资金。
 
@@ -45,10 +47,15 @@
 
 | 组件 | 监听方式 | 说明 |
 | --- | --- | --- |
-| `identity / wallet / ledger / order / settlement / risk` | `INTERNAL_SERVICE_BIND_HOST`，默认 `127.0.0.1` | 见各服务 `src/main.ts` |
+| `identity / wallet / ledger / order / settlement / risk / blockchain-indexer / custody-adapter` | `INTERNAL_SERVICE_BIND_HOST`，默认 `127.0.0.1` | 见各服务 `src/main.ts`；`pnpm stack:start` 也显式注入该变量 |
 | `matching-engine` | `MATCHING_ENGINE_HOST`，默认 `127.0.0.1` | 见 `engines/matching-engine/src/main.rs` |
-| `trader-web`、`demo-simulator` | 显式绑定 `127.0.0.1` | 见 `apps/trader-web/src/main.ts`、`scripts/demo-simulator.mjs` |
-| `api-gateway`、`market-data-service`、`ops-console`、`blockchain-indexer`、`custody-adapter` | `app.listen(port)`，未传 host | 启动日志打印的是 `127.0.0.1`，但未指定 host 时 Node 会监听所有网卡；在共享网络里需自行加防火墙或改为显式绑定 |
+| `api-gateway` | `GATEWAY_BIND_HOST`，默认 `127.0.0.1` | `services/api-gateway/src/main.ts` |
+| `market-data-service` | `MARKET_DATA_BIND_HOST`，默认 `127.0.0.1` | `services/market-data-service/src/main.ts` |
+| `ops-console` | `OPS_CONSOLE_BIND_HOST`，默认 `127.0.0.1` | `apps/ops-console/src/main.ts` |
+| `trader-web` | `TRADER_WEB_BIND_HOST`，默认 `127.0.0.1` | `apps/trader-web/src/main.ts` |
+| `demo-simulator` | `DEMO_SIMULATOR_BIND_HOST`，默认 `127.0.0.1` | `scripts/demo-simulator.mjs` |
+
+所有服务的启动日志打印的都是实际绑定的 host。需要从局域网其他机器访问时，只对需要的入口（通常是 `trader-web` / `ops-console`）设置对应变量为 `0.0.0.0`，并自行加防火墙。
 
 ### 2.2 用户与运营身份（identity-service）
 
@@ -62,6 +69,10 @@
 - **客户自助 2FA**：开启、关闭、重新生成恢复码的接口只接受会话鉴权，API Key 无法关闭 2FA（`services/api-gateway/src/http/api-gateway.controller.ts`）。
 - **RBAC**（`domain/rbac.ts`）：6 个运营角色 `ops_admin / ops_reviewer / ops_finance_operator / ops_risk_operator / ops_platform_operator / ops_observer`，映射到细粒度权限（如 `ops.withdrawals.review`、`ops.ledger.execute`、`ops.users.freeze`）。紧急开关权限 `ops.controls.manage` 只授予 `ops_admin`。未指定角色时默认 `ops_observer`（只读）。
 - **KYC 分级**（`domain/kyc.ts`）：`unverified → L1 → L2`，只能逐级申请、由运营审核；证件号脱敏后存储。
+- **登录记录**（`domain/login-security.ts`、`application/login-security-service.ts`）：每次密码登录（客户与运营）都写一条 `identity_login_events`：时间、IP、User-Agent、设备 ID、结果（`success / failure / locked`）与失败原因码，未注册的邮箱也会记录（不带 userId）。trader-web 在 localStorage 保存长期随机设备 ID 并随登录提交；没有设备 ID 的客户端（脚本）按 User-Agent 派生一个稳定 ID。用户在 trader-web「账户」页、运营在用户详情里可以看到登录记录和设备列表。
+- **新设备提醒**：账户已有其他设备时，第一次出现的设备会被标记为新设备（`identity_user_devices.flagged_new`），并通过内部 HMAC 调用 wallet-service 写一条站内信 `security.new_device_login`（失败不影响登录）。可选策略 `WITHDRAWAL_NEW_DEVICE_LOCK_SECONDS`（默认 0 关闭）在新设备登录后的 N 秒内拒绝提现（`WITHDRAWAL_NEW_DEVICE_LOCK`）。
+- **按设备吊销会话**：会话记录创建它的设备（`identity_ops_sessions.device_id`），用户或运营可以“退出该设备”，吊销该设备上的全部有效会话。
+- **登录失败锁定**：自上次成功登录起、`IDENTITY_LOGIN_FAILURE_WINDOW_SECONDS`（默认 900 秒）内累计 `IDENTITY_LOGIN_MAX_FAILURES`（默认 5）次密码 / 动态码 / 恢复码错误后，锁定 `IDENTITY_LOGIN_LOCK_SECONDS`（默认 300 秒），期间连正确密码也返回 `429 LOGIN_TEMPORARILY_LOCKED`；缺少动态码（需二次验证的提示）和动态码重复使用不计入；锁定检查在校验密码之前。设为 0 关闭。
 
 ### 2.3 客户入口（api-gateway）
 
@@ -76,6 +87,7 @@
   - scope 分为 `read / trade / withdraw`，默认只给 `read + trade`，`withdraw` 需显式申请。路由上用 `@RequireApiKeyScope` 标注；未标注时 `GET` 需要 `read`，其他方法需要 `trade`。
 - **账户归属**：涉及 `accountId / ledgerAccountId` 的请求都会校验账户属于当前主体，否则返回 403（`application/api-gateway-application-service.ts`）。
 - **限流**（`api-gateway-rate-limit.guard.ts`）：固定窗口，默认 60 秒内匿名 30 次（按 IP）、已认证 120 次（按主体），存储默认 Redis；响应带 `x-rate-limit-*` 头。
+- **客户端 IP**（`client-ip.ts`）：限流、幂等作用域、请求审计和登录会话记录统一取 socket 对端地址；只有显式设置 `GATEWAY_TRUST_PROXY=true`（网关前面确实有可信反向代理）时才采用 `X-Forwarded-For` 的第一个值，避免客户端伪造该头换取新的限流桶。
 - **幂等**（`api-gateway-idempotency.interceptor.ts`）：标注 `@GatewayIdempotentRoute` 的写接口（下单、提现申请、创建 API Key、新增地址簿等）按 `Idempotency-Key` 缓存结果，默认 1 小时；下单接口强制要求幂等键。
 - **请求审计**：`api-gateway-audit.interceptor.ts` 对每个请求记录主体、路径、状态码、耗时与限流信息。
 - **私有 WebSocket**（`api-gateway-realtime-server.ts`、`realtime-connection-guards.ts`）：
@@ -98,23 +110,39 @@
 
 代码位置：`packages/domain/src/index.ts`（签名算法）、各服务 `src/http/internal-service-auth.guard.ts`（校验）、各服务 `src/infrastructure/internal-service-request.ts`（签名）、`scripts/internal-service-auth.mjs`（脚本侧实现）。
 
-- `identity / wallet / ledger / order / settlement / risk` 6 个服务通过 `APP_GUARD` 全局启用 `InternalServiceAuthGuard`。
+- `identity / wallet / ledger / order / settlement / risk / blockchain-indexer / custody-adapter` 8 个服务通过 `APP_GUARD` 全局启用 `InternalServiceAuthGuard`。`custody-adapter` 默认允许 `wallet-service / ops-console / demo-scripts`，`blockchain-indexer` 默认允许 `ops-console / demo-scripts`（`demo-simulator` 与各验证脚本以 `demo-scripts` 身份签名）。
 - 调用方带 `x-internal-service-name / x-internal-service-timestamp / x-internal-service-signature` 三个头；签名串为 `callerName \n METHOD \n path \n timestamp \n SHA256(rawBody)`，HMAC-SHA256。
 - 校验项：调用方在允许列表内（`INTERNAL_SERVICE_ALLOWED_CALLERS` 可覆盖默认列表）、时间戳偏差不超过 30 秒、签名常量时间比较。
 - 未配置 `INTERNAL_SERVICE_AUTH_SECRET` 时守卫直接返回 503，即“未配置即拒绝”。
-- 所有服务共用同一个密钥；`blockchain-indexer`、`custody-adapter`、`market-data-service` 作为调用方会签名，但自身入口不校验。`demo-simulator` 的 `/internal/lab/*` 故障演练接口同样要求签名。
+- 所有服务共用同一个密钥；`market-data-service` 是公开行情入口，作为调用方会签名，但自身入口不校验。`demo-simulator` 的 `/internal/lab/*` 故障演练接口同样要求签名。
 - `order-service → matching-engine` 是单行 JSON over TCP，无认证，只依赖回环监听。
 
 ### 2.6 交易与账本
 
-- **下单前风控**（`services/risk-service/src/application/risk-application-service.ts`）：API 写入冻结（`API_WRITE_FROZEN`，见 2.10 节）、市场状态（暂停 / 下架时拒绝新单、撤单始终放行）、价格与数量步长、可用余额校验。详见 [risk-service README](../services/risk-service/README.md)。
-- **账本不变量**（`services/ledger-service/src/application/ledger-application-service.ts`）：每笔 journal 按资产借贷平衡，否则拒绝；`idempotencyKey` 去重；冻结 / 释放 / 消耗都检查可用余额与锁状态。运营端没有“直接改余额”的接口，余额调整也必须走 journal。详见 [ledger-service-design.md](ledger-service-design.md)。
+- **下单前风控**（`services/risk-service/src/application/risk-application-service.ts`）：API 写入冻结（`API_WRITE_FROZEN`，见 2.11 节）、市场状态（暂停 / 下架时拒绝新单、撤单始终放行）、价格与数量步长、可用余额校验。详见 [risk-service README](../services/risk-service/README.md)。
+- **市场监控**（`services/risk-service/src/domain/surveillance.ts`）：每分钟扫描成交与撤单，对自成交（对敲）、成交集中、幌骗、价格异动生成带证据的告警，运营在 ops-console「市场监控」确认 / 忽略（备注必填、双重审计）。只做事后识别，不拦截交易；同账户自成交已由撮合引擎的 STP 阻止，对敲检测按同一用户兜底，没有用登录设备 / IP 做关联。
+- **手续费等级指定**：运营指定 VIP 等级需要 `ops.users.manage`，备注必填，写入 `spot_fee_tier_override_audit` 与运营操作审计；用户侧 `GET /fees/tier` 不返回运营备注和操作人。
+- **账本不变量**（`services/ledger-service/src/application/ledger-application-service.ts`）：每笔 journal 按资产借贷平衡，否则拒绝；`idempotencyKey` 去重——同键同内容（并发也一样）返回原 journal，同键不同内容返回 409 `DUPLICATE_IDEMPOTENCY_KEY`，并发撞上唯一索引不会变成 500（`application/journal-idempotency.ts`）；冻结 / 释放 / 消耗都检查可用余额与锁状态。运营端没有“直接改余额”的接口，余额调整也必须走 journal。详见 [ledger-service-design.md](ledger-service-design.md)。
+- **下单失败收敛**（`services/order-service/src/application/order-application-service.ts`）：订单落库后若冻结失败或撮合前任何一步失败，订单都会进入终态 `rejected`（冻结失败的原因以 `ORDER_FREEZE_FAILED:` 开头），尽力释放可能已部分冻结的资金并发布 `order.rejected`，调用方收到明确错误码，不会留下卡在 `pending_risk` 的订单。
 
 ### 2.7 提现控制（wallet-service）
 
 代码位置：`services/wallet-service/src/application/wallet-application-service.ts`、`src/domain/withdrawal-policy.ts`、`src/infrastructure/withdrawal-validation-rules.ts`。详见 [wallet-service README](../services/wallet-service/README.md)。
 
-提现申请的校验顺序大致为：紧急开关（全站 / 单币种暂停、API 写入冻结，见 2.10 节）→ 资产 / 网络在 `config/markets.json` 中存在 → 安全冷却期 → 最小金额与手续费 → 白名单 → 单笔 / 日累计限额（含 KYC 分级）→ 2FA。动态码放在最后验证，避免被其他规则拒绝时白白消耗一次性动态码。
+提现申请的校验顺序大致为：紧急开关（全站 / 单币种暂停、API 写入冻结，见 2.11 节）→ 资产 / 网络在 `config/markets.json` 中存在 → 地址格式 → KYT 地址风险评分（黑名单直接拦截）→ 安全冷却期 → 新设备提现锁（可选）→ 最小金额与手续费 → 白名单 → 单笔 / 日累计限额（含 KYC 分级）→ 2FA。动态码放在最后验证，避免被其他规则拒绝时白白消耗一次性动态码。
+
+**简化 KYT**（`src/domain/withdrawal-risk.ts`，纯函数，单测见 `src/__tests__/withdrawal-risk.test.ts`）。评分放在 wallet-service 而不是 risk-service：所需事实（地址簿、该用户的历史提现、黑名单）都是钱包自有数据，而且必须在冻结资金前同步判定，放进 risk-service 只会多一次同步网络调用并复制数据。
+
+| 规则 | 加分 | 说明 |
+| --- | --- | --- |
+| `BLACKLISTED_ADDRESS` | 直接 `blocked` | 地址在 `withdrawal_address_blacklist` 中且生效；请求返回 `403 WITHDRAWAL_ADDRESS_BLOCKED`，同时留下一条自动拒绝的提现记录（未冻结资金）并发站内信 |
+| `LABELLED_HIGH_RISK_ADDRESS` | +70 | 演示标签集中的混币 / 高风险 / 博彩地址（可用 `WITHDRAWAL_RISK_ADDRESS_LABELS` 追加） |
+| `WHITELISTED_ADDRESS` / `KNOWN_ADDRESS` | 0 | 已加白名单，或该用户曾成功提现到此地址；不再计算下面三条 |
+| `FIRST_TIME_ADDRESS` | +10 | 首次向该地址提现 |
+| `FIRST_TIME_LARGE_AMOUNT` | +40 | 首次地址且金额大于 `WITHDRAWAL_RISK_LARGE_AMOUNT_BY_ASSET`（默认 USDT 1000） |
+| `NEW_ADDRESS_COOLDOWN` | +30 | 地址簿条目创建未满 `WITHDRAWAL_RISK_NEW_ADDRESS_WINDOW_SECONDS`（默认 24 小时） |
+
+分数 ≥ 60 为 `high`、≥ 30 为 `medium`、其余为 `low`。分数、等级和原因列表在申请时写入 `withdrawals.risk_score / risk_level / risk_reasons`。`high` 无论金额都要求两名不同运营批准（审批策略带 `reason: "risk_high"`）。运营把地址加入黑名单时，wallet-service 会立即把发往该地址的待审核提现自动拒绝、解冻资金并通知用户；审批时也会再查一次黑名单。演示白名单地址 `0x1234…5678` 评分为 `low`。`WITHDRAWAL_RISK_ENABLED=false` 关闭评分。
 
 | 控制 | 规则 | 默认值 / 开关 |
 | --- | --- | --- |
@@ -125,14 +153,18 @@
 | 安全冷却期 | 新增提现地址或修改 2FA 后，在 `WITHDRAWAL_SECURITY_COOLDOWN_SECONDS` 内禁止提现 | 代码默认 86400 秒；`pnpm demo:up` 启动的演示栈传入 0 |
 | 双人审批 | 金额严格大于分资产阈值时需要两名不同运营批准；同一运营不能批两次；审批策略在申请时固化到记录里 | `USDT=5000, USDC=5000, ETH=2, BTC=0.1, SOL=50` |
 | 人工审核 | 所有提现申请都以 `requested / pending` 进入审核队列，审批人身份取自 `ops-console` 会话的 `userId` | 始终开启 |
+| KYT 地址风险 | 黑名单拦截、高风险强制双人复核、运营可按风险等级筛选 | 默认开启（`WITHDRAWAL_RISK_ENABLED`） |
+| 地址黑名单 | 运营在「用户与资产 → 地址黑名单」加入 / 移出，必须填原因，需要 `ops.risk.manage`，写操作审计；移出的记录保留操作人与原因 | 带 3 个演示种子 |
+| 新设备提现锁 | 新设备登录后 N 秒内禁止提现 | `WITHDRAWAL_NEW_DEVICE_LOCK_SECONDS=0`（关闭） |
 
 ### 2.8 审计与可追溯
 
 - `withdrawal_audit_logs`（`services/wallet-service/sql/006_add_withdrawal_audit_and_notifications.sql`）：记录提现 `requested / approved / rejected / broadcasted / confirmed`，含操作人、角色、`trace_id`、前后快照。
 - `ops_action_audit_logs`（`apps/ops-console/sql/001_init.sql`）：记录每个运营动作的操作人、角色、所用权限、目标、请求 / 响应、成功或失败；`ops-console` 中可按操作人、动作、目标检索。紧急开关的变更记为 `controls.<scope>.enable|disable`。
-- `risk_control_switch_events`（`services/risk-service/sql/002_control_switches.sql`）：紧急开关每一次开启 / 恢复（含对账熔断的自动开启）的原因、来源（`manual` / `automatic`）、操作人和时间。
+- `risk_control_switch_events`（`services/risk-service/sql/003_control_switches.sql`）：紧急开关每一次开启 / 恢复（含对账熔断的自动开启）的原因、来源（`manual` / `automatic`）、操作人和时间。
 - `ledger_reconciliation_runs`（`services/ledger-service/sql/005_reconciliation_runs.sql`）：每一轮定时 / 手动对账的结果与熔断动作。
-- identity 的 `identity_kyc_events` 记录 KYC 申请与审核过程。
+- identity 的 `identity_kyc_events` 记录 KYC 申请与审核过程；`identity_login_events` 记录每次登录尝试。
+- 黑名单的加入 / 移出写入 `ops_action_audit_logs`（`risk.blacklist.add / risk.blacklist.remove`），运营退出用户设备写 `user.device.revoke`；KYT 自动拒绝在 `withdrawal_audit_logs` 中以操作人 `system:kyt` 出现。
 - 服务链路接入 OpenTelemetry，可在 Jaeger 里按 trace 串起一次请求经过的服务。
 
 ### 2.9 托管与链上
@@ -141,9 +173,23 @@
 - 广播请求带幂等键，失败有重试上限（`CUSTODY_MAX_BROADCAST_ATTEMPTS`）。
 - 充值与提现按确认数阈值推进（`DEPOSIT_CONFIRMATION_THRESHOLD`、`WITHDRAWAL_CONFIRMATION_THRESHOLD`、`INDEXER_CONFIRMATION_THRESHOLD`，默认 12）；模拟链支持停止出块和重组演练。
 
-详见 [custody-adapter README](../services/custody-adapter/README.md)、[blockchain-indexer README](../services/blockchain-indexer/README.md)。
+### 2.10 冷热分层与储备金证明（wallet-service treasury）
 
-### 2.10 紧急开关与对账熔断
+- 平台链上持仓按 **充值地址 → 热钱包 ⇄ 冷钱包** 分层记录（`treasury_transfers`），与账本分开记账：账本记"欠用户多少"，treasury 记"币在哪里"。两本账独立，`/treasury/reconciliation` 才能逐币种发现储备不足。
+- 提现一律从热钱包付出；热钱包设水位上下限（`TREASURY_HOT_WALLET_WATERMARKS`），高于上限自动提出 热→冷 调拨，低于下限提出 冷→热 补充。调拨提案必须经运营审批：审批人需有 `ops.withdrawals.review`，且不能是提案人（`TREASURY_SAME_APPROVER`），批准前校验来源钱包余额，所有动作写 `ops_action_audit_logs` 并在转账记录的 `events` 中留痕。
+- 归集（充值地址 → 热钱包）不需要审批：目标是平台自己的热钱包地址，由服务端固定，不能由请求指定。
+- 储备金证明：叶子 = 盐化用户哈希 + 各币种余额，盐值是每期快照、每个用户随机生成的 nonce；网关只按当前登录用户返回他自己的叶子和兄弟哈希路径，响应里不含其他用户 ID 或余额。
+
+**与真实环境的差距**（演示简化）：
+
+- 热钱包、冷钱包都只是派生出来的演示地址，冷钱包"签名"同样经 `custody-adapter`（转账元数据标注 `cold-wallet (simulated offline signing)`），没有离线签名、多签 / MPC、硬件隔离。
+- 冷→热补充只要一人审批，没有分级审批、时间窗、单笔上限和白名单变更审批（见 [B06](../learning/backstage/B06-treasury-liquidity.md) 第 5.2 节）。
+- 演示环境的储备由"注资上链"（genesis）记录补足：模拟器把期初权益发给用户的余额对应为平台自有资金上链（`DEMO_RESERVE_KEEPER_ENABLED`）。真实交易所的储备必须来自链上可查的地址余额，并由第三方审计。
+- 储备金证明只有 Merkle 包含证明，没有 zk-SNARK 证明"无负余额叶子、叶子总和等于负债"；资产端没有链上地址签名证明（proof of control）。
+
+详见 [custody-adapter README](../services/custody-adapter/README.md)、[blockchain-indexer README](../services/blockchain-indexer/README.md)、[wallet-service README](../services/wallet-service/README.md)。
+
+### 2.11 紧急开关与对账熔断
 
 代码位置：`packages/domain/src/control-switches.ts`（开关模型与校验函数）、`services/risk-service/src/application/control-switch-service.ts`（存储与规则）、`services/wallet-service/src/application/wallet-application-service.ts`（`assertWithdrawalSwitches`）、`services/api-gateway/src/http/api-gateway-control-switch.guard.ts`、`services/ledger-service/src/application/reconciliation-job.ts`、`apps/ops-console/client/features/controls-tab.tsx`。
 
@@ -154,21 +200,23 @@
 | API 写入冻结 `api_write` | 只读模式：新委托与提现申请被拒绝；撤单、查询、运营审核照常 | `API_WRITE_FROZEN` |
 
 - **存储**：risk-service 的 `risk_control_switches`（开启的开关才有一行）和 `risk_control_switch_events`（变更记录）。开启必须填原因；ops-console 要求开关两个方向都填原因，并写入操作审计。
-- **执行点**：api-gateway 的写接口守卫（`POST /orders`、`/withdrawals/validate`、`/withdrawals/request`），被拦截的请求不消耗幂等键；wallet-service 在申请、批准、重新广播时再校验（防止绕过网关的内部调用）；risk-service 的下单风控校验 API 写入冻结，order-service 每笔下单都要经过它（纵深防御）。撤单不经过任何开关。
+- **执行点**：api-gateway 的写接口守卫（`POST /orders`、`/withdrawals/validate`、`/withdrawals/request`），被拦截的请求不消耗幂等键；wallet-service 在申请、批准、重新广播时再校验（防止绕过网关的内部调用）；risk-service 的下单风控校验 API 写入冻结，order-service 每笔下单都要经过它（纵深防御）；止损单触发不走下单风控，触发 worker 在市场暂停 / 下架或 API 写入冻结期间暂缓触发（订单保持 `pending_trigger`，解除后再触发）。撤单不经过任何开关。
 - **缓存与失败策略**：各执行点通过 `CachedControlSwitchReader` 读取开关，默认缓存 2 秒（`CONTROL_SWITCH_CACHE_MS`），risk-service 自身缓存 1 秒（`RISK_CONTROL_SWITCH_CACHE_MS`）；读取失败时沿用上一次的状态，从未读到过时按“全部关闭”放行（fail-open），保证演示环境在 risk-service 重启时可用。真实环境的提现出口应改为 fail-closed。
 - **对账熔断**：ledger-service 按 `RECONCILIATION_INTERVAL_SECONDS`（演示栈 30 秒）运行余额对账与委托冻结对账（见 [ledger-service-design.md](ledger-service-design.md) 第 11.5 节）。余额对账不平立即熔断；委托冻结对账需要同一笔委托连续 `RECONCILIATION_BREAKER_CONFIRMATIONS`（默认 2）轮不一致才熔断，首次只给 P2 告警。熔断通过 risk-service 以 `source: automatic` 暂停该币种提现并产生 P1 告警；自动来源不会覆盖人工开关，也不能关闭开关。
 - **恢复**：熔断暂停只能人工恢复，而且 ops-console 要求最近一轮对账晚于暂停时间且该币种一致，否则返回 `409 RECONCILIATION_NOT_CLEAN`。
 - **默认值**：全部开关默认关闭；`pnpm demo:reset` 会清空开关、开关记录和对账历史；健康的演示数据对账为 0 处不一致，熔断不会触发。
 
-### 2.11 告警分级（P1 / P2 / P3）
+### 2.12 告警分级（P1 / P2 / P3）
 
 规则表在 `apps/ops-console/src/domain/alert-severity.ts`，`GET /api/v1/ops/alerts` 为每条告警附上级别，运营总览与 系统运维 → 告警 按级别排序、着色并显示各级数量。未在表中的告警默认 P2。
 
 | 级别 | 含义 | 告警来源与指标 |
 | --- | --- | --- |
-| P1 | 资金正确性 / 资金出口，立即处理 | ledger：`balance_mismatch_count`、`negative_available_balance_count`、`negative_locked_balance_count`；reconciliation：`RECONCILIATION_BREAKER_TRIPPED`（熔断暂停中的币种）、`RECONCILIATION_BREAKER_FAILED`、`BALANCE_RECONCILIATION_MISMATCH`、`ORDER_LOCK_MISMATCH_CONFIRMED` |
-| P2 | 核心链路受损，尽快响应 | ledger：`dead_lettered_outbox_count`、`stale_locked_balance_count`；reconciliation：`ORDER_LOCK_MISMATCH_SUSPECTED`、`ORDER_LOCK_RECONCILIATION_UNAVAILABLE`、`RECONCILIATION_FAILED`、`RECONCILIATION_STALE`；controls：人工开启的 `withdrawals_paused`、`asset_withdrawals_paused`、`api_write_frozen`；custody：`open_circuit_count`、`unhealthy_route_count`、`failed_count`；indexer：`reorg_cursor_count`、`pending_withdrawal_count`、`oldest_pending_withdrawal_age_seconds`、`withdrawal_cursor_lag_blocks`、`withdrawal_cursor_age_seconds`；trading：`settlement_failed_count`、`settlement_lag_critical`（滞后 ≥ 50）、`settlement_consumer_paused`；交易运行时告警：`SETTLEMENT_FAILED`、`TRADE_EVENT_CONSUMER_LAG`、`TRADE_EVENT_PROTOCOL_V2_UNSUPPORTED`、`ORDER_DEAD_LETTER_BACKLOG` |
-| P3 | 非核心，可排队处理 | ledger：`pending_outbox_count`、`retrying_outbox_count`、`oldest_pending_outbox_age_seconds`；custody：`retryable_count`、`pending_sync_count`、`oldest_pending_sync_age_seconds`；indexer：充值侧积压与扫描滞后；wallet：`failed_notifications`、`pending_notifications`、`review_queue`；trading：`settlement_pending_recovery_count`、`settlement_lag`（滞后 ≥ 10）；交易运行时告警中其余 `warning` 级代码（`critical` 至少为 P2） |
+| P1 | 资金正确性 / 资金出口，立即处理 | treasury：`reserve_coverage_shortfall`（钱包储备低于账本净负债，只告警、不接自动熔断）；ledger：`balance_mismatch_count`、`negative_available_balance_count`、`negative_locked_balance_count`；reconciliation：`RECONCILIATION_BREAKER_TRIPPED`（熔断暂停中的币种）、`RECONCILIATION_BREAKER_FAILED`、`BALANCE_RECONCILIATION_MISMATCH`、`ORDER_LOCK_MISMATCH_CONFIRMED` |
+| P2 | 核心链路受损，尽快响应 | treasury：`treasury_transfer_failed`（冷热调拨失败）、`treasury_sweep_failed`（归集失败）；withdrawal_risk（KYT）：`blocked_withdrawals_24h`（24 小时内被黑名单拦截的提现）、`high_risk_withdrawals_pending`（高风险提现等待双人复核）；surveillance：未处理的 `surveillance_open_wash_trade`、`surveillance_open_spoofing`；ledger：`dead_lettered_outbox_count`、`stale_locked_balance_count`；reconciliation：`ORDER_LOCK_MISMATCH_SUSPECTED`、`ORDER_LOCK_RECONCILIATION_UNAVAILABLE`、`RECONCILIATION_FAILED`、`RECONCILIATION_STALE`；controls：人工开启的 `withdrawals_paused`、`asset_withdrawals_paused`、`api_write_frozen`；custody：`open_circuit_count`、`unhealthy_route_count`、`failed_count`；indexer：`reorg_cursor_count`、`pending_withdrawal_count`、`oldest_pending_withdrawal_age_seconds`、`withdrawal_cursor_lag_blocks`、`withdrawal_cursor_age_seconds`；trading：`settlement_failed_count`、`settlement_lag_critical`（滞后 ≥ 50）、`settlement_consumer_paused`；交易运行时告警：`SETTLEMENT_FAILED`、`TRADE_EVENT_CONSUMER_LAG`、`TRADE_EVENT_PROTOCOL_V2_UNSUPPORTED`、`ORDER_DEAD_LETTER_BACKLOG` |
+| P3 | 非核心，可排队处理 | surveillance：未处理的 `surveillance_open_concentrated_volume`、`surveillance_open_price_move`；ledger：`pending_outbox_count`、`retrying_outbox_count`、`oldest_pending_outbox_age_seconds`；custody：`retryable_count`、`pending_sync_count`、`oldest_pending_sync_age_seconds`；indexer：充值侧积压与扫描滞后；wallet：`failed_notifications`、`pending_notifications`、`review_queue`；trading：`settlement_pending_recovery_count`、`settlement_lag`（滞后 ≥ 10）；交易运行时告警中其余 `warning` 级代码（`critical` 至少为 P2） |
+
+覆盖率不足（`reserve_coverage_shortfall`）只产生 P1 告警，不会触发自动暂停提现：熔断只由账本自身的定时对账（余额对账、委托冻结对账）驱动。
 
 没有值班呼叫系统：告警只在后台展示，交易运行时告警可通过 `OPS_ALERT_SINKS_JSON` 投递（payload 中每条告警带 `level`）。
 
@@ -178,15 +226,16 @@
 
 | 资产 | 威胁 | demo 中的现有缓解 | 真实 CEX 还会加什么 |
 | --- | --- | --- | --- |
-| 客户会话 | XSS / 恶意扩展窃取 token；CSRF 冒用会话 | HttpOnly + SameSite=Strict Cookie；double-submit CSRF；token 哈希存储、可吊销、冻结即失效 | CSP 与输入转义、设备绑定、新设备登录提醒、会话轮换、敏感操作 step-up |
-| 登录凭证 | 撞库、暴力破解 | PBKDF2 高迭代哈希；网关按 IP 限流；可选 2FA | 登录失败锁定、验证码、风险评分、泄露密码库比对；限流 IP 不直接信任 `X-Forwarded-For`（当前取其第一个值） |
+| 客户会话 | XSS / 恶意扩展窃取 token；CSRF 冒用会话 | HttpOnly + SameSite=Strict Cookie；double-submit CSRF；token 哈希存储、可吊销、冻结即失效；新设备登录站内提醒、按设备吊销会话 | CSP 与输入转义、设备绑定、会话轮换、敏感操作 step-up、新设备强制二次验证 |
+| 登录凭证 | 撞库、暴力破解 | PBKDF2 高迭代哈希；网关按 socket 对端 IP 限流（默认不信任 `X-Forwarded-For`）；可选 2FA；按账户的登录失败临时锁定；登录记录 | 验证码、风险评分、按 IP / 设备的信誉、泄露密码库比对 |
 | API Key | 泄露、重放、越权使用 | keyId + 加密 secret；nonce 防重放；5 分钟漂移窗口；`read/trade/withdraw` scope | IP 白名单、key 有效期、提现权限单独审批、异常调用告警 |
 | 2FA 种子 | 数据库泄露后可伪造动态码 | 动态码单次使用；恢复码哈希存储 | TOTP 种子加密存储或放入独立密钥服务；支持 WebAuthn / 硬件密钥 |
 | 运营会话与审批权 | 运营 token 被盗或内部人员作恶，批准恶意提现 | 运营强制 2FA；12 小时 TTL；RBAC 细粒度权限；大额双人审批；全量动作审计 | 审批时 step-up、硬件密钥、审批 IP / 设备绑定、批量审批分权、审计日志防篡改 |
-| 提现链路 | 账号被盗后快速提走资产 | 已开 2FA 必须带动态码；KYC 分级限额；安全冷却期；可选白名单；全站 / 单币种提现暂停开关 | 默认强制白名单与冷却期、地址风险筛查（制裁 / 混币）、行为风控、开关读取失败时 fail-closed |
-| 热钱包私钥 | 环境变量泄露、误把真实私钥 / RPC 配进来 | 默认走 mock provider；模拟链；无真实资产 | HSM / MPC / KMS 签名，冷热分离，热钱包余额上限，链上监控与对账 |
+| 提现链路 | 账号被盗后快速提走资产；提往制裁 / 混币地址 | 已开 2FA 必须带动态码；KYC 分级限额；安全冷却期；可选白名单；简化 KYT（黑名单拦截、高风险双人复核）；可选新设备提现锁；全站 / 单币种提现暂停开关 | 默认强制白名单与冷却期、真实 KYT 情报与多跳溯源、行为风控、开关读取失败时 fail-closed |
+| 热钱包私钥 | 环境变量泄露、误把真实私钥 / RPC 配进来 | 默认走 mock provider；模拟链；无真实资产；冷热分层 + 热钱包水位上限，超限自动提出 热→冷 调拨 | HSM / MPC / KMS 签名，冷钱包离线 / 多签，链上监控 |
+| 平台储备 | 挪用用户资产、储备不足仍继续营业 | 钱包 vs 账本逐币种覆盖率对账；调拨需第二人审批并审计；储备金证明让用户自证余额被计入 | 第三方审计、zk 负债证明、链上地址控制权证明、储备不足自动停提现（本仓库覆盖率不足只告警 P1） |
 | 账本 | 伪造记账、重复记账、绕过冻结 | 借贷平衡校验；幂等键；冻结 / 消耗状态校验；无直接改余额接口；定时余额对账与委托冻结对账，不平自动暂停该币种提现（P1） | 链上 / 托管 / 账本三方对账、journal 不可变存储、独立对账系统 |
-| 内部服务 | 内网横向移动后直接调用 ledger / wallet 等接口 | HMAC 签名 + 30 秒时间窗 + 调用方允许列表；默认回环监听 | mTLS 与每服务独立身份、按调用方最小权限、私网 ACL、密钥轮换 |
+| 内部服务 | 内网横向移动后直接调用 ledger / wallet / custody / indexer 等接口 | HMAC 签名 + 30 秒时间窗 + 调用方允许列表（含 `custody-adapter`、`blockchain-indexer`）；全部服务默认回环监听 | mTLS 与每服务独立身份、按调用方最小权限、私网 ACL、密钥轮换 |
 | 撮合通道 | 伪造下单 / 撤单 / reset 命令 | 仅回环监听 | 认证与加密通道、命令来源校验 |
 | 公开行情 | 大量连接 / 订阅压垮 market-data 与 order-service | REST 查询有 `limit` 上限；网关 REST 限流 | 公共 WS 连接数与消息限流、CDN / 边缘缓存、快照去抖 |
 | 私有实时流 | URL 中的 token 被日志记录后复用；跨站 WS 劫持 | Origin 白名单；会话过期断开；trader-web 不把 token 放进 URL | 禁止 query 参数认证，只允许首帧或 Cookie 认证 |
@@ -196,12 +245,12 @@
 
 按风险从高到低排列：
 
-1. **密钥托管**：移除 `custody-adapter` 从环境变量读私钥 / 助记词的路径，改用 HSM / MPC / KMS；冷热钱包分离，热钱包设余额上限。
-2. **服务身份**：把共享 HMAC 密钥升级为 mTLS 或每服务独立凭证，补上 `blockchain-indexer`、`custody-adapter`、`market-data-service` 的入口认证，撮合 TCP 通道加认证；所有服务显式绑定内网地址。
+1. **密钥托管**：移除 `custody-adapter` 从环境变量读私钥 / 助记词的路径，改用 HSM / MPC / KMS；冷钱包真正离线签名（多签 / MPC），冷→热调拨分级审批与时间窗（当前冷热分层和水位只在 treasury 账面上实现，见 2.10 节）。
+2. **服务身份**：把共享 HMAC 密钥升级为 mTLS 或每服务独立凭证，撮合 TCP 通道加认证；部署到多机时把各服务的 bind host 改为内网地址并配私网 ACL。
 3. **密钥与配置管理**：所有默认密钥（内部签名密钥、API Key 加密主密钥、数据库口令）进入密钥管理系统，可轮换；演示账号与固定 TOTP 种子不能出现在任何共享环境。
-4. **提现默认策略收紧**：默认强制 2FA、白名单和冷却期；审批时 step-up；引入地址风险筛查；紧急开关读取失败时提现出口 fail-closed，开关变更走双人审批。
-5. **账号安全**：登录失败锁定与验证码、设备管理、异常登录提醒；TOTP 种子加密存储；支持 WebAuthn。
+4. **提现默认策略收紧**：默认强制 2FA、白名单和冷却期；审批时 step-up；KYT 接入真实地址情报与制裁名单同步；紧急开关读取失败时提现出口 fail-closed，开关变更走双人审批。
+5. **账号安全**：验证码、按 IP 的登录限速、新设备强制二次验证、异常登录评分；TOTP 种子加密存储；支持 WebAuthn。
 6. **Web 安全头**：CSP、`X-Frame-Options`、HSTS；Cookie 默认 `Secure`；全站 HTTPS。
-7. **入口防护**：限流不信任客户端传入的 `X-Forwarded-For`；公共行情 WS 加连接与消息限流；私有 WS 去掉 query 参数认证。
-8. **对账与监控**：在现有余额对账、委托冻结对账与熔断之外，补上链上余额、托管余额、账本余额三方对账；告警接入值班呼叫；审计日志写入不可篡改存储。
+7. **入口防护**：公共行情 WS 加连接与消息限流；私有 WS 去掉 query 参数认证；放在反向代理后时由代理覆盖（而不是追加）`X-Forwarded-For` 并开启 `GATEWAY_TRUST_PROXY`。
+8. **对账与监控**：在现有余额对账、委托冻结对账与熔断，以及钱包 vs 账本覆盖率对账之外，还要与真实链上地址余额、托管商余额三方核对；储备不足时自动暂停提现；告警接入值班呼叫；审计日志写入不可篡改存储。
 9. **基础设施**：数据库、Redis、Kafka 走私网与 TLS，最小权限账号，备份与访问审计。

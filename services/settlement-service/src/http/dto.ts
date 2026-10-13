@@ -19,6 +19,9 @@ export interface SettleTradeRequestDto {
   buyerAccountId: string;
   sellerAccountId: string;
   sellerFeeRate: string;
+  buyerFeeRate?: string;
+  sellerFeeTier?: string;
+  buyerFeeTier?: string;
   traceId?: string;
 }
 

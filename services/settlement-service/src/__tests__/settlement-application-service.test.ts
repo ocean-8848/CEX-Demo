@@ -736,3 +736,51 @@ test("settleTrade charges each side in the asset it receives (dual maker / taker
   const report = await service.getSettlementReport({});
   assert.equal(report.markets[0]?.baseFeeAmount, "0.00001");
 });
+
+test("settleTrade charges the VIP tier rate resolved by order-service and records it (T-account balanced)", async () => {
+  const journals: Array<{ businessType: string; description: string; entries: Array<{ accountId: string; direction: string; amount: string }> }> = [];
+  const service = new SettlementApplicationService(
+    new InMemorySettlementRepository(),
+    {
+      async getAccount() {
+        return null;
+      },
+      async createAccount(command) {
+        return { accountId: command.accountId, userId: command.userId, accountType: command.accountType, status: "active" };
+      },
+      async consumeBalance() {
+        return {};
+      },
+      async postJournal(command) {
+        journals.push(command);
+        return { journalId: `${command.businessType}-journal` };
+      }
+    },
+    { now: () => new Date("2026-03-08T10:00:00.000Z"), createId: () => "settlement-tier" }
+  );
+
+  // Buyer: VIP2 taker 0.08%; seller: VIP0 maker 0.05%.
+  const settlement = await service.settleTrade({
+    ...baseCommand,
+    tradeId: "trade-tier",
+    quantity: "2",
+    buyerFeeRate: "0.0008",
+    buyerFeeTier: "VIP2",
+    sellerFeeRate: "0.0005",
+    sellerFeeTier: "VIP0"
+  });
+
+  assert.equal(settlement.quoteAmount, "130000");
+  assert.equal(settlement.buyerFeeAmount, "0.0016");
+  assert.equal(settlement.feeAmount, "65");
+  assert.equal(settlement.buyerFeeTier, "VIP2");
+  assert.equal(settlement.buyerFeeRate, "0.0008");
+  assert.equal(settlement.sellerFeeTier, "VIP0");
+  const base = journals.find((journal) => journal.businessType === "spot_trade_settlement_base");
+  assert.match(base?.description ?? "", /buyer fee VIP2 @ 0\.0008/);
+  for (const journal of journals) {
+    const sum = (direction: string) =>
+      journal.entries.filter((entry) => entry.direction === direction).reduce((total, entry) => total + Number(entry.amount), 0);
+    assert.ok(Math.abs(sum("debit") - sum("credit")) < 1e-9, `${journal.businessType} balances`);
+  }
+});

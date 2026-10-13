@@ -183,3 +183,78 @@ test("alerts overview: breaker pause is P1, manual switches P2, sorted with coun
   assert.equal(sources.get("reconciliation")?.highestSeverity, "P1");
   assert.equal(sources.get("controls")?.items?.[0]?.code, "api_write_frozen");
 });
+
+test("treasury, KYT and surveillance alerts get levels; coverage shortfall is P1 alert only", async () => {
+  const now = new Date("2026-10-10T08:05:10.000Z");
+  let pauses = 0;
+  const service = new OpsControlsApplicationService({
+    switches: {
+      async getState() {
+        return buildControlSwitchState([]);
+      },
+      async setSwitch() {
+        pauses += 1;
+        return {};
+      },
+      async listEvents() {
+        return { items: [] };
+      }
+    },
+    reconciliation: {
+      async listRuns() {
+        return { job: { enabled: false, intervalSeconds: 0, graceMs: 0, breakerEnabled: true, confirmations: 2 }, items: [] };
+      },
+      async runNow() {
+        throw new Error("unused");
+      },
+      async getDrift() {
+        return {};
+      },
+      async injectDrift() {
+        return {};
+      },
+      async clearDrift() {
+        return {};
+      }
+    },
+    runAudited: (_options, operation) => operation(),
+    baseAlerts: async () => ({ sources: [] }),
+    treasuryReconciliation: async () => ({
+      status: "shortfall",
+      shortfallCount: 1,
+      items: [
+        { assetCode: "ETH", status: "shortfall", reserves: "90", netLiabilities: "100", surplus: "-10" },
+        { assetCode: "USDT", status: "covered", reserves: "1000", netLiabilities: "900", surplus: "100" }
+      ]
+    }),
+    failedTreasuryTransfers: async () => ({
+      items: [
+        { kind: "sweep", status: "failed" },
+        { kind: "rebalance_to_cold", status: "failed" }
+      ]
+    }),
+    blockedWithdrawals: async () => ({
+      items: [
+        { riskLevel: "blocked", requestedAt: "2026-10-10T07:00:00.000Z" },
+        { riskLevel: "blocked", requestedAt: "2026-10-01T07:00:00.000Z" }
+      ]
+    }),
+    highRiskReviewQueue: async () => ({ items: [{}], total: 2 }),
+    surveillanceOverview: async () => ({ openByType: { wash_trade: 1, spoofing: 0, concentrated_volume: 3, price_move: 0 } }),
+    now: () => now
+  });
+  const overview = await service.getAlertsOverview();
+  const byCode = new Map((overview.items ?? []).map((item) => [item.code, item]));
+  assert.equal(byCode.get("reserve_coverage_shortfall")?.severity, "P1");
+  assert.match(byCode.get("reserve_coverage_shortfall")?.message ?? "", /ETH/);
+  assert.equal(byCode.get("treasury_transfer_failed")?.severity, "P2");
+  assert.equal(byCode.get("treasury_sweep_failed")?.severity, "P2");
+  assert.equal(byCode.get("blocked_withdrawals_24h")?.severity, "P2");
+  assert.match(byCode.get("blocked_withdrawals_24h")?.message ?? "", /=1 /, "only the last 24h count");
+  assert.equal(byCode.get("high_risk_withdrawals_pending")?.severity, "P2");
+  assert.equal(byCode.get("surveillance_open_wash_trade")?.severity, "P2");
+  assert.equal(byCode.get("surveillance_open_concentrated_volume")?.severity, "P3");
+  assert.equal(byCode.has("surveillance_open_spoofing"), false);
+  assert.equal(overview.items?.[0]?.code, "reserve_coverage_shortfall", "P1 first");
+  assert.equal(pauses, 0, "a coverage shortfall never pauses withdrawals");
+});

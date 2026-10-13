@@ -14,6 +14,7 @@ function mapWalletErrorCodeToStatus(code: WalletError["code"]): number {
     case "IDENTITY_USER_NOT_FOUND":
     case "WITHDRAWAL_NOT_FOUND":
     case "NOTIFICATION_NOT_FOUND":
+    case "BLACKLIST_ENTRY_NOT_FOUND":
       return HttpStatus.NOT_FOUND;
     case "DEPOSIT_ALREADY_CREDITED":
     case "INVALID_WITHDRAWAL_STATE":
@@ -25,7 +26,11 @@ function mapWalletErrorCodeToStatus(code: WalletError["code"]): number {
     case "WITHDRAWAL_APPROVER_REQUIRED":
       return HttpStatus.BAD_REQUEST;
     case "WITHDRAWAL_SECURITY_COOLDOWN":
+    case "WITHDRAWAL_ADDRESS_BLOCKED":
+    case "WITHDRAWAL_NEW_DEVICE_LOCK":
       return HttpStatus.FORBIDDEN;
+    case "INVALID_BLACKLIST_ENTRY":
+      return HttpStatus.BAD_REQUEST;
     case "INVALID_CONFIRMATION_COUNT":
     case "INVALID_AMOUNT":
     case "UNSUPPORTED_ASSET":

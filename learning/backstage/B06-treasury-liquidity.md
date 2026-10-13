@@ -301,23 +301,28 @@ flowchart LR
 
 ## 8. 本仓库对照
 
-本仓库（[CEX Demo](../..)）有平台账户类型和对账脚本，但没有金库运营模块。
+本仓库（[CEX Demo](../..)）实现了一个最小的金库运营模块：wallet-service 的 treasury 记录冷热分层持仓，按水位提出调拨并走运营审批，做逐币种储备率对账并生成储备金证明。
 
 | 金库能力 | 本仓库现状 | 位置 |
 |---|---|---|
-| 平台账户分类 | ✅ 账户类型包含 `fee`、`hot_wallet`、`cold_wallet`、`withdrawal_pending`、`opening_balance` | `../../packages/domain/src/index.ts` |
-| 账本对账 | ✅ `reconcile-balances` 脚本和运维接口 | `../../services/ledger-service/README.md` |
+| 平台账户分类 | ✅ 账户类型包含 `fee`、`opening_balance` 等；`hot_wallet`、`cold_wallet`、`withdrawal_pending` 仍是保留类型——链上持仓刻意不记入账本，由 treasury 单独记录，账本只记用户负债 | `../../packages/domain/src/index.ts`、`../../docs/ledger-service-design.md` 第 4 节 |
+| 热冷分层 | ✅ 充值地址 / 热钱包 / 冷钱包三层持仓，提现从热钱包付出，内部转账广播到确认之间计为"在途"。冷钱包没有真正的离线签名（演示中同样经 custody-adapter 广播） | `../../services/wallet-service/src/domain/treasury-policy.ts`、`../../docs/architecture.md` 第 5.4 节 |
+| 归集 | ✅ 已入账充值按 (充值地址, 币种) 归集到热钱包；模拟器每 10 个块触发，运营也可「立即归集」 | `../../services/wallet-service/src/application/treasury-service.ts`（`runSweeps`） |
+| 水位与调拨审批 | ✅ `TREASURY_HOT_WALLET_WATERMARKS` 每币种上下限；高于上限提出 热→冷、低于下限提出 冷→热（回到上下限中点）；提案需另一名有提现审核权限的运营批准，批准前校验来源余额，动作写操作审计 | ops-console「钱包与储备金」页、`../../apps/ops-console/src/application/treasury-application-service.ts` |
+| 逐币种储备率 | ✅ 储备（充值地址 + 热 + 冷 + 在途）÷ 净负债（账本用户负债 − 在途提现），另给热钱包覆盖率 | `GET /api/v1/wallet/treasury/reconciliation`、`../../services/ledger-service/src/application/ledger-liabilities.ts` |
+| 储备金证明 | ✅ Merkle 树 + 用户在交易前台自行验证；无 zk 证明 | `../../services/wallet-service/src/domain/proof-of-reserves.ts`、`../../apps/trader-web/src/client/lib/por-verify.ts` |
+| 账本对账 | ✅ `reconcile-balances` 脚本和运维接口，不受 treasury 影响 | `../../services/ledger-service/README.md` |
 | 陈旧提币清理 | ✅ `reconcile-stale-withdrawals` | `../../services/wallet-service/README.md` |
-| 对账维度与频率 | ⚠️ 只有账本内部对账（journal 与余额快照），通过运维接口或 `check-alerts` 脚本触发；热钱包链上余额对账和定时（小时级 / 日级）对账本仓库未实现 | `../../docs/ledger-service-design.md` 第 11 节 |
-| 热冷分层 | ❌ 本仓库未实现。`hot_wallet`、`cold_wallet` 只是保留的账户类型，演示流程未使用；没有水位调度和归集 | `../../docs/domain-model.md` 第 2.1 节 |
-| 调拨审批、跨链再平衡、敞口对冲、压力测试 | ❌ 未实现 | — |
+| 对账频率 | ⚠️ 钱包 vs 账本对账按需查询（运营页每 15 秒刷新），没有定时任务、告警和"储备不足即停提现"的熔断 | — |
+| 分级审批、白名单变更审批、跨链再平衡、敞口对冲、压力测试 | ❌ 未实现 | — |
 
-如果要补齐，建议按以下顺序：
+演示简化：演示账户和做市商的余额来自期初权益账户，`demo:bootstrap` 与模拟器的"储备补足"把这部分记为平台资金上链（genesis），让储备率保持在 120% 左右；设置 `DEMO_RESERVE_KEEPER_ENABLED=false` 可以观察储备不足。
 
-1. 在 ledger-service 增加"逐币种储备率"查询：`hot_wallet + cold_wallet` 余额 ÷ 用户账户余额合计。
-2. 在 wallet-service 增加水位配置和告警事件。
-3. 新增调拨单实体，复用提币的审核状态机，并加入白名单校验。
-4. 写一个离线脚本：读取负债和余额，按情景表输出耗尽时间。
+如果要继续补齐，建议按以下顺序：
+
+1. 给钱包 vs 账本对账加定时任务与告警，储备率低于 100% 时自动暂停对应币种提现（见 [B04](B04-reconciliation.md) 第 5.4 节）。
+2. 按金额分级审批冷→热调拨，加入时间窗和单笔上限。
+3. 写一个离线脚本：读取负债和热钱包余额，按情景表输出耗尽时间。
 
 ---
 

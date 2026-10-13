@@ -34,9 +34,34 @@ enum TimeInForce {
     Fok,
 }
 
+/// Self-trade prevention: what happens when an incoming order would match a
+/// resting order of the same owner. The default keeps the resting order and
+/// expires the rest of the incoming one.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum StpMode {
+    #[default]
+    ExpireTaker,
+    ExpireMaker,
+    ExpireBoth,
+}
+
+impl StpMode {
+    fn taker_reason(self) -> &'static str {
+        match self {
+            StpMode::ExpireTaker => "stp_expired_taker",
+            StpMode::ExpireMaker => "stp_expired_maker",
+            StpMode::ExpireBoth => "stp_expired_both",
+        }
+    }
+}
+
 #[derive(Clone)]
 struct RestingOrder {
     order_id: String,
+    /// Account that owns the order; `None` for legacy commands without one
+    /// (such orders never take part in self-trade prevention).
+    owner_id: Option<String>,
     side: Side,
     /// Fixed-point price in atomic units (see `decimal`).
     price: i128,
@@ -87,6 +112,14 @@ enum Command {
         price: Option<String>,
         quantity: String,
         created_at: String,
+        /// Optional owner (account id) used for self-trade prevention.
+        #[serde(default)]
+        owner_id: Option<String>,
+        #[serde(default)]
+        stp_mode: Option<StpMode>,
+        /// Maker-only: reject instead of taking liquidity on arrival.
+        #[serde(default)]
+        post_only: bool,
     },
     Seed {
         order_id: String,
@@ -95,6 +128,8 @@ enum Command {
         price: String,
         quantity: String,
         created_at: String,
+        #[serde(default)]
+        owner_id: Option<String>,
     },
     Cancel {
         order_id: String,
@@ -186,15 +221,23 @@ fn process_command_with_clock(command: &str, books: SharedBooks, clock: &dyn Fn(
             price,
             quantity,
             created_at,
+            owner_id,
+            stp_mode,
+            post_only,
         }) => submit_order(
-            &order_id,
-            &market,
-            side,
-            order_type,
-            time_in_force,
-            price,
-            &quantity,
-            &created_at,
+            SubmitRequest {
+                order_id: &order_id,
+                market: &market,
+                side,
+                order_type,
+                time_in_force,
+                price_text: price,
+                quantity_text: &quantity,
+                created_at: &created_at,
+                owner_id,
+                stp_mode: stp_mode.unwrap_or_default(),
+                post_only,
+            },
             books,
             clock,
         ),
@@ -205,7 +248,8 @@ fn process_command_with_clock(command: &str, books: SharedBooks, clock: &dyn Fn(
             price,
             quantity,
             created_at,
-        }) => seed_order(&order_id, &market, side, &price, &quantity, &created_at, books),
+            owner_id,
+        }) => seed_order(&order_id, &market, side, &price, &quantity, &created_at, owner_id, books),
         Ok(Command::Cancel { order_id, market }) => cancel_order(&order_id, &market, books),
         Ok(Command::Reset {
             market,
@@ -221,18 +265,34 @@ fn process_command_with_clock(command: &str, books: SharedBooks, clock: &dyn Fn(
     }
 }
 
-fn submit_order(
-    order_id: &str,
-    market: &str,
+struct SubmitRequest<'a> {
+    order_id: &'a str,
+    market: &'a str,
     side: Side,
     order_type: OrderType,
     time_in_force: TimeInForce,
     price_text: Option<String>,
-    quantity_text: &str,
-    created_at: &str,
-    books: SharedBooks,
-    clock: &dyn Fn() -> String,
-) -> Value {
+    quantity_text: &'a str,
+    created_at: &'a str,
+    owner_id: Option<String>,
+    stp_mode: StpMode,
+    post_only: bool,
+}
+
+fn submit_order(request: SubmitRequest, books: SharedBooks, clock: &dyn Fn() -> String) -> Value {
+    let SubmitRequest {
+        order_id,
+        market,
+        side,
+        order_type,
+        time_in_force,
+        price_text,
+        quantity_text,
+        created_at,
+        owner_id,
+        stp_mode,
+        post_only,
+    } = request;
     let quantity = match parse_quantity(quantity_text) {
         Ok(quantity) => quantity,
         Err(error) => return error,
@@ -257,6 +317,9 @@ fn submit_order(
     let mut next_execution_sequence = state.next_execution_sequence;
     let mut taker_remaining = quantity;
     let mut trades = Vec::new();
+    // Resting orders of the same owner removed by self-trade prevention.
+    let mut expired_makers: Vec<Value> = Vec::new();
+    let mut taker_expired = false;
     let taker_price = parsed_price.as_ref().map(|value| value.0);
 
     {
@@ -264,11 +327,30 @@ fn submit_order(
 
         sort_book(book);
 
-        let executable_quantity = if side == Side::Buy {
-            sum_executable_quantity(&book.asks, &side, &order_type, taker_price)
-        } else {
-            sum_executable_quantity(&book.bids, &side, &order_type, taker_price)
-        };
+        let opposite_side = if side == Side::Buy { &book.asks } else { &book.bids };
+
+        if post_only {
+            if order_type == OrderType::Market {
+                return cancelled_response(order_id, "post_only_requires_limit");
+            }
+            // A maker-only order must not take liquidity: if it would cross the
+            // best opposite level (including the owner's own orders) it is
+            // rejected as a whole and the book stays untouched.
+            if let Some(best) = opposite_side.first() {
+                if crosses(&side, &order_type, taker_price, best.price) {
+                    return cancelled_response(order_id, "post_only_would_take");
+                }
+            }
+        }
+
+        let executable_quantity = sum_executable_quantity(
+            opposite_side,
+            &side,
+            &order_type,
+            taker_price,
+            &owner_id,
+            stp_mode,
+        );
 
         if time_in_force == TimeInForce::Fok {
             if executable_quantity == 0 {
@@ -292,6 +374,25 @@ fn submit_order(
             };
 
             if !crosses(&side, &order_type, taker_price, best_resting.price) {
+                break;
+            }
+
+            if same_owner(&owner_id, &best_resting.owner_id) {
+                // Self-trade prevention: never fill an order against one of
+                // the same owner. Deterministic: the decision only depends on
+                // the book order and the incoming order's mode.
+                if stp_mode != StpMode::ExpireTaker {
+                    opposite.remove(0);
+                    expired_makers.push(json!({
+                        "orderId": best_resting.order_id,
+                        "quantity": best_resting.quantity_text,
+                        "reason": "stp_expired_maker"
+                    }));
+                }
+                if stp_mode == StpMode::ExpireMaker {
+                    continue;
+                }
+                taker_expired = true;
                 break;
             }
 
@@ -339,8 +440,10 @@ fn submit_order(
             }));
         }
 
+        let rests = order_type == OrderType::Limit && time_in_force == TimeInForce::Gtc && !taker_expired;
+
         if trades.is_empty() {
-            if order_type == OrderType::Limit && time_in_force == TimeInForce::Gtc {
+            if rests {
                 let Some((price, normalized_price_text)) = parsed_price else {
                     return error_json("PRICE_REQUIRED", "resting order price is required");
                 };
@@ -348,6 +451,7 @@ fn submit_order(
                     book,
                     RestingOrder {
                         order_id: order_id.to_string(),
+                        owner_id,
                         side,
                         price,
                         price_text: normalized_price_text,
@@ -356,20 +460,28 @@ fn submit_order(
                         created_at: created_at.to_string(),
                     },
                 );
-                return json!({
-                    "outcome": "resting",
-                    "orderId": order_id,
-                    "protocolVersion": PROTOCOL_VERSION,
-                    "trades": []
-                });
+                return with_expired_makers(
+                    json!({
+                        "outcome": "resting",
+                        "orderId": order_id,
+                        "protocolVersion": PROTOCOL_VERSION,
+                        "trades": []
+                    }),
+                    expired_makers,
+                );
             }
 
-            return cancelled_response(order_id, "no_executable_liquidity");
+            let reason = if taker_expired {
+                stp_mode.taker_reason()
+            } else {
+                "no_executable_liquidity"
+            };
+            return with_expired_makers(cancelled_response(order_id, reason), expired_makers);
         }
 
         let taker_status = if taker_remaining == 0 {
             "filled"
-        } else if order_type == OrderType::Limit && time_in_force == TimeInForce::Gtc {
+        } else if rests {
             let Some((price, normalized_price_text)) = parsed_price else {
                 return error_json("PRICE_REQUIRED", "resting order price is required");
             };
@@ -377,6 +489,7 @@ fn submit_order(
                 book,
                 RestingOrder {
                     order_id: order_id.to_string(),
+                    owner_id,
                     side,
                     price,
                     price_text: normalized_price_text,
@@ -392,7 +505,7 @@ fn submit_order(
 
         state.next_execution_sequence = next_execution_sequence;
 
-        return json!({
+        let mut response = json!({
             "outcome": "matched",
             "orderId": order_id,
             "takerStatus": taker_status,
@@ -400,7 +513,25 @@ fn submit_order(
             "protocolVersion": PROTOCOL_VERSION,
             "trades": trades
         });
+        if taker_expired && taker_status == "cancelled" {
+            // The unfilled rest was expired by self-trade prevention.
+            response["reason"] = json!(stp_mode.taker_reason());
+        }
+        return with_expired_makers(response, expired_makers);
     }
+}
+
+/// Adds `expiredMakers` only when self-trade prevention removed resting
+/// orders, so responses of ordinary orders keep their exact shape.
+fn with_expired_makers(mut response: Value, expired_makers: Vec<Value>) -> Value {
+    if !expired_makers.is_empty() {
+        response["expiredMakers"] = Value::Array(expired_makers);
+    }
+    response
+}
+
+fn same_owner(taker: &Option<String>, maker: &Option<String>) -> bool {
+    matches!((taker, maker), (Some(taker), Some(maker)) if !taker.is_empty() && taker == maker)
 }
 
 fn seed_order(
@@ -410,6 +541,7 @@ fn seed_order(
     price_text: &str,
     quantity_text: &str,
     created_at: &str,
+    owner_id: Option<String>,
     books: SharedBooks,
 ) -> Value {
     let price = match parse_price(price_text) {
@@ -431,6 +563,7 @@ fn seed_order(
         book,
         RestingOrder {
             order_id: order_id.to_string(),
+            owner_id,
             side,
             price,
             price_text: price_text.to_string(),
@@ -549,7 +682,7 @@ fn snapshot_book(market: &str, limit: usize, books: SharedBooks) -> Value {
 }
 
 fn to_snapshot_order(order: RestingOrder) -> Value {
-    json!({
+    let mut value = json!({
         "orderId": order.order_id,
         "side": match order.side {
             Side::Buy => "buy",
@@ -558,7 +691,11 @@ fn to_snapshot_order(order: RestingOrder) -> Value {
         "price": order.price_text,
         "quantity": order.quantity_text,
         "createdAt": order.created_at
-    })
+    });
+    if let Some(owner_id) = order.owner_id {
+        value["ownerId"] = json!(owner_id);
+    }
+    value
 }
 
 fn insert_resting(book: &mut OrderBook, order: RestingOrder) {
@@ -611,10 +748,20 @@ fn sum_executable_quantity(
     side: &Side,
     order_type: &OrderType,
     taker_price: Option<i128>,
+    owner_id: &Option<String>,
+    stp_mode: StpMode,
 ) -> i128 {
     let mut total: i128 = 0;
     for order in orders {
         if !crosses(side, order_type, taker_price, order.price) {
+            break;
+        }
+        if same_owner(owner_id, &order.owner_id) {
+            // Self-trade prevention: expire_maker skips the own order, the
+            // other modes stop the taker at it.
+            if stp_mode == StpMode::ExpireMaker {
+                continue;
+            }
             break;
         }
         // Saturate instead of overflowing; FOK only needs to know whether the
@@ -1448,5 +1595,273 @@ mod tests {
         assert_eq!(sol["asks"][0]["quantity"], json!("10"));
         let eth = command(json!({"action": "snapshot", "market": "ETH-USDT", "limit": 10}), &books);
         assert_eq!(eth["asks"][0]["price"], json!("3200"));
+    }
+
+    fn owned(mut value: Value, owner: &str) -> Value {
+        value["owner_id"] = json!(owner);
+        value
+    }
+
+    fn with_field(mut value: Value, key: &str, field: Value) -> Value {
+        value[key] = field;
+        value
+    }
+
+    #[test]
+    fn post_only_is_rejected_when_it_would_take_liquidity() {
+        let books = shared_books();
+        command(owned(seed("ask", "ETH-USDT", "sell", "3200", "1", "2026-10-10T10:00:00.000Z"), "acct-a"), &books);
+
+        let crossing = command(
+            with_field(
+                submit("po", "ETH-USDT", "buy", "limit", "gtc", Some("3200"), "0.5", "2026-10-10T10:00:01.000Z"),
+                "post_only",
+                json!(true),
+            ),
+            &books,
+        );
+        assert_eq!(crossing["outcome"], json!("cancelled"));
+        assert_eq!(crossing["reason"], json!("post_only_would_take"));
+        assert!(crossing.get("trades").is_none() || crossing["trades"] == json!([]));
+
+        let snapshot = command(json!({"action": "snapshot", "market": "ETH-USDT"}), &books);
+        assert_eq!(snapshot["asks"][0]["quantity"], json!("1"), "book untouched");
+        assert_eq!(snapshot["bids"], json!([]));
+    }
+
+    #[test]
+    fn post_only_rests_when_it_does_not_cross() {
+        let books = shared_books();
+        command(seed("ask", "ETH-USDT", "sell", "3200", "1", "2026-10-10T10:00:00.000Z"), &books);
+
+        let resting = command(
+            with_field(
+                submit("po", "ETH-USDT", "buy", "limit", "gtc", Some("3199.5"), "0.5", "2026-10-10T10:00:01.000Z"),
+                "post_only",
+                json!(true),
+            ),
+            &books,
+        );
+        assert_eq!(resting["outcome"], json!("resting"));
+
+        let market_post_only = command(
+            with_field(
+                submit("pm", "ETH-USDT", "buy", "market", "ioc", None, "0.5", "2026-10-10T10:00:02.000Z"),
+                "post_only",
+                json!(true),
+            ),
+            &books,
+        );
+        assert_eq!(market_post_only["reason"], json!("post_only_requires_limit"));
+    }
+
+    #[test]
+    fn stp_expire_taker_is_the_default_and_keeps_the_resting_order() {
+        let books = shared_books();
+        command(owned(seed("own-ask", "ETH-USDT", "sell", "3200", "1", "2026-10-10T10:00:00.000Z"), "acct-a"), &books);
+
+        let response = command(
+            owned(submit("t", "ETH-USDT", "buy", "limit", "gtc", Some("3200"), "0.5", "2026-10-10T10:00:01.000Z"), "acct-a"),
+            &books,
+        );
+        assert_eq!(response["outcome"], json!("cancelled"));
+        assert_eq!(response["reason"], json!("stp_expired_taker"));
+        assert!(response.get("expiredMakers").is_none());
+
+        let snapshot = command(json!({"action": "snapshot", "market": "ETH-USDT"}), &books);
+        assert_eq!(snapshot["asks"][0]["orderId"], json!("own-ask"));
+        assert_eq!(snapshot["asks"][0]["ownerId"], json!("acct-a"));
+        assert_eq!(snapshot["bids"], json!([]), "expired taker never rests");
+    }
+
+    #[test]
+    fn stp_expire_taker_keeps_fills_against_other_owners() {
+        let books = shared_books();
+        command(owned(seed("other", "ETH-USDT", "sell", "3200", "0.3", "2026-10-10T10:00:00.000Z"), "acct-b"), &books);
+        command(owned(seed("own", "ETH-USDT", "sell", "3201", "1", "2026-10-10T10:00:01.000Z"), "acct-a"), &books);
+        command(owned(seed("other2", "ETH-USDT", "sell", "3202", "1", "2026-10-10T10:00:02.000Z"), "acct-b"), &books);
+
+        let response = command(
+            with_field(
+                owned(submit("t", "ETH-USDT", "buy", "limit", "gtc", Some("3202"), "1", "2026-10-10T10:00:03.000Z"), "acct-a"),
+                "stp_mode",
+                json!("expire_taker"),
+            ),
+            &books,
+        );
+        assert_eq!(response["outcome"], json!("matched"));
+        assert_eq!(response["trades"].as_array().unwrap().len(), 1);
+        assert_eq!(response["trades"][0]["makerOrderId"], json!("other"));
+        assert_eq!(response["takerStatus"], json!("cancelled"));
+        assert_eq!(response["takerRemainingQuantity"], json!("0"));
+        assert_eq!(response["reason"], json!("stp_expired_taker"));
+
+        let snapshot = command(json!({"action": "snapshot", "market": "ETH-USDT"}), &books);
+        assert_eq!(snapshot["asks"][0]["orderId"], json!("own"));
+        assert_eq!(snapshot["asks"][1]["orderId"], json!("other2"));
+        assert_eq!(snapshot["bids"], json!([]));
+    }
+
+    #[test]
+    fn stp_expire_maker_removes_own_orders_and_keeps_matching() {
+        let books = shared_books();
+        command(owned(seed("own", "ETH-USDT", "sell", "3200", "0.4", "2026-10-10T10:00:00.000Z"), "acct-a"), &books);
+        command(owned(seed("other", "ETH-USDT", "sell", "3201", "1", "2026-10-10T10:00:01.000Z"), "acct-b"), &books);
+
+        let response = command(
+            with_field(
+                owned(submit("t", "ETH-USDT", "buy", "limit", "gtc", Some("3201"), "0.5", "2026-10-10T10:00:02.000Z"), "acct-a"),
+                "stp_mode",
+                json!("expire_maker"),
+            ),
+            &books,
+        );
+        assert_eq!(response["outcome"], json!("matched"));
+        assert_eq!(response["takerStatus"], json!("filled"));
+        assert_eq!(response["trades"][0]["makerOrderId"], json!("other"));
+        assert_eq!(
+            response["expiredMakers"],
+            json!([{"orderId": "own", "quantity": "0.4", "reason": "stp_expired_maker"}])
+        );
+        assert!(response.get("reason").is_none());
+
+        let snapshot = command(json!({"action": "snapshot", "market": "ETH-USDT"}), &books);
+        assert_eq!(snapshot["asks"][0]["orderId"], json!("other"));
+        assert_eq!(snapshot["asks"][0]["quantity"], json!("0.5"));
+        assert_eq!(snapshot["asks"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn stp_expire_maker_without_other_liquidity_rests_the_taker() {
+        let books = shared_books();
+        command(owned(seed("own", "ETH-USDT", "sell", "3200", "0.4", "2026-10-10T10:00:00.000Z"), "acct-a"), &books);
+
+        let response = command(
+            with_field(
+                owned(submit("t", "ETH-USDT", "buy", "limit", "gtc", Some("3200"), "0.5", "2026-10-10T10:00:01.000Z"), "acct-a"),
+                "stp_mode",
+                json!("expire_maker"),
+            ),
+            &books,
+        );
+        assert_eq!(response["outcome"], json!("resting"));
+        assert_eq!(response["expiredMakers"][0]["orderId"], json!("own"));
+
+        let snapshot = command(json!({"action": "snapshot", "market": "ETH-USDT"}), &books);
+        assert_eq!(snapshot["asks"], json!([]));
+        assert_eq!(snapshot["bids"][0]["orderId"], json!("t"));
+    }
+
+    #[test]
+    fn stp_expire_both_removes_the_maker_and_stops_the_taker() {
+        let books = shared_books();
+        command(owned(seed("own", "ETH-USDT", "sell", "3200", "0.4", "2026-10-10T10:00:00.000Z"), "acct-a"), &books);
+        command(owned(seed("other", "ETH-USDT", "sell", "3201", "1", "2026-10-10T10:00:01.000Z"), "acct-b"), &books);
+
+        let response = command(
+            with_field(
+                owned(submit("t", "ETH-USDT", "buy", "limit", "gtc", Some("3201"), "0.5", "2026-10-10T10:00:02.000Z"), "acct-a"),
+                "stp_mode",
+                json!("expire_both"),
+            ),
+            &books,
+        );
+        assert_eq!(response["outcome"], json!("cancelled"));
+        assert_eq!(response["reason"], json!("stp_expired_both"));
+        assert_eq!(response["expiredMakers"][0]["orderId"], json!("own"));
+
+        let snapshot = command(json!({"action": "snapshot", "market": "ETH-USDT"}), &books);
+        assert_eq!(snapshot["asks"][0]["orderId"], json!("other"));
+        assert_eq!(snapshot["asks"][0]["quantity"], json!("1"));
+        assert_eq!(snapshot["bids"], json!([]));
+    }
+
+    #[test]
+    fn fok_ignores_own_liquidity_and_leaves_the_book_untouched() {
+        let books = shared_books();
+        command(owned(seed("own", "ETH-USDT", "sell", "3200", "1", "2026-10-10T10:00:00.000Z"), "acct-a"), &books);
+        command(owned(seed("other", "ETH-USDT", "sell", "3200", "0.2", "2026-10-10T10:00:01.000Z"), "acct-b"), &books);
+
+        for mode in ["expire_taker", "expire_maker", "expire_both"] {
+            let response = command(
+                with_field(
+                    owned(submit("t", "ETH-USDT", "buy", "limit", "fok", Some("3200"), "0.5", "2026-10-10T10:00:02.000Z"), "acct-a"),
+                    "stp_mode",
+                    json!(mode),
+                ),
+                &books,
+            );
+            assert_eq!(response["outcome"], json!("cancelled"), "{mode}");
+            assert!(response.get("expiredMakers").is_none(), "{mode}");
+        }
+
+        let snapshot = command(json!({"action": "snapshot", "market": "ETH-USDT"}), &books);
+        assert_eq!(snapshot["asks"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn orders_without_owner_or_with_different_owners_still_trade() {
+        let books = shared_books();
+        // Market makers quote from two separate accounts: they must keep trading.
+        command(owned(seed("maker-ask", "ETH-USDT", "sell", "3200", "1", "2026-10-10T10:00:00.000Z"), "maker-ask-acct"), &books);
+        let maker_cross = command(
+            owned(submit("maker-bid-ioc", "ETH-USDT", "buy", "limit", "ioc", Some("3200"), "0.25", "2026-10-10T10:00:01.000Z"), "maker-bid-acct"),
+            &books,
+        );
+        assert_eq!(maker_cross["takerStatus"], json!("filled"));
+
+        // Legacy commands without owner never trigger self-trade prevention.
+        command(seed("legacy", "ETH-USDT", "sell", "3200", "1", "2026-10-10T10:00:02.000Z"), &books);
+        let legacy = command(
+            submit("legacy-taker", "ETH-USDT", "buy", "limit", "ioc", Some("3200"), "1.5", "2026-10-10T10:00:03.000Z"),
+            &books,
+        );
+        assert_eq!(legacy["takerStatus"], json!("filled"));
+    }
+
+    #[test]
+    fn invalid_stp_mode_is_rejected_as_invalid_command() {
+        let books = shared_books();
+        let response = command(
+            with_field(
+                submit("t", "ETH-USDT", "buy", "limit", "gtc", Some("3200"), "1", "2026-10-10T10:00:00.000Z"),
+                "stp_mode",
+                json!("cancel_everything"),
+            ),
+            &books,
+        );
+        assert_eq!(response["error"]["code"], json!("INVALID_COMMAND"));
+    }
+
+    fn stp_replay_script() -> Vec<Value> {
+        vec![
+            owned(seed("a1", "ETH-USDT", "sell", "3200", "0.3", "2026-10-10T10:00:00.000Z"), "acct-a"),
+            owned(seed("b1", "ETH-USDT", "sell", "3200", "0.3", "2026-10-10T10:00:01.000Z"), "acct-b"),
+            owned(seed("a2", "ETH-USDT", "sell", "3201", "0.3", "2026-10-10T10:00:02.000Z"), "acct-a"),
+            owned(seed("b2", "ETH-USDT", "buy", "3190", "1", "2026-10-10T10:00:03.000Z"), "acct-b"),
+            with_field(
+                owned(submit("t-maker", "ETH-USDT", "buy", "limit", "gtc", Some("3201"), "0.5", "2026-10-10T10:01:00.000Z"), "acct-a"),
+                "stp_mode",
+                json!("expire_maker"),
+            ),
+            owned(submit("t-taker", "ETH-USDT", "sell", "limit", "ioc", Some("3190"), "2", "2026-10-10T10:01:01.000Z"), "acct-b"),
+            with_field(
+                submit("t-po", "ETH-USDT", "sell", "limit", "gtc", Some("3150"), "0.1", "2026-10-10T10:01:02.000Z"),
+                "post_only",
+                json!(true),
+            ),
+            json!({"action": "snapshot", "market": "ETH-USDT", "limit": 10}),
+        ]
+    }
+
+    #[test]
+    fn stp_and_post_only_replay_is_byte_identical() {
+        let script = stp_replay_script();
+        let first = run_with_fixed_clock(&script);
+        let second = run_with_fixed_clock(&script);
+        assert_eq!(first.join("\n"), second.join("\n"));
+        assert!(first[4].contains("\"expiredMakers\""));
+        assert!(first[5].contains("stp_expired_taker"));
+        assert!(first[6].contains("post_only_would_take"));
     }
 }

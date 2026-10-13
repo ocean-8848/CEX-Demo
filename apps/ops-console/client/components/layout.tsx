@@ -16,7 +16,9 @@ export type PageKey =
   | "trace"
   | "ledger"
   | "system"
-  | "audit";
+  | "audit"
+  | "treasury"
+  | "surveillance";
 
 interface NavItem {
   page: PageKey;
@@ -47,8 +49,10 @@ const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
     title: "风控与运维",
     items: [
       { page: "ledger", label: "账本对账", icon: "≡", permission: "ops.ledger.read" },
+      { page: "treasury", label: "钱包与储备金", icon: "◇", permission: "ops.ledger.read" },
       { page: "system", label: "系统运维", icon: "⚙", permission: "ops.dashboard.read" },
-      { page: "audit", label: "操作审计", icon: "✎", permission: "ops.audit.read" }
+      { page: "audit", label: "操作审计", icon: "✎", permission: "ops.audit.read" },
+      { page: "surveillance", label: "市场监控", icon: "◉", permission: "ops.markets.read" }
     ]
   }
 ];
@@ -60,9 +64,14 @@ export function Shell(props: { page: PageKey; children: ReactNode }) {
     { refreshMs: 10_000 }
   );
   const alerts = useOpsQuery<AlertsReport>(can("ops.alerts.read") ? "/alerts" : null, { refreshMs: 30_000 });
+  const surveillance = useOpsQuery<{ byStatus?: { open?: number } }>(
+    can("ops.markets.read") ? "/surveillance/overview" : null,
+    { refreshMs: 60_000 }
+  );
   const badges: Partial<Record<PageKey, { count: number; tone: string }>> = {
     withdrawals: queue.data?.total ? { count: queue.data.total, tone: "warning" } : undefined,
-    system: alerts.data?.alertCount ? { count: alerts.data.alertCount, tone: "negative" } : undefined
+    system: alerts.data?.alertCount ? { count: alerts.data.alertCount, tone: "negative" } : undefined,
+    surveillance: surveillance.data?.byStatus?.open ? { count: surveillance.data.byStatus.open, tone: "warning" } : undefined
   };
 
   useEffect(() => {

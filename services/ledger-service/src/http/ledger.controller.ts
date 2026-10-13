@@ -137,6 +137,16 @@ export class LedgerController {
     });
   }
 
+  @Get("/ops/liabilities")
+  async getLiabilitySummary(@Query("assetCode") assetCode?: string) {
+    return this.ledgerHttpService.getLiabilitySummary({ assetCode: assetCode || undefined });
+  }
+
+  @Get("/ops/liabilities/users")
+  async listUserLiabilities(@Query("assetCode") assetCode?: string) {
+    return this.ledgerHttpService.listUserLiabilities({ assetCode: assetCode || undefined });
+  }
+
   @Post("/ops/outbox/drain")
   async drainOutboxAlerts(@Body() body: DrainLedgerOutboxRequestDto) {
     return this.ledgerHttpService.drainOutboxAlerts(body);

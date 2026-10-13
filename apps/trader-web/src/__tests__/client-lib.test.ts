@@ -144,3 +144,45 @@ test("emergency switch codes map to Chinese hints", () => {
   assert.match(humanizeError("All withdrawals are paused", "WITHDRAWALS_PAUSED"), /^平台已暂停全部提现/);
   assert.match(humanizeError("The exchange is in read-only mode", "API_WRITE_FROZEN"), /^平台处于只读模式/);
 });
+
+test("fee tier helpers use the user's VIP rate and the rate recorded on the trade", async () => {
+  const { effectiveRateFor, formatRate, userTradeFeeRate } = await import("../client/lib/fee-tier.js");
+  const profile = {
+    userId: "alice",
+    tier: "VIP2",
+    name: "VIP 2",
+    source: "volume" as const,
+    makerFeeRate: "0.0003",
+    takerFeeRate: "0.0008",
+    volume: "600000",
+    volumeAsset: "USDT",
+    volumeWindowDays: 30,
+    nextTier: null,
+    remainingVolume: "0",
+    progressRatio: 1,
+    override: null,
+    marketMaker: null,
+    markets: [{ market: "ETH-USDT", makerFeeRate: "0.0003", takerFeeRate: "0.0008" }],
+    tiers: []
+  };
+  const market = { makerFeeRate: "0.0005", takerFeeRate: "0.001" };
+  assert.equal(effectiveRateFor(profile, "ETH-USDT", "taker", market), 0.0008);
+  assert.equal(effectiveRateFor(null, "ETH-USDT", "taker", market), 0.001, "logged out: market default");
+  assert.equal(effectiveRateFor(profile, "BTC-USDT", "maker", market), 0.0005, "unknown market falls back");
+  const trade = {
+    tradeId: "t1",
+    price: "3000",
+    quantity: "2",
+    buyerOrderId: "b",
+    sellerOrderId: "s",
+    buyerUserId: "alice",
+    sellerUserId: "bob",
+    sellerFeeRate: "0.0005",
+    buyerFeeRate: "0.0008",
+    buyerFeeTier: "VIP2"
+  };
+  assert.deepEqual(userTradeFeeRate(trade, "alice"), { rate: 0.0008, tier: "VIP2" });
+  assert.deepEqual(userTradeFeeRate(trade, "bob"), { rate: 0.0005, tier: undefined });
+  assert.equal(formatRate(0.001), "0.1%");
+  assert.equal(formatRate("0.0008"), "0.08%");
+});

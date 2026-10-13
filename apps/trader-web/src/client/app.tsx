@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { BootScreen, Toasts, TopNav } from "./components/layout.js";
 import { AccountPage } from "./features/account/account-page.js";
 import { AssetsPage } from "./features/assets/assets-page.js";
+import { ReservesPage } from "./features/assets/reserves-page.js";
 import { StatementPage } from "./features/assets/statement-page.js";
 import { AuthPage } from "./features/auth/auth-page.js";
 import { HomePage } from "./features/home/home-page.js";
@@ -66,6 +67,9 @@ function Page(props: { route: Route }) {
     case "assets":
       if (route.params[0] === "ledger") {
         return <StatementPage />;
+      }
+      if (route.params[0] === "reserves") {
+        return <ReservesPage />;
       }
       return (
         <AssetsPage

@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import { IdentityError } from "../domain/errors.js";
+import type { LoginSecurityService } from "./login-security-service.js";
 import { hashPassword, verifyPassword } from "../domain/password.js";
 import { isKycTier, isVerifiedKycTier, validateKycSubmission } from "../domain/kyc.js";
 import { normalizeOpsRoles, resolveOpsPermissions } from "../domain/rbac.js";
@@ -44,6 +45,7 @@ import type {
   PagedResult,
   RegenerateRecoveryCodesCommand,
   ReviewKycRequestCommand,
+  SessionDeviceInfo,
   SetKycTierCommand,
   SubmitKycRequestCommand,
   TwoFactorEnrollment,
@@ -74,6 +76,8 @@ interface ServiceOptions {
   createLabel?: (user: IdentityUser) => string;
   /** Master key used to encrypt API key secrets at rest. */
   apiKeyEncryptionKey?: string;
+  /** Login events, devices and failed-login lock; omitted = not recorded. */
+  loginSecurity?: LoginSecurityService;
 }
 
 export class IdentityApplicationService {
@@ -87,6 +91,7 @@ export class IdentityApplicationService {
   private readonly requireOpsTwoFactor: boolean;
   private readonly createLabel: (user: IdentityUser) => string;
   private readonly secretBox: ApiKeySecretBox;
+  private readonly loginSecurity?: LoginSecurityService;
 
   constructor(
     private readonly repository: IdentityRepository,
@@ -103,6 +108,7 @@ export class IdentityApplicationService {
     this.secretBox = new ApiKeySecretBox(
       options.apiKeyEncryptionKey ?? "web3-cex-demo-api-key-encryption-key"
     );
+    this.loginSecurity = options.loginSecurity;
     this.createLabel =
       options.createLabel ??
       ((user) => user.email ?? `user-${user.userId}`);
@@ -201,6 +207,7 @@ export class IdentityApplicationService {
       twoFactorCode: command.twoFactorCode,
       userAgent: command.userAgent,
       ipAddress: command.ipAddress,
+      deviceId: command.deviceId,
       scope: "ops_console",
       ttlHours: this.opsSessionTtlHours
     });
@@ -217,7 +224,8 @@ export class IdentityApplicationService {
       createdAt: session.createdAt,
       expiresAt: session.expiresAt,
       lastSeenAt: session.lastSeenAt,
-      active: session.active
+      active: session.active,
+      ...(session.device ? { device: session.device } : {})
     };
   }
 
@@ -230,6 +238,7 @@ export class IdentityApplicationService {
       twoFactorCode: command.twoFactorCode,
       userAgent: command.userAgent,
       ipAddress: command.ipAddress,
+      deviceId: command.deviceId,
       scope: "customer_web",
       ttlHours: this.customerSessionTtlHours
     });
@@ -248,7 +257,8 @@ export class IdentityApplicationService {
       createdAt: session.createdAt,
       expiresAt: session.expiresAt,
       lastSeenAt: session.lastSeenAt,
-      active: session.active
+      active: session.active,
+      ...(session.device ? { device: session.device } : {})
     };
   }
 
@@ -875,14 +885,57 @@ export class IdentityApplicationService {
     twoFactorCode?: string;
     userAgent?: string;
     ipAddress?: string;
+    deviceId?: string;
     scope: IdentitySessionScope;
     ttlHours: number;
   }): Promise<CreatedSession> {
-    const user = await this.repository.getUserByEmail(params.email.trim().toLowerCase());
+    const email = params.email.trim().toLowerCase();
+    const attempt = {
+      email,
+      scope: params.scope,
+      deviceId: params.deviceId,
+      ipAddress: params.ipAddress,
+      userAgent: params.userAgent
+    };
+    const user = await this.repository.getUserByEmail(email);
     if (!user) {
+      await this.loginSecurity?.recordFailure({ ...attempt, failureCode: "INVALID_CREDENTIALS" });
       throw new IdentityError("INVALID_CREDENTIALS", "Email or password is invalid");
     }
 
+    try {
+      await this.verifyLoginSecrets(user, params);
+    } catch (error) {
+      if (error instanceof IdentityError && error.code !== "LOGIN_TEMPORARILY_LOCKED") {
+        await this.loginSecurity?.recordFailure({ ...attempt, userId: user.userId, failureCode: error.code });
+      }
+      throw error;
+    }
+
+    const session = await this.issueSession(user, params);
+    if (this.loginSecurity) {
+      session.device = await this.loginSecurity.recordSuccess({
+        ...attempt,
+        userId: user.userId,
+        sessionId: session.sessionId
+      });
+    }
+    return session;
+  }
+
+  /** Scope / status checks, failed-login lock, password and 2FA. */
+  private async verifyLoginSecrets(
+    user: IdentityUser,
+    params: {
+      email: string;
+      password: string;
+      twoFactorCode?: string;
+      scope: IdentitySessionScope;
+      deviceId?: string;
+      ipAddress?: string;
+      userAgent?: string;
+    }
+  ): Promise<void> {
     if (params.scope === "ops_console" && user.userType !== "ops") {
       throw new IdentityError("OPS_ACCESS_DENIED", `User ${user.userId} is not an ops user`);
     }
@@ -898,13 +951,28 @@ export class IdentityApplicationService {
       throw new IdentityError("USER_NOT_ACTIVE", `User ${user.userId} is not active`);
     }
 
+    // Checked before the password so a locked account cannot keep guessing.
+    await this.loginSecurity?.assertNotLocked({
+      email: params.email.trim().toLowerCase(),
+      scope: params.scope,
+      deviceId: params.deviceId,
+      ipAddress: params.ipAddress,
+      userAgent: params.userAgent,
+      userId: user.userId
+    });
+
     const credential = await this.repository.findUserCredentialByUserId(user.userId);
     if (!credential || !verifyPassword(params.password, credential.passwordHash)) {
       throw new IdentityError("INVALID_CREDENTIALS", "Email or password is invalid");
     }
 
     await this.assertTwoFactorForLogin(user, params.scope, params.twoFactorCode);
+  }
 
+  private async issueSession(
+    user: IdentityUser,
+    params: { userAgent?: string; ipAddress?: string; scope: IdentitySessionScope; ttlHours: number }
+  ): Promise<CreatedSession> {
     const createdAt = this.now().toISOString();
     const rawToken = randomBytes(32).toString("base64url");
     const sessionId = randomUUID();
@@ -1108,6 +1176,7 @@ export class IdentityApplicationService {
 
 interface CreatedSession extends IdentitySessionInfo {
   token: string;
+  device?: SessionDeviceInfo;
 }
 
 function mapTwoFactorStatus(

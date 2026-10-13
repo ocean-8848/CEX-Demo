@@ -7,7 +7,12 @@ import { WalletApplicationService } from "../application/wallet-application-serv
 import { WalletOpsService } from "../application/wallet-ops-service.js";
 import { WalletNotificationDispatcher } from "../application/wallet-notification-dispatcher.js";
 import type { WalletEventPublisher } from "../domain/event-publisher.js";
+import type { AddressBlacklistEntry, AddressRiskLabel } from "../domain/withdrawal-risk.js";
 import type {
+  AddAddressBlacklistEntryCommand,
+  CreateSecurityNotificationCommand,
+  ListAddressBlacklistQuery,
+  RemoveAddressBlacklistEntryCommand,
   ApproveWithdrawalCommand,
   ConfirmWithdrawalCommand,
   ConfirmDepositCommand,
@@ -130,6 +135,11 @@ export class WalletHttpService implements OnModuleInit, OnModuleDestroy {
         }
       )
     );
+  }
+
+  /** Same database pool / memory store, shared with the treasury module. */
+  get sharedStore(): { repository: WalletRepository; pool?: Pool } {
+    return { repository: this.repository, pool: this.pool };
   }
 
   async onModuleInit(): Promise<void> {
@@ -281,5 +291,31 @@ export class WalletHttpService implements OnModuleInit, OnModuleDestroy {
 
   async rejectWithdrawal(command: RejectWithdrawalCommand): Promise<WithdrawalRecord> {
     return this.applicationService.rejectWithdrawal(command);
+  }
+
+  async listAddressBlacklist(
+    query: ListAddressBlacklistQuery
+  ): Promise<PagedResult<AddressBlacklistEntry>> {
+    return this.applicationService.listAddressBlacklist(query);
+  }
+
+  async addAddressBlacklistEntry(command: AddAddressBlacklistEntryCommand) {
+    return this.applicationService.addAddressBlacklistEntry(command);
+  }
+
+  async removeAddressBlacklistEntry(
+    command: RemoveAddressBlacklistEntryCommand
+  ): Promise<AddressBlacklistEntry> {
+    return this.applicationService.removeAddressBlacklistEntry(command);
+  }
+
+  listAddressRiskLabels(): AddressRiskLabel[] {
+    return this.applicationService.listAddressRiskLabels();
+  }
+
+  async createSecurityNotification(
+    command: CreateSecurityNotificationCommand
+  ): Promise<WalletNotificationRecord> {
+    return this.applicationService.createSecurityNotification(command);
   }
 }

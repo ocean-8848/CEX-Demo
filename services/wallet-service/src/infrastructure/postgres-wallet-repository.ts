@@ -2,8 +2,10 @@ import type { AssetCode, Network } from "@web3-cex/domain";
 import type { Pool, PoolClient } from "pg";
 
 import type { WalletRepository } from "../domain/repository.js";
+import type { AddressBlacklistEntry } from "../domain/withdrawal-risk.js";
 import type {
   CreateWithdrawalAddressBookEntryCommand,
+  ListAddressBlacklistQuery,
   CreateDepositAddressCommand,
   DepositRecord,
   ListWithdrawalAuditLogsQuery,
@@ -73,8 +75,34 @@ interface WithdrawalRow {
   approved_at: Date | null;
   broadcasted_at: Date | null;
   confirmed_at: Date | null;
+  risk_score: number | null;
+  risk_level: WithdrawalRecord["riskLevel"] | null;
+  risk_reasons: WithdrawalRecord["riskReasons"] | null;
   metadata: Record<string, unknown>;
 }
+
+interface AddressBlacklistRow {
+  entry_id: string;
+  network: Network;
+  address: string;
+  category: AddressBlacklistEntry["category"];
+  reason: string;
+  source: AddressBlacklistEntry["source"];
+  status: AddressBlacklistEntry["status"];
+  created_by: string | null;
+  created_at: Date;
+  removed_by: string | null;
+  removed_at: Date | null;
+  removal_reason: string | null;
+}
+
+const ADDRESS_BLACKLIST_COLUMNS = `entry_id, network, address, category, reason, source, status,
+              created_by, created_at, removed_by, removed_at, removal_reason`;
+
+const WITHDRAWAL_COLUMNS = `withdrawal_id, user_id, ledger_account_id, custody_request_id, asset_code, network, to_address,
+              amount::text as amount, fee::text as fee, frozen_amount::text as frozen_amount,
+              freeze_reference_id, status, review_status, tx_hash, requested_at,
+              approved_at, broadcasted_at, confirmed_at, risk_score, risk_level, risk_reasons, metadata`;
 
 interface WithdrawalAddressBookRow {
   address_book_id: string;
@@ -305,9 +333,9 @@ export class PostgresWalletRepository implements WalletRepository {
       `insert into withdrawals
        (withdrawal_id, user_id, ledger_account_id, custody_request_id, asset_code, network, to_address, amount, fee,
         frozen_amount, freeze_reference_id, status, review_status, tx_hash, requested_at,
-        approved_at, broadcasted_at, confirmed_at, metadata)
+        approved_at, broadcasted_at, confirmed_at, metadata, risk_score, risk_level, risk_reasons)
        values ($1, $2, $3, $4, $5, $6, $7, $8::numeric, $9::numeric, $10::numeric, $11, $12, $13, $14,
-               $15, $16, $17, $18, $19::jsonb)
+               $15, $16, $17, $18, $19::jsonb, $20, $21, $22::jsonb)
        on conflict (withdrawal_id) do update
        set ledger_account_id = excluded.ledger_account_id,
            custody_request_id = excluded.custody_request_id,
@@ -321,7 +349,10 @@ export class PostgresWalletRepository implements WalletRepository {
            approved_at = excluded.approved_at,
            broadcasted_at = excluded.broadcasted_at,
            confirmed_at = excluded.confirmed_at,
-           metadata = excluded.metadata`,
+           metadata = excluded.metadata,
+           risk_score = excluded.risk_score,
+           risk_level = excluded.risk_level,
+           risk_reasons = excluded.risk_reasons`,
       [
         record.withdrawalId,
         record.userId,
@@ -341,17 +372,17 @@ export class PostgresWalletRepository implements WalletRepository {
         record.approvedAt ?? null,
         record.broadcastedAt ?? null,
         record.confirmedAt ?? null,
-        JSON.stringify(record.metadata)
+        JSON.stringify(record.metadata),
+        record.riskScore ?? null,
+        record.riskLevel ?? null,
+        JSON.stringify(record.riskReasons ?? [])
       ]
     );
   }
 
   async findWithdrawalById(withdrawalId: string): Promise<WithdrawalRecord | null> {
     const result = await this.db.query<WithdrawalRow>(
-      `select withdrawal_id, user_id, ledger_account_id, custody_request_id, asset_code, network, to_address,
-              amount::text as amount, fee::text as fee, frozen_amount::text as frozen_amount,
-              freeze_reference_id, status, review_status, tx_hash, requested_at,
-              approved_at, broadcasted_at, confirmed_at, metadata
+      `select ${WITHDRAWAL_COLUMNS}
        from withdrawals
        where withdrawal_id = $1`,
       [withdrawalId]
@@ -362,10 +393,7 @@ export class PostgresWalletRepository implements WalletRepository {
 
   async findWithdrawalByTxHash(network: Network, txHash: string): Promise<WithdrawalRecord | null> {
     const result = await this.db.query<WithdrawalRow>(
-      `select withdrawal_id, user_id, ledger_account_id, custody_request_id, asset_code, network, to_address,
-              amount::text as amount, fee::text as fee, frozen_amount::text as frozen_amount,
-              freeze_reference_id, status, review_status, tx_hash, requested_at,
-              approved_at, broadcasted_at, confirmed_at, metadata
+      `select ${WITHDRAWAL_COLUMNS}
        from withdrawals
        where network = $1 and tx_hash = $2`,
       [network, txHash]
@@ -380,10 +408,7 @@ export class PostgresWalletRepository implements WalletRepository {
     const offset = query.offset ?? 0;
 
     const rows = await this.db.query<WithdrawalRow>(
-      `select withdrawal_id, user_id, ledger_account_id, custody_request_id, asset_code, network, to_address,
-              amount::text as amount, fee::text as fee, frozen_amount::text as frozen_amount,
-              freeze_reference_id, status, review_status, tx_hash, requested_at,
-              approved_at, broadcasted_at, confirmed_at, metadata
+      `select ${WITHDRAWAL_COLUMNS}
        from withdrawals
        ${whereClause}
        order by requested_at desc
@@ -767,6 +792,110 @@ export class PostgresWalletRepository implements WalletRepository {
 
     return sumAmounts(result.rows.map((row) => row.amount));
   }
+
+  async countSuccessfulWithdrawalsToAddress(params: {
+    userId: string;
+    network: Network;
+    address: string;
+  }): Promise<number> {
+    const result = await this.db.query<{ total: string }>(
+      `select count(*)::text as total
+       from withdrawals
+       where user_id = $1
+         and network = $2
+         and to_address = $3
+         and status in ('approved', 'broadcasted', 'confirmed')`,
+      [params.userId, params.network, params.address]
+    );
+    return Number(result.rows[0]?.total ?? "0");
+  }
+
+  async listAddressBlacklist(
+    query: ListAddressBlacklistQuery
+  ): Promise<PagedResult<AddressBlacklistEntry>> {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    pushCondition(conditions, values, "network", query.network);
+    pushCondition(conditions, values, "address", query.address);
+    pushCondition(conditions, values, "status", query.status);
+    pushCondition(conditions, values, "category", query.category);
+    const whereClause = conditions.length > 0 ? `where ${conditions.join(" and ")}` : "";
+    const limit = query.limit ?? 50;
+    const offset = query.offset ?? 0;
+
+    const rows = await this.db.query<AddressBlacklistRow>(
+      `select ${ADDRESS_BLACKLIST_COLUMNS}
+       from withdrawal_address_blacklist
+       ${whereClause}
+       order by created_at desc
+       limit $${values.length + 1} offset $${values.length + 2}`,
+      [...values, limit, offset]
+    );
+    const countResult = await this.db.query<{ total: string }>(
+      `select count(*)::text as total from withdrawal_address_blacklist ${whereClause}`,
+      values
+    );
+    return {
+      items: rows.rows.map(mapAddressBlacklistEntry),
+      total: Number(countResult.rows[0]?.total ?? "0"),
+      limit,
+      offset
+    };
+  }
+
+  async findActiveAddressBlacklistEntry(
+    network: Network,
+    address: string
+  ): Promise<AddressBlacklistEntry | null> {
+    const result = await this.db.query<AddressBlacklistRow>(
+      `select ${ADDRESS_BLACKLIST_COLUMNS}
+       from withdrawal_address_blacklist
+       where network = $1 and address = $2 and status = 'active'
+       limit 1`,
+      [network, address]
+    );
+    return result.rows[0] ? mapAddressBlacklistEntry(result.rows[0]) : null;
+  }
+
+  async findAddressBlacklistEntryById(entryId: string): Promise<AddressBlacklistEntry | null> {
+    const result = await this.db.query<AddressBlacklistRow>(
+      `select ${ADDRESS_BLACKLIST_COLUMNS}
+       from withdrawal_address_blacklist
+       where entry_id = $1`,
+      [entryId]
+    );
+    return result.rows[0] ? mapAddressBlacklistEntry(result.rows[0]) : null;
+  }
+
+  async saveAddressBlacklistEntry(entry: AddressBlacklistEntry): Promise<void> {
+    await this.db.query(
+      `insert into withdrawal_address_blacklist
+       (entry_id, network, address, category, reason, source, status, created_by, created_at,
+        removed_by, removed_at, removal_reason)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       on conflict (entry_id) do update
+       set status = excluded.status,
+           reason = excluded.reason,
+           category = excluded.category,
+           removed_by = excluded.removed_by,
+           removed_at = excluded.removed_at,
+           removal_reason = excluded.removal_reason`,
+      [
+        entry.entryId,
+        entry.network,
+        entry.address,
+        entry.category,
+        entry.reason,
+        entry.source,
+        entry.status,
+        entry.createdBy ?? null,
+        entry.createdAt,
+        entry.removedBy ?? null,
+        entry.removedAt ?? null,
+        entry.removalReason ?? null
+      ]
+    );
+  }
 }
 
 function buildDepositWhereClause(query: ListDepositsQuery): {
@@ -829,6 +958,7 @@ function buildWithdrawalWhereClause(query: ListWithdrawalsQuery): {
   }
   pushCondition(conditions, values, "tx_hash", query.txHash);
   pushCondition(conditions, values, "to_address", query.toAddress);
+  pushCondition(conditions, values, "risk_level", query.riskLevel);
 
   return {
     whereClause: conditions.length > 0 ? `where ${conditions.join(" and ")}` : "",
@@ -975,7 +1105,27 @@ function mapWithdrawal(row: WithdrawalRow): WithdrawalRecord {
     broadcastedAt: row.broadcasted_at?.toISOString(),
     confirmedAt: row.confirmed_at?.toISOString(),
     txHash: row.tx_hash ?? undefined,
+    riskScore: row.risk_score ?? undefined,
+    riskLevel: row.risk_level ?? undefined,
+    riskReasons: row.risk_level ? row.risk_reasons ?? [] : undefined,
     metadata: row.metadata
+  };
+}
+
+function mapAddressBlacklistEntry(row: AddressBlacklistRow): AddressBlacklistEntry {
+  return {
+    entryId: row.entry_id,
+    network: row.network,
+    address: row.address,
+    category: row.category,
+    reason: row.reason,
+    source: row.source,
+    status: row.status,
+    createdBy: row.created_by ?? undefined,
+    createdAt: row.created_at.toISOString(),
+    removedBy: row.removed_by ?? undefined,
+    removedAt: row.removed_at?.toISOString(),
+    removalReason: row.removal_reason ?? undefined
   };
 }
 

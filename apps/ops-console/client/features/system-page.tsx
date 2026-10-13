@@ -67,7 +67,10 @@ const SOURCE_LABEL: Record<string, string> = {
   wallet: "钱包 wallet-service",
   trading: "交易域",
   reconciliation: "定时对账与熔断",
-  controls: "紧急开关 risk-service"
+  controls: "紧急开关 risk-service",
+  treasury: "钱包与储备金 treasury",
+  withdrawal_risk: "提现地址风险 KYT",
+  surveillance: "市场监控 surveillance"
 };
 
 function AlertsTab() {

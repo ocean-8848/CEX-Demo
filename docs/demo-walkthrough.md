@@ -115,6 +115,8 @@ pnpm demo:verify    # 校验余额、充值地址、盘口和后台模块
   - `FOK`：全部成交或取消，不能一次全部成交就整单撤销。
 - 市价单按对手盘最优价逐档成交，未成交部分立即撤销（按 IOC 处理）。
 - 点订单簿任意一档价格会自动填入价格（并切到限价）。
+- 「止损」类型：填触发价（止损限价还要填委托价），提交后资金冻结、委托显示「待触发」，最新成交价触及触发价后才进入撮合引擎。
+- 限价单可勾选「只做 Maker」（会立即成交就被拒绝），并选择自成交保护（STP）模式；同一账户的买卖单不会互相成交。
 - 「25% / 50% / 75% / 100%」按可用余额计算数量。
 - 表单下方显示成交额和预估手续费，并根据价格是否穿过对手盘标出是 Maker 还是 Taker。
 - 每笔下单都带 `Idempotency-Key`，重复提交只会返回第一次的结果。
@@ -211,6 +213,17 @@ pnpm demo:verify    # 校验余额、充值地址、盘口和后台模块
 | --- | --- |
 | `ledger-service`（分录与冻结事件） | [../learning/05-ledger.md](../learning/05-ledger.md) |
 
+#### 储备金证明（`#/assets/reserves`）
+
+资产页右上角的「储备金证明」，或用户菜单里的「储备金证明」。运营在后台「钱包与储备金」生成快照后：
+
+- 「储备与负债」表列出每个币种的平台链上储备、用户负债、储备率和 充值地址 / 热钱包 / 冷钱包 分布。
+- 「我的叶子」显示计入快照的你的余额、盐值和哈希；点「开始验证」，页面用 Web Crypto 从叶子逐层算到 Merkle 根，每一步逐个展示，最后与公布的根比对。
+
+| 涉及服务 | 学习章节 |
+| --- | --- |
+| `api-gateway` → `wallet-service`（快照与自己的路径），叶子来自 `ledger-service` 用户负债 | [../learning/04-wallet-custody.md](../learning/04-wallet-custody.md) 第 3.9 节 |
+
 ### 3.8 账户页（`#/account`）
 
 页面标题为「账户与安全」，从上到下依次是：
@@ -271,6 +284,7 @@ pnpm demo:verify    # 校验余额、充值地址、盘口和后台模块
 | 业务 | 交易与结算（`#/trading`） | 订单、成交、结算、订单簿健康 | `order-service`、`matching-engine`、`settlement-service` |
 | 业务 | 市场管理（`#/markets`） | 市场状态、运行时暂停 / 恢复交易 | `risk-service`、`config/markets.json` |
 | 风控与运维 | 账本对账（`#/ledger`） | 余额对账、账户回放、Outbox | `ledger-service` |
+| 风控与运维 | 钱包与储备金（`#/treasury`） | 冷热分层持仓与水位、归集、冷热调拨审批、钱包 vs 账本对账、储备金证明 | `wallet-service`、`custody-adapter`、`ledger-service` |
 | 风控与运维 | 系统运维（`#/system`） | 告警、托管通道、恢复队列、事件总线、自动化作业、实验室 | `custody-adapter`、`order-service`、`settlement-service` 等 |
 | 风控与运维 | 操作审计（`#/audit`） | 后台操作审计、提现状态迁移 | `ops-console` |
 
@@ -361,6 +375,13 @@ pnpm demo:verify    # 校验余额、充值地址、盘口和后台模块
 - 页面底部「对账原理」解释了分录净额、活跃冻结、期望值和回放的含义。
 
 学习章节：[../learning/05-ledger.md](../learning/05-ledger.md)、[ledger-service-design.md](./ledger-service-design.md)。
+
+#### 钱包与储备金（`#/treasury`）
+
+- 「冷热分层」表：每个币种在充值地址、热钱包、冷钱包和在途内部转账中的数量，以及热钱包水位状态。「立即归集」把已入账充值归集到热钱包，「检查水位」按上下限生成调拨提案，「发起调拨」手动提案。
+- 「钱包 vs 账本对账」：链上储备对比 `ledger-service` 的用户负债（扣除在途提现），给出储备率和盈余。
+- 「调拨与归集记录」：待审批提案由另一名运营批准（发起人不能批准自己的提案），广播后由模拟链推进确认数。
+- 「储备金证明」：生成 Merkle 快照，用户在前台自行验证。详见 [manual/08-ops-trading-and-ledger.md](manual/08-ops-trading-and-ledger.md) 第 4 节和 [architecture.md](architecture.md) 第 5.5 节。
 
 ### 4.11 系统运维（`#/system`）
 

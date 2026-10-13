@@ -3,7 +3,11 @@ import type { Pool } from "pg";
 
 import { FaultLabApplicationService } from "../application/fault-lab-application-service.js";
 import { OpsControlsApplicationService } from "../application/ops-controls-application-service.js";
+import { FeesSurveillanceApplicationService } from "../application/fees-surveillance-application-service.js";
 import { OpsConsoleApplicationService } from "../application/ops-console-application-service.js";
+import { TreasuryApplicationService } from "../application/treasury-application-service.js";
+import { OpsRiskSecurityService } from "../application/ops-risk-security-service.js";
+import { HttpRiskSecurityOpsClient } from "../infrastructure/http-risk-security-ops-client.js";
 import type { OpsActionAuditLogQuery } from "../domain/action-audit.js";
 import type {
   OpsApproveWithdrawalCommand,
@@ -56,12 +60,14 @@ import { HttpAlertSinkClient } from "../infrastructure/http-alert-sink-client.js
 import { HttpControlSwitchClient, HttpReconciliationClient } from "../infrastructure/http-controls-clients.js";
 import { HttpCustodyOpsClient } from "../infrastructure/http-custody-ops-client.js";
 import { HttpFaultLabClient } from "../infrastructure/http-fault-lab-client.js";
+import { HttpFeesSurveillanceClient } from "../infrastructure/http-fees-surveillance-client.js";
 import { HttpIdentityOpsClient } from "../infrastructure/http-identity-ops-client.js";
 import { HttpIndexerOpsClient } from "../infrastructure/http-indexer-ops-client.js";
 import { HttpLedgerOpsClient } from "../infrastructure/http-ledger-ops-client.js";
 import { HttpOrderOpsClient } from "../infrastructure/http-order-ops-client.js";
 import { HttpRiskMarketClient } from "../infrastructure/http-risk-market-client.js";
 import { HttpSettlementOpsClient } from "../infrastructure/http-settlement-ops-client.js";
+import { HttpTreasuryClient } from "../infrastructure/http-treasury-client.js";
 import { HttpWalletOpsClient } from "../infrastructure/http-wallet-ops-client.js";
 import { InMemoryOpsActionAuditRepository } from "../infrastructure/in-memory-ops-action-audit-repository.js";
 import { PostgresOpsActionAuditRepository } from "../infrastructure/postgres-ops-action-audit-repository.js";
@@ -72,6 +78,11 @@ export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
   private readonly applicationService: OpsConsoleApplicationService;
   readonly faultLab: FaultLabApplicationService;
   readonly controls: OpsControlsApplicationService;
+  readonly treasury: TreasuryApplicationService;
+  /** A7 user fee tier / override + A9 市场监控. */
+  readonly feesSurveillance: FeesSurveillanceApplicationService;
+  /** KYT address blacklist + user login history / devices. */
+  readonly riskSecurity: OpsRiskSecurityService;
   private readonly pool?: Pool;
   private schedulerTimer?: NodeJS.Timeout;
 
@@ -134,8 +145,28 @@ export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
       runAudited: (options, operation) => this.applicationService.runAuditedAction(options, operation),
       baseAlerts: () => this.applicationService.getAlertsOverview(),
       settlementReport: () => this.applicationService.getTradeSettlementReport({}),
-      settlementConsumer: () => faultLabClient.getSettlementConsumerState()
+      settlementConsumer: () => faultLabClient.getSettlementConsumerState(),
+      treasuryReconciliation: () => this.treasury.getReconciliation(),
+      failedTreasuryTransfers: () => this.treasury.listTransfers({ status: "failed", limit: 100 }),
+      blockedWithdrawals: () => this.applicationService.listWithdrawals({ riskLevel: "blocked", limit: 50, offset: 0 }),
+      highRiskReviewQueue: () => this.applicationService.listWithdrawalReviewQueue({ riskLevel: "high", limit: 1, offset: 0 }),
+      surveillanceOverview: () => this.feesSurveillance.getSurveillanceOverview()
     });
+    this.treasury = new TreasuryApplicationService(
+      new HttpTreasuryClient(walletBaseUrl),
+      (options, operation) => this.applicationService.runAuditedAction(options, operation)
+    );
+    this.feesSurveillance = new FeesSurveillanceApplicationService(
+      new HttpFeesSurveillanceClient({
+        orderBaseUrl,
+        riskBaseUrl: process.env.OPS_RISK_SERVICE_URL ?? "http://127.0.0.1:3008"
+      }),
+      (options, operation) => this.applicationService.runAuditedAction(options, operation)
+    );
+    this.riskSecurity = new OpsRiskSecurityService(
+      new HttpRiskSecurityOpsClient(walletBaseUrl, identityBaseUrl),
+      (options, operation) => this.applicationService.runAuditedAction(options, operation)
+    );
   }
 
   getMarketConfig() {

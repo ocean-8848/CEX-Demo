@@ -26,6 +26,8 @@
 - 支持 provider 健康检查 worker、失败熔断、运行时路由指标和 `ops overview`
 - 支持 provider SLA 统计、自动调度状态快照和 `ops report`
 - 记录 `providerTransferId`、`txHash`、失败码、失败消息、重试时间和每次请求 / 响应审计
+- 同一个 `POST /transfers` 也承载 wallet-service treasury 的平台内部转账：归集（充值地址 → 热钱包）与冷热调拨。它们的幂等键是 `treasury:<transferId>`（重新广播时追加 `:<attempt>`），`referenceId` 是 treasury 转账 ID，`metadata.purpose` 为 `treasury_sweep` / `treasury_rebalance_to_cold` / `treasury_rebalance_to_hot`，`metadata.signer` 标明热钱包或"冷钱包（模拟离线签名）"。提现转账的元数据带 `sourceWallet: "hot"`
+- 演示限制：冷钱包没有独立的离线签名路径，冷→热调拨同样由 mock provider 广播；冷热分层体现在 treasury 的账面与审批流程上
 
 默认端口: `3004`
 
@@ -38,7 +40,7 @@
 - `pnpm --filter @web3-cex/custody-adapter start`
 - `pnpm --filter @web3-cex/custody-adapter test`
 
-HTTP 接口:
+HTTP 接口（全部要求内部服务 HMAC 签名，默认允许 `wallet-service`、`ops-console`、`demo-scripts`，见 `src/http/internal-service-auth.guard.ts`；默认只监听 `127.0.0.1`）:
 
 - `POST /api/v1/custody/transfers`
 - `POST /api/v1/custody/transfers/:custodyTransferId/retry`
@@ -59,6 +61,9 @@ HTTP 接口:
 
 关键环境变量:
 
+- `INTERNAL_SERVICE_AUTH_SECRET`（必填，与调用方一致；`pnpm stack:start` 自动注入）
+- `INTERNAL_SERVICE_ALLOWED_CALLERS`（覆盖默认调用方白名单）
+- `INTERNAL_SERVICE_BIND_HOST`（默认 `127.0.0.1`）
 - `CUSTODY_PROVIDER`
 - `CUSTODY_PROVIDER_ORDER`
 - `CUSTODY_PROVIDER_ORDER_BY_NETWORK`

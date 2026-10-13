@@ -73,6 +73,18 @@ export const ALERT_SEVERITY_RULES: AlertSeverityRule[] = [
   { source: "trading", key: "settlement_lag_critical", severity: "P2", summary: "结算严重滞后（已成交未结算）" },
   { source: "trading", key: "settlement_lag", severity: "P3", summary: "结算滞后" },
   { source: "trading", key: "settlement_consumer_paused", severity: "P2", summary: "结算消费者已暂停" },
+  // wallet-service treasury (冷热分层与储备金): coverage shortfall only alerts, it is NOT wired into the breaker
+  { source: "treasury", key: "reserve_coverage_shortfall", severity: "P1", summary: "钱包储备低于账本净负债（覆盖率不足）" },
+  { source: "treasury", key: "treasury_transfer_failed", severity: "P2", summary: "冷热调拨失败" },
+  { source: "treasury", key: "treasury_sweep_failed", severity: "P2", summary: "充值归集失败" },
+  // wallet-service KYT (提现地址风险)
+  { source: "withdrawal_risk", key: "blocked_withdrawals_24h", severity: "P2", summary: "24 小时内有提现被黑名单拦截" },
+  { source: "withdrawal_risk", key: "high_risk_withdrawals_pending", severity: "P2", summary: "高风险提现等待双人复核" },
+  // risk-service market surveillance (市场监控，未处理告警)
+  { source: "surveillance", key: "surveillance_open_wash_trade", severity: "P2", summary: "未处理的对敲告警" },
+  { source: "surveillance", key: "surveillance_open_spoofing", severity: "P2", summary: "未处理的幌骗告警" },
+  { source: "surveillance", key: "surveillance_open_concentrated_volume", severity: "P3", summary: "未处理的成交集中告警" },
+  { source: "surveillance", key: "surveillance_open_price_move", severity: "P3", summary: "未处理的价格异动告警" },
   // trade runtime alerts (系统运维 → 事件总线 / 告警投递)
   { source: "trade_runtime", key: "SETTLEMENT_FAILED", severity: "P2", summary: "结算失败" },
   { source: "trade_runtime", key: "TRADE_EVENT_CONSUMER_LAG", severity: "P2", summary: "结算消费滞后" },

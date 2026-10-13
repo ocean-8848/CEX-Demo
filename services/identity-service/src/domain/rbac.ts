@@ -31,6 +31,8 @@ const ROLE_PERMISSIONS: Record<IdentityOpsRole, IdentityOpsPermission[]> = {
     "ops.alerts.read",
     "ops.markets.read",
     "ops.markets.manage",
+    "ops.risk.read",
+    "ops.risk.manage",
     // Emergency switches (withdrawal pauses, API write freeze): admin only.
     "ops.controls.manage"
   ],
@@ -43,7 +45,8 @@ const ROLE_PERMISSIONS: Record<IdentityOpsRole, IdentityOpsPermission[]> = {
     "ops.notifications.read",
     "ops.address_book.read",
     "ops.audit.read",
-    "ops.alerts.read"
+    "ops.alerts.read",
+    "ops.risk.read"
   ],
   ops_finance_operator: [
     "ops.dashboard.read",
@@ -70,7 +73,9 @@ const ROLE_PERMISSIONS: Record<IdentityOpsRole, IdentityOpsPermission[]> = {
     "ops.audit.read",
     "ops.alerts.read",
     "ops.markets.read",
-    "ops.markets.manage"
+    "ops.markets.manage",
+    "ops.risk.read",
+    "ops.risk.manage"
   ],
   ops_platform_operator: [
     "ops.dashboard.read",
@@ -99,7 +104,8 @@ const ROLE_PERMISSIONS: Record<IdentityOpsRole, IdentityOpsPermission[]> = {
     "ops.address_book.read",
     "ops.audit.read",
     "ops.alerts.read",
-    "ops.markets.read"
+    "ops.markets.read",
+    "ops.risk.read"
   ]
 };
 

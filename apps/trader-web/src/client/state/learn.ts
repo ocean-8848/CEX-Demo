@@ -5,6 +5,7 @@
 import { formatAmount, marketLabel } from "@web3-cex/web-ui";
 
 import { describeFundingStatus, describeOrderStatus } from "../lib/records.js";
+import { describeOrderReason } from "../lib/order-options.js";
 import type {
   BalanceRecord,
   DepositRecord,
@@ -80,7 +81,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     layer: "交易层",
     summary: "订单生命周期编排",
     detail:
-      "交易主链的编排者：调风控 → 调账本冻结资金 → 把订单送进撮合引擎 → 把成交交给结算 → 推送订单/成交事件。异常时进入可重试的恢复队列。",
+      "交易主链的编排者：调风控 → 调账本冻结资金 → 把订单送进撮合引擎 → 把成交交给结算 → 推送订单/成交事件。异常时进入可重试的恢复队列。止损单先以「待触发」保存，StopOrderTriggerWorker 按最新成交价触发后再送进撮合引擎。",
     code: "services/order-service"
   },
   "ledger-service": {
@@ -98,7 +99,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     layer: "交易层",
     summary: "Rust 撮合引擎",
     detail:
-      "内存订单簿，按「价格优先、时间优先」撮合。支持 limit / market 与 GTC / IOC / FOK。它只负责撮合，不碰资金。",
+      "内存订单簿，按「价格优先、时间优先」撮合。支持 limit / market 与 GTC / IOC / FOK，以及只做 Maker（post-only）和自成交保护（STP，同一账户的买卖单不互相成交）。它只负责撮合，不碰资金。",
     code: "engines/matching-engine"
   },
   "settlement-service": {
@@ -124,7 +125,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     layer: "资金层",
     summary: "充值地址、充提记录、提现审核",
     detail:
-      "为用户分配充值地址；充值达到确认数后通知账本入账；提现先检查运营紧急开关（全站 / 单币种提现暂停，对账不平时会自动熔断暂停该币种），再校验 2FA、KYC 分级限额与安全冷却期，然后冻结资金，经运营审核（大额需两人复核）后交给托管广播。",
+      "为用户分配充值地址；充值达到确认数后通知账本入账；提现先检查运营紧急开关（全站 / 单币种提现暂停，对账不平时会自动熔断暂停该币种），再校验 2FA、KYC 分级限额与安全冷却期，然后冻结资金，经运营审核（大额需两人复核）后交给托管从热钱包广播。它还管理冷热分层：把充值地址里的币归集到热钱包，按热钱包水位提出冷热调拨（需运营审批），并生成储备金证明（Merkle 树）。",
     code: "services/wallet-service"
   },
   "blockchain-indexer": {
@@ -141,7 +142,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     name: "custody-adapter",
     layer: "资金层",
     summary: "托管 / 热钱包签名广播",
-    detail: "对接托管商或热钱包，负责签名并广播提现交易；带重试、熔断和多 provider 路由。",
+    detail: "对接托管商或热钱包，负责签名并广播提现交易，以及归集、冷热调拨这类平台内部转账；带重试、熔断和多 provider 路由。",
     code: "services/custody-adapter"
   },
   "demo-simulator": {
@@ -150,7 +151,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     layer: "演示环境",
     summary: "模拟链 + 做市商",
     detail:
-      "仅用于学习环境：模拟一条每 1.5 秒出块的 EVM 链（推进充值/提现确认数），并用两个做市账户在盘口挂单、偶尔吃单，让行情和 K 线动起来。",
+      "仅用于学习环境：模拟一条每 1.5 秒出块的 EVM 链（推进充值、提现、归集与冷热调拨的确认数，并定时触发归集与水位检查），并用两个做市账户在盘口挂单、偶尔吃单，让行情和 K 线动起来。",
     code: "scripts/demo-simulator.mjs"
   }
 };
@@ -179,11 +180,13 @@ export function explainPrivateItems(channel: PrivateChannel, items: unknown[]): 
       case "orders": {
         const order = raw as OrderRecord;
         const status = describeOrderStatus(order.status);
+        const reason = describeOrderReason(order.rejectedReason);
+        const triggered = order.triggeredAt && order.status !== "pending_trigger";
         return [
           learnEvent({
             service: "order-service",
-            title: `订单${status.label}：${order.side === "sell" ? "卖出" : "买入"} ${formatAmount(order.quantity)} ${marketLabel(order.market ?? "")}`,
-            detail: status.hint,
+            title: `${triggered ? "止损单已触发，" : ""}订单${status.label}：${order.side === "sell" ? "卖出" : "买入"} ${formatAmount(order.quantity)} ${marketLabel(order.market ?? "")}`,
+            detail: reason ? `${status.hint}。原因：${reason}` : status.hint,
             tone: status.tone === "negative" ? "negative" : status.tone === "positive" ? "positive" : "neutral"
           })
         ];

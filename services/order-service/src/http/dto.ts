@@ -1,4 +1,4 @@
-import type { OrderStatus, OrderType, SpotMarket, TimeInForce } from "@web3-cex/domain";
+import type { OrderStatus, OrderType, SpotMarket, StpMode, TimeInForce } from "@web3-cex/domain";
 import type {
   SpotOrderAutomationExecutionStatus,
   SpotOrderAutomationExecutionType,
@@ -17,6 +17,10 @@ export interface CreateSpotOrderRequestDto {
   quantity: string;
   idempotencyKey: string;
   traceId?: string;
+  postOnly?: boolean;
+  stpMode?: StpMode;
+  /** stop_limit / stop_market only. */
+  triggerPrice?: string;
 }
 
 export interface CancelSpotOrderRequestDto {

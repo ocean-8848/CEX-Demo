@@ -2,13 +2,16 @@ import { Module } from "@nestjs/common";
 
 import { ControlsController } from "./controls.controller.js";
 import { FaultLabController } from "./fault-lab.controller.js";
+import { TreasuryController } from "./treasury.controller.js";
+import { FeesSurveillanceController } from "./fees-surveillance.controller.js";
+import { OpsRiskSecurityController } from "./ops-risk-security.controller.js";
 import { OpsAuthGuard } from "./ops-auth.guard.js";
 import { OpsConsoleController } from "./ops-console.controller.js";
 import { OpsConsoleExceptionFilter } from "./ops-console-exception.filter.js";
 import { OpsConsoleHttpService } from "./ops-console-http.service.js";
 
 @Module({
-  controllers: [OpsConsoleController, FaultLabController, ControlsController],
+  controllers: [OpsConsoleController, FaultLabController, FeesSurveillanceController, OpsRiskSecurityController, TreasuryController, ControlsController],
   providers: [OpsConsoleHttpService, OpsConsoleExceptionFilter, OpsAuthGuard]
 })
 export class OpsConsoleModule {}

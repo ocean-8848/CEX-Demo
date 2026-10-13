@@ -18,6 +18,7 @@ import {
   defaultLedgerAlertThresholds,
   evaluateLedgerAlertThresholds
 } from "../application/ledger-ops.js";
+import type { LedgerUserBalanceRow } from "../application/ledger-liabilities.js";
 import { Pool } from "pg";
 
 import type { LedgerLockedBalance, LedgerOrderLock } from "../application/order-lock-reconciliation.js";
@@ -79,6 +80,13 @@ interface ReplayLockRow {
   created_at: Date;
   released_at: Date | null;
   consumed_at: Date | null;
+}
+
+interface UserBalanceRow {
+  user_id: string;
+  asset_code: AssetCode;
+  available: string;
+  locked: string;
 }
 
 interface OutboxSummaryRow {
@@ -581,5 +589,28 @@ export class LedgerOpsReporter {
         : undefined,
       staleThresholdMinutes: staleLockMinutes
     };
+  }
+
+  /** Per-user, per-asset balances of user-owned accounts (customer liabilities). */
+  async listUserBalanceRows(params: { assetCode?: AssetCode } = {}): Promise<LedgerUserBalanceRow[]> {
+    const result = await this.db.query<UserBalanceRow>(
+      `select a.user_id::text as user_id,
+              b.asset_code,
+              coalesce(sum(b.available), 0)::text as available,
+              coalesce(sum(b.locked), 0)::text as locked
+       from balances b
+       join accounts a on a.account_id = b.account_id
+       where a.user_id is not null
+         and ($1::text is null or b.asset_code = $1)
+       group by a.user_id, b.asset_code`,
+      [params.assetCode ?? null]
+    );
+
+    return result.rows.map((row) => ({
+      userId: row.user_id,
+      assetCode: row.asset_code,
+      available: row.available,
+      locked: row.locked
+    }));
   }
 }

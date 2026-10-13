@@ -63,6 +63,13 @@ export interface LoginResult extends SessionInfo {
   token: string;
 }
 
+/** Returned with a new session by identity-service (login security). */
+export interface SessionDevice {
+  deviceId: string;
+  deviceLabel: string;
+  isNewDevice: boolean;
+}
+
 export type ApiKeyScope = "read" | "trade" | "withdraw";
 
 export interface ApiKeyRecord {
@@ -131,7 +138,9 @@ export interface BalanceRecord {
 }
 
 export type OrderSide = "buy" | "sell";
-export type OrderType = "limit" | "market";
+export type OrderType = "limit" | "market" | "stop_limit" | "stop_market";
+/** Self-trade prevention mode (matching engine). */
+export type StpMode = "expire_taker" | "expire_maker" | "expire_both";
 export type TimeInForce = "gtc" | "ioc" | "fok";
 
 export interface OrderRecord {
@@ -151,6 +160,11 @@ export interface OrderRecord {
   lockAmount?: string;
   createdAt?: string;
   updatedAt?: string;
+  postOnly?: boolean;
+  stpMode?: StpMode;
+  /** Stop orders: waits in pending_trigger until the last price crosses it. */
+  triggerPrice?: string;
+  triggeredAt?: string;
 }
 
 export interface TradeRecord {
@@ -166,6 +180,9 @@ export interface TradeRecord {
   sellerUserId?: string;
   sellerFeeRate?: string;
   buyerFeeRate?: string;
+  /** VIP tier each side's rate was resolved from (order-service, absent on older trades). */
+  sellerFeeTier?: string;
+  buyerFeeTier?: string;
   /** Public trades from market-data carry the taker side. */
   side?: OrderSide;
   takerSide?: OrderSide;
@@ -215,6 +232,8 @@ export interface WithdrawalRecord {
   confirmedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** KYT level fixed at request time: low / medium / high / blocked. */
+  riskLevel?: string;
 }
 
 export interface AddressBookEntry {
@@ -391,3 +410,74 @@ export interface PrivateRealtimeMessage {
   sequence?: number;
   message?: string;
 }
+
+/** identity-service login event (账户 → 登录记录). */
+export interface LoginEventRecord {
+  eventId: string;
+  scope?: string;
+  deviceId: string;
+  deviceLabel?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  outcome: "success" | "failure" | "locked";
+  failureCode?: string;
+  isNewDevice?: boolean;
+  createdAt: string;
+}
+
+/** identity-service device registry entry (账户 → 设备管理). */
+export interface UserDeviceRecord {
+  deviceId: string;
+  deviceLabel?: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastIpAddress?: string;
+  loginCount?: number;
+  flaggedNew?: boolean;
+  revokedAt?: string;
+  activeSessionCount?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Proof of reserves (GET /api/v1/gateway/proof-of-reserves)
+// ---------------------------------------------------------------------------
+
+export interface ProofOfReservesAssetView {
+  assetCode: string;
+  liabilities: string;
+  withdrawalsInFlight: string;
+  netLiabilities: string;
+  reserves: string;
+  hot: string;
+  cold: string;
+  depositAddresses: string;
+  internalInTransit: string;
+  reserveRatio?: string;
+  status: "covered" | "shortfall" | "no_liabilities";
+}
+
+export type ProofOfReservesView =
+  | { available: false }
+  | {
+      available: true;
+      snapshot: {
+        snapshotId: string;
+        merkleRoot: string;
+        leafCount: number;
+        treeDepth: number;
+        createdAt: string;
+        assets: ProofOfReservesAssetView[];
+        format?: { hashAlgorithm: string; userHash: string; leaf: string; node: string };
+      };
+      included: boolean;
+      leaf?: {
+        userId: string;
+        nonce: string;
+        userHash: string;
+        balances: Record<string, string>;
+        leafIndex: number;
+        leafHash: string;
+        message: string;
+      };
+      proof: Array<{ position: "left" | "right"; hash: string }>;
+    };

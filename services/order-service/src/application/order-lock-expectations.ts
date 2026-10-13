@@ -58,8 +58,17 @@ export function isOpenOrder(order: Pick<SpotOrderRecord, "status" | "restingQuan
   );
 }
 
-/** Lock that backs the open quantity (same rule order-service uses when releasing on cancel). */
-export function openLockAmount(order: Pick<SpotOrderRecord, "side" | "price" | "restingQuantity" | "status">): string {
+/**
+ * Lock that backs the open quantity (same rule order-service uses when
+ * releasing on cancel). A stop order waiting for its trigger
+ * (`pending_trigger`) keeps its whole freeze until it fires or is cancelled.
+ */
+export function openLockAmount(
+  order: Pick<SpotOrderRecord, "side" | "price" | "restingQuantity" | "status" | "lockAmount">
+): string {
+  if (order.status === "pending_trigger") {
+    return order.lockAmount;
+  }
   if (!isOpenOrder(order)) {
     return "0";
   }

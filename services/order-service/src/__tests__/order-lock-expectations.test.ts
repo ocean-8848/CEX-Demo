@@ -101,6 +101,13 @@ test("sell orders lock and consume base quantity; terminal orders expect only un
   assert.equal(computeOrderLockExpectation({ order: cancelled, trades: [], isTradeSettled: pendingIsUnsettled }).expectedLockAmount, "0");
 });
 
+test("a stop order waiting for its trigger expects its whole freeze", () => {
+  const stop = order({ orderId: "stop-1", type: "stop_limit", status: "pending_trigger", restingQuantity: "0", lockAmount: "3000" });
+  const result = computeOrderLockExpectation({ order: stop, trades: [], isTradeSettled: pendingIsUnsettled });
+  assert.equal(result.expectedLockAmount, "3000");
+  assert.equal(result.inFlight, false);
+});
+
 test("pending_risk and recovery_pending orders are flagged in flight", () => {
   for (const status of ["pending_risk", "recovery_pending"] as const) {
     const result = computeOrderLockExpectation({ order: order({ status }), trades: [], isTradeSettled: pendingIsUnsettled });

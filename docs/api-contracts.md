@@ -30,7 +30,7 @@
 | `services/settlement-service` | 3010 | `/api/v1/settlement/*` | 内部 |
 | `engines/matching-engine`（Rust） | 3011 | 原始 TCP，单行 JSON | 仅 order-service |
 
-端口都可以用各自的 `PORT` 环境变量覆盖。
+端口都可以用各自的 `PORT` 环境变量覆盖。所有组件默认只监听 `127.0.0.1`，监听地址变量见 [getting-started.md](getting-started.md) 的环境变量表。
 
 ### 1.2 认证方式一览
 
@@ -40,8 +40,8 @@
 | 用户 Bearer 会话 | api-gateway | `Authorization: Bearer <session token>` |
 | API key 签名 | api-gateway（REST 与私有 WS） | `X-API-Key` / `X-API-Timestamp` / `X-API-Nonce` / `X-API-Signature` |
 | 运营会话 + TOTP | ops-console | 登录时必须带 TOTP；之后用 `ops_session` Cookie（+ `ops_csrf`）或 Bearer |
-| 内部服务 HMAC | identity / ledger / wallet / order / risk / settlement | `x-internal-service-name` / `x-internal-service-timestamp` / `x-internal-service-signature` |
-| 无认证 | market-data（公开）、blockchain-indexer、custody-adapter、matching-engine | 仅应在本地 / 内网可达 |
+| 内部服务 HMAC | identity / ledger / wallet / order / risk / settlement / blockchain-indexer / custody-adapter | `x-internal-service-name` / `x-internal-service-timestamp` / `x-internal-service-signature` |
+| 无认证 | market-data（公开）、matching-engine | 仅应在本地 / 内网可达 |
 
 #### 用户浏览器 Cookie 会话（trader-web）
 
@@ -117,14 +117,18 @@ SHA256(body)      原始请求体的 hex 摘要，空体为空串的摘要
 | order-service | `api-gateway`、`settlement-service`、`market-data-service`、`ops-console`、`demo-scripts`、`ledger-service`（委托冻结对账） |
 | risk-service | `order-service`、`ops-console`、`demo-scripts`、`wallet-service`、`api-gateway`（读取紧急开关）、`ledger-service`（对账熔断） |
 | settlement-service | `order-service`、`ops-console`、`demo-scripts` |
+| custody-adapter | `wallet-service`、`ops-console`、`demo-scripts` |
+| blockchain-indexer | `ops-console`、`demo-scripts` |
+
+脚本（`scripts/internal-service-auth.mjs`）按目标端口自动签名：3001–3005、3008–3010，调用方名默认 `demo-scripts`（`demo-simulator` 同样使用它）。
 
 ### 1.3 幂等
 
 | 层 | 机制 |
 | --- | --- |
 | api-gateway | 标记为“幂等”的写接口读取 `Idempotency-Key` 头。作用域为“当前主体（或匿名 IP）+ key”，请求指纹为 `METHOD + URL + SHA256(body)`，记录默认保留 1 小时（`GATEWAY_IDEMPOTENCY_TTL_MS`）。同 key 同指纹重放会返回第一次的状态码和响应体，并带 `x-idempotent-replay: true`；同 key 不同指纹返回 `409`；上一个同 key 请求还没完成也返回 `409`；处理失败时释放该 key。不带头时不做网关层幂等 |
-| 下单 | `POST /orders` 必须有幂等键，可放请求体 `idempotencyKey` 或 `Idempotency-Key` 头（两者都缺返回 400）。order-service 按 `idempotencyKey` 去重，重复提交返回已存在的订单 |
-| ledger | `POST /journals` 以 `idempotencyKey` 唯一，重复提交返回已存在的 journal；冻结以 `(referenceType, referenceId, accountId, assetCode)` 唯一 |
+| 下单 | `POST /orders` 必须有幂等键，可放请求体 `idempotencyKey` 或 `Idempotency-Key` 头（两者都缺返回 400）。order-service 按 `idempotencyKey` 去重，重复提交返回已存在的订单（包括已 `rejected` 的订单） |
+| ledger | `POST /journals` 以 `idempotencyKey` 唯一：同键同内容（`businessType`、`businessId` 与分录集合，分录顺序和金额写法不限，`traceId` / `description` 不参与比较）返回已存在的 journal，并发提交也一样；同键不同内容返回 `409 DUPLICATE_IDEMPOTENCY_KEY`；不会因唯一索引冲突返回 500。冻结以 `(referenceType, referenceId, accountId, assetCode)` 唯一 |
 | wallet | 充值入账 journal 的幂等键为 `deposit:<depositId>` |
 | settlement | 成交结算 journal 的幂等键为 `spot_trade:base:<tradeId>` / `spot_trade:quote:<tradeId>` |
 
@@ -148,13 +152,13 @@ SHA256(body)      原始请求体的 hex 摘要，空体为空串的摘要
 | 来源 | 错误码 |
 | --- | --- |
 | api-gateway | `UNAUTHORIZED`、`SESSION_REQUIRED`、`INVALID_API_KEY`、`INVALID_API_KEY_NONCE`、`INVALID_API_KEY_TIMESTAMP`、`API_KEY_TIMESTAMP_EXPIRED`、`API_KEY_NONCE_REPLAYED`、`API_KEY_SCOPE_DENIED`、`ACCOUNT_FORBIDDEN`、`ACCOUNT_NOT_ACTIVE`、`RESOURCE_FORBIDDEN`、`TWO_FACTOR_CODE_REQUIRED`、`INVALID_STATEMENT_QUERY`、`INVALID_NOTIFICATION_ID` |
-| identity | `INVALID_CREDENTIALS`、`USER_ALREADY_EXISTS`、`USER_NOT_ACTIVE`、`TWO_FACTOR_REQUIRED`、`OPS_TWO_FACTOR_REQUIRED`、`TWO_FACTOR_INVALID_CODE`、`TWO_FACTOR_CODE_REUSED`、`TWO_FACTOR_RECOVERY_CODE_INVALID`、`OPS_ACCESS_DENIED`、`KYC_REQUEST_PENDING`、`KYC_NOT_ALLOWED`、`API_KEY_NOT_FOUND`、`API_KEY_REVOKED`、`INVALID_API_KEY_SIGNATURE` |
-| ledger | `ACCOUNT_NOT_FOUND`、`BALANCE_NOT_FOUND`、`INSUFFICIENT_AVAILABLE_BALANCE`、`JOURNAL_NOT_BALANCED`、`INVALID_AMOUNT`、`DUPLICATE_BALANCE_LOCK`、`BALANCE_LOCK_NOT_FOUND`、`INVALID_BALANCE_LOCK_STATE`、`SETTLEMENT_ACCOUNT_REQUIRED` |
+| identity | `INVALID_CREDENTIALS`、`USER_ALREADY_EXISTS`、`USER_NOT_ACTIVE`、`TWO_FACTOR_REQUIRED`、`OPS_TWO_FACTOR_REQUIRED`、`TWO_FACTOR_INVALID_CODE`、`TWO_FACTOR_CODE_REUSED`、`TWO_FACTOR_RECOVERY_CODE_INVALID`、`OPS_ACCESS_DENIED`、`KYC_REQUEST_PENDING`、`KYC_NOT_ALLOWED`、`API_KEY_NOT_FOUND`、`API_KEY_REVOKED`、`INVALID_API_KEY_SIGNATURE`、`LOGIN_TEMPORARILY_LOCKED`、`DEVICE_NOT_FOUND` |
+| ledger | `ACCOUNT_NOT_FOUND`、`BALANCE_NOT_FOUND`、`INSUFFICIENT_AVAILABLE_BALANCE`、`JOURNAL_NOT_BALANCED`、`INVALID_AMOUNT`、`DUPLICATE_IDEMPOTENCY_KEY`、`DUPLICATE_BALANCE_LOCK`、`BALANCE_LOCK_NOT_FOUND`、`INVALID_BALANCE_LOCK_STATE`、`SETTLEMENT_ACCOUNT_REQUIRED` |
 | 紧急开关（api-gateway / wallet / risk，均为 409） | `WITHDRAWALS_PAUSED`（全站提币暂停）、`ASSET_WITHDRAWALS_PAUSED`（该币种提币暂停，含对账熔断）、`API_WRITE_FROZEN`（只读模式：下单与提币申请被拒，撤单放行） |
-| order / risk | `UNSUPPORTED_MARKET`、`MARKET_HALTED`、`MARKET_DELISTED`、`PRICE_REQUIRED`、`INVALID_ORDER_PRICE`、`INVALID_ORDER_QUANTITY`、`INVALID_STEP_ALIGNMENT`、`ORDER_MIN_QUANTITY_NOT_MET`、`PRICE_DEVIATION_TOO_HIGH`、`UNSUPPORTED_TIME_IN_FORCE`、`ORDER_NOT_FOUND`、`ORDER_NOT_CANCELLABLE` |
-| wallet | `INVALID_AMOUNT`、`INVALID_DESTINATION_ADDRESS`、`WITHDRAWAL_AMOUNT_BELOW_MINIMUM`、`WITHDRAWAL_FEE_BELOW_MINIMUM`、`WITHDRAWAL_SINGLE_LIMIT_EXCEEDED`、`WITHDRAWAL_DAILY_LIMIT_EXCEEDED`、`WITHDRAWAL_2FA_REQUIRED`、`WITHDRAWAL_2FA_NOT_ENABLED`、`WITHDRAWAL_2FA_INVALID`、`WITHDRAWAL_ADDRESS_NOT_WHITELISTED`、`WITHDRAWAL_SECURITY_COOLDOWN`、`WITHDRAWAL_SAME_APPROVER`、`INVALID_WITHDRAWAL_STATE` |
+| order / risk | `UNSUPPORTED_MARKET`、`MARKET_HALTED`、`MARKET_DELISTED`、`PRICE_REQUIRED`、`INVALID_ORDER_PRICE`、`INVALID_ORDER_QUANTITY`、`INVALID_STEP_ALIGNMENT`、`ORDER_MIN_QUANTITY_NOT_MET`、`PRICE_DEVIATION_TOO_HIGH`、`UNSUPPORTED_TIME_IN_FORCE`、`ORDER_NOT_FOUND`、`ORDER_NOT_CANCELLABLE`、`ORDER_FREEZE_FAILED` |
+| wallet | `INVALID_AMOUNT`、`INVALID_DESTINATION_ADDRESS`、`WITHDRAWAL_AMOUNT_BELOW_MINIMUM`、`WITHDRAWAL_FEE_BELOW_MINIMUM`、`WITHDRAWAL_SINGLE_LIMIT_EXCEEDED`、`WITHDRAWAL_DAILY_LIMIT_EXCEEDED`、`WITHDRAWAL_2FA_REQUIRED`、`WITHDRAWAL_2FA_NOT_ENABLED`、`WITHDRAWAL_2FA_INVALID`、`WITHDRAWAL_ADDRESS_NOT_WHITELISTED`、`WITHDRAWAL_SECURITY_COOLDOWN`、`WITHDRAWAL_SAME_APPROVER`、`INVALID_WITHDRAWAL_STATE`、`WITHDRAWAL_NEW_DEVICE_LOCK`、`WITHDRAWAL_ADDRESS_BLOCKED`、`INVALID_BLACKLIST_ENTRY`、`BLACKLIST_ENTRY_NOT_FOUND` |
 
-风控拒绝（校验类错误）在订单落库前直接返回 HTTP 错误；撮合阶段无法成交的 IOC / FOK / 市价单则返回 `status: "rejected"` 的订单并附 `rejectedReason`。
+风控拒绝（校验类错误）在订单落库前直接返回 HTTP 错误；撮合阶段无法成交的 IOC / FOK / 市价单则返回 `status: "rejected"` 的订单并附 `rejectedReason`。订单落库后冻结失败时返回 `ORDER_FREEZE_FAILED`（上游 4xx 如余额不足保留原状态码，其余为 502，`message` 中带上游原因），订单同时被置为 `rejected`、`rejectedReason` 以 `ORDER_FREEZE_FAILED:` 开头，并发布 `order.rejected`；撮合提交失败时同样置为 `rejected` 后返回原错误。
 
 ### 1.5 限流
 
@@ -162,7 +166,7 @@ api-gateway 在认证之后执行固定窗口限流：
 
 | 主体 | 限流键 | 默认额度 |
 | --- | --- | --- |
-| 匿名（公开接口） | 客户端 IP（取 `x-forwarded-for` 第一段） | 30 次 / 60 s（`GATEWAY_RATE_LIMIT_PUBLIC_MAX`） |
+| 匿名（公开接口） | 客户端 IP：默认取 socket 对端地址；仅当 `GATEWAY_TRUST_PROXY=true` 时取 `x-forwarded-for` 第一段 | 30 次 / 60 s（`GATEWAY_RATE_LIMIT_PUBLIC_MAX`） |
 | 会话 / API key | `authType + userId + sessionId 或 apiKeyId` | 120 次 / 60 s（`GATEWAY_RATE_LIMIT_AUTHENTICATED_MAX`） |
 
 窗口长度由 `GATEWAY_RATE_LIMIT_WINDOW_MS` 控制，存储默认 Redis（`GATEWAY_RATE_LIMIT_STORE=memory` 切内存）。每个响应带 `x-rate-limit-limit`、`x-rate-limit-remaining`、`x-rate-limit-reset`（ISO 时间），超限返回 `429`。私有 WebSocket 另有消息限流，见 2.8 节。
@@ -192,7 +196,7 @@ api-gateway 在认证之后执行固定窗口限流：
 | 方法 | 路径 | 认证 | 幂等 | 说明 |
 | --- | --- | --- | --- | --- |
 | POST | `/auth/register` | 公开 | | 注册用户（`email`、`password`、`displayName?`），同时确保现货账户，返回体含 `spotAccountId` |
-| POST | `/auth/sessions` | 公开 | | 登录（`email`、`password`、`twoFactorCode?`），返回会话信息与 `token`；已开 2FA 但未带码返回 `403 TWO_FACTOR_REQUIRED` |
+| POST | `/auth/sessions` | 公开 | | 登录（`email`、`password`、`twoFactorCode?`、`deviceId?`），返回会话信息、`token` 与 `device`（`deviceId`、`deviceLabel`、`isNewDevice`）；已开 2FA 但未带码返回 `403 TWO_FACTOR_REQUIRED`；连续失败过多返回 `429 LOGIN_TEMPORARILY_LOCKED`（消息含 `remainingSeconds=N`） |
 | GET | `/auth/me` | 会话/Key(read) | | 返回当前主体（`authType`、`userId`、`sessionId` 或 `apiKeyId`、`apiKeyScopes` 等） |
 | POST | `/auth/logout` | 会话 | | 撤销当前会话 |
 | POST | `/auth/api-keys` | 会话 | 是 | 创建 API key（`label`、`scopes?`、`expiresAt?`），`secret` 仅此一次返回 |
@@ -203,6 +207,9 @@ api-gateway 在认证之后执行固定窗口限流：
 | POST | `/auth/two-factor/enable` | 会话 | | 用 `code` 确认绑定，返回 `recoveryCodes`（只显示一次） |
 | POST | `/auth/two-factor/disable` | 会话 | | 关闭 2FA，`code` 可以是 TOTP 或恢复码 |
 | POST | `/auth/two-factor/recovery-codes` | 会话 | | 用 `code` 重新生成恢复码 |
+| GET | `/auth/login-events` | 会话 | | 登录记录（`limit`、`offset`）：时间、IP、设备、`outcome`（`success / failure / locked`）、`failureCode`、`isNewDevice` |
+| GET | `/auth/devices` | 会话 | | 设备列表（`items[]`：`deviceId`、`deviceLabel`、首次 / 最近登录、`lastIpAddress`、`loginCount`、`flaggedNew`、`activeSessionCount`） |
+| POST | `/auth/devices/:deviceId/revoke` | 会话 | | 吊销该设备上的全部有效会话，返回 `revokedSessionCount` |
 | GET | `/auth/kyc` | 会话 | | KYC 档案与当前等级（演示数据） |
 | POST | `/auth/kyc/requests` | 会话 | | 提交 KYC 申请（`requestedTier?: L1/L2`、`fullName?`、`idNumber?`，证件号只保留后 4 位；不要填真实信息） |
 
@@ -257,6 +264,7 @@ Content-Type: application/json
 | GET | `/balances` | 会话/Key(read) | 当前用户余额，过滤：`accountId`、`assetCode`、`accountType`、`accountStatus`、`limit`、`offset`。每行含 `available`、`locked`、`total` |
 | GET | `/ledger/entries` | 会话/Key(read) | 现货账户的资金流水（见下） |
 | GET | `/withdrawals/limits` | 会话/Key(read) | 当前 KYC 等级下各资产的单笔 / 每日提币额度与当日已用额度 |
+| GET | `/proof-of-reserves` | 会话/Key(read) | 最新储备金证明快照 + 当前用户自己的 Merkle 叶子与路径（见下） |
 
 `GET /ledger/entries` 查询参数：
 
@@ -304,6 +312,40 @@ Content-Type: application/json
 
 `balanceDerivable[asset]` 为 `false` 表示该资产的历史无法完整解释当前快照，此时不返回 `balanceAfter`。行的计算规则见 [ledger-service-design.md](ledger-service-design.md#9-资金流水statement)。
 
+`GET /proof-of-reserves`：网关用当前登录用户的 `userId` 调 wallet-service，用户无法查询别人的叶子。还没有快照时返回 `{ "available": false }`；有快照时：
+
+```json
+{
+  "available": true,
+  "snapshot": {
+    "snapshotId": "…",
+    "merkleRoot": "a285ff…",
+    "leafCount": 4,
+    "treeDepth": 2,
+    "createdAt": "…",
+    "assets": [
+      { "assetCode": "USDT", "reserves": "1250000", "liabilities": "1040000", "withdrawalsInFlight": "0",
+        "netLiabilities": "1040000", "hot": "125000", "cold": "1124975", "depositAddresses": "25",
+        "internalInTransit": "0", "reserveRatio": "1.2019", "status": "covered" }
+    ],
+    "format": { "hashAlgorithm": "SHA-256", "userHash": "…", "leaf": "…", "node": "…" }
+  },
+  "included": true,
+  "leaf": {
+    "userId": "<自己的 userId>",
+    "nonce": "9f1c…",
+    "userHash": "…",
+    "balances": { "ETH": "5", "USDT": "25000" },
+    "leafIndex": 2,
+    "leafHash": "…",
+    "message": "por-leaf:v1|<userHash>|ETH=5,USDT=25000"
+  },
+  "proof": [{ "position": "left", "hash": "…" }, { "position": "right", "hash": "…" }]
+}
+```
+
+验证：`userHash = SHA-256("por-user:v1|" + userId + "|" + nonce)`，`leafHash = SHA-256("por-leaf:v1|" + userHash + "|" + 按币种排序的 "ASSET=amount" 逗号拼接)`，然后对 `proof` 每一步计算 `SHA-256("por-node:v1|" + 左 + "|" + 右)`（`position` 是兄弟节点所在的一侧），最终结果应等于 `merkleRoot`。快照之后才产生余额的用户 `included=false`。
+
 ### 2.3 充值
 
 | 方法 | 路径 | 认证 | 幂等 | 说明 |
@@ -319,8 +361,8 @@ Content-Type: application/json
 
 | 方法 | 路径 | 认证 | 幂等 | 说明 |
 | --- | --- | --- | --- | --- |
-| POST | `/withdrawals/validate` | 会话/Key(withdraw) | | 只做规则预检，不冻结资金，也不消耗 2FA 验证码；返回 `appliedRules` |
-| POST | `/withdrawals/request` | 会话/Key(withdraw) | 是 | 发起提币：校验通过后冻结 `amount + fee` 并进入审核 |
+| POST | `/withdrawals/validate` | 会话/Key(withdraw) | | 只做规则预检，不冻结资金，也不消耗 2FA 验证码；返回 `appliedRules` 与 KYT 评估 `risk`（`score`、`level`、`reasons[]`、`requiresDualApproval`）；黑名单地址返回 `403 WITHDRAWAL_ADDRESS_BLOCKED` |
+| POST | `/withdrawals/request` | 会话/Key(withdraw) | 是 | 发起提币：校验通过后冻结 `amount + fee` 并进入审核；记录带 `riskScore`、`riskLevel`、`riskReasons`。目标地址在黑名单时返回 `403 WITHDRAWAL_ADDRESS_BLOCKED`，同时生成一条 `status=rejected`、`riskLevel=blocked`、未冻结资金的记录并发站内信 |
 | GET | `/withdrawals` | 会话/Key(read) | | 过滤：`ledgerAccountId`、`assetCode`、`network`、`status`、`reviewStatus`、`txHash`、`toAddress`、分页 |
 | GET | `/withdrawals/:withdrawalId` | 会话/Key(read) | | 提币详情 |
 | GET | `/withdrawal-address-book` | 会话/Key(read) | | 过滤：`network`、`address`、`isWhitelisted`、分页 |
@@ -341,9 +383,9 @@ Content-Type: application/json
 }
 ```
 
-`network` 取值以 `config/markets.json` 中资产的 `networks` 为准（默认本地链对应 `ethereum`）。wallet 的校验顺序：金额与地址格式 → 安全冷却期（2FA 变更后，`WITHDRAWAL_SECURITY_COOLDOWN`）→ 平台要求 2FA 但用户未开启（`WITHDRAWAL_2FA_NOT_ENABLED`）→ 最小金额 / 最小手续费 → 白名单（开启时）→ KYC 等级对应的单笔 / 每日额度 → 最后才校验 2FA 码。用户只要开启了 2FA，每笔提币都需要 `twoFactorCode`。
+`network` 取值以 `config/markets.json` 中资产的 `networks` 为准（默认本地链对应 `ethereum`）。wallet 的校验顺序：金额与地址格式 → KYT 地址风险（黑名单 `WITHDRAWAL_ADDRESS_BLOCKED`）→ 安全冷却期（2FA 变更后，`WITHDRAWAL_SECURITY_COOLDOWN`）→ 新设备提现锁（可选，`WITHDRAWAL_NEW_DEVICE_LOCK`）→ 平台要求 2FA 但用户未开启（`WITHDRAWAL_2FA_NOT_ENABLED`）→ 最小金额 / 最小手续费 → 白名单（开启时）→ KYC 等级对应的单笔 / 每日额度 → 最后才校验 2FA 码。用户只要开启了 2FA，每笔提币都需要 `twoFactorCode`。
 
-提币状态：`requested` → `reviewing` → `approved` → `broadcasted` → `confirmed`（或 `failed`）。超过双人复核阈值的提币需要两名不同的审核人批准。
+提币状态：`requested` → `reviewing` → `approved` → `broadcasted` → `confirmed`（或 `failed`）。超过双人复核阈值的提币、以及 KYT 等级为 `high` 的提币（不论金额）需要两名不同的审核人批准。KYT 评分规则见 [security.md](security.md) 第 2.7 节。
 
 紧急开关：`/withdrawals/validate` 与 `/withdrawals/request` 先经过网关的开关守卫，全站提币暂停返回 `409 WITHDRAWALS_PAUSED`，该币种暂停返回 `409 ASSET_WITHDRAWALS_PAUSED`，API 写入冻结返回 `409 API_WRITE_FROZEN`；被拦截的请求不消耗幂等键和 2FA 动态码。wallet-service 在申请、运营批准与广播时再校验一次（批准被拒时同样返回这些错误码）。
 
@@ -351,7 +393,7 @@ Content-Type: application/json
 
 | 方法 | 路径 | 认证 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/notifications` | 会话/Key(read) | 过滤：`withdrawalId`、`depositId`、`eventType`、`status`、`channel`、`readState`（`read` / `unread`）、分页 |
+| GET | `/notifications` | 会话/Key(read) | 过滤：`withdrawalId`、`depositId`、`eventType`（含 `security.new_device_login`）、`status`、`channel`、`readState`（`read` / `unread`）、分页 |
 | GET | `/notifications/unread-count` | 会话/Key(read) | 未读数 |
 | POST | `/notifications/read-all` | 会话/Key(read) | 全部标为已读 |
 | POST | `/notifications/:notificationId/read` | 会话/Key(read) | 单条标为已读 |
@@ -366,6 +408,7 @@ Content-Type: application/json
 | POST | `/orders/:orderId/cancel` | 会话/Key(trade) | | 撤单，释放剩余冻结（API 写入冻结时仍可撤单） |
 | GET | `/trades` | 会话/Key(read) | | 我的成交，过滤：`market`、`orderId`、分页 |
 | GET | `/trades/:tradeId/journals` | 会话/Key(read) | | 该成交产生的账本 journal 的脱敏视图：自己的账户显示为本人现货账户，其他用户显示为对手方，平台账户显示可读名称，不暴露对方的账户 / 用户 / 订单 ID |
+| GET | `/fees/tier` | 会话/Key(read) | | 本人 VIP 手续费等级：`tier`、`name`、`source`（`volume` 按 30 日成交量 / `programme` 做市商计划 / `override` 运营指定）、`makerFeeRate` / `takerFeeRate`、`volume`（`volumeAsset` 计，`volumeWindowDays` 日）、`nextTier`、`remainingVolume`、`progressRatio`、`markets[]`（每个市场的实际费率 = min(等级费率, 市场费率)）、`tiers[]`；`override` 只返回 `tier` 和 `updatedAt`，不含运营备注 |
 
 下单示例：
 
@@ -409,9 +452,14 @@ Content-Type: application/json
 }
 ```
 
-- `type`：`limit` / `market`；`timeInForce`：`gtc` / `ioc` / `fok`；`limit` 必须带 `price`
-- 订单状态：`pending_risk`、`accepted`、`partially_filled`、`filled`、`cancelled`、`rejected`、`recovery_pending`（成交后续步骤失败，等待恢复任务）
+- `type`：`limit` / `market` / `stop_limit` / `stop_market`；`timeInForce`：`gtc` / `ioc` / `fok`；`limit`、`stop_limit` 必须带 `price`
+- `postOnly?: boolean`：只做 Maker，仅限 GTC 限价单（否则 400 `POST_ONLY_REQUIRES_GTC_LIMIT`）。到达时会与对手盘成交则订单返回 `status: "rejected"`、`rejectedReason: "post_only_would_take"`，冻结全部释放
+- `stpMode?`：自成交保护，`expire_taker`（默认）/ `expire_maker` / `expire_both`，其他值 400 `INVALID_STP_MODE`。同一账户的买卖单不会互相成交：新订单剩余部分被过期时 `rejectedReason` 为 `stp_expired_taker` / `stp_expired_both`；被撤的旧挂单变为 `cancelled`、`rejectedReason: "stp_expired_maker"`
+- `triggerPrice`：`stop_limit` / `stop_market` 必填（缺失 400 `TRIGGER_PRICE_REQUIRED`），其他类型不允许（400 `TRIGGER_PRICE_NOT_ALLOWED`）。须对齐 `priceStep`、相对参考价不超过 `maxPriceDeviationRatio`（400 `TRIGGER_PRICE_DEVIATION_TOO_HIGH`）；止损限价的 `price` 相对 `triggerPrice` 也受同一上限约束。下单后订单为 `pending_trigger`（资金已冻结），最新成交价买单 ≥ / 卖单 ≤ 触发价时提交到撮合引擎，并记录 `triggeredAt`；触发前可撤单
+- 订单响应额外字段：`postOnly?`、`stpMode?`、`triggerPrice?`、`triggeredAt?`、`rejectedReason?`
+- 订单状态：`pending_trigger`（止损单待触发）、`pending_risk`（已落库、尚未拿到冻结与撮合结果的瞬时状态；冻结失败时转为 `rejected`，原因以 `ORDER_FREEZE_FAILED:` 开头）、`accepted`、`partially_filled`、`filled`、`cancelled`、`rejected`、`recovery_pending`（成交后续步骤失败，等待恢复任务）
 - 价格、数量需对齐市场的 `priceStep` / `quantityStep`，并满足最小数量与价格偏离限制
+- 成交记录（`GET /trades`）带 `buyerFeeRate` / `sellerFeeRate` 与 `buyerFeeTier` / `sellerFeeTier`：成交时按双方 VIP 等级解析并记录的费率，结算按记录收费
 
 ### 2.6.1 平台状态（紧急开关）
 
@@ -506,7 +554,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | --- | --- | --- |
 | GET | `/healthz` | 健康检查 |
 | GET | `/api/config` | 前端运行时配置（市场、资产、WS 地址、demo 开关等） |
-| POST | `/api/session` | 登录：代调 gateway `/auth/sessions`，写入 `tw_session` / `tw_csrf`，返回不含 token 的会话信息（201） |
+| POST | `/api/session` | 登录：代调 gateway `/auth/sessions`（透传页面提交的 `deviceId`，并以 `X-Forwarded-For` 转发浏览器地址），写入 `tw_session` / `tw_csrf`，返回不含 token 的会话信息（含 `device`，201） |
 | GET | `/api/session` | 当前会话（代调 `/auth/me`）；无 Cookie 返回 `401 NO_SESSION`，上游 401 时清除 Cookie |
 | POST | `/api/session/logout` | 撤销会话并清除 Cookie，返回 `{ revoked }`；需要 CSRF |
 | * | `/api/gateway/*` | 代理到 `api-gateway /api/v1/gateway/*`，Cookie 转 Bearer，写请求需要 CSRF |
@@ -593,6 +641,10 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/kyc/requests` | `ops.users.read` | KYC 申请列表（`status: pending / approved / rejected`） |
 | POST | `/kyc/requests/:requestId/approve` | `ops.users.manage` | 批准（`tier?`、`note?`） |
 | POST | `/kyc/requests/:requestId/reject` | `ops.users.manage` | 拒绝（`reason?`） |
+| GET | `/fee-tiers` | `ops.users.read` | `config/fee-tiers.json`：等级阶梯、`volumeAsset`、`volumeWindowDays`、做市商计划成员 |
+| GET | `/users/:userId/fee-tier` | `ops.users.read` | 用户 VIP 等级档案（同网关 `/fees/tier`，另含 `override.note` / `assignedBy` 与 `audit[]` 指定记录） |
+| POST | `/users/:userId/fee-tier/override` | `ops.users.manage` | 运营指定等级（`tier`、`note` 必填），优先于做市商计划和成交量；写等级审计与运营审计（`fee_tier.override.set`） |
+| POST | `/users/:userId/fee-tier/override/clear` | `ops.users.manage` | 取消指定（`note` 必填），审计动作 `fee_tier.override.clear` |
 
 ### 5.2 资产、充值、提币与通知
 
@@ -600,8 +652,8 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | --- | --- | --- | --- |
 | GET | `/balances` | `ops.assets.read` | 账本余额搜索 |
 | GET | `/deposits` | `ops.deposits.read` | 充值搜索 |
-| GET | `/withdrawals` | `ops.withdrawals.read` | 提币搜索 |
-| GET | `/withdrawals/review-queue` | `ops.withdrawals.read` | 待审核队列 |
+| GET | `/withdrawals` | `ops.withdrawals.read` | 提币搜索（支持 `riskLevel=low / medium / high / blocked`） |
+| GET | `/withdrawals/review-queue` | `ops.withdrawals.read` | 待审核队列（支持 `riskLevel`） |
 | GET | `/withdrawals/:withdrawalId` | `ops.withdrawals.read` | 提币详情 |
 | GET | `/withdrawals/:withdrawalId/audit-logs` | `ops.withdrawals.read` | 单笔提币审计日志 |
 | POST | `/withdrawals/:withdrawalId/approve` | `ops.withdrawals.review` | 批准（`note?`），审核人取自当前会话；双人复核时同一人不能批两次（`409 WITHDRAWAL_SAME_APPROVER`） |
@@ -614,6 +666,13 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | POST | `/withdrawal-address-book/:addressBookId/unwhitelist` | `ops.address_book.manage` | 移出白名单 |
 | GET | `/notifications` | `ops.notifications.read` | 通知列表 |
 | POST | `/notifications/deliver` | `ops.notifications.manage` | 投递待发送通知（`limit?`） |
+| GET | `/risk/address-blacklist` | `ops.risk.read` | 地址黑名单（`status: active / removed`、`network`、`address`、`category`、分页） |
+| POST | `/risk/address-blacklist` | `ops.risk.manage` | 加入黑名单（`network`、`address`、`category: sanctioned / mixer / scam / hack / other`、`reason` 必填）；返回 `entry` 与被自动拒绝的 `autoRejectedWithdrawalIds`；审计动作 `risk.blacklist.add` |
+| POST | `/risk/address-blacklist/:entryId/remove` | `ops.risk.manage` | 移出黑名单（`reason` 必填），记录保留；审计动作 `risk.blacklist.remove` |
+| GET | `/risk/address-labels` | `ops.risk.read` | 演示地址标签集（混币 / 高风险 / 博彩） |
+| GET | `/users/:userId/login-events` | `ops.users.read` | 用户登录记录 |
+| GET | `/users/:userId/devices` | `ops.users.read` | 用户设备列表 |
+| POST | `/users/:userId/devices/:deviceId/revoke` | `ops.users.freeze` | 吊销用户某设备的全部会话；审计动作 `user.device.revoke` |
 
 ### 5.3 账本、交易、链上、托管与告警
 
@@ -670,7 +729,12 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/custody/overview` | `ops.custody.read` | 托管总览 |
 | GET | `/custody/providers/health` | `ops.custody.read` | 托管提供方健康 |
 | POST | `/custody/providers/health/check` | `ops.providers.manage` | 立即执行健康检查 |
-| GET | `/alerts` | `ops.alerts.read` | 告警汇总：各数据源（ledger / indexer / custody / wallet / reconciliation / controls / trading）的 `alerts` 原文，以及带级别的 `items[]`（`source`、`code`、`severity: P1/P2/P3`、`message`，P1 在前）、`countsBySeverity`、`highestSeverity`；规则见 [security.md](security.md) 第 2.11 节 |
+| GET | `/alerts` | `ops.alerts.read` | 告警汇总：各数据源（ledger / indexer / custody / wallet / reconciliation / controls / trading / treasury / withdrawal_risk / surveillance）的 `alerts` 原文，以及带级别的 `items[]`（`source`、`code`、`severity: P1/P2/P3`、`message`，P1 在前）、`countsBySeverity`、`highestSeverity`；规则见 [security.md](security.md) 第 2.12 节 |
+| GET | `/surveillance/overview` | `ops.markets.read` | 市场监控总览：最近一次扫描、阈值、按类型的待处理数、按状态计数、做市商列表、各市场成交参与度 |
+| GET | `/surveillance/alerts` | `ops.markets.read` | 告警列表（`type: wash_trade / concentrated_volume / spoofing / price_move`、`status: open / acknowledged / dismissed`、`market`、`userId`、`includeMarketMakers`、分页） |
+| GET | `/surveillance/alerts/:alertId` | `ops.markets.read` | 告警详情：指标、证据（`evidence.tradeIds` / `orderIds` 与快照）、处理记录 `events[]` |
+| POST | `/surveillance/alerts/:alertId/status` | `ops.markets.manage` | 处理告警（`status`、`note` 必填）；`open → acknowledged / dismissed`、`acknowledged → dismissed / open`、`dismissed → open`，非法转换 409；审计动作 `surveillance.alert.acknowledge / dismiss / reopen` |
+| POST | `/surveillance/scan` | `ops.markets.manage` | 立即扫描一次（返回扫描结果），审计动作 `surveillance.scan` |
 | GET | `/controls` | `ops.dashboard.read` | 紧急开关状态、可选币种、最近 30 条开关变更、最近一次对账结果 |
 | POST | `/controls` | `ops.controls.manage` | 设置开关：`{ scope: "withdrawals_global" \| "withdrawals_asset" \| "api_write", assetCode?, enabled, reason }`，`reason` 开关两个方向都必填；恢复被对账熔断暂停的币种前，必须已有一轮晚于暂停时间且该币种一致的对账，否则 `409 RECONCILIATION_NOT_CLEAN`；审计动作 `controls.<scope>.enable\|disable` |
 | GET | `/audit-logs/withdrawals` | `ops.audit.read` | 提币审计日志搜索 |
@@ -709,13 +773,33 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | 角色 | 权限 |
 | --- | --- |
 | `ops_admin` | 全部权限（紧急开关 `ops.controls.manage` 只有这个角色拥有） |
-| `ops_reviewer` | dashboard、提币读 / 审核 / 批量审核、充值读、通知读、地址簿读、审计读、告警读 |
+| `ops_reviewer` | dashboard、提币读 / 审核 / 批量审核、充值读、通知读、地址簿读、审计读、告警读、风控读 |
 | `ops_finance_operator` | dashboard、提币读、资产读、账本读 / 执行 / 管理、充值读、通知读 / 管理、地址簿读、审计读、告警读 |
-| `ops_risk_operator` | dashboard、提币读、用户读 / 冻结、充值读、地址簿读 / 管理、审计读、告警读、市场读 / 管理 |
+| `ops_risk_operator` | dashboard、提币读、用户读 / 冻结、充值读、地址簿读 / 管理、审计读、告警读、市场读 / 管理、风控读 / 管理（地址黑名单） |
 | `ops_platform_operator` | dashboard、通知读 / 管理、索引器读 / 执行 / 管理 / 待处理管理、托管读、提供方管理、审计读、告警读、市场读 |
-| `ops_observer` | 只读：dashboard、提币、用户、资产、账本、充值、通知、索引器、托管、地址簿、审计、告警、市场 |
+| `ops_observer` | 只读：dashboard、提币、用户、资产、账本、充值、通知、索引器、托管、地址簿、审计、告警、市场、风控 |
 
 没有分配角色的运营账号默认是 `ops_observer`。完整映射见 `services/identity-service/src/domain/rbac.ts`。
+
+### 5.6 钱包与储备金（`/api/v1/ops/treasury`）
+
+冷热分层、归集、热钱包水位调拨、钱包 vs 账本对账和储备金证明，全部转发给 wallet-service 的 `/api/v1/wallet/treasury/*`。所有写操作写 `ops_action_audit_logs`（动作 `treasury.*`），并把运营人（邮箱，缺省为 userId）作为 `requestedBy` / `reviewedBy` / `generatedBy` 传下去。
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/overview` | `ops.ledger.read` | 每个币种的充值地址 / 热 / 冷 / 在途持仓、水位与水位状态、热冷钱包地址、未完成转账数、待审批数 |
+| GET | `/transfers` | `ops.ledger.read` | 内部转账列表（`kind?`、`status?`、`statuses?` 逗号分隔、`assetCode?`、分页） |
+| GET | `/transfers/:transferId` | `ops.ledger.read` | 详情，归集附带 `sweptDepositIds`，`events` 为状态历史 |
+| POST | `/transfers` | `ops.ledger.execute` | 手动发起调拨提案（`kind`：`rebalance_to_cold` / `rebalance_to_hot`，`assetCode`、`amount`、`network?`、`reason?`） |
+| POST | `/transfers/:transferId/approve` | `ops.withdrawals.review` | 批准并广播（`note?`）；提案人自己批准返回 `409 TREASURY_SAME_APPROVER`，来源钱包余额不足返回 `409 TREASURY_INSUFFICIENT_BALANCE` |
+| POST | `/transfers/:transferId/reject` | `ops.withdrawals.review` | 拒绝提案（`reason?`） |
+| POST | `/transfers/:transferId/retry` | `ops.ledger.execute` | 重新广播失败的调拨 |
+| POST | `/sweeps/run` | `ops.ledger.execute` | 立即执行一轮归集 |
+| POST | `/watermarks/evaluate` | `ops.ledger.execute` | 立即检查热钱包水位，越界时生成提案 |
+| GET | `/reconciliation` | `ops.ledger.read` | 钱包 vs 账本对账（见 6.3 节） |
+| POST | `/proof-of-reserves/snapshots` | `ops.ledger.execute` | 生成储备金证明快照 |
+| GET | `/proof-of-reserves/snapshots` | `ops.ledger.read` | 快照列表（`limit?`，不含叶子） |
+| GET | `/proof-of-reserves/snapshots/:snapshotId` | `ops.ledger.read` | 快照详情（不含叶子） |
 
 ---
 
@@ -739,7 +823,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | POST | `/users/:userId/kyc/tier` | 设置 KYC 等级 |
 | GET | `/kyc/requests` | KYC 申请列表 |
 | POST | `/kyc/requests/:requestId/approve` / `reject` | 审核 KYC |
-| POST | `/auth/sessions` | 创建 customer 会话 |
+| POST | `/auth/sessions` | 创建 customer 会话（`deviceId?`；记录登录事件、识别新设备、检查登录失败锁定） |
 | GET | `/auth/sessions/current` | 内省 customer 会话（Bearer） |
 | POST | `/auth/sessions/logout` | 撤销 customer 会话（Bearer） |
 | POST | `/ops/sessions` | 创建运营会话（校验 TOTP） |
@@ -748,6 +832,10 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | POST | `/users/:userId/api-keys` | 创建 API key |
 | GET | `/users/:userId/api-keys` | 列出 API key |
 | POST | `/users/:userId/api-keys/:apiKeyId/revoke` | 撤销 API key |
+| GET | `/users/:userId/login-events` | 登录记录（`outcome?`、分页） |
+| GET | `/users/:userId/devices` | 设备列表（含每台设备的有效会话数） |
+| POST | `/users/:userId/devices/:deviceId/revoke` | 吊销该设备的全部有效会话 |
+| GET | `/users/:userId/login-security` | `lastNewDeviceLoginAt`、当前锁定状态与锁定策略；wallet 的新设备提现锁读取它 |
 | POST | `/internal/api-keys/verify-signature` | gateway 提交 `keyId`、`canonicalRequest`、`signature`，identity 解密 secret 并比对 HMAC |
 
 ### 6.2 ledger-service（`/api/v1/ledger`，HMAC）
@@ -756,7 +844,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | --- | --- | --- |
 | POST | `/accounts` | 创建账户（`accountId`、`userId?`、`accountType`、`status?`），已存在时返回原记录 |
 | GET | `/accounts/:accountId` | 账户详情 |
-| POST | `/journals` | 记一笔借贷平衡的 journal（按 `idempotencyKey` 幂等） |
+| POST | `/journals` | 记一笔借贷平衡的 journal（按 `idempotencyKey` 幂等；同键不同内容返回 409 `DUPLICATE_IDEMPOTENCY_KEY`） |
 | GET | `/journals` | journal 摘要（`businessType`、`businessId`、`idempotencyKey`、分页） |
 | GET | `/journals/:journalId` | journal 及分录 |
 | GET | `/balances` | 余额列表（`userId`、`accountId`、`assetCode`、`accountType`、`accountStatus`、分页） |
@@ -772,6 +860,8 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | POST | `/ops/replay/run` | 同上，参数放请求体 |
 | GET | `/ops/overview` | 运维总览（`staleLockMinutes?`） |
 | POST | `/ops/outbox/drain` | 重排死信并发布（`requeueDeadLetter?`、`maxCycles?`） |
+| GET | `/ops/liabilities` | 用户负债汇总（`assetCode?`）：只统计 `user_id` 非空账户的 `available + locked`，返回 `{ generatedAt, userCount, assets: [{ assetCode, available, locked, total, userCount }] }` |
+| GET | `/ops/liabilities/users` | 每个用户各币种负债合计（`assetCode?`），`{ items: [{ userId, balances: { ETH: "5" } }] }`，供储备金证明建树 |
 | GET | `/ops/reconciliation/job` | 定时对账配置与状态（`intervalSeconds`、`graceMs`、`breakerEnabled`、`confirmations`、`lastRunAt`、`nextRunAt`） |
 | GET | `/ops/reconciliation/runs` | 对账历史（`limit?`，最新在前），返回 `{ job, items }` |
 | POST | `/ops/reconciliation/jobs/run` | 立即运行一次（余额对账 + 委托冻结对账 + 熔断判定），返回本次记录 |
@@ -793,8 +883,8 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | POST | `/withdrawals/validate` | 提币预检（不冻结、不消耗验证码） |
 | POST | `/withdrawals/request` | 发起提币并冻结 |
 | GET | `/withdrawal-limits` | 用户提币额度（`userId`） |
-| GET | `/withdrawals` | 提币列表 |
-| GET | `/withdrawals/review-queue` | 审核队列 |
+| GET | `/withdrawals` | 提币列表（支持 `riskLevel`） |
+| GET | `/withdrawals/review-queue` | 审核队列（支持 `riskLevel`） |
 | GET | `/withdrawals/:withdrawalId` | 提币详情 |
 | GET | `/withdrawals/:withdrawalId/audit-logs` | 单笔审计日志 |
 | GET | `/audit-logs` | 审计日志搜索 |
@@ -809,6 +899,32 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | POST | `/notifications/read` | 标记已读（`userId`、`notificationIds?`，省略即全部） |
 | POST | `/ops/notifications/deliver` | 投递通知 |
 | POST | `/ops/withdrawals/reconcile-stale` | 处理停滞提币 |
+| GET | `/risk/address-blacklist` | 地址黑名单列表 |
+| POST | `/risk/address-blacklist` | 加入黑名单（`network`、`address`、`category`、`reason`、`createdBy?`），并自动拒绝发往该地址的待审核提现 |
+| POST | `/risk/address-blacklist/:entryId/remove` | 移出黑名单（`reason`、`removedBy?`） |
+| GET | `/risk/address-labels` | 演示地址标签集 |
+| POST | `/notifications/security` | identity-service 写入账户安全站内信（`userId`、`eventType: security.new_device_login`、`subject`、`body`、`payload`） |
+
+treasury（冷热分层与储备金证明，`/api/v1/wallet/treasury`，错误码 `TREASURY_TRANSFER_NOT_FOUND` 404、`TREASURY_INVALID_STATE` / `TREASURY_SAME_APPROVER` / `TREASURY_INSUFFICIENT_BALANCE` 409、`TREASURY_INVALID_REQUEST` 400、`TREASURY_UPSTREAM_FAILED` 502、`POR_SNAPSHOT_NOT_FOUND` 404）：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/treasury/overview` | 持仓分层、水位、热冷钱包地址 |
+| GET | `/treasury/transfers` | 内部转账列表（`kind?`、`status?`、`statuses?`、`assetCode?`、`network?`、`txHash?`、分页） |
+| GET | `/treasury/transfers/:transferId` | 详情（含 `sweptDepositIds`） |
+| POST | `/treasury/transfers` | 调拨提案（`kind`、`assetCode`、`amount`、`requestedBy`、`network?`、`reason?`） |
+| POST | `/treasury/transfers/:transferId/approve` | 批准并经 custody-adapter 广播（`reviewedBy`、`note?`） |
+| POST | `/treasury/transfers/:transferId/reject` | 拒绝（`reviewedBy`、`reason?`） |
+| POST | `/treasury/transfers/:transferId/retry` | 重新广播失败的调拨（`requestedBy`） |
+| POST | `/treasury/transfers/confirm` | 链上确认回报（`network`、`txHash`、`confirmations`、`blockNumber?`），达到 `TREASURY_TRANSFER_CONFIRMATION_THRESHOLD` 后到账；演示中由 demo-simulator 调用 |
+| POST | `/treasury/sweeps/run` | 归集：未归集的已入账充值按 (地址, 币种) 各发一笔到热钱包（`requestedBy?`） |
+| POST | `/treasury/watermarks/evaluate` | 水位检查，越界生成 `proposed` 调拨（`requestedBy?`） |
+| POST | `/treasury/genesis` | 记录平台资金上链（`assetCode`、`walletType`：`hot`/`cold`、`amount`、`reference`、`network?`、`note?`），按 `reference` 幂等；演示 bootstrap 与储备补足使用 |
+| GET | `/treasury/reconciliation` | 钱包 vs 账本：`items[]` 每个币种 `depositAddresses`、`hot`、`cold`、`internalInTransit`、`reserves`、`ledgerLiabilities`、`withdrawalsInFlight`、`netLiabilities`、`surplus`、`reserveRatio`、`hotCoverage`、`status`（`covered` / `shortfall` / `no_liabilities`），顶层 `status`、`shortfallCount`、`holdings` |
+| POST | `/treasury/proof-of-reserves/snapshots` | 生成快照（`generatedBy?`） |
+| GET | `/treasury/proof-of-reserves/snapshots` | 快照列表（`limit?`） |
+| GET | `/treasury/proof-of-reserves/snapshots/:snapshotId` | 快照详情 |
+| GET | `/treasury/proof-of-reserves/me` | 某用户在最新快照中的叶子与路径（`userId`），网关 `/proof-of-reserves` 使用 |
 
 ### 6.4 order-service（HMAC）
 
@@ -816,7 +932,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/v1/orders` | 下单（`userId`、`accountId`、`market`、`side`、`type`、`timeInForce?`、`price?`、`quantity`、`idempotencyKey`、`traceId?`）：风控 → 冻结 → 撮合 → 结算 |
+| POST | `/api/v1/orders` | 下单（`userId`、`accountId`、`market`、`side`、`type`、`timeInForce?`、`price?`、`quantity`、`idempotencyKey`、`traceId?`、`postOnly?`、`stpMode?`、`triggerPrice?`）：风控 → 冻结 → 撮合 → 结算；止损单在冻结后停在 `pending_trigger` |
 | POST | `/api/v1/orders/:orderId/cancel` | 撤单（`userId`） |
 | GET | `/api/v1/orders` | 订单列表（`userId`、`accountId`、`market`、`status`、分页） |
 | GET | `/api/v1/orders/:orderId` | 订单详情 |
@@ -825,13 +941,30 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/api/v1/trades/:tradeId` | 成交详情 |
 | POST | `/api/v1/trades/:tradeId/settlement` | settlement-service 回写结算结果 |
 
+VIP 手续费等级（`/api/v1/fee-tiers`）：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/fee-tiers` | 等级配置（含 `volumeMarkets`：计入成交量的市场） |
+| GET | `/api/v1/fee-tiers/users/:userId` | 用户等级档案（每次实时重算成交量） |
+| POST | `/api/v1/fee-tiers/users/:userId/override` | 设置运营指定（`tier`、`note`、`actor` 必填；未知等级 `400 FEE_TIER_UNKNOWN`） |
+| POST | `/api/v1/fee-tiers/users/:userId/override/clear` | 取消指定（`note`、`actor`） |
+| GET | `/api/v1/fee-tiers/overrides`、`/api/v1/fee-tiers/audit` | 当前指定列表；指定审计（`userId?`、`limit?`） |
+
+市场监控数据（供 risk-service）：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/surveillance/activity` | 时间窗口内的成交与“大额、未成交、快速撤销”的委托（`since`、`until`，窗口不超过 24 小时；`market?`、`tradeLimit?`、`orderMinNotional?`、`orderMaxLifetimeMs?`、`orderLimit?`、`orderExcludeUserIds?`），返回 `trades[]`、`cancelledOrders[]`、`truncated` |
+
 运维（`/api/v1/orders/ops`）：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/overview`、`/anomalies` | 总览与异常 |
-| POST | `/replay-engine` | 用持久化挂单重建撮合订单簿 |
+| POST | `/replay-engine` | 用持久化挂单重建撮合订单簿（带 `owner_id`，STP 继续生效） |
 | POST | `/lock-expectations` | 委托冻结对账输入（调用方 ledger-service）：`{ orderIds?: string[] (≤2000), includeOpenOrders?: boolean }`，返回每笔委托的 `openLockAmount`（未成交部分冻结）、`fills[]`（`tradeId`、该成交消耗的冻结 `amount`、结算是否已回写 `acknowledged`）、order-service 自己的估算 `expectedLockAmount`（= 未成交部分 + 未回写确认的成交），以及 `inFlight`（`pending_risk` / `recovery_pending`）、`updatedAt`、`lastTradeAt`；ledger-service 以自己快照中的消耗记录判断哪些成交已结算 |
+| POST | `/stop-orders/trigger` | 立即执行一轮止损触发检查，返回各市场最新价与本轮触发的订单 ID |
 | POST | `/lab/engine-reset` | 故障实验：清空引擎订单簿 |
 | GET | `/recovery-jobs`、`/recovery-metrics`、`/recovery-governance`、`/automation-executions` | 恢复任务与治理 |
 | POST | `/recovery-jobs/process`、`/recovery-jobs/:jobId/recover` | 处理恢复任务 |
@@ -844,10 +977,14 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/orders/validate` | 下单风控：API 写入冻结（`409 API_WRITE_FROZEN`）、市场状态、步长、最小数量、价格偏离；返回 `lockAssetCode`、`lockAmount`、`timeInForce` |
+| POST | `/orders/validate` | 下单风控：API 写入冻结（`409 API_WRITE_FROZEN`）、市场状态、订单类型、步长、最小数量、价格偏离、Post-Only 仅限 GTC 限价、`stpMode` 取值、止损触发价（必填、步长、偏离）；返回 `lockAssetCode`、`lockAmount`、`timeInForce`、`triggerPrice?` |
 | GET | `/markets` | 市场及状态 |
 | GET | `/markets/:market` | 单个市场 |
 | POST | `/markets/:market/status` | 设置状态覆盖（`status`、`reason?`、`operator?`） |
+| GET | `/surveillance/overview` | 市场监控总览 |
+| POST | `/surveillance/scan` | 立即扫描 |
+| GET | `/surveillance/alerts`、`/surveillance/alerts/:alertId` | 告警列表 / 详情 |
+| POST | `/surveillance/alerts/:alertId/status` | 处理告警（`status`、`note`、`actor` 必填） |
 | GET | `/controls` | 紧急开关当前状态 `{ withdrawalsPaused, assetWithdrawalPauses[], apiWriteFrozen }`，每项含 `reason`、`source: manual \| automatic`、`updatedBy`、`updatedAt`；调用方 wallet-service / api-gateway / ops-console |
 | POST | `/controls` | 设置开关（`scope`、`assetCode?`、`enabled`、`reason`、`operator`、`source?`）。开启必须带原因；`source: "automatic"`（ledger-service 对账熔断）不会覆盖已开启的开关，也不能关闭开关；返回 `{ changed, entry, state }` |
 | GET | `/controls/events` | 开关变更记录（`limit?`），即 `risk_control_switch_events` |
@@ -856,8 +993,8 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/trades/settle` | 同步结算一笔成交 |
-| GET | `/trades`、`/trades/report` | 结算记录与汇总 |
+| POST | `/trades/settle` | 同步结算一笔成交（`sellerFeeRate`、`buyerFeeRate?`、`sellerFeeTier?`、`buyerFeeTier?` 来自成交记录） |
+| GET | `/trades`、`/trades/report` | 结算记录与汇总；结算记录带实际收费的 `sellerFeeRate` / `buyerFeeRate` / `sellerFeeTier` / `buyerFeeTier` |
 | POST | `/trades/:tradeId/recover` | 恢复单笔结算 |
 | GET | `/recovery-jobs`、`/recovery-governance`、`/automation-executions` | 恢复任务与治理 |
 | POST | `/recovery-jobs/process` | 处理恢复任务 |
@@ -867,11 +1004,11 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/lab/consumer` | 故障实验：消费者状态 |
 | POST | `/lab/consumer/pause`、`/lab/consumer/resume` | 暂停 / 恢复消费者 |
 
-### 6.7 custody-adapter（`/api/v1/custody`，无）
+### 6.7 custody-adapter（`/api/v1/custody`，HMAC）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/transfers` | 创建托管转账（广播提币） |
+| POST | `/transfers` | 创建托管转账：广播提币（幂等键 `withdrawal:<id>`），以及 wallet-service treasury 的归集 / 冷热调拨（幂等键 `treasury:<transferId>[:<attempt>]`，`metadata.purpose` 为 `treasury_sweep` 等） |
 | GET | `/transfers/:custodyTransferId` | 转账详情 |
 | POST | `/transfers/:custodyTransferId/retry` | 重试 |
 | POST | `/transfers/:custodyTransferId/sync-status` | 同步链上状态 |
@@ -881,7 +1018,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/lab/state` | 故障实验状态（`network?`） |
 | POST | `/lab/failure-injection`、`/lab/failure-injection/clear`、`/lab/probe-broadcast` | 注入 / 清除故障、探测广播 |
 
-### 6.8 blockchain-indexer（`/api/v1/indexer`，无）
+### 6.8 blockchain-indexer（`/api/v1/indexer`，HMAC）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -905,11 +1042,14 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 
 | `action` | 字段 | 说明 |
 | --- | --- | --- |
-| `submit` | `order_id`、`market`、`side`、`order_type`、`time_in_force`、`price?`、`quantity`、`created_at` | 提交订单并撮合，返回成交列表或挂单结果 |
-| `seed` | `order_id`、`market`、`side`、`price`、`quantity`、`created_at` | 不撮合直接挂单（重建订单簿用） |
+| `submit` | `order_id`、`market`、`side`、`order_type`、`time_in_force`、`price?`、`quantity`、`created_at`、`owner_id?`、`stp_mode?`、`post_only?` | 提交订单并撮合，返回成交列表或挂单结果；STP 撤掉的同 owner 挂单在 `expiredMakers` 中返回 |
+| `seed` | `order_id`、`market`、`side`、`price`、`quantity`、`created_at`、`owner_id?` | 不撮合直接挂单（重建订单簿用） |
 | `cancel` | `order_id`、`market` | 撤单 |
 | `reset` | `market`、`reset_sequences?` | 清空订单簿；`reset_sequences` 只在全量重置时使用 |
 | `restore` | `market`、`next_execution_sequence`、`next_batch_sequence` | 重启后抬高序号，避免复用已持久化的成交 ID |
 | `snapshot` | `market`、`limit?`（默认 50） | 订单簿快照 |
+
+- `stp_mode`：`expire_taker`（默认）/ `expire_maker` / `expire_both`；只有 taker 与挂单都带相同 `owner_id` 时生效，不带 `owner_id` 的旧指令行为不变。
+- 新增的 `cancelled` 原因：`post_only_would_take`、`post_only_requires_limit`、`stp_expired_taker`、`stp_expired_both`；部分成交后被 STP 过期时 `matched` 响应带 `reason`。
 
 错误以 `{ "error": { "code": "...", "message": "..." } }` 形式返回，例如 `INVALID_COMMAND`、`PRICE_REQUIRED`。引擎状态只在内存中，重启后由 order-service 通过 `seed` + `restore` 重建，见 [architecture.md](architecture.md)。

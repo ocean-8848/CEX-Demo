@@ -143,6 +143,17 @@ await check("SOL-USDT is configured end to end", () => {
   assert.ok(allAssets.includes("SOL"), "SOL in config");
 });
 
+await check("fee tiers: config/fee-tiers.json validates and VIP0 keeps every market's default rates", () => {
+  const vip0 = domain.FEE_TIER_CONFIG.tiers[0];
+  assert.equal(vip0.minVolume, "0");
+  assert.ok(domain.isAssetCode(domain.FEE_TIER_CONFIG.volumeAsset), "volumeAsset is a configured asset");
+  for (const market of raw.markets) {
+    const definition = domain.getSpotMarketDefinition(market.symbol);
+    assert.equal(domain.effectiveFeeRate(vip0, definition, "maker"), market.makerFeeRate, `${market.symbol} maker`);
+    assert.equal(domain.effectiveFeeRate(vip0, definition, "taker"), market.takerFeeRate, `${market.symbol} taker`);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // 2. Static: no hard-coded market lists outside the config
 // ---------------------------------------------------------------------------

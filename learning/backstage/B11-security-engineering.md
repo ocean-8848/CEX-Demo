@@ -496,7 +496,7 @@ flowchart LR
 | 密钥不进代码与日志 | [`docs/security.md`](../../docs/security.md) 第 1.2、4 节 | ⚠️ 内部签名密钥、API Key 加密主密钥、数据库口令都有公开的默认测试值；文档把"进入密钥管理系统、可轮换"列为缺口 |
 | 私钥从环境变量加载 | [`services/custody-adapter/src/infrastructure/evm-provider-config.ts`](../../services/custody-adapter/src/infrastructure/evm-provider-config.ts) | 演示用实现。违反第 4.10 节密钥管理规则，`docs/security.md` 第 4 节列为最高风险缺口 |
 | 网关审计日志 | [`services/api-gateway/src/http/api-gateway-audit.interceptor.ts`](../../services/api-gateway/src/http/api-gateway-audit.interceptor.ts) | 已实现。只记录 userId、apiKeyId、sessionId 等标识，不记录请求头中的签名和令牌，符合日志卫生；`path` 记录完整 URL，若查询串中带敏感参数会进入日志 |
-| 服务间鉴权 | [`services/identity-service/src/http/internal-service-auth.guard.ts`](../../services/identity-service/src/http/internal-service-auth.guard.ts) | HMAC 共享密钥。尚未达到第 4.8 节的 mTLS |
+| 服务间鉴权 | [`services/identity-service/src/http/internal-service-auth.guard.ts`](../../services/identity-service/src/http/internal-service-auth.guard.ts) | HMAC 共享密钥 + 调用方白名单，托管（[`custody-adapter`](../../services/custody-adapter/src/http/internal-service-auth.guard.ts)）与链上索引（[`blockchain-indexer`](../../services/blockchain-indexer/src/http/internal-service-auth.guard.ts)）入口也已校验，例如 `api-gateway` 直接调托管会被拒。尚未达到第 4.8 节的 mTLS |
 | 依赖锁定 | [`pnpm-lock.yaml`](../../pnpm-lock.yaml) | 有锁文件。`package.json` 使用 `^` 范围，需配合冻结锁文件安装 |
 | 发布与变更 | — | 本仓库未实现变更单、灰度和上线前检查清单 |
 | CI 安全扫描、SBOM、签名构建、SIEM、金丝雀令牌、红队 | `.github/workflows/ci.yml` | ⚠️ CI 只做构建、类型检查、单元测试和结构检查；安全扫描、SBOM 等未实现 |

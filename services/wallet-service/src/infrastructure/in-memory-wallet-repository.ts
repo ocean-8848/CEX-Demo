@@ -2,8 +2,10 @@ import type { Network } from "@web3-cex/domain";
 
 import type { WalletRepository } from "../domain/repository.js";
 import { sumAmounts } from "../domain/money.js";
+import type { AddressBlacklistEntry } from "../domain/withdrawal-risk.js";
 import type {
   CreateWithdrawalAddressBookEntryCommand,
+  ListAddressBlacklistQuery,
   CreateDepositAddressCommand,
   DepositRecord,
   ListWithdrawalAuditLogsQuery,
@@ -52,6 +54,7 @@ export class InMemoryWalletRepository implements WalletRepository {
   private readonly walletNotificationsById = new Map<string, WalletNotificationRecord>();
   private readonly withdrawalAddressBookById = new Map<string, WithdrawalAddressBookEntry>();
   private readonly withdrawalAddressBookByUniqueKey = new Map<string, WithdrawalAddressBookEntry>();
+  private readonly addressBlacklistById = new Map<string, AddressBlacklistEntry>();
 
   async withTransaction<T>(operation: (repository: WalletRepository) => Promise<T>): Promise<T> {
     return operation(this);
@@ -200,6 +203,9 @@ export class InMemoryWalletRepository implements WalletRepository {
           return false;
         }
         if (query.toAddress && record.toAddress !== query.toAddress) {
+          return false;
+        }
+        if (query.riskLevel && record.riskLevel !== query.riskLevel) {
           return false;
         }
         return true;
@@ -525,6 +531,54 @@ export class InMemoryWalletRepository implements WalletRepository {
       })
       .map((record) => record.amount)
     );
+  }
+
+  async countSuccessfulWithdrawalsToAddress(params: {
+    userId: string;
+    network: Network;
+    address: string;
+  }): Promise<number> {
+    return [...this.withdrawalsById.values()].filter(
+      (record) =>
+        record.userId === params.userId &&
+        record.network === params.network &&
+        record.toAddress === params.address &&
+        (record.status === "approved" || record.status === "broadcasted" || record.status === "confirmed")
+    ).length;
+  }
+
+  async listAddressBlacklist(
+    query: ListAddressBlacklistQuery
+  ): Promise<PagedResult<AddressBlacklistEntry>> {
+    const items = [...this.addressBlacklistById.values()]
+      .filter(
+        (entry) =>
+          (!query.network || entry.network === query.network) &&
+          (!query.address || entry.address === query.address) &&
+          (!query.status || entry.status === query.status) &&
+          (!query.category || entry.category === query.category)
+      )
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    return page(items, query.limit ?? 50, query.offset ?? 0);
+  }
+
+  async findActiveAddressBlacklistEntry(
+    network: Network,
+    address: string
+  ): Promise<AddressBlacklistEntry | null> {
+    return (
+      [...this.addressBlacklistById.values()].find(
+        (entry) => entry.network === network && entry.address === address && entry.status === "active"
+      ) ?? null
+    );
+  }
+
+  async findAddressBlacklistEntryById(entryId: string): Promise<AddressBlacklistEntry | null> {
+    return this.addressBlacklistById.get(entryId) ?? null;
+  }
+
+  async saveAddressBlacklistEntry(entry: AddressBlacklistEntry): Promise<void> {
+    this.addressBlacklistById.set(entry.entryId, { ...entry });
   }
 
   addWhitelistedAddress(userId: string, network: Network, address: string): void {

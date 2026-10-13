@@ -17,7 +17,7 @@
 - 账本流水 append-only
 - 通过 `journal + entries` 保证借贷平衡
 - 余额快照可由流水重建
-- 所有资金动作必须带幂等键
+- 所有资金动作必须带幂等键；`POST /journals` 同键同内容（含并发）返回原 journal，同键不同内容返回 409 `DUPLICATE_IDEMPOTENCY_KEY`（`src/application/journal-idempotency.ts`）
 
 核心操作（`src/application/ledger-application-service.ts`）:
 
@@ -25,6 +25,7 @@
 - `postJournal`：充值入账、成交结算、提币出账等都由调用方（wallet / settlement）以带 `businessType` 和幂等键的 journal 形式提交，账本不为每种业务单独开接口
 - `freezeBalance` / `releaseBalance` / `consumeBalance`：下单与提币的冻结、释放与消耗
 - `getBalance` / `listBalances` / `listJournals` / `listEntries` / `getAccountStatement`
+- 用户负债（`src/application/ledger-liabilities.ts`）：`GET /api/v1/ledger/ops/liabilities` 按资产汇总 `user_id` 非空账户的 `available + locked`，`GET /api/v1/ledger/ops/liabilities/users` 按用户给出各资产合计。wallet-service 用前者做钱包 vs 账本对账、用后者构建储备金证明的 Merkle 叶子。平台链上持仓（冷热钱包）不记入账本，`hot_wallet` / `cold_wallet` 仍是保留类型，原因见 [ledger-service-design.md](../../docs/ledger-service-design.md) 第 4 节
 
 SQL schema:
 

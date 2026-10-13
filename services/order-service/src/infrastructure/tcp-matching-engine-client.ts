@@ -33,7 +33,12 @@ export class TcpMatchingEngineClient implements MatchingEngineClient {
       time_in_force: command.timeInForce,
       price: command.price,
       quantity: command.quantity,
-      created_at: command.createdAt
+      created_at: command.createdAt,
+      // Optional fields: older engines ignore them, the engine defaults
+      // stp_mode to expire_taker when an owner is present.
+      ...(command.ownerId ? { owner_id: command.ownerId } : {}),
+      ...(command.stpMode ? { stp_mode: command.stpMode } : {}),
+      ...(command.postOnly ? { post_only: true } : {})
     });
 
     return {
@@ -48,7 +53,8 @@ export class TcpMatchingEngineClient implements MatchingEngineClient {
         command.orderId,
         command.market,
         readString(response, "protocolVersion") ?? "v1"
-      )
+      ),
+      expiredMakers: toExpiredMakers(response.expiredMakers)
     };
   }
 
@@ -60,7 +66,8 @@ export class TcpMatchingEngineClient implements MatchingEngineClient {
       side: command.side,
       price: command.price,
       quantity: command.quantity,
-      created_at: command.createdAt
+      created_at: command.createdAt,
+      ...(command.ownerId ? { owner_id: command.ownerId } : {})
     });
 
     return {
@@ -250,9 +257,26 @@ function toSnapshotOrders(value: unknown): MatchingBookSnapshotOrder[] {
       side: (readString(item, "side") as "buy" | "sell") ?? "buy",
       price: readString(item, "price") ?? "0",
       quantity: readString(item, "quantity") ?? "0",
-      createdAt: readString(item, "createdAt") ?? new Date().toISOString()
+      createdAt: readString(item, "createdAt") ?? new Date().toISOString(),
+      ownerId: readString(item, "ownerId")
     }))
     .filter((item) => item.orderId.length > 0);
+}
+
+function toExpiredMakers(value: unknown): MatchingSubmitResult["expiredMakers"] {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const expired = value
+    .filter(isRecord)
+    .map((item) => ({
+      orderId: readString(item, "orderId") ?? "",
+      quantity: readString(item, "quantity") ?? "0",
+      reason: readString(item, "reason") ?? "stp_expired_maker"
+    }))
+    .filter((item) => item.orderId.length > 0);
+  return expired.length > 0 ? expired : undefined;
 }
 
 function toTrades(

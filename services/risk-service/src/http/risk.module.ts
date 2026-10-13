@@ -6,11 +6,14 @@ import { RiskController } from "./risk.controller.js";
 import { RiskExceptionFilter } from "./risk-exception.filter.js";
 import { RiskHttpService } from "./risk-http.service.js";
 import { InternalServiceAuthGuard } from "./internal-service-auth.guard.js";
+import { SurveillanceHttpService } from "./surveillance-http.service.js";
+import { SurveillanceController } from "./surveillance.controller.js";
 
 @Module({
-  controllers: [RiskController, ControlSwitchController],
+  controllers: [RiskController, SurveillanceController, ControlSwitchController],
   providers: [
     RiskHttpService,
+    SurveillanceHttpService,
     RiskExceptionFilter,
     InternalServiceAuthGuard,
     {

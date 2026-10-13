@@ -2,11 +2,14 @@ import { createHash } from "node:crypto";
 
 import {
   DEFAULT_TRADE_EVENT_VERSION_GATE,
+  effectiveFeeRate,
   getSpotMarketDefinition,
   addAmounts,
   compareAmounts,
+  engineOrderType,
   fromAtomicUnits,
   getTradeExecutedEventSchema,
+  isStopOrderType,
   multiplyAmounts,
   subtractAmounts,
   toAtomicUnits,
@@ -28,6 +31,7 @@ import type {
   SettlementOrderClient
 } from "../domain/clients.js";
 import type { OrderEventPublisher } from "../domain/event-publisher.js";
+import type { FeeTierResolver, UserFeeTier } from "../domain/fee-tier-repository.js";
 import type { OrderRepository } from "../domain/repository.js";
 import type {
   CancelSpotOrderCommand,
@@ -42,6 +46,8 @@ import type {
   SpotOrderRecoveryJob,
   SpotTradeRecord
 } from "../domain/types.js";
+import { selectTriggeredStopOrders } from "./stop-order-trigger.js";
+import type { StopTriggerGate, StopTriggerHoldReason } from "./stop-trigger-gate.js";
 
 interface ServiceOptions {
   now?: () => Date;
@@ -52,6 +58,13 @@ interface ServiceOptions {
   recoveryLeaseMs?: number;
   tradeEventVersionGate?: TradeEventVersionGate;
   settlementMode?: "sync" | "async";
+  /** VIP tier resolver (A7). Absent = every side pays the market default rate. */
+  feeTierResolver?: FeeTierResolver;
+  /**
+   * Holds crossed stop triggers while the market is halted / delisted or the
+   * API write freeze is on (see stop-trigger-gate.ts). Absent = never held.
+   */
+  stopTriggerGate?: StopTriggerGate;
 }
 
 interface RecoveryPlan {
@@ -73,6 +86,8 @@ export class OrderApplicationService {
   private readonly recoveryLeaseMs: number;
   private readonly tradeEventVersionGate: TradeEventVersionGate;
   private readonly settlementMode: "sync" | "async";
+  private readonly feeTierResolver?: FeeTierResolver;
+  private readonly stopTriggerGate?: StopTriggerGate;
 
   constructor(
     private readonly repository: OrderRepository,
@@ -101,6 +116,8 @@ export class OrderApplicationService {
     this.tradeEventVersionGate =
       options.tradeEventVersionGate ?? DEFAULT_TRADE_EVENT_VERSION_GATE;
     this.settlementMode = options.settlementMode ?? "sync";
+    this.feeTierResolver = options.feeTierResolver;
+    this.stopTriggerGate = options.stopTriggerGate;
   }
 
   async createOrder(command: CreateSpotOrderCommand): Promise<SpotOrderRecord> {
@@ -109,6 +126,8 @@ export class OrderApplicationService {
       return existing;
     }
 
+    const isStop = isStopOrderType(command.type);
+    const postOnly = command.postOnly === true || (command.postOnly as unknown) === "true";
     const riskDecision = await this.riskClient.validateSpotOrder({
       userId: command.userId,
       accountId: command.accountId,
@@ -117,7 +136,10 @@ export class OrderApplicationService {
       type: command.type,
       timeInForce: command.timeInForce,
       price: command.price,
-      quantity: command.quantity
+      quantity: command.quantity,
+      ...(postOnly ? { postOnly: true } : {}),
+      ...(command.stpMode ? { stpMode: command.stpMode } : {}),
+      ...(command.triggerPrice ? { triggerPrice: command.triggerPrice } : {})
     });
 
     const createdAt = this.now().toISOString();
@@ -137,36 +159,129 @@ export class OrderApplicationService {
       quantity: command.quantity,
       filledQuantity: "0",
       restingQuantity: "0",
-      status: "pending_risk",
+      // Stop orders keep their funds frozen while they wait for the trigger.
+      status: isStop ? "pending_trigger" : "pending_risk",
       lockAssetCode: riskDecision.lockAssetCode,
       lockAmount: riskDecision.lockAmount,
       createdAt,
-      updatedAt: createdAt
+      updatedAt: createdAt,
+      ...(postOnly ? { postOnly: true } : {}),
+      ...(command.stpMode ? { stpMode: command.stpMode } : {}),
+      ...(isStop && command.triggerPrice ? { triggerPrice: command.triggerPrice } : {})
     };
 
     await this.repository.saveOrder(order);
 
-    await this.ledgerClient.freezeBalance({
-      accountId: command.accountId,
-      assetCode: riskDecision.lockAssetCode,
-      amount: riskDecision.lockAmount,
-      referenceType: "spot_order",
-      referenceId: orderId
-    });
+    try {
+      await this.ledgerClient.freezeBalance({
+        accountId: command.accountId,
+        assetCode: riskDecision.lockAssetCode,
+        amount: riskDecision.lockAmount,
+        referenceType: "spot_order",
+        referenceId: orderId
+      });
+    } catch (error) {
+      // The order row already exists; never leave it stuck in pending_risk.
+      await this.rejectBeforeMatching(order, ORDER_FREEZE_FAILED, error);
+      throw buildPreMatchingError(order, ORDER_FREEZE_FAILED, error);
+    }
 
+    if (isStop) {
+      await this.publishOrderEvent("order.updated", order);
+      return order;
+    }
+
+    return this.executeOrder(order);
+  }
+
+  /**
+   * Stop orders: hands every pending_trigger order of `market` whose trigger
+   * the last trade price has crossed (buy: last >= trigger, sell: last <=
+   * trigger) to the matching engine. The pending_trigger -> pending_risk
+   * transition is a compare-and-set, so concurrent workers or a restart never
+   * submit the same order twice, and a cancel that won the race is respected.
+   */
+  async triggerStopOrders(
+    market: SpotMarket,
+    lastPrice?: string
+  ): Promise<{
+    market: SpotMarket;
+    lastPrice?: string;
+    triggeredOrderIds: string[];
+    heldReason?: StopTriggerHoldReason;
+  }> {
+    const pending = await this.repository.listOrders({
+      market,
+      status: "pending_trigger",
+      limit: 200,
+      offset: 0
+    });
+    if (pending.length === 0) {
+      return { market, lastPrice, triggeredOrderIds: [] };
+    }
+
+    const price = lastPrice ?? (await this.repository.findLatestTrade(market))?.price;
+    if (!price) {
+      return { market, triggeredOrderIds: [] };
+    }
+
+    const crossed = selectTriggeredStopOrders(pending, price);
+    if (crossed.length > 0 && this.stopTriggerGate) {
+      // Halted market / API write freeze: keep the orders pending_trigger
+      // (funds stay frozen) and fire them on the first tick after it clears.
+      const gate = await this.stopTriggerGate.check(market);
+      if (gate.hold) {
+        return { market, lastPrice: price, triggeredOrderIds: [], heldReason: gate.reason };
+      }
+    }
+
+    const triggeredOrderIds: string[] = [];
+    for (const order of crossed) {
+      const triggeredAt = this.now().toISOString();
+      const claimed: SpotOrderRecord = {
+        ...order,
+        status: "pending_risk",
+        triggeredAt,
+        updatedAt: triggeredAt
+      };
+      if (!(await this.repository.saveOrderIfStatus(claimed, "pending_trigger"))) {
+        continue;
+      }
+      triggeredOrderIds.push(order.orderId);
+      try {
+        await this.executeOrder(claimed);
+      } catch (error) {
+        // executeOrder already rejected the order and released its funds.
+        console.warn(`stop order ${order.orderId} trigger failed: ${readErrorMessage(error)}`);
+      }
+    }
+
+    return { market, lastPrice: price, triggeredOrderIds };
+  }
+
+  /** Submits a persisted, funded order to the matching engine and applies the outcome. */
+  private async executeOrder(order: SpotOrderRecord): Promise<SpotOrderRecord> {
     let compensationRequired = false;
 
     try {
+      const engineType = engineOrderType(order.type);
       const engineResult = await this.matchingEngineClient.submitOrder({
-        orderId,
-        market: command.market,
-        side: command.side,
-        type: command.type,
-        timeInForce: riskDecision.timeInForce,
-        price: command.price,
-        quantity: command.quantity,
-        createdAt
+        orderId: order.orderId,
+        market: order.market,
+        side: order.side,
+        type: engineType,
+        timeInForce: order.timeInForce,
+        price: engineType === "limit" || compareAmounts(order.price, "0") > 0 ? order.price : undefined,
+        quantity: order.quantity,
+        createdAt: bookTimeOf(order),
+        ownerId: order.accountId,
+        ...(order.stpMode ? { stpMode: order.stpMode } : {}),
+        ...(order.postOnly ? { postOnly: true } : {})
       });
+
+      if (engineResult.expiredMakers?.length) {
+        await this.expireSelfTradeMakers(engineResult.expiredMakers);
+      }
 
       if (engineResult.outcome === "resting") {
         const acceptedOrder = {
@@ -204,7 +319,8 @@ export class OrderApplicationService {
 
       compensationRequired = true;
       const makerOrders = await this.loadMakerOrders(engineResult);
-      const recoveryPlan = this.buildRecoveryPlan(order, engineResult, makerOrders);
+      const feeTiers = await this.resolveFeeTiers(order, makerOrders);
+      const recoveryPlan = this.buildRecoveryPlan(order, engineResult, makerOrders, feeTiers);
       await this.repository.saveRecoveryJob(this.createRecoveryJob(recoveryPlan));
 
       try {
@@ -222,24 +338,95 @@ export class OrderApplicationService {
         await this.compensateByReplayingBook(order.market);
       }
 
+      await this.rejectBeforeMatching(order, null, error);
+
+      throw error;
+    }
+  }
+
+  /**
+   * Moves an order that never reached a durable matching outcome to the terminal
+   * `rejected` state: best-effort release of whatever was frozen for it, persist
+   * the rejection with a reason code and publish `order.rejected`. A failing
+   * release does not keep the order open; the leftover lock is visible on the
+   * ledger (reference spot_order/<orderId>) and the reason says so.
+   */
+  private async rejectBeforeMatching(
+    order: SpotOrderRecord,
+    reasonCode: string | null,
+    error: unknown
+  ): Promise<SpotOrderRecord> {
+    let releaseNote = "";
+    try {
       await this.ledgerClient.releaseBalance({
         accountId: order.accountId,
         assetCode: order.lockAssetCode,
         referenceType: "spot_order",
         referenceId: order.orderId
       });
+    } catch (releaseError) {
+      // A freeze that failed usually left no lock (BALANCE_LOCK_NOT_FOUND), so
+      // only surface release failures for orders that did freeze funds.
+      if (reasonCode !== ORDER_FREEZE_FAILED) {
+        releaseNote = ` (lock release failed: ${readErrorMessage(releaseError)})`;
+      }
+    }
 
-      const rejectedOrder: SpotOrderRecord = {
-        ...order,
-        status: "rejected",
-        restingQuantity: "0",
-        rejectedReason: readErrorMessage(error),
-        updatedAt: this.now().toISOString()
-      };
-      await this.repository.saveOrder(rejectedOrder);
-      await this.publishOrderEvent("order.rejected", rejectedOrder);
+    const message = readErrorMessage(error);
+    const rejectedOrder: SpotOrderRecord = {
+      ...order,
+      status: "rejected",
+      restingQuantity: "0",
+      rejectedReason: `${reasonCode ? `${reasonCode}: ` : ""}${message}${releaseNote}`,
+      updatedAt: this.now().toISOString()
+    };
+    await this.repository.saveOrder(rejectedOrder);
+    await this.publishOrderEvent("order.rejected", rejectedOrder);
+    return rejectedOrder;
+  }
 
-      throw error;
+  /**
+   * Self-trade prevention (expire_maker / expire_both) removed these resting
+   * orders from the engine book: close them like a cancel and release the
+   * funds backing the removed quantity through the normal ledger path.
+   */
+  private async expireSelfTradeMakers(
+    expiredMakers: NonNullable<Awaited<ReturnType<MatchingEngineClient["submitOrder"]>>["expiredMakers"]>
+  ): Promise<void> {
+    for (const expired of expiredMakers) {
+      try {
+        const maker = await this.repository.findOrderById(expired.orderId);
+        if (!maker || !this.isOrderOpen(maker)) {
+          continue;
+        }
+
+        const releaseAmount = this.calculateDesiredRemainingLock({
+          ...maker,
+          restingQuantity: this.normalizeQuantity(maker.market, expired.quantity)
+        });
+        const cancelledAt = this.now().toISOString();
+        const expiredOrder: SpotOrderRecord = {
+          ...maker,
+          restingQuantity: "0",
+          status: "cancelled",
+          rejectedReason: expired.reason,
+          cancelledAt,
+          updatedAt: cancelledAt
+        };
+        await this.repository.saveOrder(expiredOrder);
+        if (compareAmounts(releaseAmount, "0") > 0) {
+          await this.ledgerClient.releaseBalance({
+            accountId: maker.accountId,
+            assetCode: maker.lockAssetCode,
+            referenceType: "spot_order",
+            referenceId: maker.orderId,
+            amount: releaseAmount
+          });
+        }
+        await this.publishOrderEvent("order.cancelled", expiredOrder);
+      } catch (error) {
+        console.warn(`self-trade expiry of order ${expired.orderId} failed: ${readErrorMessage(error)}`);
+      }
     }
   }
 
@@ -247,6 +434,15 @@ export class OrderApplicationService {
     const order = await this.repository.findOrderById(command.orderId);
     if (!order || order.userId !== command.userId) {
       throw new OrderServiceError("ORDER_NOT_FOUND", 404, `Order ${command.orderId} not found`);
+    }
+
+    if (order.status === "pending_trigger") {
+      const cancelled = await this.cancelPendingStopOrder(order);
+      if (cancelled) {
+        return cancelled;
+      }
+      // Lost the race against the trigger: cancel whatever it became.
+      return this.cancelOrder(command);
     }
 
     if (!this.isOrderOpen(order)) {
@@ -304,6 +500,30 @@ export class OrderApplicationService {
       updatedAt: cancelledAt
     };
     await this.repository.saveOrder(cancelledOrder);
+    await this.publishOrderEvent("order.cancelled", cancelledOrder);
+    return cancelledOrder;
+  }
+
+  /** Untriggered stop orders never reached the engine: release the whole freeze. */
+  private async cancelPendingStopOrder(order: SpotOrderRecord): Promise<SpotOrderRecord | null> {
+    const cancelledAt = this.now().toISOString();
+    const cancelledOrder: SpotOrderRecord = {
+      ...order,
+      restingQuantity: "0",
+      status: "cancelled",
+      cancelledAt,
+      updatedAt: cancelledAt
+    };
+    if (!(await this.repository.saveOrderIfStatus(cancelledOrder, "pending_trigger"))) {
+      return null;
+    }
+
+    await this.ledgerClient.releaseBalance({
+      accountId: order.accountId,
+      assetCode: order.lockAssetCode,
+      referenceType: "spot_order",
+      referenceId: order.orderId
+    });
     await this.publishOrderEvent("order.cancelled", cancelledOrder);
     return cancelledOrder;
   }
@@ -541,12 +761,17 @@ export class OrderApplicationService {
   private buildTrade(
     takerOrder: SpotOrderRecord,
     makerOrder: SpotOrderRecord,
-    match: Awaited<ReturnType<MatchingEngineClient["submitOrder"]>>["trades"][number]
+    match: Awaited<ReturnType<MatchingEngineClient["submitOrder"]>>["trades"][number],
+    feeTiers: Map<string, UserFeeTier> = new Map()
   ): SpotTradeRecord {
     const buyerOrder = takerOrder.side === "buy" ? takerOrder : makerOrder;
     const sellerOrder = takerOrder.side === "sell" ? takerOrder : makerOrder;
     const price = this.normalizePrice(takerOrder.market, match.price);
     const quantity = this.normalizeQuantity(takerOrder.market, match.quantity);
+    const sellerLiquidity = makerOrder.orderId === sellerOrder.orderId ? "maker" : "taker";
+    const buyerLiquidity = makerOrder.orderId === buyerOrder.orderId ? "maker" : "taker";
+    const sellerTier = feeTiers.get(sellerOrder.userId);
+    const buyerTier = feeTiers.get(buyerOrder.userId);
 
     return {
       tradeId: createStableUuid(`trade:${match.executionId}`),
@@ -561,9 +786,13 @@ export class OrderApplicationService {
       sellerUserId: sellerOrder.userId,
       buyerAccountId: buyerOrder.accountId,
       sellerAccountId: sellerOrder.accountId,
-      // Maker / taker rate per side; each side pays in the asset it receives.
-      sellerFeeRate: this.resolveFeeRate(takerOrder.market, makerOrder.orderId, sellerOrder.orderId),
-      buyerFeeRate: this.resolveFeeRate(takerOrder.market, makerOrder.orderId, buyerOrder.orderId),
+      // Maker / taker rate per side, from each user's VIP tier (min(tier,
+      // market)); each side pays in the asset it receives. Rate and tier are
+      // recorded so settlement / replay never re-resolve them.
+      sellerFeeRate: this.resolveFeeRate(takerOrder.market, sellerLiquidity, sellerTier),
+      buyerFeeRate: this.resolveFeeRate(takerOrder.market, buyerLiquidity, buyerTier),
+      ...(sellerTier ? { sellerFeeTier: sellerTier.tier } : {}),
+      ...(buyerTier ? { buyerFeeTier: buyerTier.tier } : {}),
       executionId: match.executionId,
       executionBatchId: match.executionBatchId,
       executionSequence: match.executionSequence,
@@ -578,7 +807,8 @@ export class OrderApplicationService {
   private buildRecoveryPlan(
     takerOrder: SpotOrderRecord,
     result: Awaited<ReturnType<MatchingEngineClient["submitOrder"]>>,
-    makerOrders: Map<string, SpotOrderRecord>
+    makerOrders: Map<string, SpotOrderRecord>,
+    feeTiers: Map<string, UserFeeTier> = new Map()
   ): RecoveryPlan {
     const normalizedResult = this.normalizeMatchingResult(takerOrder.market, result);
     const updatedAt = this.now().toISOString();
@@ -592,7 +822,7 @@ export class OrderApplicationService {
         );
       }
 
-      const trade = this.buildTrade(takerOrder, makerOrder, match);
+      const trade = this.buildTrade(takerOrder, makerOrder, match, feeTiers);
       return {
         trade,
         makerNextOrder: this.buildMakerOrderAfterTrade(
@@ -680,6 +910,8 @@ export class OrderApplicationService {
     } else if (compareAmounts(filledQuantity, "0") > 0) {
       status = "cancelled";
       cancelledAt = updatedAt;
+      // e.g. stp_expired_taker: the unfilled rest was expired by the engine.
+      rejectedReason = result.reason;
     } else {
       status = "rejected";
       rejectedReason = result.reason ?? "Order was cancelled by matching engine";
@@ -784,15 +1016,38 @@ export class OrderApplicationService {
 
   private resolveFeeRate(
     market: SpotMarket,
-    makerOrderId: string,
-    sideOrderId: string
+    liquidity: "maker" | "taker",
+    tier: UserFeeTier | undefined
   ): string {
     const definition = getSpotMarketDefinition(market);
     if (!definition) {
       throw new OrderServiceError("UNSUPPORTED_MARKET", 400, `Market ${market} is not supported`);
     }
 
-    return makerOrderId === sideOrderId ? definition.makerFeeRate : definition.takerFeeRate;
+    return effectiveFeeRate(tier, definition, liquidity);
+  }
+
+  /**
+   * Resolves the VIP tier of the taker and every maker before trades are built.
+   * Runs after the engine already matched, so a failure must not fail the
+   * order: fall back to the market default rates (no tier recorded).
+   */
+  private async resolveFeeTiers(
+    takerOrder: SpotOrderRecord,
+    makerOrders: Map<string, SpotOrderRecord>
+  ): Promise<Map<string, UserFeeTier>> {
+    if (!this.feeTierResolver) {
+      return new Map();
+    }
+    try {
+      return await this.feeTierResolver.resolveMany([
+        takerOrder.userId,
+        ...[...makerOrders.values()].map((order) => order.userId)
+      ]);
+    } catch (error) {
+      console.warn(`fee tier resolution failed, using market default rates: ${readErrorMessage(error)}`);
+      return new Map();
+    }
   }
 
   private async publishTradeEvents(
@@ -902,13 +1157,18 @@ export class OrderApplicationService {
       market: order.market,
       side: order.side,
       type: order.type,
-      price: order.type === "market" ? null : order.price,
+      price: engineOrderType(order.type) === "market" ? null : order.price,
       quantity: order.quantity,
       filledQuantity: order.filledQuantity,
       restingQuantity: order.restingQuantity,
       timeInForce: order.timeInForce,
       status: order.status,
-      createdAt: order.createdAt
+      createdAt: order.createdAt,
+      ...(order.postOnly ? { postOnly: true } : {}),
+      ...(order.stpMode ? { stpMode: order.stpMode } : {}),
+      ...(order.triggerPrice ? { triggerPrice: order.triggerPrice } : {}),
+      ...(order.triggeredAt ? { triggeredAt: order.triggeredAt } : {}),
+      ...(order.rejectedReason ? { rejectedReason: order.rejectedReason } : {})
     };
   }
 
@@ -928,6 +1188,8 @@ export class OrderApplicationService {
       sellerAccountId: trade.sellerAccountId,
       sellerFeeRate: trade.sellerFeeRate,
       buyerFeeRate: trade.buyerFeeRate,
+      ...(trade.sellerFeeTier ? { sellerFeeTier: trade.sellerFeeTier } : {}),
+      ...(trade.buyerFeeTier ? { buyerFeeTier: trade.buyerFeeTier } : {}),
       executedAt: trade.executedAt,
       executionId: trade.executionId,
       executionBatchId: trade.executionBatchId,
@@ -1009,6 +1271,8 @@ export class OrderApplicationService {
                 sellerAccountId: trade.sellerAccountId,
                 sellerFeeRate: trade.sellerFeeRate,
                 buyerFeeRate: trade.buyerFeeRate,
+                sellerFeeTier: trade.sellerFeeTier,
+                buyerFeeTier: trade.buyerFeeTier,
                 executionId: trade.executionId,
                 executionBatchId: trade.executionBatchId,
                 executionSequence: trade.executionSequence,
@@ -1198,7 +1462,7 @@ export class OrderApplicationService {
 
       const openOrders = [...acceptedOrders, ...partiallyFilledOrders]
         .filter((order) => compareAmounts(order.restingQuantity, "0") > 0)
-        .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+        .sort((left, right) => bookTimeOf(left).localeCompare(bookTimeOf(right)));
 
       await this.matchingEngineClient.resetBook({ market });
       for (const openOrder of openOrders) {
@@ -1208,7 +1472,8 @@ export class OrderApplicationService {
           side: openOrder.side,
           price: openOrder.price,
           quantity: openOrder.restingQuantity,
-          createdAt: openOrder.createdAt
+          createdAt: bookTimeOf(openOrder),
+          ownerId: openOrder.accountId
         });
       }
       await this.persistAutomationExecutionSafely({
@@ -1264,8 +1529,35 @@ export class OrderApplicationService {
   }
 }
 
+/**
+ * Time priority of an order in the book: a triggered stop order queues from
+ * the moment it was triggered, not from when it was placed.
+ */
+export function bookTimeOf(order: Pick<SpotOrderRecord, "createdAt" | "triggeredAt">): string {
+  return order.triggeredAt ?? order.createdAt;
+}
+
 function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown order error";
+}
+
+/** Reason code stored on orders rejected because the ledger freeze failed. */
+export const ORDER_FREEZE_FAILED = "ORDER_FREEZE_FAILED";
+
+function buildPreMatchingError(
+  order: SpotOrderRecord,
+  code: string,
+  error: unknown
+): OrderServiceError {
+  // Keep upstream 4xx (e.g. insufficient balance) as a client error; anything
+  // else means a dependency failed.
+  const upstreamStatus = error instanceof OrderServiceError ? error.statusCode : 0;
+  const statusCode = upstreamStatus >= 400 && upstreamStatus < 500 ? upstreamStatus : 502;
+  return new OrderServiceError(
+    code,
+    statusCode,
+    `Order ${order.orderId} rejected: balance freeze failed: ${readErrorMessage(error)}`
+  );
 }
 
 export function createStableUuid(value: string): string {

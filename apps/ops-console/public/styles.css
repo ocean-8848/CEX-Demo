@@ -1211,3 +1211,20 @@ code.wrap {
 .data-table tr.row-highlight td {
   background: var(--accent-soft);
 }
+
+/* ------------------------------------------------- 钱包与储备金 (treasury) */
+
+.treasury-explain {
+  margin: 0;
+  padding: 12px 16px 12px 34px;
+  border-top: 1px solid var(--border);
+}
+
+#treasury-transfers .button-row {
+  display: inline-flex;
+  gap: 6px;
+}
+
+#treasury-holdings code {
+  font-family: var(--mono);
+}

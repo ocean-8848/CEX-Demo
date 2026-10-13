@@ -28,6 +28,7 @@ import {
 import { useOpsAction, useOpsQuery } from "../state/hooks.js";
 import { useSession } from "../state/session.js";
 import { AssetOptions } from "../components/market-options.js";
+import { RISK_LEVEL_OPTIONS, RiskBadge, RiskReasonList } from "../components/risk-badge.js";
 
 const PAGE_SIZE = 20;
 
@@ -52,6 +53,8 @@ interface ApprovalProgress {
   required: number;
   approvals: Array<{ operatorId: string; approvedAt?: string; note?: string }>;
   threshold?: string;
+  /** "risk_high" when KYT (not the amount) required the second approver. */
+  reason?: string;
 }
 
 /** M5-2: reads the dual-approval policy and approvals wallet-service stores in metadata. */
@@ -70,7 +73,8 @@ export function approvalProgress(row: WithdrawalRecord | undefined): ApprovalPro
   return {
     required: policy.requiredApprovals === 2 ? 2 : 1,
     approvals,
-    threshold: typeof policy.threshold === "string" ? policy.threshold : undefined
+    threshold: typeof policy.threshold === "string" ? policy.threshold : undefined,
+    reason: typeof policy.reason === "string" ? policy.reason : undefined
   };
 }
 
@@ -179,14 +183,15 @@ export function WithdrawalsPage(props: { initialId?: string }) {
   const [status, setStatus] = useState("");
   const [assetCode, setAssetCode] = useState("");
   const [userId, setUserId] = useState("");
+  const [riskLevel, setRiskLevel] = useState("");
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
   const [detailId, setDetailId] = useState<string | undefined>(props.initialId);
 
   const path =
     tab === "queue"
-      ? `/withdrawals/review-queue${qs({ assetCode, userId, limit: PAGE_SIZE, offset })}`
-      : `/withdrawals${qs({ status, assetCode, userId, limit: PAGE_SIZE, offset })}`;
+      ? `/withdrawals/review-queue${qs({ assetCode, userId, riskLevel, limit: PAGE_SIZE, offset })}`
+      : `/withdrawals${qs({ status, assetCode, userId, riskLevel, limit: PAGE_SIZE, offset })}`;
   const query = useOpsQuery<Paged<WithdrawalRecord>>(path, { refreshMs: 10_000 });
   const review = useWithdrawalReview(() => {
     setSelected([]);
@@ -238,6 +243,12 @@ export function WithdrawalsPage(props: { initialId?: string }) {
               <option value="">全部币种</option>
               <AssetOptions />
             </select>
+            <select value={riskLevel} onChange={(event) => { setRiskLevel(event.target.value); setOffset(0); }} aria-label="风险等级" id="withdrawal-risk-filter">
+              <option value="">全部风险</option>
+              {RISK_LEVEL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
             <input
               placeholder="按 userId 过滤"
               value={userId}
@@ -288,6 +299,7 @@ export function WithdrawalsPage(props: { initialId?: string }) {
                     <th className="num">数量</th>
                     <th className="num">手续费</th>
                     <th>目标地址</th>
+                    <th>风险</th>
                     <th>规则校验</th>
                     <th>状态</th>
                     {tab === "queue" ? <th className="num">操作</th> : null}
@@ -314,6 +326,9 @@ export function WithdrawalsPage(props: { initialId?: string }) {
                         <td className="num"><Amount value={row.amount} asset={row.assetCode} /></td>
                         <td className="num muted">{formatAmount(row.fee)}</td>
                         <td><IdLink id={row.toAddress} head={8} tail={6} /></td>
+                        <td title={(row.riskReasons ?? []).map((reason) => reason.message).join("\n")}>
+                          <RiskBadge level={row.riskLevel} score={row.riskScore} />
+                        </td>
                         <td>
                           <span className="rule-tags">
                             <span className={validation.requireTwoFactor ? "rule on" : "rule"}>2FA</span>
@@ -443,7 +458,9 @@ function WithdrawalDrawer(props: {
                   双人复核 <ApprovalBadge row={data} />
                 </h4>
                 <p className="muted small">
-                  金额超过 {progress.threshold ?? "--"} {data.assetCode ?? ""} 的提现需要两名不同运营人员批准。
+                  {progress.reason === "risk_high"
+                    ? "KYT 风险等级为高：无论金额大小都需要两名不同运营人员批准。"
+                    : `金额超过 ${progress.threshold ?? "--"} ${data.assetCode ?? ""} 的提现需要两名不同运营人员批准。`}
                 </p>
                 {progress.approvals.length === 0 ? (
                   <span className="muted">尚无批准</span>
@@ -487,6 +504,16 @@ function WithdrawalDrawer(props: {
                 </Button>
               </div>
             ) : null}
+
+            <section id="withdrawal-risk">
+              <h4>
+                地址风险（KYT） <RiskBadge level={data.riskLevel} score={data.riskScore} />
+              </h4>
+              <RiskReasonList reasons={data.riskReasons} />
+              <p className="muted small">
+                规则评分：黑名单 → 拦截；混币 / 高风险标签 +70；首次地址 +10、首次且大额 +40、地址簿新地址 +30；白名单或曾成功提现的地址不加分。≥60 高风险（双人复核），≥30 中风险。
+              </p>
+            </section>
 
             {pending ? (
               <section>

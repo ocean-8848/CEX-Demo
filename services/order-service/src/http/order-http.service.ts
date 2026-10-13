@@ -9,6 +9,7 @@ import {
   type TradeEventVersionGate
 } from "@web3-cex/domain";
 
+import { FeeTierService } from "../application/fee-tier-service.js";
 import { OrderApplicationService, createStableUuid } from "../application/order-application-service.js";
 import {
   buildOrderLockExpectations,
@@ -16,6 +17,8 @@ import {
 } from "../application/order-lock-expectations.js";
 import { OrderOpsService } from "../application/order-ops-service.js";
 import { OrderRecoveryWorker } from "../application/order-recovery-worker.js";
+import { StopOrderTriggerWorker } from "../application/stop-order-trigger-worker.js";
+import { RiskStopTriggerGate } from "../application/stop-trigger-gate.js";
 import { OrderServiceError } from "../domain/errors.js";
 import type {
   MaintainOrderTradeEventStreamCommand,
@@ -32,7 +35,14 @@ import type {
   ListSpotOrderRecoveryJobsQuery,
   ListSpotTradesQuery
 } from "../domain/types.js";
+import type { SurveillanceDataSource } from "../domain/surveillance-data.js";
+import { InMemoryFeeTierRepository } from "../infrastructure/in-memory-fee-tier-repository.js";
 import { InMemoryOrderRepository } from "../infrastructure/in-memory-order-repository.js";
+import { PostgresFeeTierRepository } from "../infrastructure/postgres-fee-tier-repository.js";
+import {
+  PostgresSurveillanceDataSource,
+  RepositorySurveillanceDataSource
+} from "../infrastructure/surveillance-data-sources.js";
 import { HttpLedgerClient } from "../infrastructure/http-ledger-client.js";
 import { HttpRiskClient } from "../infrastructure/http-risk-client.js";
 import { HttpSettlementClient } from "../infrastructure/http-settlement-client.js";
@@ -45,8 +55,13 @@ import { TcpMatchingEngineClient } from "../infrastructure/tcp-matching-engine-c
 @Injectable()
 export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
   private readonly applicationService: OrderApplicationService;
+  /** A7 VIP fee tiers (resolution, overrides, audit). */
+  readonly feeTiers: FeeTierService;
+  /** A9 read-only activity window for risk-service surveillance. */
+  readonly surveillanceData: SurveillanceDataSource;
   private readonly opsService: OrderOpsService;
   private readonly recoveryWorker: OrderRecoveryWorker;
+  private readonly stopOrderTriggerWorker: StopOrderTriggerWorker;
   private readonly eventPublisher?: OrderEventPublisher;
   private readonly pool?: Pool;
   private readonly redisClient?: RedisClientType;
@@ -108,6 +123,15 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
             return new PostgresOrderRepository(this.pool, this.pool);
           })();
 
+    this.feeTiers = new FeeTierService(
+      this.pool
+        ? new PostgresFeeTierRepository(this.pool)
+        : new InMemoryFeeTierRepository(() => repository.listTrades({})),
+      { cacheMs: Number(process.env.ORDER_FEE_TIER_CACHE_MS ?? "30000") }
+    );
+    this.surveillanceData = this.pool
+      ? new PostgresSurveillanceDataSource(this.pool)
+      : new RepositorySurveillanceDataSource(repository);
     this.lockSource = repository;
 
     const redisUrl = process.env.ORDER_EVENT_REDIS_URL ?? "redis://127.0.0.1:6379";
@@ -146,7 +170,12 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
       {
         settlementMode: this.settlementMode,
         tradeEventVersionGate: this.tradeEventVersionGate,
-        eventPublisher: this.eventPublisher
+        eventPublisher: this.eventPublisher,
+        feeTierResolver: process.env.ORDER_FEE_TIERS_ENABLED === "false" ? undefined : this.feeTiers,
+        stopTriggerGate: new RiskStopTriggerGate(
+          process.env.RISK_SERVICE_BASE_URL ?? "http://127.0.0.1:3008",
+          { cacheMs: Number(process.env.CONTROL_SWITCH_CACHE_MS ?? "2000") }
+        )
       }
     );
     this.opsService = new OrderOpsService(
@@ -166,6 +195,9 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
         process.env.ORDER_RECOVERY_WORKER_ID?.trim() ||
         `order-recovery:http:${typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Date.now()}`
     });
+    this.stopOrderTriggerWorker = new StopOrderTriggerWorker(this.applicationService, {
+      pollIntervalMs: Number(process.env.ORDER_STOP_TRIGGER_POLL_INTERVAL_MS ?? "1000")
+    });
   }
 
   async onModuleInit(): Promise<void> {
@@ -181,6 +213,8 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
         void this.syncEngineState();
       }, engineSyncIntervalMs);
     }
+    // Stop orders: watch the last trade price and submit triggered orders.
+    this.stopOrderTriggerWorker.start();
     if (process.env.ORDER_RECOVERY_RUN_FOREVER === "true") {
       const intervalMs = Number(process.env.ORDER_RECOVERY_POLL_INTERVAL_MS ?? "5000");
       this.recoveryTimer = setInterval(() => {
@@ -207,6 +241,7 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.stopOrderTriggerWorker.stop();
     if (this.engineSyncTimer) {
       clearInterval(this.engineSyncTimer);
       this.engineSyncTimer = undefined;
@@ -409,7 +444,15 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getOpsOverview(market: Parameters<OrderOpsService["getOverview"]>[0]) {
-    return this.opsService.getOverview(market);
+    return {
+      ...(await this.opsService.getOverview(market)),
+      stopTrigger: this.stopOrderTriggerWorker.getStatus()
+    };
+  }
+
+  /** Runs one stop-trigger pass immediately (ops / tests); the worker also polls. */
+  async runStopOrderTriggers() {
+    return this.stopOrderTriggerWorker.runOnce();
   }
 
   async getOpsAnomalies(market: Parameters<OrderOpsService["getAnomalies"]>[0]) {

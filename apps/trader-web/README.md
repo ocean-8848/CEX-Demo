@@ -13,14 +13,17 @@
 | 路由 | 页面 | 说明 |
 | --- | --- | --- |
 | `#/` | 首页 | 实时行情卡片 + 迷你走势、「一笔订单的旅程」交互式架构图、上手三步 |
-| `#/trade/ETH-USDT` | 交易 | 交易对选择、24h 行情、K 线（lightweight-charts）、订单簿（深度条，点击价格填单）、最新成交、下单面板（限价 / 市价、GTC / IOC / FOK、百分比仓位、手续费预估）、当前委托 / 历史委托 / 成交记录 / 资产 |
+| `#/trade/ETH-USDT` | 交易 | 交易对选择、24h 行情、K 线（lightweight-charts）、订单簿（深度条，点击价格填单）、最新成交、下单面板（限价 / 市价 / 止损（止损限价、止损市价 + 触发价）、GTC / IOC / FOK、只做 Maker 勾选、STP 模式、百分比仓位、按本人 VIP 等级费率的手续费预估）、当前委托（含触发价、「待触发」状态）/ 历史委托（含拒绝 / 过期原因）/ 成交记录（手续费列显示成交时记录的等级与费率）/ 资产 |
 | `#/assets` | 资产 | 总资产估值、余额（可用 / 冻结）、充值地址、测试水龙头（确认数进度条）、提现（地址簿、预校验、冻结金额说明）、充提记录与状态步骤条 |
 | `#/assets/ledger` | 资金流水 | 账本流水逐行展示（充值入账 / 提现冻结·出账·解冻 / 下单冻结·委托解冻 / 成交支出·收入 / 调账），含手续费、变动后余额（总额，悬停看可用 / 冻结）、来源链接与成交的 T 型账户入口；按币种 / 类型（含手续费）/ 日期筛选、分页；「导出 CSV」导出当前筛选的全部行（UTF-8 BOM + CRLF，金额为纯小数字符串，公式注入防护） |
+| `#/assets/reserves` | 储备金证明 | 最新快照的逐币种储备 vs 用户负债与储备率（含充值地址 / 热 / 冷分布条）、Merkle 根与叶子数；「我的叶子」（计入的余额、盐值、盐化用户哈希、叶子哈希）；「开始验证」在浏览器内用 Web Crypto SHA-256 从叶子逐层算到根并逐步展示，与公布值比对；说明能证明 / 不能证明什么。入口：资产页「储备金证明」按钮、用户菜单 |
 | `#/orders` | 订单中心 | 全部委托与成交明细、按交易对 / 状态筛选、订单生命周期说明 |
-| `#/account` | 账户 | 个人信息、会话；二次验证（扫码绑定 TOTP、一次性恢复码、凭动态码关闭 / 重新生成恢复码）；身份认证与提现限额（KYC 等级、各币种单笔 / 每日限额与今日已用、冷却期提示、演示 KYC 申请表）；API Key 创建 / 吊销（密钥只显示一次）、HMAC 签名调用示例 |
+| `#/account` | 账户 | 个人信息、会话；二次验证（扫码绑定 TOTP、一次性恢复码、凭动态码关闭 / 重新生成恢复码）；身份认证与提现限额（KYC 等级、各币种单笔 / 每日限额与今日已用、冷却期提示、演示 KYC 申请表）；手续费等级（当前 VIP 等级与来源、Maker / Taker 费率、30 日成交量、距下一等级的差额与进度条、等级阶梯表、各市场实际费率）；设备管理（登录过的设备、本机 / 新设备标记、「退出该设备」吊销其会话）与登录记录（最近 20 次，含失败与锁定）；API Key 创建 / 吊销（密钥只显示一次）、HMAC 签名调用示例 |
 | `#/login` | 登录 / 注册 | 含「一键登录演示账户」；开启 2FA 后需要动态码，也可输入恢复码 |
 
-二维码由 `src/client/lib/qr.ts` 在浏览器本地生成（无第三方依赖，ISO 18004 字节模式 + Reed-Solomon，`src/__tests__/qr.test.ts` 做编解码往返与格式位校验），2FA 密钥不会发给任何第三方二维码服务。提现面板会提前展示当前币种限额、是否必须填写动态码和冷却期；`WITHDRAWAL_2FA_NOT_ENABLED` 映射为「请先在账户页开启二次验证」，`WITHDRAWAL_SECURITY_COOLDOWN` 显示剩余等待时间。
+二维码由 `src/client/lib/qr.ts` 在浏览器本地生成（无第三方依赖，ISO 18004 字节模式 + Reed-Solomon，`src/__tests__/qr.test.ts` 做编解码往返与格式位校验），2FA 密钥不会发给任何第三方二维码服务。提现面板会提前展示当前币种限额、是否必须填写动态码和冷却期；`WITHDRAWAL_2FA_NOT_ENABLED` 映射为「请先在账户页开启二次验证」，`WITHDRAWAL_SECURITY_COOLDOWN` / `WITHDRAWAL_NEW_DEVICE_LOCK` 显示剩余等待时间，`WITHDRAWAL_ADDRESS_BLOCKED` 提示该地址已被平台风控拦截，`LOGIN_TEMPORARILY_LOCKED` 提示登录失败次数过多。预校验结果附带 KYT 地址风险等级，提现记录里被黑名单拦截的条目带「风控拦截」徽标，铃铛把 `security.new_device_login` 显示为「新设备登录」。
+
+登录时页面从 `src/client/lib/device.ts` 取出（或首次生成）保存在 localStorage `web3-cex:device-id` 的随机设备 ID 一并提交，Web Host 代理登录时把浏览器地址放进 `X-Forwarded-For`，identity-service 据此记录登录事件和识别新设备；这个 ID 不是设备指纹，清除站点数据后浏览器会被当作新设备。
 
 运营紧急开关：页面每 15 秒读取公开接口 `GET /api/gateway/system/controls`（`src/client/state/system-controls.ts`）。当前币种提现被暂停（全站或单币种，含对账熔断）时，提现面板显示红色提示并禁用「预校验 / 提交提现」；API 写入冻结（只读模式）时提现面板与下单表单都显示提示并禁用提交，撤单不受影响。网关仍会以 `409 WITHDRAWALS_PAUSED / ASSET_WITHDRAWALS_PAUSED / API_WRITE_FROZEN` 拒绝，错误提示已映射为中文。
 
@@ -30,6 +33,7 @@
 
 - **成交分录 / T 型账户**：交易页和订单中心的「成交记录」中点击任意一行（或「T 型账户」按钮），弹窗展示这笔成交产生的全部账本分录：冻结消耗 → 结算中转账户、基础资产交割、计价资产交割、双边手续费。每个账户（我的现货账户 / 对手方 / 平台结算中转账户 / 平台手续费账户）画成一张 T 型账户（借 | 贷），并逐笔、逐资产校验借方合计 = 贷方合计（浏览器端用 bigint 重新计算，不只信服务端标记）。数据来自 `GET /api/gateway/trades/:tradeId/journals`，对手方不暴露任何 id。
 - **撮合过程回放**：打开学习模式后下单，抽屉顶部会逐步动画展示新订单如何按价格优先、时间优先吃掉对手盘：命中了哪几档、每档几笔挂单、成交价 × 数量、在哪一档因限价停止，以及剩余数量的去向（挂入订单簿 / IOC 撤销 / FOK 整单拒绝）。输入是下单瞬间的盘口快照 + 订单返回后 `GET /trades?orderId=` 查到的本单（taker）成交，不需要改撮合引擎；纯逻辑在 `src/client/lib/match-explain.ts`。
+- **只做 Maker / 自成交保护 / 止损单**：学习时间线会说明 post-only 检查、STP（同一账户的买卖单不互相成交）和撮合结果原因；止损单显示「止损单待触发」一步，说明订单暂存在 order-service、由触发器按最新成交价提交。原因码到中文的映射、类型标签和触发提示在 `src/client/lib/order-options.ts`（有单元测试）。
 - **引导场景**：`src/client/lib/tours.ts` 定义「登录演示账户」「完成第一笔交易」等分步场景，每一步根据交易所状态自动判定完成，由 `src/client/features/tour/tour-panel.tsx` 渲染。
 
 ## 代码结构
@@ -41,11 +45,12 @@ src/
 ├── main.ts
 └── client/
     ├── main.tsx / app.tsx    # 入口、路由与页面外壳
-    ├── lib/                  # 无 React 依赖的纯函数：api、records、router、types、notifications、statement（资金流水）、qr、tours、match-explain（撮合回放）、journals（T 型账户）（有单测）
+    ├── lib/                  # 无 React 依赖的纯函数：api、records、router、types、notifications、statement（资金流水）、qr、tours、match-explain（撮合回放）、journals（T 型账户）、fee-tier（VIP 费率）、por-verify（储备金证明的浏览器验证，SHA-256 实现可注入）（有单测）
     ├── state/
     │   ├── store.tsx         # 全局状态（useReducer）+ 业务动作 + REST 快照 + 双 WebSocket
     │   ├── socket.ts         # 指数退避自动重连的 WebSocket 封装
-    │   └── learn.ts          # 学习模式：服务说明与事件解释
+    │   ├── learn.ts          # 学习模式：服务说明与事件解释
+    │   └── fee-tier.ts       # useFeeTier：本人 VIP 等级（GET /api/gateway/fees/tier，成交数变化时刷新）
     ├── components/           # 页面布局（layout）、通知铃铛；通用 UI 组件与格式化函数来自 @web3-cex/web-ui
     └── features/             # home / trade / assets / orders / account / auth / learn / tour
 ```
@@ -66,6 +71,7 @@ pnpm test:trader-web:local                    # 对真实全栈跑端到端（�
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `PORT` | `3013` | |
+| `TRADER_WEB_BIND_HOST` | `127.0.0.1` | 监听地址；局域网访问时设为 `0.0.0.0` |
 | `TRADER_WEB_TITLE` | `Web3 CEX Trader` | |
 | `TRADER_WEB_GATEWAY_URL` | `http://127.0.0.1:3007` | |
 | `TRADER_WEB_MARKET_DATA_URL` | `http://127.0.0.1:3012` | |
@@ -96,5 +102,5 @@ pnpm test:trader-web:local                    # 对真实全栈跑端到端（�
 ## 延伸阅读
 
 - [03 账户、身份与安全](../../learning/03-account-identity-security.md)
-- [06 订单与撮合](../../learning/06-order-matching.md)、[05 账本](../../learning/05-ledger.md)
+- [06 订单与撮合](../../learning/06-order-matching.md)、[05 账本](../../learning/05-ledger.md)、[07 清算结算与手续费](../../learning/07-clearing-settlement-fees.md)
 - [演示走查](../../docs/demo-walkthrough.md)、[API 契约](../../docs/api-contracts.md)

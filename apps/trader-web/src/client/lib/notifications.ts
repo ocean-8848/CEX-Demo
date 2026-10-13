@@ -25,7 +25,19 @@ const COPY: Record<string, { title: string; detail: string; tone: NotificationTo
   "withdrawal.rejected": { title: "提现被驳回", detail: "冻结的资金已解冻回可用余额", tone: "negative" },
   "withdrawal.broadcasted": { title: "提现已广播上链", detail: "等待区块确认", tone: "neutral" },
   "withdrawal.confirmed": { title: "提现已完成", detail: "链上确认数已达标，资金已出账", tone: "positive" },
-  "deposit.credited": { title: "充值已到账", detail: "资金已记入现货账户可用余额", tone: "positive" }
+  "deposit.credited": { title: "充值已到账", detail: "资金已记入现货账户可用余额", tone: "positive" },
+  "security.new_device_login": {
+    title: "新设备登录",
+    detail: "如非本人操作，请在账户页「设备管理」退出该设备并修改密码",
+    tone: "negative"
+  }
+};
+
+/** KYT: a withdrawal rejected because the destination is blacklisted. */
+const RISK_BLOCKED_COPY = {
+  title: "提现被风控拦截",
+  detail: "目标地址命中平台风控黑名单，已自动拒绝，冻结资金已解冻",
+  tone: "negative" as const
 };
 
 export function notificationKey(record: NotificationRecord): string {
@@ -46,16 +58,23 @@ export function notificationLink(record: NotificationRecord): string | undefined
   if (orderId) {
     return `/orders?tab=history&highlight=${encodeURIComponent(orderId)}`;
   }
+  if (record.eventType?.startsWith("security.")) {
+    return "/account";
+  }
   return undefined;
 }
 
 export function describeNotification(record: NotificationRecord): NotificationView {
-  const copy = COPY[record.eventType ?? ""];
   const payload = record.payload ?? {};
+  const copy =
+    record.eventType === "withdrawal.rejected" && payload.riskLevel === "blocked"
+      ? RISK_BLOCKED_COPY
+      : COPY[record.eventType ?? ""];
   const amount = readString(payload.amount);
   const assetCode = readString(payload.assetCode);
   const amountText = amount ? `${formatAmount(amount, 8)} ${assetCode ?? ""}`.trim() : "";
-  const detail = [amountText, copy?.detail ?? record.body ?? ""].filter(Boolean).join(" · ");
+  const deviceText = readString(payload.deviceLabel);
+  const detail = [amountText, deviceText, copy?.detail ?? record.body ?? ""].filter(Boolean).join(" · ");
 
   return {
     key: notificationKey(record),

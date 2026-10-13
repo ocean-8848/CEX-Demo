@@ -17,3 +17,19 @@ export class LedgerError extends Error {
     this.name = "LedgerError";
   }
 }
+
+/**
+ * Raised by a repository when a journal insert hits the unique idempotency key
+ * (a concurrent request committed the same key first). The surrounding
+ * transaction is aborted; postJournal re-reads the winner and decides between
+ * an idempotent replay and a 409.
+ */
+export class DuplicateJournalIdempotencyKeyError extends LedgerError {
+  constructor(readonly idempotencyKey: string) {
+    super(
+      "DUPLICATE_IDEMPOTENCY_KEY",
+      `A journal with idempotency key ${idempotencyKey} already exists`
+    );
+    this.name = "DuplicateJournalIdempotencyKeyError";
+  }
+}

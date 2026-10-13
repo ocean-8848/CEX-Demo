@@ -128,10 +128,18 @@ export function demoMarketAssets(config = loadDemoConfig()) {
 }
 
 const RESET_TABLES = [
+  "proof_of_reserves_leaves",
+  "proof_of_reserves_snapshots",
+  "treasury_sweep_deposits",
+  "treasury_transfers",
   "risk_market_status_overrides",
   "risk_control_switches",
   "risk_control_switch_events",
   "ledger_reconciliation_runs",
+  "risk_surveillance_alert_events",
+  "risk_surveillance_alerts",
+  "spot_fee_tier_override_audit",
+  "spot_fee_tier_overrides",
   "ops_action_audit_logs",
   "wallet_notifications",
   "withdrawal_audit_logs",
@@ -159,6 +167,8 @@ const RESET_TABLES = [
   "ledger_journals",
   "balances",
   "accounts",
+  "identity_login_events",
+  "identity_user_devices",
   "identity_kyc_events",
   "identity_kyc_requests",
   "identity_two_factor_recovery_codes",
@@ -393,6 +403,15 @@ export async function bootstrapStandardDemo(
 
   await ensureDemoLiquidity(config);
 
+  // Custody layering: back the opening-balance seeding with on-chain hot / cold
+  // wallet funds so the wallet-vs-ledger reconciliation starts out covered.
+  try {
+    const { ensureTreasuryReserves } = await import("./treasury-demo-lib.mjs");
+    await ensureTreasuryReserves(config, { fundHot: true, referencePrefix: "demo_bootstrap" });
+  } catch (error) {
+    console.warn(`[bootstrap] treasury reserves not seeded: ${readErrorMessage(error)}`);
+  }
+
   const opsTwoFactor = generateTotpCode(DEMO_OPS.twoFactorSecret, new Date());
   return {
     status: "ok",
@@ -624,7 +643,9 @@ export async function ensureBalanceFloor(
     body: JSON.stringify({
       businessType: businessPrefix,
       businessId,
-      idempotencyKey: businessId,
+      // Each top-up moves a different amount; the ledger answers a reused key
+      // with a different payload with 409 DUPLICATE_IDEMPOTENCY_KEY.
+      idempotencyKey: `${businessId}:${now}`,
       traceId: `${businessPrefix}:${accountId}:${assetCode}`,
       description: `Seed ${assetCode} for ${accountId}`,
       entries: [

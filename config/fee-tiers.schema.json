@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://web3-cex.local/config/fee-tiers.schema.json",
+  "title": "Web3 CEX spot fee tiers (VIP) and market-maker programme",
+  "description": "Single source of truth for VIP fee tiers. Structural checks live here (editor support); cross-field rules (ascending thresholds, non-increasing rates, tier references, volume asset exists) are enforced by parseFeeTierConfig() in packages/domain.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "volumeAsset", "volumeWindowDays", "tiers"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "volumeAsset": {
+      "description": "Quote asset the trailing volume is measured in. Trades of markets quoted in another asset do not count.",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]{1,9}$"
+    },
+    "volumeWindowDays": {
+      "description": "Trailing window (days) of spot volume used to resolve the tier.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 365
+    },
+    "tiers": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/tier" }
+    },
+    "marketMakers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/marketMaker" }
+    }
+  },
+  "$defs": {
+    "decimal": { "type": "string", "pattern": "^(0|[1-9]\\d*)(\\.\\d+)?$" },
+    "tierCode": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,15}$" },
+    "tier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tier", "minVolume", "makerFeeRate", "takerFeeRate"],
+      "properties": {
+        "tier": { "$ref": "#/$defs/tierCode" },
+        "name": { "type": "string", "minLength": 1 },
+        "minVolume": { "$ref": "#/$defs/decimal" },
+        "makerFeeRate": { "$ref": "#/$defs/decimal" },
+        "takerFeeRate": { "$ref": "#/$defs/decimal" }
+      }
+    },
+    "marketMaker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userId", "label"],
+      "properties": {
+        "userId": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "feeTier": { "$ref": "#/$defs/tierCode" }
+      }
+    }
+  }
+}

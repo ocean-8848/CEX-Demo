@@ -657,6 +657,22 @@
   font-size: 12px;
 }
 
+.option-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.option-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
 .avail {
   display: flex;
   justify-content: space-between;
@@ -2651,4 +2667,183 @@
   .tour-highlight {
     animation: none;
   }
+}
+
+/* ------------------------------------------------------ proof of reserves */
+
+.reserves-page .form-error {
+  margin-bottom: 12px;
+}
+
+.reserves-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.reserves-note {
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.reserves-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.reserves-kv {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.reserves-kv div {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.reserves-kv dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.reserves-kv dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.reserves-chip {
+  display: inline-block;
+  margin: 0 6px 4px 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.reserve-bar {
+  display: flex;
+  width: 180px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+
+.reserve-bar-deposit {
+  background: var(--info);
+}
+
+.reserve-bar-hot {
+  background: var(--accent);
+}
+
+.reserve-bar-cold {
+  background: var(--up);
+}
+
+.por-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.por-step {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--up);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  animation: por-step-in 0.25s ease-out;
+}
+
+.por-step.bad {
+  border-left-color: var(--down);
+}
+
+.por-step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.por-step-mark {
+  color: var(--up);
+  font-weight: 700;
+}
+
+.por-step.bad .por-step-mark {
+  color: var(--down);
+}
+
+.por-step-message,
+.por-step-hash,
+.por-step-expected {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.por-step-expected {
+  color: var(--text-muted);
+}
+
+.por-verdict {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+}
+
+.por-verdict.ok {
+  background: var(--up-soft);
+  color: var(--up);
+}
+
+.por-verdict.bad {
+  background: var(--down-soft);
+  color: var(--down);
+}
+
+.reserves-explain {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+@keyframes por-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .reserves-kv div {
+    grid-template-columns: 1fr;
+  }
+
+  .reserve-bar {
+    width: 100px;
+  }
+}
+
+.reserves-page .mono {
+  font-family: var(--mono);
+  font-size: 12px;
 }

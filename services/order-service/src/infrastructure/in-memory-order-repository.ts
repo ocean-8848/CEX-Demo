@@ -35,7 +35,7 @@ export class InMemoryOrderRepository implements OrderRepository {
 
   async listOrdersForLockCheck(params: { orderIds: string[]; includeOpen: boolean }): Promise<SpotOrderRecord[]> {
     const wanted = new Set(params.orderIds);
-    const openStatuses = new Set(["accepted", "partially_filled", "pending_risk", "recovery_pending"]);
+    const openStatuses = new Set(["accepted", "partially_filled", "pending_trigger", "pending_risk", "recovery_pending"]);
     return [...this.orders.values()]
       .filter((order) => wanted.has(order.orderId) || (params.includeOpen && openStatuses.has(order.status)))
       .map((order) => ({ ...order }));
@@ -56,6 +56,18 @@ export class InMemoryOrderRepository implements OrderRepository {
   async saveOrder(order: SpotOrderRecord): Promise<void> {
     this.orders.set(order.orderId, order);
     this.idempotency.set(order.idempotencyKey, order.orderId);
+  }
+
+  async saveOrderIfStatus(
+    order: SpotOrderRecord,
+    expectedStatus: SpotOrderRecord["status"]
+  ): Promise<boolean> {
+    const current = this.orders.get(order.orderId);
+    if (!current || current.status !== expectedStatus) {
+      return false;
+    }
+    this.orders.set(order.orderId, order);
+    return true;
   }
 
   async listOrders(query: ListSpotOrdersQuery): Promise<SpotOrderRecord[]> {
@@ -82,6 +94,16 @@ export class InMemoryOrderRepository implements OrderRepository {
 
   async saveTrade(trade: SpotTradeRecord): Promise<void> {
     this.trades.set(trade.tradeId, trade);
+  }
+
+  async findLatestTrade(market: SpotMarket): Promise<SpotTradeRecord | null> {
+    let latest: SpotTradeRecord | null = null;
+    for (const trade of this.trades.values()) {
+      if (trade.market === market && (!latest || trade.executionSequence > latest.executionSequence)) {
+        latest = trade;
+      }
+    }
+    return latest;
   }
 
   async findTradeById(tradeId: string): Promise<SpotTradeRecord | null> {

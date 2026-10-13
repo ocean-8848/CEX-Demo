@@ -15,7 +15,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| [architecture.md](architecture.md) | 技术栈、服务分层、调用关系、三条主链时序图、与真实交易所的差异 |
+| [architecture.md](architecture.md) | 技术栈、服务分层、调用关系、三条主链时序图、冷热分层与储备金证明、与真实交易所的差异 |
 | [domain-model.md](domain-model.md) | 核心实体、状态机与不变量 |
 | [ledger-service-design.md](ledger-service-design.md) | 双分录账本、冻结生命周期、并发控制、对账与回放、定时对账与对账熔断 |
 | [event-catalog.md](event-catalog.md) | 服务间事件、生产者 / 消费者与投递语义 |
@@ -29,7 +29,7 @@
 - 接入：[api-gateway](../services/api-gateway/README.md)
 - 交易：[risk-service](../services/risk-service/README.md) · [order-service](../services/order-service/README.md) · [matching-engine](../engines/matching-engine) · [settlement-service](../services/settlement-service/README.md) · [market-data-service](../services/market-data-service/README.md)
 - 资金：[identity-service](../services/identity-service/README.md) · [wallet-service](../services/wallet-service/README.md) · [blockchain-indexer](../services/blockchain-indexer/README.md) · [custody-adapter](../services/custody-adapter/README.md) · [ledger-service](../services/ledger-service/README.md)
-- 配置与基础设施：[config/markets.json](../config/README.md) · [infra/local](../infra/local/README.md)
+- 配置与基础设施：[config/markets.json 与 fee-tiers.json](../config/README.md) · [infra/local](../infra/local/README.md)
 
 ## 推荐阅读顺序
 
