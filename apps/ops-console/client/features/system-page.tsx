@@ -18,11 +18,13 @@ import {
 } from "../components/kit.js";
 import { useMarketConfig, useOpsAction, useOpsQuery } from "../state/hooks.js";
 import { FaultLabTab } from "./fault-lab-tab.js";
+import { ControlsTab } from "./controls-tab.js";
+import { AlertRow, SeverityBadge, SeverityCounts } from "../components/severity.js";
 import { useSession } from "../state/session.js";
 import { MarketOptions } from "../components/market-options.js";
 
-type SystemTab = "alerts" | "custody" | "recovery" | "eventbus" | "automation" | "lab";
-const SYSTEM_TABS: SystemTab[] = ["alerts", "custody", "recovery", "eventbus", "automation", "lab"];
+type SystemTab = "alerts" | "custody" | "recovery" | "eventbus" | "automation" | "lab" | "controls";
+const SYSTEM_TABS: SystemTab[] = ["alerts", "custody", "recovery", "eventbus", "automation", "lab", "controls"];
 
 export function SystemPage() {
   // `#/system?tab=lab` opens a tab directly (trader-web guided scenarios link here).
@@ -32,7 +34,7 @@ export function SystemPage() {
   });
   return (
     <div className="page">
-      <PageHeader title="系统运维" subtitle="告警、托管通道、交易恢复队列、事件总线、自动化作业与故障注入实验室" />
+      <PageHeader title="系统运维" subtitle="告警（P1/P2/P3）、托管通道、交易恢复队列、事件总线、自动化作业、故障注入实验室与紧急开关" />
       <Tabs
         className="page-tabs"
         value={tab}
@@ -43,7 +45,8 @@ export function SystemPage() {
           { value: "recovery", label: "恢复队列" },
           { value: "eventbus", label: "事件总线" },
           { value: "automation", label: "自动化作业" },
-          { value: "lab", label: "实验室" }
+          { value: "lab", label: "实验室" },
+          { value: "controls", label: "紧急开关" }
         ]}
       />
       {tab === "alerts" ? <AlertsTab /> : null}
@@ -52,6 +55,7 @@ export function SystemPage() {
       {tab === "eventbus" ? <EventBusTab /> : null}
       {tab === "automation" ? <AutomationTab /> : null}
       {tab === "lab" ? <FaultLabTab /> : null}
+      {tab === "controls" ? <ControlsTab /> : null}
     </div>
   );
 }
@@ -61,7 +65,9 @@ const SOURCE_LABEL: Record<string, string> = {
   indexer: "链上观察 blockchain-indexer",
   custody: "托管 custody-adapter",
   wallet: "钱包 wallet-service",
-  trading: "交易域"
+  trading: "交易域",
+  reconciliation: "定时对账与熔断",
+  controls: "紧急开关 risk-service"
 };
 
 function AlertsTab() {
@@ -69,25 +75,51 @@ function AlertsTab() {
   return (
     <QueryView state={alerts}>
       {(data) => (
-        <div className="source-grid">
-          {data.sources.map((source) => (
-            <Panel
-              key={source.source}
-              title={SOURCE_LABEL[source.source] ?? source.source}
-              actions={<StatusBadge status={source.status} />}
-            >
-              {source.alerts.length === 0 ? (
-                <p className="muted">所有指标都在阈值内。</p>
-              ) : (
-                <ul className="alert-list">
-                  {source.alerts.map((alert) => (
-                    <li key={alert}><span>{alert}</span></li>
-                  ))}
-                </ul>
-              )}
-              <JsonView value={source.summary} label="指标明细" />
-            </Panel>
-          ))}
+        <div className="page-stack">
+          <Panel
+            title="全部告警（按级别排序）"
+            actions={<SeverityCounts counts={data.countsBySeverity} />}
+          >
+            {(data.items ?? []).length === 0 ? (
+              <p className="muted">所有数据源都在阈值内。</p>
+            ) : (
+              <ul className="alert-list" id="alerts-by-severity">
+                {(data.items ?? []).map((item, index) => (
+                  <AlertRow key={`${item.source}:${item.code}:${index}`} item={item} showSource />
+                ))}
+              </ul>
+            )}
+            <p className="muted small">
+              P1：资金正确性或资金出口（账实不一致、负余额、对账熔断），立即处理；P2：核心链路受损（结算失败 / 严重滞后、托管熔断、紧急开关开启、对账可疑）；P3：非核心（通知积压、队列偏长）。规则见 docs/security.md。
+            </p>
+          </Panel>
+          <div className="source-grid">
+            {data.sources.map((source) => (
+              <Panel
+                key={source.source}
+                title={SOURCE_LABEL[source.source] ?? source.source}
+                actions={
+                  <span className="panel-actions">
+                    <SeverityBadge severity={source.highestSeverity} />
+                    <StatusBadge status={source.status} />
+                  </span>
+                }
+              >
+                {source.alerts.length === 0 ? (
+                  <p className="muted">所有指标都在阈值内。</p>
+                ) : (
+                  <ul className="alert-list">
+                    {source.items
+                      ? source.items.map((item, index) => <AlertRow key={`${item.code}:${index}`} item={item} />)
+                      : source.alerts.map((alert) => (
+                          <li key={alert}><span>{alert}</span></li>
+                        ))}
+                  </ul>
+                )}
+                <JsonView value={source.summary} label="指标明细" />
+              </Panel>
+            ))}
+          </div>
         </div>
       )}
     </QueryView>

@@ -17,3 +17,4 @@ export * from "./infrastructure/postgres-order-repository.js";
 export * from "./infrastructure/postgres.js";
 export * from "./infrastructure/redis-order-event-publisher.js";
 export * from "./infrastructure/tcp-matching-engine-client.js";
+export * from "./application/order-lock-expectations.js";

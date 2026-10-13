@@ -1268,7 +1268,7 @@ function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown order error";
 }
 
-function createStableUuid(value: string): string {
+export function createStableUuid(value: string): string {
   const hex = createHash("sha256").update(value).digest("hex");
   const version = `5${hex.slice(13, 16)}`;
   const variant = ((parseInt(hex[16] ?? "0", 16) & 0x3) | 0x8).toString(16);

@@ -71,7 +71,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     layer: "交易层",
     summary: "下单前风控",
     detail:
-      "先确认市场处于交易中（运营在后台「市场管理」暂停的市场会以 MARKET_HALTED 拒绝新委托，撤单不受影响），再检查最小数量、价格/数量步长、价格偏离参考价是否超过 ±20%（参考价实时取最新成交价，无成交时取盘口中间价，行情不可用时才用 config/markets.json 的配置值），并计算需要冻结的金额（买单冻结计价币，卖单冻结基础币）。市场规则全部来自 config/markets.json。",
+      "先确认平台没有开启 API 写入冻结（运营紧急开关，开启时以 API_WRITE_FROZEN 拒绝新委托）、市场处于交易中（运营在后台「市场管理」暂停的市场会以 MARKET_HALTED 拒绝新委托，撤单不受影响），再检查最小数量、价格/数量步长、价格偏离参考价是否超过 ±20%（参考价实时取最新成交价，无成交时取盘口中间价，行情不可用时才用 config/markets.json 的配置值），并计算需要冻结的金额（买单冻结计价币，卖单冻结基础币）。市场规则全部来自 config/markets.json。",
     code: "services/risk-service"
   },
   "order-service": {
@@ -89,7 +89,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     layer: "资金层",
     summary: "双分录账本",
     detail:
-      "所有资金变动都是一笔借贷平衡的分录（journal）。余额分为可用（available）和冻结（locked）：下单冻结、撤单解冻、成交消耗冻结并入账对手资产。",
+      "所有资金变动都是一笔借贷平衡的分录（journal）。余额分为可用（available）和冻结（locked）：下单冻结、撤单解冻、成交消耗冻结并入账对手资产。后台定时对账：余额快照 = 分录净额 − 活跃冻结，委托仍需冻结的金额 = 账本委托冻结；不平时自动暂停该币种提现（对账熔断）。",
     code: "services/ledger-service"
   },
   "matching-engine": {
@@ -124,7 +124,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     layer: "资金层",
     summary: "充值地址、充提记录、提现审核",
     detail:
-      "为用户分配充值地址；充值达到确认数后通知账本入账；提现先校验 2FA、KYC 分级限额与安全冷却期，再冻结资金，经运营审核（大额需两人复核）后交给托管广播。",
+      "为用户分配充值地址；充值达到确认数后通知账本入账；提现先检查运营紧急开关（全站 / 单币种提现暂停，对账不平时会自动熔断暂停该币种），再校验 2FA、KYC 分级限额与安全冷却期，然后冻结资金，经运营审核（大额需两人复核）后交给托管广播。",
     code: "services/wallet-service"
   },
   "blockchain-indexer": {

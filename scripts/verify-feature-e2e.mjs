@@ -3,7 +3,7 @@
 //
 //   node ./scripts/verify-feature-e2e.mjs [section...]
 //
-// Sections: apikey, websocket, fees, sol, notifications, security, lab.
+// Sections: apikey, websocket, fees, sol, notifications, security, lab, controls.
 // Without arguments all sections run. The demo trader is restored afterwards
 // (2FA disabled, faults recovered); KYC tier and balances change, which
 // `pnpm demo:prepare` resets.
@@ -391,6 +391,182 @@ const sections = {
 
     assert.equal((await ops(t, "/lab/recover-all", {})).status, 201);
     return "settlement pause/resume · custody failover · reorg ack · engine reset + self-heal";
+  },
+
+  /**
+   * A1–A3: emergency switches (asset / global withdrawal pause, API write
+   * freeze), RBAC + reason + audit, P1/P2/P3 alerts, scheduled reconciliation
+   * with order-vs-lock, and the reconciliation circuit breaker (lab drift).
+   * Every switch is turned off again in `finally`.
+   */
+  async controls(ctx) {
+    const t = ctx.opsToken;
+    const breakerAsset = process.env.E2E_CONTROLS_BREAKER_ASSET ?? CONFIG_LISTED_MARKET.split("-")[0];
+    const toAddress = config.withdrawalAddress ?? DEMO_WITHDRAWAL_ADDRESS;
+    const setControl = (body, token = t) => ops(token, "/controls", body);
+    const withdrawal = (assetCode, amount, fee) => ({
+      ledgerAccountId: DEMO_TRADER.accountId,
+      assetCode,
+      network: config.demoNetwork,
+      toAddress,
+      amount,
+      fee
+    });
+    const validate = (assetCode, amount = "1", fee = "1") =>
+      gateway("/withdrawals/validate", { token: ctx.token, body: withdrawal(assetCode, amount, fee) });
+    const codeOf = (result) => (JSON.stringify(result.body).match(/WITHDRAWALS_PAUSED|ASSET_WITHDRAWALS_PAUSED|API_WRITE_FROZEN|RECONCILIATION_NOT_CLEAN/) ?? [])[0];
+    // Consumers cache switches for CONTROL_SWITCH_CACHE_MS (2s); poll instead of sleeping.
+    const waitCode = (label, call, code) =>
+      waitFor(label, async () => {
+        const result = await call();
+        return code ? (result.status === 409 && codeOf(result) === code ? result : null) : (codeOf(result) ? null : result);
+      }, 15_000, 500);
+    // The gateway guard and GET /system/controls share one cache, so this tells
+    // exactly when the gateway enforces a change.
+    const waitGateway = (label, predicate) =>
+      waitFor(label, async () => predicate((await gateway("/system/controls")).body), 15_000, 300);
+    const runReconciliation = async () => {
+      const result = await ops(t, "/ledger/reconciliation/jobs/run", {});
+      assert.equal(result.status, 201, `reconciliation run: ${JSON.stringify(result.body)}`);
+      return result.body;
+    };
+    const cleanup = [];
+
+    try {
+      const initial = await ops(t, "/controls");
+      assert.equal(initial.status, 200, JSON.stringify(initial.body));
+      assert.equal(initial.body.state.withdrawalsPaused, null, "global withdrawals start open");
+      assert.equal(initial.body.state.apiWriteFrozen, null, "API writes start open");
+      assert.deepEqual(initial.body.state.assetWithdrawalPauses, [], "no asset starts paused");
+
+      // RBAC + reason
+      const reviewer = await opsLogin(DEMO_OPS_REVIEWER);
+      assert.equal((await setControl({ scope: "api_write", enabled: true, reason: "e2e" }, reviewer)).status, 403, "ops_reviewer cannot switch");
+      assert.equal((await setControl({ scope: "api_write", enabled: true })).status, 400, "a reason is required");
+
+      // A1b: per-asset withdrawal pause
+      cleanup.push(() => setControl({ scope: "withdrawals_asset", assetCode: "USDT", enabled: false, reason: "e2e cleanup" }));
+      assert.equal((await setControl({ scope: "withdrawals_asset", assetCode: "USDT", enabled: true, reason: "e2e asset pause" })).status, 201);
+      await waitCode("USDT withdrawals paused", () => validate("USDT"), "ASSET_WITHDRAWALS_PAUSED");
+      assert.equal(codeOf(await validate("ETH", "0.01", "0.001")), undefined, "other assets are not paused");
+      const publicControls = await gateway("/system/controls");
+      assert.equal(publicControls.status, 200);
+      assert.ok(publicControls.body.pausedWithdrawalAssets.includes("USDT"), "trader-web sees the asset pause");
+      assert.equal((await setControl({ scope: "withdrawals_asset", assetCode: "USDT", enabled: false, reason: "e2e resume" })).status, 201);
+      await waitCode("USDT withdrawals open again", () => validate("USDT"));
+
+      // A1a: global pause also holds queued withdrawals (approval / broadcast)
+      const queued = await gateway("/withdrawals/request", {
+        token: ctx.token,
+        headers: { "idempotency-key": randomUUID() },
+        body: withdrawal("USDT", "1", "1")
+      });
+      assert.equal(queued.status, 201, `queued withdrawal: ${JSON.stringify(queued.body)}`);
+      cleanup.push(() => setControl({ scope: "withdrawals_global", enabled: false, reason: "e2e cleanup" }));
+      assert.equal((await setControl({ scope: "withdrawals_global", enabled: true, reason: "e2e global pause" })).status, 201);
+      await waitCode("all withdrawals paused", () => validate("ETH", "0.01", "0.001"), "WITHDRAWALS_PAUSED");
+      // wallet-service has its own switch cache (2s): never approve before it has expired.
+      await sleep(2_500);
+      const approve = await ops(t, `/withdrawals/${queued.body.withdrawalId}/approve`, { reason: "e2e" });
+      assert.equal(approve.status, 409, `approval is held while paused: ${JSON.stringify(approve.body)}`);
+      assert.equal(codeOf(approve), "WITHDRAWALS_PAUSED");
+      const rejected = await ops(t, `/withdrawals/${queued.body.withdrawalId}/reject`, { reason: "e2e: paused" });
+      assert.equal(rejected.status, 201, `reject still works while paused: ${JSON.stringify(rejected.body)}`);
+
+      // A3: a switch that is on shows up as a P2 alert
+      const alerts = await ops(t, "/alerts");
+      assert.equal(alerts.status, 200);
+      assert.ok(alerts.body.countsBySeverity, "alerts carry counts per level");
+      assert.ok(
+        alerts.body.items.some((item) => item.code === "withdrawals_paused" && item.severity === "P2"),
+        `global pause is a P2 alert: ${JSON.stringify(alerts.body.items)}`
+      );
+      assert.equal((await setControl({ scope: "withdrawals_global", enabled: false, reason: "e2e resume" })).status, 201);
+      await waitCode("withdrawals open again", () => validate("ETH", "0.01", "0.001"));
+
+      // A1c: API write freeze — new orders / withdrawal requests 409, cancels still work
+      const market = config.demoMarket;
+      const depth = await fetchJson(`${config.marketDataBaseUrl}/api/v1/market-data/depth?market=${market}`);
+      const restPrice = (Number(depth.bids[0].price) * 0.95).toFixed(2);
+      const resting = await placeOrder(ctx.token, ctx.accountId, { market, price: restPrice, timeInForce: "gtc", quantity: "0.01" });
+      assert.equal(resting.body.status, "accepted", JSON.stringify(resting.body));
+      cleanup.push(() => setControl({ scope: "api_write", enabled: false, reason: "e2e cleanup" }));
+      assert.equal((await setControl({ scope: "api_write", enabled: true, reason: "e2e read-only drill" })).status, 201);
+      await waitGateway("gateway read-only mode", (controls) => controls.apiWriteFrozen === true);
+      const frozenOrder = await placeOrder(ctx.token, ctx.accountId, { market, price: restPrice, timeInForce: "gtc", quantity: "0.01" });
+      assert.equal(frozenOrder.status, 409, JSON.stringify(frozenOrder.body));
+      assert.equal(codeOf(frozenOrder), "API_WRITE_FROZEN");
+      const frozenWithdrawal = await gateway("/withdrawals/request", {
+        token: ctx.token,
+        headers: { "idempotency-key": randomUUID() },
+        body: withdrawal("USDT", "1", "1")
+      });
+      assert.equal(codeOf(frozenWithdrawal), "API_WRITE_FROZEN", "withdrawal requests are frozen too");
+      const cancel = await gateway(`/orders/${resting.body.orderId}/cancel`, { token: ctx.token, body: {} });
+      assert.equal(cancel.body.status, "cancelled", "cancels still work in read-only mode");
+      assert.equal((await setControl({ scope: "api_write", enabled: false, reason: "e2e resume" })).status, 201);
+      await waitGateway("gateway accepts writes again", (controls) => controls.apiWriteFrozen === false);
+      await sleep(1_500); // risk-service's own switch cache (1s) behind the gateway
+      const after = await placeOrder(ctx.token, ctx.accountId, { market, price: await bestAsk(market) });
+      assert.equal(after.status, 201, `orders accepted again: ${JSON.stringify(after.body)}`);
+      await waitSettled(after.body.orderId);
+
+      // A2: scheduled reconciliation (balance + order-vs-lock) is healthy
+      const runs = await ops(t, "/ledger/reconciliation/runs?limit=5");
+      assert.equal(runs.status, 200);
+      assert.ok(runs.body.job.enabled && runs.body.job.intervalSeconds > 0, `scheduled reconciliation is on: ${JSON.stringify(runs.body.job)}`);
+      const healthy = await waitFor("a clean reconciliation run", async () => {
+        const run = await runReconciliation();
+        return run.balance?.mismatchCount === 0 && run.orderLock?.mismatchCount === 0 && run.breaker.trips.length === 0 ? run : null;
+      }, 30_000, 3_000);
+      assert.ok(healthy.orderLock.scannedOrders > 0, "order-vs-lock compared real orders");
+
+      // A2c: inject a ledger drift on the lab account → breaker pauses the asset (P1)
+      cleanup.push(async () => {
+        await ops(t, "/lab/reconciliation/clear", {});
+        await runReconciliation();
+        await setControl({ scope: "withdrawals_asset", assetCode: breakerAsset, enabled: false, reason: "e2e cleanup" });
+      });
+      const drift = await ops(t, "/lab/reconciliation/drift", { assetCode: breakerAsset, amount: "1" });
+      assert.equal(drift.status, 201, JSON.stringify(drift.body));
+      const tripped = await runReconciliation();
+      assert.equal(tripped.status, "mismatch");
+      assert.ok(
+        tripped.breaker.actions.some((action) => action.assetCode === breakerAsset && ["paused", "already_paused"].includes(action.outcome)),
+        `breaker paused ${breakerAsset}: ${JSON.stringify(tripped.breaker)}`
+      );
+      const breakerState = await ops(t, "/controls");
+      const pause = breakerState.body.state.assetWithdrawalPauses.find((entry) => entry.assetCode === breakerAsset);
+      assert.equal(pause?.source, "automatic", "the pause is marked automatic");
+      await waitCode(`${breakerAsset} withdrawals paused by the breaker`, () => validate(breakerAsset, "1", "0.01"), "ASSET_WITHDRAWALS_PAUSED");
+      const p1 = await ops(t, "/alerts");
+      assert.ok(
+        p1.body.items.some((item) => item.code === "RECONCILIATION_BREAKER_TRIPPED" && item.severity === "P1"),
+        "breaker raises a P1 alert"
+      );
+      const early = await setControl({ scope: "withdrawals_asset", assetCode: breakerAsset, enabled: false, reason: "too early" });
+      assert.equal(early.status, 409);
+      assert.equal(codeOf(early), "RECONCILIATION_NOT_CLEAN", "resume needs a clean run first");
+
+      assert.equal((await ops(t, "/lab/reconciliation/clear", {})).status, 201);
+      const clean = await runReconciliation();
+      assert.equal(clean.balance.mismatchCount, 0, "clean after the drift is removed");
+      const resumed = await setControl({ scope: "withdrawals_asset", assetCode: breakerAsset, enabled: false, reason: "e2e: drift removed, run clean" });
+      assert.equal(resumed.status, 201, JSON.stringify(resumed.body));
+
+      const audit = await ops(t, "/audit-logs/actions?limit=100");
+      const actions = items(audit.body).map((item) => item.action);
+      for (const action of ["controls.withdrawals_asset.enable", "controls.withdrawals_global.enable", "controls.api_write.disable", "fault_lab.reconciliation.inject_drift"]) {
+        assert.ok(actions.includes(action), `audit has ${action}`);
+      }
+      return `asset/global pause 409 · approval held · read-only 409 + cancel ok · recon ok (${healthy.orderLock.scannedOrders} orders) · drift → ${breakerAsset} auto-paused P1 → resumed`;
+    } finally {
+      for (const step of cleanup.reverse()) {
+        await Promise.resolve()
+          .then(step)
+          .catch(() => undefined);
+      }
+    }
   }
 };
 

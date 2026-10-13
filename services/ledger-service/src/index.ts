@@ -13,3 +13,7 @@ export * from "./infrastructure/kafka-ledger-outbox-transport.js";
 export * from "./infrastructure/ledger-ops-reporter.js";
 export * from "./infrastructure/postgres-ledger-repository.js";
 export * from "./infrastructure/postgres.js";
+export * from "./application/order-lock-reconciliation.js";
+export * from "./application/reconciliation-breaker.js";
+export * from "./application/reconciliation-job.js";
+export * from "./infrastructure/reconciliation-run-repositories.js";

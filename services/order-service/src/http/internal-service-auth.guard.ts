@@ -17,7 +17,9 @@ const DEFAULT_ALLOWED_CALLERS = [
   "settlement-service",
   "market-data-service",
   "ops-console",
-  "demo-scripts"
+  "demo-scripts",
+  // Order-vs-lock reconciliation job.
+  "ledger-service"
 ];
 
 @Injectable()

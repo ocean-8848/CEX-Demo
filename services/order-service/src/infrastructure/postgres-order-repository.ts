@@ -137,6 +137,32 @@ export class PostgresOrderRepository implements OrderRepository {
     return result.rows[0] ? mapOrder(result.rows[0]) : null;
   }
 
+  /** Order-vs-lock reconciliation: open / in-flight orders plus the given ids. */
+  async listOrdersForLockCheck(params: { orderIds: string[]; includeOpen: boolean }): Promise<SpotOrderRecord[]> {
+    const ids = params.orderIds.filter((id) => UUID_PATTERN.test(id));
+    const result = await this.db.query<OrderRow>(
+      `select * from spot_orders
+        where order_id = any($1::uuid[])
+           or ($2::boolean and status in ('accepted', 'partially_filled', 'pending_risk', 'recovery_pending'))`,
+      [ids, params.includeOpen]
+    );
+    return result.rows.map(mapOrder);
+  }
+
+  /** Every trade where one of the orders is the buyer or the seller. */
+  async listTradesForOrders(orderIds: string[]): Promise<SpotTradeRecord[]> {
+    const ids = orderIds.filter((id) => UUID_PATTERN.test(id));
+    if (ids.length === 0) {
+      return [];
+    }
+    const result = await this.db.query<TradeRow>(
+      `select * from spot_trades
+        where buyer_order_id = any($1::uuid[]) or seller_order_id = any($1::uuid[])`,
+      [ids]
+    );
+    return result.rows.map(mapTrade);
+  }
+
   async findOrderByIdempotencyKey(idempotencyKey: string): Promise<SpotOrderRecord | null> {
     const result = await this.db.query<OrderRow>(
       `select * from spot_orders where idempotency_key = $1`,
@@ -670,6 +696,8 @@ export class PostgresOrderRepository implements OrderRepository {
     return result.rows.map(mapAutomationExecution);
   }
 }
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function mapOrder(row: OrderRow): SpotOrderRecord {
   return {

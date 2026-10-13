@@ -10,3 +10,7 @@ export * from "./http/risk.module.js";
 export * from "./infrastructure/http-ledger-client.js";
 export * from "./infrastructure/in-memory-market-status-repository.js";
 export * from "./infrastructure/postgres-market-status-repository.js";
+export * from "./application/control-switch-service.js";
+export * from "./domain/control-switches.js";
+export * from "./infrastructure/in-memory-control-switch-repository.js";
+export * from "./infrastructure/postgres-control-switch-repository.js";

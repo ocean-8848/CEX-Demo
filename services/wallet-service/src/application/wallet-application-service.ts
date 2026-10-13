@@ -1,6 +1,12 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import { getAssetDefinition, type AssetCode } from "@web3-cex/domain";
+import {
+  evaluateApiWriteGate,
+  evaluateWithdrawalGate,
+  getAssetDefinition,
+  type AssetCode,
+  type ControlSwitchReader
+} from "@web3-cex/domain";
 import { currentTraceId } from "@web3-cex/telemetry";
 
 import type { CustodyClient } from "../domain/custody-client.js";
@@ -65,6 +71,11 @@ interface ServiceOptions {
   depositConfirmationThreshold?: number;
   withdrawalConfirmationThreshold?: number;
   withdrawalValidationRules?: WithdrawalValidationRules;
+  /**
+   * Emergency switches from risk-service (global / per-asset withdrawal
+   * pause, API write freeze). Unset = no switch is ever active (unit tests).
+   */
+  controlSwitches?: ControlSwitchReader;
 }
 
 interface InternalWithdrawalValidationResult extends WithdrawalValidationResult {
@@ -105,6 +116,7 @@ export class WalletApplicationService {
   private readonly depositConfirmationThreshold: number;
   private readonly withdrawalConfirmationThreshold: number;
   private readonly withdrawalValidationRules: WithdrawalValidationRules;
+  private readonly controlSwitches?: ControlSwitchReader;
 
   constructor(
     private readonly repository: WalletRepository,
@@ -119,6 +131,7 @@ export class WalletApplicationService {
     this.depositConfirmationThreshold = options.depositConfirmationThreshold ?? 12;
     this.withdrawalConfirmationThreshold = options.withdrawalConfirmationThreshold ?? 12;
     this.withdrawalValidationRules = options.withdrawalValidationRules ?? {};
+    this.controlSwitches = options.controlSwitches;
   }
 
   async createDepositAddress(command: CreateDepositAddressCommand): Promise<WalletAddress> {
@@ -316,6 +329,7 @@ export class WalletApplicationService {
   async validateWithdrawalRequest(
     command: RequestWithdrawalCommand
   ): Promise<WithdrawalValidationResult> {
+    await this.assertWithdrawalSwitches(command.assetCode, { userRequest: true });
     const validation = await this.validateWithdrawal(command, false);
     return {
       valid: true,
@@ -325,6 +339,8 @@ export class WalletApplicationService {
   }
 
   async requestWithdrawal(command: RequestWithdrawalCommand): Promise<WithdrawalRecord> {
+    // Emergency switches come first: a paused asset must not burn a one-time 2FA code.
+    await this.assertWithdrawalSwitches(command.assetCode, { userRequest: true });
     const validation = await this.validateWithdrawal(command, true);
     const frozenAmount = validation.frozenAmount;
 
@@ -593,6 +609,10 @@ export class WalletApplicationService {
       return withdrawal;
     }
 
+    // A pause also holds withdrawals already in the review queue: approving
+    // would broadcast. Rejecting stays possible (it only releases funds).
+    await this.assertWithdrawalSwitches(withdrawal.assetCode, { userRequest: false });
+
     let approvedRecord = withdrawal;
     if (withdrawal.reviewStatus !== "approved") {
       this.ensureReviewableWithdrawal(withdrawal, "approve");
@@ -721,6 +741,7 @@ export class WalletApplicationService {
         `Withdrawal ${withdrawal.withdrawalId} cannot be rebroadcast from status ${withdrawal.status}`
       );
     }
+    await this.assertWithdrawalSwitches(withdrawal.assetCode, { userRequest: false });
 
     return this.broadcastApprovedWithdrawal(withdrawal, {
       requestedBy: command.requestedBy,
@@ -1249,6 +1270,25 @@ export class WalletApplicationService {
       metadata: params.metadata ?? {},
       createdAt: params.createdAt
     };
+  }
+
+  /**
+   * Emergency switches (risk-service): global / per-asset withdrawal pause
+   * for every stage; the API write freeze only for new user requests.
+   */
+  private async assertWithdrawalSwitches(
+    assetCode: string,
+    options: { userRequest: boolean }
+  ): Promise<void> {
+    if (!this.controlSwitches) {
+      return;
+    }
+    const state = await this.controlSwitches.getState();
+    const rejection =
+      evaluateWithdrawalGate(state, assetCode) ?? (options.userRequest ? evaluateApiWriteGate(state) : null);
+    if (rejection) {
+      throw new WalletError(rejection.code, rejection.message);
+    }
   }
 
   private async broadcastApprovedWithdrawal(

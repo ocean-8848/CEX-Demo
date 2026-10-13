@@ -129,6 +129,9 @@ export function demoMarketAssets(config = loadDemoConfig()) {
 
 const RESET_TABLES = [
   "risk_market_status_overrides",
+  "risk_control_switches",
+  "risk_control_switch_events",
+  "ledger_reconciliation_runs",
   "ops_action_audit_logs",
   "wallet_notifications",
   "withdrawal_audit_logs",

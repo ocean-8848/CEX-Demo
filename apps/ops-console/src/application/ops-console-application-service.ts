@@ -9,6 +9,7 @@ import type {
   OpsActionAuditLogQuery,
   OpsActionAuditRepository
 } from "../domain/action-audit.js";
+import { tradeRuntimeAlertLevel } from "../domain/alert-severity.js";
 import { OpsConsoleError } from "../domain/errors.js";
 import type {
   OpsAlertSinkClient,
@@ -2436,7 +2437,8 @@ export class OpsConsoleApplicationService {
       market: query.market,
       status: alerts.length > 0 ? "alert" : "ok",
       alertCount: alerts.length,
-      alerts,
+      // P1/P2/P3 next to the original warning / critical (domain/alert-severity.ts).
+      alerts: alerts.map((alert) => ({ ...alert, level: tradeRuntimeAlertLevel(alert.code, alert.severity) })),
       routing,
       export: {
         source: "trade_runtime",

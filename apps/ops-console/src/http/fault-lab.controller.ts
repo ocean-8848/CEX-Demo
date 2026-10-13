@@ -132,6 +132,24 @@ export class FaultLabController {
   }
 
   @RequireOpsPermissions(...FAULT_LAB_PERMISSIONS)
+  @Post("/reconciliation/drift")
+  async injectReconciliationDrift(
+    @CurrentOpsSession() session: OpsSessionInfo,
+    @Body() body: { assetCode?: string; amount?: string | number }
+  ) {
+    return this.lab.injectReconciliationDrift(session, {
+      assetCode: typeof body?.assetCode === "string" ? body.assetCode : undefined,
+      amount: body?.amount === undefined ? undefined : String(body.amount)
+    });
+  }
+
+  @RequireOpsPermissions(...FAULT_LAB_PERMISSIONS)
+  @Post("/reconciliation/clear")
+  async clearReconciliationDrift(@CurrentOpsSession() session: OpsSessionInfo) {
+    return this.lab.clearReconciliationDrift(session);
+  }
+
+  @RequireOpsPermissions(...FAULT_LAB_PERMISSIONS)
   @Post("/recover-all")
   async recoverAll(@CurrentOpsSession() session: OpsSessionInfo) {
     return this.lab.recoverAll(session);

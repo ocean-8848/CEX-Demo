@@ -15,6 +15,7 @@ import { availableOf } from "../../lib/records.js";
 import { navigate } from "../../lib/router.js";
 import type { OrderSide, OrderType, TimeInForce } from "../../lib/types.js";
 import { useExchange } from "../../state/store.js";
+import { useSystemControls } from "../../state/system-controls.js";
 import { useDisplayPrice } from "./market-header.js";
 
 const TIF_HELP: Record<TimeInForce, string> = {
@@ -34,6 +35,7 @@ export function OrderForm(props: { pickedPrice?: { price: string; nonce: number 
   const minQuantity = toNumber(marketDefinition?.minQuantity ?? "0");
   const displayPrice = useDisplayPrice(state.market);
   const loggedIn = Boolean(state.token);
+  const writeFrozen = Boolean(useSystemControls()?.apiWriteFrozen);
 
   const [side, setSide] = useState<OrderSide>("buy");
   const [type, setType] = useState<OrderType>("limit");
@@ -281,6 +283,12 @@ export function OrderForm(props: { pickedPrice?: { price: string; nonce: number 
         </div>
       </dl>
 
+      {writeFrozen ? (
+        <div className="form-error" role="status" id="order-frozen-notice">
+          平台处于只读模式（运营开启了 API 写入冻结）：暂时不能下新单，已有挂单仍可撤销。
+        </div>
+      ) : null}
+
       {error || validation ? (
         <div className="form-error" role="alert">
           {error ?? validation}
@@ -294,6 +302,7 @@ export function OrderForm(props: { pickedPrice?: { price: string; nonce: number 
           size="lg"
           block
           loading={submitting}
+          disabled={writeFrozen}
           id="order-submit"
         >
           {side === "buy" ? "买入" : "卖出"} {base}

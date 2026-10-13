@@ -38,7 +38,8 @@ export type IdentityOpsPermission =
   | "ops.audit.read"
   | "ops.alerts.read"
   | "ops.markets.read"
-  | "ops.markets.manage";
+  | "ops.markets.manage"
+  | "ops.controls.manage";
 export type IdentitySessionScope = "ops_console" | "customer_web";
 export type IdentityApiKeyStatus = "active" | "revoked";
 

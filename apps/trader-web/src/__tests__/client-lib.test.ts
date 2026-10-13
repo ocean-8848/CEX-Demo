@@ -138,3 +138,9 @@ test("security error hints map M4/M5 wallet codes to actionable Chinese messages
   assert.match(humanizeError("Recovery code is invalid", "TWO_FACTOR_RECOVERY_CODE_INVALID"), /^恢复码无效/);
   assert.match(humanizeError("Withdrawal amount exceeds the daily limit of 2000 USDT (KYC tier unverified)"), /KYC 等级/);
 });
+
+test("emergency switch codes map to Chinese hints", () => {
+  assert.match(humanizeError("USDT withdrawals are paused (drill)", "ASSET_WITHDRAWALS_PAUSED"), /^该币种提现已被平台暂停/);
+  assert.match(humanizeError("All withdrawals are paused", "WITHDRAWALS_PAUSED"), /^平台已暂停全部提现/);
+  assert.match(humanizeError("The exchange is in read-only mode", "API_WRITE_FROZEN"), /^平台处于只读模式/);
+});

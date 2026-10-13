@@ -114,7 +114,7 @@ export function OrdersPage(props: { tab?: string; highlight?: string } = {}) {
         <ol className="lifecycle-steps">
           <li>
             <b>风控中</b>
-            <span>risk-service 校验数量、步长、价格偏离并计算冻结金额</span>
+            <span>risk-service 检查紧急开关与市场状态，校验数量、步长、价格偏离并计算冻结金额</span>
           </li>
           <li>
             <b>冻结资金</b>

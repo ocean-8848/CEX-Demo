@@ -161,6 +161,10 @@ const ERROR_HINTS: Array<[RegExp, string]> = [
   [/KYC_REQUEST_PENDING/, "已有待审核的认证申请"],
   [/KYC_REQUEST_INVALID/, "认证信息不符合要求"],
   [/MARKET_HALTED|is halted/i, "该市场已被运营暂停交易：暂不接受新委托，已有挂单仍可撤销"],
+  // Emergency switches (运营紧急开关).
+  [/ASSET_WITHDRAWALS_PAUSED/, "该币种提现已被平台暂停（运营紧急开关），其他币种不受影响"],
+  [/WITHDRAWALS_PAUSED/, "平台已暂停全部提现（运营紧急开关）"],
+  [/API_WRITE_FROZEN/, "平台处于只读模式：暂不接受新委托和提现申请，已有挂单仍可撤销"],
   [/MARKET_DELISTED|is delisted/i, "该市场已下架，不再接受新委托"],
   [/INSUFFICIENT_AVAILABLE_BALANCE|below required|Insufficient/i, "可用余额不足"],
   [/price deviation/i, "委托价格偏离参考价过大（参考价为最新成交价或盘口中间价，风控限制 ±20%）"],

@@ -8,6 +8,7 @@ import { IdLink, JsonView, PageHeader, QueryView, RefreshButton, StatCard, Statu
 import { useMarketConfig, useOpsAction, useOpsQuery } from "../state/hooks.js";
 import { useSession } from "../state/session.js";
 import { AssetOptions } from "../components/market-options.js";
+import { ReconciliationJobPanel } from "./reconciliation-runs-panel.js";
 
 interface ReplayStep {
   at: string;
@@ -175,6 +176,8 @@ export function LedgerPage() {
           )}
         </QueryView>
       </Panel>
+
+      <ReconciliationJobPanel />
 
       <ReplayPanel target={replayTarget} onTarget={setReplayTarget} />
 

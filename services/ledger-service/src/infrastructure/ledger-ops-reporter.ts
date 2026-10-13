@@ -20,6 +20,8 @@ import {
 } from "../application/ledger-ops.js";
 import { Pool } from "pg";
 
+import type { LedgerLockedBalance, LedgerOrderLock } from "../application/order-lock-reconciliation.js";
+
 import type { SqlClient } from "./postgres.js";
 
 interface BalanceAggregateRow {
@@ -145,6 +147,72 @@ export class LedgerOpsReporter {
       entryNets,
       activeLocks,
       includeMatched: params.includeMatched
+    });
+  }
+
+  /**
+   * Order ↔ lock reconciliation input: every active `spot_order` lock plus the
+   * locked balance per account + asset (split into order / other locks), read
+   * from one snapshot. `snapshotAt` is the database clock at the first read.
+   */
+  async collectOrderLockSnapshot(): Promise<{
+    snapshotAt: string;
+    locks: LedgerOrderLock[];
+    lockedBalances: LedgerLockedBalance[];
+  }> {
+    return this.inSnapshot(async (reader) => {
+      const clock = await reader.db.query<{ now: Date }>("select clock_timestamp() as now");
+      const locks = await reader.db.query<{
+        reference_id: string;
+        account_id: string;
+        asset_code: AssetCode;
+        remaining_amount: string;
+        created_at: Date;
+      }>(
+        `select reference_id, account_id, asset_code, remaining_amount::text as remaining_amount, created_at
+           from balance_locks
+          where status = 'locked' and reference_type = 'spot_order'`
+      );
+      const balances = await reader.db.query<{
+        account_id: string;
+        asset_code: AssetCode;
+        locked: string;
+        other_locked: string;
+      }>(
+        `select b.account_id,
+                b.asset_code,
+                b.locked::text as locked,
+                coalesce((
+                  select sum(l.remaining_amount)
+                    from balance_locks l
+                   where l.account_id = b.account_id
+                     and l.asset_code = b.asset_code
+                     and l.status = 'locked'
+                     and l.reference_type <> 'spot_order'
+                ), 0)::text as other_locked
+           from balances b
+          where b.locked <> 0
+             or exists (
+               select 1 from balance_locks l
+                where l.account_id = b.account_id and l.asset_code = b.asset_code and l.status = 'locked'
+             )`
+      );
+      return {
+        snapshotAt: (clock.rows[0]?.now ?? new Date()).toISOString(),
+        locks: locks.rows.map((row) => ({
+          orderId: row.reference_id,
+          accountId: row.account_id,
+          assetCode: row.asset_code,
+          remainingAmount: row.remaining_amount,
+          createdAt: row.created_at.toISOString()
+        })),
+        lockedBalances: balances.rows.map((row) => ({
+          accountId: row.account_id,
+          assetCode: row.asset_code,
+          locked: row.locked,
+          otherLocked: row.other_locked
+        }))
+      };
     });
   }
 

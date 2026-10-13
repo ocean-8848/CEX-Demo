@@ -33,6 +33,21 @@ export class InMemoryOrderRepository implements OrderRepository {
     return this.orders.get(orderId) ?? null;
   }
 
+  async listOrdersForLockCheck(params: { orderIds: string[]; includeOpen: boolean }): Promise<SpotOrderRecord[]> {
+    const wanted = new Set(params.orderIds);
+    const openStatuses = new Set(["accepted", "partially_filled", "pending_risk", "recovery_pending"]);
+    return [...this.orders.values()]
+      .filter((order) => wanted.has(order.orderId) || (params.includeOpen && openStatuses.has(order.status)))
+      .map((order) => ({ ...order }));
+  }
+
+  async listTradesForOrders(orderIds: string[]): Promise<SpotTradeRecord[]> {
+    const wanted = new Set(orderIds);
+    return [...this.trades.values()]
+      .filter((trade) => wanted.has(trade.buyerOrderId) || wanted.has(trade.sellerOrderId))
+      .map((trade) => ({ ...trade }));
+  }
+
   async findOrderByIdempotencyKey(idempotencyKey: string): Promise<SpotOrderRecord | null> {
     const orderId = this.idempotency.get(idempotencyKey);
     return orderId ? this.orders.get(orderId) ?? null : null;

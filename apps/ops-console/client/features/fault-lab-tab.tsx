@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 
-import { Badge, Button, Panel, shortHash } from "@web3-cex/web-ui";
+import { Badge, Button, Panel, href, shortHash } from "@web3-cex/web-ui";
 
 import { qs } from "../lib/api.js";
 import { JsonView, QueryView, RefreshButton, StatCard, StatusBadge, Time } from "../components/kit.js";
@@ -81,6 +81,7 @@ interface LabStatus {
     overview: Section<{ openOrderCount?: number; engineBidCount?: number; engineAskCount?: number; tradeCount?: number }>;
   };
   activeFaults: Array<{ experiment: string; summary: string; expiresAt?: string }>;
+  reconciliation?: Section<{ accountId?: string; drifts?: Array<{ assetCode: string; amount: string; updatedAt: string }> }>;
 }
 
 export function FaultLabTab() {
@@ -91,6 +92,8 @@ export function FaultLabTab() {
   // Markets come from config/markets.json; default to its defaultMarket.
   const market = selected || marketConfig.defaultMarket;
   const [results, setResults] = useState<Record<string, unknown>>({});
+  const [driftAsset, setDriftAsset] = useState("");
+  const labAsset = driftAsset || (marketConfig.assets.some((asset) => asset.code === "SOL") ? "SOL" : marketConfig.assets[0]?.code ?? "");
   const status = useOpsQuery<LabStatus>(market ? `/lab/status${qs({ market })}` : null, { refreshMs: 3_000 });
   const canLab = LAB_PERMISSIONS.every((permission) => can(permission));
   const canReplay = can("ops.ledger.execute");
@@ -314,6 +317,46 @@ export function FaultLabTab() {
             </Button>
           </div>
         </Panel>
+
+        <Panel
+          title="⑤ 账本对账差额（对账熔断）"
+          id="lab-reconciliation"
+          actions={<SectionBadge section={status.data?.reconciliation} active={status.data?.reconciliation?.available ? (status.data.reconciliation.data.drifts ?? []).length > 0 : false} />}
+        >
+          <LabGuide
+            expected="ledger-service 在专用实验账户上写入一笔「没有分录的余额」，模拟账本被篡改：下一轮对账（定时或立即运行）报告该币种余额不平，对账熔断自动暂停该币种提现并产生 P1 告警；交易、充值不受影响。"
+            where="账本对账 → 定时对账与熔断；系统运维 → 紧急开关（来源「对账熔断」）；告警页 P1；交易前台该币种提现表单被禁用。"
+            recover="点「清除差额」后再「立即对账」，确认结果恢复一致，然后到 系统运维 → 紧急开关 人工恢复该币种提现（没有一致的对账结果时恢复会被拒绝）。"
+          />
+          <SectionBody section={status.data?.reconciliation}>
+            {(lab) =>
+              (lab.drifts ?? []).length === 0 ? (
+                <p className="small"><Badge tone="positive">无差额</Badge> 实验账户余额为空，对账应全部一致。</p>
+              ) : (
+                <ul className="alert-list small">
+                  {(lab.drifts ?? []).map((drift) => (
+                    <li key={drift.assetCode}><span><Badge tone="negative">差额</Badge> {drift.assetCode} 快照多出 {drift.amount}（无对应分录）</span></li>
+                  ))}
+                </ul>
+              )
+            }
+          </SectionBody>
+          <div className="button-grid">
+            <select value={labAsset} onChange={(event) => setDriftAsset(event.target.value)} aria-label="差额币种" id="lab-drift-asset">
+              {marketConfig.assets.map((asset) => (
+                <option key={asset.code} value={asset.code}>{asset.code}</option>
+              ))}
+            </select>
+            {labButton("recon-drift", `注入 ${labAsset} 差额`, "/lab/reconciliation/drift", { assetCode: labAsset, amount: "1" }, "已注入对账差额", "danger")}
+            <Button size="sm" disabled={!canReplay} loading={busy === "recon-run"} onClick={() => void act("recon-run", "/ledger/reconciliation/jobs/run", {}, "对账已运行")}>
+              立即对账
+            </Button>
+            {labButton("recon-clear", "清除差额", "/lab/reconciliation/clear", {}, "对账差额已清除")}
+          </div>
+          <p className="muted small">
+            只会写入实验账户（不涉及任何用户或平台资金）。熔断暂停需人工恢复：<a href={href("/system?tab=controls")}>系统运维 → 紧急开关</a>。
+          </p>
+        </Panel>
       </div>
       {Object.keys(results).length > 0 ? <JsonView value={results} label="最近操作返回" /> : null}
     </div>
@@ -324,7 +367,8 @@ const EXPERIMENT_LABEL: Record<string, string> = {
   settlement: "结算",
   custody: "托管",
   chain: "链",
-  engine: "撮合"
+  engine: "撮合",
+  reconciliation: "对账"
 };
 
 const PROBE_LABEL: Record<string, string> = {

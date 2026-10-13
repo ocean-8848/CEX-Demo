@@ -9,7 +9,11 @@ import {
   type TradeEventVersionGate
 } from "@web3-cex/domain";
 
-import { OrderApplicationService } from "../application/order-application-service.js";
+import { OrderApplicationService, createStableUuid } from "../application/order-application-service.js";
+import {
+  buildOrderLockExpectations,
+  type OrderLockSource
+} from "../application/order-lock-expectations.js";
 import { OrderOpsService } from "../application/order-ops-service.js";
 import { OrderRecoveryWorker } from "../application/order-recovery-worker.js";
 import { OrderServiceError } from "../domain/errors.js";
@@ -63,6 +67,7 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
   private recoveryTimer?: NodeJS.Timeout;
   private eventStreamMaintenanceTimer?: NodeJS.Timeout;
   private engineSyncTimer?: NodeJS.Timeout;
+  private readonly lockSource: OrderLockSource;
 
   constructor() {
     const repositoryMode = process.env.ORDER_SERVICE_REPOSITORY ?? "postgres";
@@ -102,6 +107,8 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
             this.pool = createOrderPool();
             return new PostgresOrderRepository(this.pool, this.pool);
           })();
+
+    this.lockSource = repository;
 
     const redisUrl = process.env.ORDER_EVENT_REDIS_URL ?? "redis://127.0.0.1:6379";
     if (this.eventPublisherMode === "redis" || this.eventPublisherMode === "redis_stream") {
@@ -407,6 +414,19 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
 
   async getOpsAnomalies(market: Parameters<OrderOpsService["getAnomalies"]>[0]) {
     return this.opsService.getAnomalies(market);
+  }
+
+  /** Order-vs-lock reconciliation input for ledger-service (see order-lock-expectations.ts). */
+  async getLockExpectations(params: { orderIds: string[]; includeOpenOrders: boolean }) {
+    const report = await buildOrderLockExpectations({
+      source: this.lockSource,
+      orderIds: params.orderIds,
+      includeOpenOrders: params.includeOpenOrders,
+      // Async mode stores a placeholder settlement id until settlement acks the trade.
+      isTradeSettled: (trade) => trade.settlementId !== createStableUuid(`pending-settlement:${trade.tradeId}`),
+      generatedAt: new Date().toISOString()
+    });
+    return { ...report, settlementMode: this.settlementMode };
   }
 
   async injectEngineReset(

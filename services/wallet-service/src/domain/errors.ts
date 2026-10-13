@@ -29,7 +29,10 @@ export class WalletError extends Error {
       | "NOTIFICATION_NOT_FOUND"
       | "WITHDRAWAL_SECURITY_COOLDOWN"
       | "WITHDRAWAL_SAME_APPROVER"
-      | "WITHDRAWAL_APPROVER_REQUIRED",
+      | "WITHDRAWAL_APPROVER_REQUIRED"
+      | "WITHDRAWALS_PAUSED"
+      | "ASSET_WITHDRAWALS_PAUSED"
+      | "API_WRITE_FROZEN",
     message: string
   ) {
     super(message);
