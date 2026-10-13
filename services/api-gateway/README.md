@@ -15,7 +15,7 @@
 当前实现:
 
 - `POST /api/v1/gateway/auth/register`
-- `POST /api/v1/gateway/auth/sessions`
+- `POST /api/v1/gateway/auth/sessions`（`{ email, password, twoFactorCode?, deviceId? }`；响应带 `device`，失败过多时透传 `429 LOGIN_TEMPORARILY_LOCKED`）
 - `GET /api/v1/gateway/auth/me`
 - `POST /api/v1/gateway/auth/logout`
 - `POST /api/v1/gateway/auth/api-keys`
@@ -26,6 +26,9 @@
 - `POST /api/v1/gateway/auth/two-factor/enable`（`{ code }`，响应带只显示一次的 `recoveryCodes`）
 - `POST /api/v1/gateway/auth/two-factor/disable`（`{ code }`，当前动态码或恢复码）
 - `POST /api/v1/gateway/auth/two-factor/recovery-codes`（`{ code }`，重新生成恢复码）
+- `GET /api/v1/gateway/auth/login-events`（登录记录，session-only）
+- `GET /api/v1/gateway/auth/devices`（设备列表，session-only）
+- `POST /api/v1/gateway/auth/devices/{deviceId}/revoke`（吊销该设备的全部会话，session-only）
 - `GET /api/v1/gateway/auth/kyc`（当前等级与最近申请）
 - `POST /api/v1/gateway/auth/kyc/requests`（`{ requestedTier: "L1" | "L2", fullName, idNumber }`，演示字段）
 - `GET /api/v1/gateway/withdrawals/limits`（等级、各币种限额、今日已用、双人复核阈值、冷却期；session 或带 `read` 的 API Key）

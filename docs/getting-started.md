@@ -211,7 +211,14 @@ pnpm --filter @web3-cex/ledger-service start
 | `WITHDRAWAL_REQUIRE_2FA` | `wallet-service` | `false` | 设为 `true` 时所有提现强制 2FA |
 | `WITHDRAWAL_DUAL_APPROVAL_THRESHOLD_BY_ASSET` | `wallet-service` | `USDT=5000,USDC=5000,ETH=2,BTC=0.1,SOL=50` | 超过阈值的提现需双人复核 |
 | `WITHDRAWAL_KYC_LIMITS_*` | `wallet-service` | 见 `.env.example` | 各 KYC 等级的单笔 / 日提现限额 |
+| `WITHDRAWAL_RISK_ENABLED` | `wallet-service` | `true` | 简化 KYT：提现地址风险评分与黑名单拦截；`false` 时全部评为低风险 |
+| `WITHDRAWAL_RISK_LARGE_AMOUNT_BY_ASSET` | `wallet-service` | `USDT=1000,USDC=1000,ETH=0.5,BTC=0.02,SOL=10` | 首次地址且金额超过该值时加 40 分 |
+| `WITHDRAWAL_RISK_NEW_ADDRESS_WINDOW_SECONDS` | `wallet-service` | `86400` | 地址簿新地址在此时间内加 30 分 |
+| `WITHDRAWAL_RISK_ADDRESS_LABELS` | `wallet-service` | 空 | 追加演示风险标签（`0x…=mixer,0x…=high_risk`），命中加 70 分 |
+| `WITHDRAWAL_NEW_DEVICE_LOCK_SECONDS` | `wallet-service` | `0`（关闭） | 新设备登录后多少秒内禁止提现 |
 | `OPS_REQUIRE_TWO_FACTOR` | `identity-service` | `true` | 运营账户登录是否要求 TOTP |
+| `IDENTITY_LOGIN_MAX_FAILURES` / `IDENTITY_LOGIN_FAILURE_WINDOW_SECONDS` / `IDENTITY_LOGIN_LOCK_SECONDS` | `identity-service` | `5` / `900` / `300` | 登录失败锁定：窗口内（自上次成功登录起）累计失败次数达到阈值后锁定的秒数；`IDENTITY_LOGIN_MAX_FAILURES=0` 关闭 |
+| `IDENTITY_NEW_DEVICE_NOTIFY` / `IDENTITY_WALLET_SERVICE_BASE_URL` | `identity-service` | `true` / `http://127.0.0.1:3002` | 新设备登录时向 wallet-service 写站内信 |
 | `OTEL_ENABLED` / `OTEL_EXPORTER_OTLP_ENDPOINT` | 各 Node 服务 | 关闭 / `http://127.0.0.1:4318` | OpenTelemetry 追踪 |
 | `TRADER_WEB_DEMO_MODE` | `trader-web` | `true` | 是否显示「一键登录演示账户」与水龙头 |
 | `DEMO_MAKERS_ENABLED` | `demo-simulator` | 开启 | 设为 `false` 关闭做市商 |
@@ -301,6 +308,6 @@ pnpm stack:stop:infra
 说明:
 
 - 浏览器 E2E 需要本机 Chrome。非 macOS 环境通过 `TRADER_WEB_SMOKE_CHROME_PATH` 和 `OPS_CONSOLE_E2E_CHROME_PATH` 指定路径（CI 中为 `/usr/bin/google-chrome`）。
-- `test:features` 可以只跑部分段落，例如 `node scripts/verify-feature-e2e.mjs lab`；可选段落为 `apikey`、`websocket`、`fees`、`sol`、`notifications`、`security`、`lab`。
+- `test:features` 可以只跑部分段落，例如 `node scripts/verify-feature-e2e.mjs lab`；可选段落为 `apikey`、`websocket`、`fees`、`sol`、`notifications`、`security`、`lab`、`risk-security`（KYT 评分 / 黑名单拦截与自动拒绝、新设备提醒与设备吊销、登录失败锁定）。
 - E2E 会修改演示数据（KYC 等级、余额等），结束后执行 `pnpm demo:prepare` 即可恢复基线。
 - 服务日志在 `.runtime/full-stack/logs/`，CI 失败时会上传这一目录。

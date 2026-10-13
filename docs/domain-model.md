@@ -10,6 +10,8 @@
 erDiagram
   IDENTITY_USER ||--o{ API_KEY : owns
   IDENTITY_USER ||--o{ KYC_REQUEST : submits
+  IDENTITY_USER ||--o{ LOGIN_EVENT : "logs in"
+  IDENTITY_USER ||--o{ USER_DEVICE : "uses"
   IDENTITY_USER ||--o{ LEDGER_ACCOUNT : "has (spot)"
   LEDGER_ACCOUNT ||--o{ BALANCE : "per asset"
   LEDGER_ACCOUNT ||--o{ BALANCE_LOCK : freezes
@@ -20,6 +22,7 @@ erDiagram
   DEPOSIT_OBSERVATION ||--o| DEPOSIT : "credits"
   LEDGER_ACCOUNT ||--o{ WITHDRAWAL : requests
   WITHDRAWAL ||--o| CUSTODY_TRANSFER : broadcasts
+  ADDRESS_BLACKLIST_ENTRY ||--o{ WITHDRAWAL : "blocks / auto-rejects"
   WITHDRAWAL_OBSERVATION ||--o| WITHDRAWAL : confirms
   LEDGER_ACCOUNT ||--o{ SPOT_ORDER : places
   SPOT_ORDER ||--o{ SPOT_TRADE : "maker / taker"
@@ -34,6 +37,8 @@ erDiagram
 | 运营角色 | identity-service | `identity_user_roles` | `ops_admin`、`ops_reviewer`、`ops_finance_operator`、`ops_risk_operator`、`ops_platform_operator`、`ops_observer` |
 | API Key | identity-service | `identity_api_keys` | scope：`read`、`trade`、`withdraw`（默认前两个） |
 | KYC 申请 / 事件 | identity-service | `identity_kyc_requests`、`identity_kyc_events` | 等级 `unverified` → `L1` → `L2`；每次等级变化追加事件 |
+| 登录事件 `LoginEvent` | identity-service | `identity_login_events` | 每次密码登录一行：`outcome`（`success / failure / locked`）、`failure_code`、设备 ID、IP、User-Agent、`is_new_device`；未注册邮箱也记录（`user_id` 为空） |
+| 用户设备 `UserDevice` | identity-service | `identity_user_devices` | `(user_id, device_id)` 唯一：首次 / 最近登录、登录次数、`flagged_new`、`revoked_at`；会话的 `identity_ops_sessions.device_id` 指向它 |
 | 账本账户 `LedgerAccount` | ledger-service | `accounts` | 类型见 [2.1](#21-账户类型) |
 | 余额快照 `Balance` | ledger-service | `balances` | 每个 (账户, 资产) 一行：`available`、`locked`、`version` |
 | 日记账 `Journal` / 分录 `Entry` | ledger-service | `ledger_journals`、`ledger_entries` | 双分录，`journal.idempotency_key` 唯一 |
@@ -41,9 +46,10 @@ erDiagram
 | Outbox 事件 | ledger-service | `outbox_events` | 与资金变动同事务写入 |
 | 充值地址 | wallet-service | `wallet_addresses` | `(network, address)` 唯一 |
 | 充值 `Deposit` | wallet-service | `deposits` | `(network, tx_hash, address)` 唯一 |
-| 提币 `Withdrawal` | wallet-service | `withdrawals` | 业务状态 `status` + 审核状态 `review_status` |
+| 提币 `Withdrawal` | wallet-service | `withdrawals` | 业务状态 `status` + 审核状态 `review_status`；KYT `risk_score`、`risk_level`、`risk_reasons` |
+| 地址黑名单 | wallet-service | `withdrawal_address_blacklist` | 生效中的 `(network, address)` 唯一；`category`：`sanctioned / mixer / scam / hack / other`；移出时保留记录与 `removed_by / removal_reason` |
 | 提币地址簿 | wallet-service | `withdrawal_address_book` | `(user_id, network, address)` 唯一，可加入 / 移出白名单 |
-| 提币审计 / 通知 | wallet-service | `withdrawal_audit_logs`、`wallet_notifications` | 每次状态迁移写一条审计（含前后快照） |
+| 提币审计 / 通知 | wallet-service | `withdrawal_audit_logs`、`wallet_notifications` | 每次状态迁移写一条审计（含前后快照）；通知也承载账户安全事件 `security.new_device_login`（不关联提币 / 充值） |
 | 链上观测 | blockchain-indexer | `blockchain_deposit_observations`、`blockchain_withdrawal_observations`、`blockchain_scan_cursors` | 充值观测 `(network, tx_hash, address)` 唯一；提币观测 `(network, tx_hash)` 唯一 |
 | 托管转账 | custody-adapter | `custody_transfers`、`custody_transfer_attempts` | `idempotency_key` 唯一 |
 | 现货订单 `SpotOrder` | order-service | `spot_orders` | `idempotency_key` 唯一，记录冻结资产与金额 |
@@ -150,11 +156,12 @@ stateDiagram-v2
 stateDiagram-v2
   [*] --> requested: 申请 + 冻结 amount+fee 成功
   [*] --> failed: 冻结失败
+  [*] --> rejected: 目标地址在黑名单（KYT 拦截，不冻结）
   requested --> under_review: 首次批准（需双人复核）
   requested --> approved: 批准（单人即可）
   under_review --> approved: 另一位审核人批准
-  requested --> rejected: 拒绝（释放冻结）
-  under_review --> rejected: 拒绝（释放冻结）
+  requested --> rejected: 拒绝 / 地址被加入黑名单（释放冻结）
+  under_review --> rejected: 拒绝 / 地址被加入黑名单（释放冻结）
   approved --> broadcasted: custody createTransfer 成功
   approved --> approved: 广播失败（记录 broadcastError，可 rebroadcast）
   broadcasted --> confirmed: 确认数 ≥ 阈值，ledger consume 成功
@@ -170,14 +177,16 @@ stateDiagram-v2
 | `approved` | `approved` | 审核通过，尚未广播或广播失败 |
 | `broadcasted` | `approved` | 托管已广播，有 `txHash`、`custodyRequestId` |
 | `confirmed` | `approved` | 链上确认，冻结已消耗 |
-| `rejected` | `rejected` | 审核拒绝，冻结已释放 |
+| `rejected` | `rejected` | 审核拒绝或 KYT 自动拒绝（操作人 `system:kyt`，`riskLevel=blocked`），冻结已释放；申请时就命中黑名单的记录 `frozenAmount=0` |
 | `failed` | `pending` | 冻结失败，从未进入审核 |
 
-审计动作 `WithdrawalAuditAction`：`requested`、`first_approved`、`approved`、`rejected`、`broadcasted`、`confirmed`。站内通知类型：`withdrawal.requested`、`withdrawal.approved`、`withdrawal.rejected`、`withdrawal.broadcasted`、`withdrawal.confirmed`、`deposit.credited`。
+审计动作 `WithdrawalAuditAction`：`requested`、`first_approved`、`approved`、`rejected`、`broadcasted`、`confirmed`。站内通知类型：`withdrawal.requested`、`withdrawal.approved`、`withdrawal.rejected`、`withdrawal.broadcasted`、`withdrawal.confirmed`、`deposit.credited`、`security.new_device_login`。
+
+KYT 风险等级 `riskLevel`：`low`（< 30 分）、`medium`（≥ 30）、`high`（≥ 60，强制双人复核，审批策略 `reason: "risk_high"`）、`blocked`（黑名单）。`riskReasons` 是命中规则列表（`code`、`score`、`message`），规则见 [security.md 第 2.7 节](security.md#27-提现控制wallet-service)。
 
 ### 4.2 提币申请校验
 
-在冻结之前依次检查：资产与网络受支持、金额与手续费合法、最小金额 / 最小手续费、地址在白名单中（`WITHDRAWAL_ADDRESS_NOT_WHITELISTED`）、安全冷却期（`WITHDRAWAL_SECURITY_COOLDOWN`）、按 KYC 等级的单笔与日限额（`WITHDRAWAL_SINGLE_LIMIT_EXCEEDED` / `WITHDRAWAL_DAILY_LIMIT_EXCEEDED`）、2FA。
+在冻结之前依次检查：资产与网络受支持、金额与手续费合法、KYT 地址风险（黑名单 `WITHDRAWAL_ADDRESS_BLOCKED`）、安全冷却期（`WITHDRAWAL_SECURITY_COOLDOWN`）、新设备提现锁（可选，`WITHDRAWAL_NEW_DEVICE_LOCK`）、最小金额 / 最小手续费、地址在白名单中（`WITHDRAWAL_ADDRESS_NOT_WHITELISTED`）、按 KYC 等级的单笔与日限额（`WITHDRAWAL_SINGLE_LIMIT_EXCEEDED` / `WITHDRAWAL_DAILY_LIMIT_EXCEEDED`）、2FA。
 
 默认 KYC 限额（单笔 / 日累计，节选）：
 
@@ -305,6 +314,13 @@ stateDiagram-v2
 
 用户等级变化（批准、拒绝、运营直接调整 `tier_adjusted`）都追加到 `identity_kyc_events`。KYC 等级直接决定提币限额（见 [4.2](#42-提币申请校验)）。证件号在存储前脱敏，不做真实核验。
 
+### 7.3 登录安全
+
+- 设备 ID：trader-web 在 localStorage 保存的随机值随登录提交；缺省时按 User-Agent 派生 `ua-<hash>`。
+- 新设备：用户已有其他设备、而本次设备从未出现过时 `is_new_device = true`，设备 `flagged_new = true`，并写一条 `security.new_device_login` 站内信（只对客户登录）。账户的第一台设备不算新设备。
+- 登录失败锁定：最近一次成功登录之后、窗口内的 `INVALID_CREDENTIALS / TWO_FACTOR_INVALID_CODE / TWO_FACTOR_RECOVERY_CODE_INVALID` 失败次数达到阈值即锁定，锁定期间的尝试记为 `locked` 且不延长锁定；默认 15 分钟内 5 次、锁 5 分钟。
+- 吊销设备：把该设备上未过期、未吊销的会话全部吊销，并记录设备的 `revoked_at`。
+
 ## 8. 市场状态
 
 ```mermaid
@@ -333,6 +349,7 @@ stateDiagram-v2
 | 资金变动与事件原子一致 | outbox 事件与余额、journal 在同一数据库事务中写入 |
 | 提币状态迁移可追溯 | 每次迁移写 `withdrawal_audit_logs`（含前后快照、操作人） |
 | 大额提币需两名不同审核人 | `applyApproval` 拒绝同一人第二次批准（`WITHDRAWAL_SAME_APPROVER`） |
+| 不向黑名单地址出金 | 申请时 KYT 拦截；加入黑名单时自动拒绝待审核提现并释放冻结；批准时再查一次黑名单 |
 
 ## 10. 共享事件信封
 
