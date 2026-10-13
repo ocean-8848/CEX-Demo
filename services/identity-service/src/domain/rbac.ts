@@ -30,7 +30,9 @@ const ROLE_PERMISSIONS: Record<IdentityOpsRole, IdentityOpsPermission[]> = {
     "ops.audit.read",
     "ops.alerts.read",
     "ops.markets.read",
-    "ops.markets.manage"
+    "ops.markets.manage",
+    "ops.risk.read",
+    "ops.risk.manage"
   ],
   ops_reviewer: [
     "ops.dashboard.read",
@@ -41,7 +43,8 @@ const ROLE_PERMISSIONS: Record<IdentityOpsRole, IdentityOpsPermission[]> = {
     "ops.notifications.read",
     "ops.address_book.read",
     "ops.audit.read",
-    "ops.alerts.read"
+    "ops.alerts.read",
+    "ops.risk.read"
   ],
   ops_finance_operator: [
     "ops.dashboard.read",
@@ -68,7 +71,9 @@ const ROLE_PERMISSIONS: Record<IdentityOpsRole, IdentityOpsPermission[]> = {
     "ops.audit.read",
     "ops.alerts.read",
     "ops.markets.read",
-    "ops.markets.manage"
+    "ops.markets.manage",
+    "ops.risk.read",
+    "ops.risk.manage"
   ],
   ops_platform_operator: [
     "ops.dashboard.read",
@@ -97,7 +102,8 @@ const ROLE_PERMISSIONS: Record<IdentityOpsRole, IdentityOpsPermission[]> = {
     "ops.address_book.read",
     "ops.audit.read",
     "ops.alerts.read",
-    "ops.markets.read"
+    "ops.markets.read",
+    "ops.risk.read"
   ]
 };
 

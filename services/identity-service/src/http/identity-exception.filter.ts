@@ -48,7 +48,10 @@ function mapIdentityErrorCodeToStatus(code: IdentityError["code"]): number {
     case "INVALID_API_KEY_SIGNATURE":
       return HttpStatus.UNAUTHORIZED;
     case "API_KEY_NOT_FOUND":
+    case "DEVICE_NOT_FOUND":
       return HttpStatus.NOT_FOUND;
+    case "LOGIN_TEMPORARILY_LOCKED":
+      return HttpStatus.TOO_MANY_REQUESTS;
     case "API_KEY_REVOKED":
       return HttpStatus.CONFLICT;
     default:

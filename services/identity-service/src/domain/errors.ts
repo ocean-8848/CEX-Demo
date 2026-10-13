@@ -30,7 +30,9 @@ export class IdentityError extends Error {
       | "INVALID_API_KEY_SCOPE"
       | "INVALID_API_KEY_SIGNATURE"
       | "API_KEY_NOT_FOUND"
-      | "API_KEY_REVOKED",
+      | "API_KEY_REVOKED"
+      | "LOGIN_TEMPORARILY_LOCKED"
+      | "DEVICE_NOT_FOUND",
     message: string
   ) {
     super(message);
