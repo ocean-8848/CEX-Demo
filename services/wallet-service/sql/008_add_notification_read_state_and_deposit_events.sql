@@ -13,6 +13,10 @@ alter table wallet_notifications
 alter table wallet_notifications
   alter column withdrawal_id drop not null;
 
+-- db:prepare re-runs every migration on each start. Later migrations widen these
+-- checks, so they are re-added here as NOT VALID: rows written under a later,
+-- wider definition must not make this older definition fail on re-run. The latest
+-- migration that redefines a check re-adds it fully validated.
 alter table wallet_notifications
   drop constraint if exists wallet_notifications_event_type_check;
 
@@ -26,7 +30,7 @@ alter table wallet_notifications
       'withdrawal.confirmed',
       'deposit.credited'
     )
-  );
+  ) not valid;
 
 alter table wallet_notifications
   drop constraint if exists wallet_notifications_subject_check;
@@ -34,7 +38,7 @@ alter table wallet_notifications
 alter table wallet_notifications
   add constraint wallet_notifications_subject_check check (
     withdrawal_id is not null or deposit_id is not null
-  );
+  ) not valid;
 
 create index if not exists idx_wallet_notifications_user_unread
   on wallet_notifications (user_id, created_at desc)
