@@ -104,7 +104,7 @@ flowchart TB
 | --- | --- | --- | --- |
 | `ledger-service` | 3001 | PostgreSQL `accounts`、`balances`、`ledger_journals`、`ledger_entries`、`balance_locks`、`outbox_events` | 资金事实源。双分录记账（每笔 journal 借贷平衡、按 `idempotencyKey` 幂等）、冻结 / 解冻 / 消耗（消耗一定生成一笔 journal）、余额快照、对账与重放。每次资金变动在同一事务里写 outbox 事件。详见 [ledger-service-design.md](./ledger-service-design.md)。 |
 | `ledger-outbox-publisher` | 无 | 同上 | 常驻 worker（`ledger-service` 的 `publish-outbox` 脚本），把 `outbox_events` 投递到 Kafka `ledger.events`，失败退避重试，超过次数标记死信并尽力投递 `dead-letter.events`。 |
-| `wallet-service` | 3002 | PostgreSQL `wallet_addresses`、`deposits`、`withdrawals`、`withdrawal_address_book`、`withdrawal_audit_logs`、`wallet_notifications`；Redis | 充值地址分配（服务内生成地址）、充值单据与入账、提币申请 / 校验（白名单、2FA、KYC 限额、安全冷却期）/ 审核（大额双人复核）/ 广播 / 确认、站内通知。资金动作全部委托给 `ledger-service`。 |
+| `wallet-service` | 3002 | PostgreSQL `wallet_addresses`、`deposits`、`withdrawals`、`withdrawal_address_book`、`withdrawal_audit_logs`、`wallet_notifications`、`treasury_transfers`、`treasury_sweep_deposits`、`proof_of_reserves_snapshots`、`proof_of_reserves_leaves`；Redis | 充值地址分配（服务内生成地址）、充值单据与入账、提币申请 / 校验（白名单、2FA、KYC 限额、安全冷却期）/ 审核（大额双人复核）/ 从热钱包广播 / 确认、站内通知。资金动作全部委托给 `ledger-service`。treasury 模块管理平台链上持仓的冷热分层：归集、热钱包水位与冷热调拨审批、钱包 vs 账本对账、储备金证明（见 [5.4 节](#54-冷热分层归集与储备金证明)）。 |
 | `blockchain-indexer` | 3003 | PostgreSQL `blockchain_deposit_observations`、`blockchain_withdrawal_observations`、`blockchain_scan_cursors` | 记录链上观测事实（充值交易、提币交易的确认数和区块哈希），检测重组，达到确认阈值后调用 `wallet-service` 入账或确认提币。提供 `scan-evm` / `replay-evm` / `repair-backlog` 脚本对接真实 EVM RPC；演示环境中观测数据由 `demo-simulator` 推送。 |
 | `custody-adapter` | 3004 | PostgreSQL `custody_transfers`、`custody_transfer_attempts` | 托管供应商抽象：按网络路由 provider（默认 `mock-custody` → `mock-custody-backup` 故障切换，另有 `evm-hot-wallet`），广播、重试、状态回查、provider 健康检查与熔断。 |
 
@@ -112,7 +112,7 @@ flowchart TB
 
 | 进程 | 端口 | 职责 |
 | --- | --- | --- |
-| `demo-simulator` | 3014 | `scripts/demo-simulator.mjs`。① 两个做市账户在每个启用的市场围绕随机游走中间价挂 10 档梯子单并偶尔吃单（直接调 `order-service`）；② 模拟一条 EVM 链，默认每 1.5 秒出一个块，把待确认充值和已广播提币的确认数推送给 `blockchain-indexer`；③ 测试水龙头 `/api/demo/faucet`（经网关确认是用户自己的充值地址后，向 indexer 报告一笔充值）；④ 故障实验室 `/internal/lab/*`（暂停出块、触发重组，需要内部签名）。 |
+| `demo-simulator` | 3014 | `scripts/demo-simulator.mjs`。① 两个做市账户在每个启用的市场围绕随机游走中间价挂 10 档梯子单并偶尔吃单（直接调 `order-service`）；② 模拟一条 EVM 链，默认每 1.5 秒出一个块，把待确认充值和已广播提币的确认数推送给 `blockchain-indexer`，把已广播的归集 / 冷热调拨的确认数推送给 `wallet-service`；③ 测试水龙头 `/api/demo/faucet`（经网关确认是用户自己的充值地址后，向 indexer 报告一笔充值）；④ 故障实验室 `/internal/lab/*`（暂停出块、触发重组，需要内部签名）；⑤ 每 `DEMO_TREASURY_INTERVAL_BLOCKS`（默认 10）个块执行一次归集、热钱包水位检查和演示储备补足（`scripts/treasury-demo-lib.mjs`）。 |
 
 ### 3.5 基础设施端口
 
@@ -157,10 +157,11 @@ flowchart TB
 | `market-data-service` | `order-service` | 拉取订单（算深度）与成交 |
 | `wallet-service` | `ledger-service` | 充值入账、提币冻结 / 释放 / 消耗 |
 | `wallet-service` | `identity-service` | 校验 2FA、读 KYC 等级、安全变更冷却 |
-| `wallet-service` | `custody-adapter` | `createTransfer` 广播提币 |
+| `wallet-service` | `custody-adapter` | `createTransfer` 广播提币，以及归集 / 冷热调拨这类内部转账（幂等键 `treasury:<transferId>`） |
+| `wallet-service` | `ledger-service` | 读用户负债 `/ops/liabilities`、`/ops/liabilities/users`（钱包 vs 账本对账、储备金证明） |
 | `blockchain-indexer` | `wallet-service` | `confirmDeposit`、`confirmWithdrawal` |
 | `ops-console` | identity / wallet / ledger / indexer / custody / order / settlement / risk / demo-simulator | 运营查询与处置 |
-| `demo-simulator` | indexer / wallet / ledger / order / risk / gateway | 推进链上确认、做市、水龙头 |
+| `demo-simulator` | indexer / wallet / ledger / order / risk / gateway | 推进链上确认（含归集 / 调拨）、做市、水龙头、定时触发归集与水位检查 |
 
 ### 4.3 内部服务认证
 
@@ -340,6 +341,74 @@ sequenceDiagram
 
 对应学习章节：[06 订单与撮合](../learning/06-order-matching.md)、[07 清算结算与手续费](../learning/07-clearing-settlement-fees.md)、[08 行情](../learning/08-market-data.md)、[09 风控](../learning/09-risk-control.md)。
 
+### 5.4 冷热分层、归集与储备金证明
+
+账本（`ledger-service`）记录的是"平台欠每个用户多少"；`wallet-service` 的 treasury 模块记录"币实际在哪里"。两本账独立维护，所以能互相核对。平台链上持仓分三层：
+
+| 层 | 含义 | 怎么变化 |
+| --- | --- | --- |
+| 充值地址 | 已入账、还没归集的充值 | + 充值入账（`deposits.status=credited`）；− 归集广播 |
+| 热钱包 | 在线钱包，自动付提现 | + 归集 / 冷→热到账；− 提现广播（只付 `amount`，手续费留在热钱包）、热→冷广播 |
+| 冷钱包 | 离线储备 | + 热→冷到账；− 冷→热广播 |
+
+内部转账广播后、到账前的金额计为"在途"，所以内部转账不改变平台总持仓。持仓不落余额表，而是由 `src/domain/treasury-policy.ts` 的 `computeTreasuryHoldings` 从充值单、提币单和 `treasury_transfers` 三类事实实时推导。
+
+```mermaid
+flowchart LR
+  U["用户充值地址"] -- "归集 sweep（自动，无需审批）" --> H["热钱包"]
+  H -- "提现（审核通过后由 custody 广播）" --> OUT["用户外部地址"]
+  H -- "高于水位上限：热→冷提案" --> A{"运营审批<br/>（不能是提案人）"}
+  C["冷钱包"] -- "低于水位下限：冷→热提案" --> A
+  A -- "批准 → custody-adapter 广播" --> CHAIN["模拟链确认 12 块"]
+  CHAIN --> H
+  CHAIN --> C
+```
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant SIM as demo-simulator
+  participant W as wallet-service (treasury)
+  participant CA as custody-adapter
+  participant L as ledger-service
+  participant OPS as ops-console
+  participant U as trader-web
+
+  loop 每 10 个区块
+    SIM->>W: POST /treasury/sweeps/run
+    W->>W: 未归集的已入账充值按 (地址, 币种) 分组 → treasury_transfers(sweep, approved)
+    W->>CA: POST /custody/transfers (treasury:<id>)
+    W->>W: status=broadcasted, txHash
+    SIM->>W: POST /treasury/watermarks/evaluate
+    W->>W: 热钱包越过水位 → treasury_transfers(rebalance_*, proposed)
+  end
+  loop 每出一个块
+    SIM->>W: POST /treasury/transfers/confirm (confirmations)
+    W->>W: ≥12 确认 → confirmed，金额计入目标钱包
+  end
+  OPS->>W: approve（审批人 ≠ 提案人，校验来源余额）
+  W->>CA: 广播调拨
+  OPS->>W: GET /treasury/reconciliation
+  W->>L: GET /ledger/ops/liabilities
+  W-->>OPS: 逐币种 储备 vs 净负债、储备率
+  OPS->>W: POST /treasury/proof-of-reserves/snapshots
+  W->>L: GET /ledger/ops/liabilities/users
+  W->>W: 每用户随机 nonce → 叶子 → Merkle 树，保存根与每人的路径
+  U->>W: (经 api-gateway) GET /proof-of-reserves
+  W-->>U: 快照 + 自己的叶子 + 兄弟哈希路径
+  U->>U: Web Crypto SHA-256 逐层算到根并比对
+```
+
+要点：
+
+- **为什么不把冷热钱包记进账本**：`hot_wallet` / `cold_wallet` 账户类型仍只是保留类型。若把链上持仓也记成账本分录，每笔充值、归集、提现都要多一组对冲分录，而且"对账"就变成同一本账自己和自己比较。现在账本只承载用户负债与平台内部科目，账本自身的分录对账（`/ledger/ops/reconciliation`）完全不受影响，仍是 0 差异。
+- **钱包 vs 账本对账**：`储备 = 充值地址 + 热 + 冷 + 在途内部转账`，`净负债 = 账本用户负债 − 在途提现`（已从热钱包广播、账本冻结要到确认后才消耗）。储备 ≥ 净负债即"足额"；盈余是平台放在链上的自有资金，所以这是覆盖率检查而不是相等检查。
+- **演示储备**：演示账户和做市商的余额来自期初权益账户，没有对应的链上币。`pnpm demo:bootstrap` 和模拟器的储备补足把这部分记为"注资上链"（`genesis` 转账，热钱包补到水位目标，其余进冷钱包，储备率补到 `DEMO_RESERVE_TARGET_RATIO`，默认 120%）。`DEMO_RESERVE_KEEPER_ENABLED=false` 可以关掉补足，观察储备不足。
+- **储备金证明**：叶子 = `SHA-256("por-leaf:v1|" + 盐化用户哈希 + "|" + "ETH=1.5,USDT=25000")`，盐化用户哈希 = `SHA-256("por-user:v1|" + userId + "|" + nonce)`，内部节点 = `SHA-256("por-node:v1|" + 左 + "|" + 右)`。服务端构建（`services/wallet-service/src/domain/proof-of-reserves.ts`）与浏览器验证（`apps/trader-web/src/client/lib/por-verify.ts`）用同一个测试向量锁定格式。
+- **链上确认的来源**：真实环境由链扫描器发现内部转账上链；演示中由 `demo-simulator` 直接把确认数报给 `wallet-service`，与它推进提币确认的方式一致。
+
+对应学习章节：[04 钱包与托管](../learning/04-wallet-custody.md) 第 3.5、3.6、3.9 节，[B06 资金与流动性管理](../learning/backstage/B06-treasury-liquidity.md)，[B04 系统对账](../learning/backstage/B04-reconciliation.md)。
+
 ## 6. 数据存储
 
 | 存储 | 存什么 | 是否事实源 |
@@ -380,7 +449,8 @@ sequenceDiagram
 | 方面 | 本项目 | 真实交易所通常 |
 | --- | --- | --- |
 | 区块链 | `demo-simulator` 模拟一条 EVM 链，充值地址由 `wallet-service` 生成 | 自建节点集群、HD 钱包 / MPC 派生地址、多链独立扫描 |
-| 托管 | `mock-custody` 立即返回 txHash；`evm-hot-wallet` 仅作示例 | 冷热钱包分层、MPC / HSM 签名、归集与补充热钱包 |
+| 托管 | `mock-custody` 立即返回 txHash；`evm-hot-wallet` 仅作示例；冷热分层、归集、水位调拨只记录在 treasury 账面，冷钱包没有离线签名 | 冷热钱包物理隔离、MPC / HSM / 多签签名、分级审批的调拨流程 |
+| 储备金证明 | Merkle 包含证明 + 逐币种储备率，储备来自 treasury 记录（演示注资补足） | 链上地址余额 + 控制权证明、zk-SNARK 负债证明、第三方审计 |
 | 撮合 | 单进程内存订单簿，每条命令一个 TCP 连接，无持久化，靠 `order-service` 重放恢复 | 带命令日志 / 快照的确定性撮合集群，主备热切 |
 | 下单链路 | 同步串行调用 risk → ledger → engine | 预冻结在内存账户中完成，异步排队进入撮合 |
 | 事件总线 | 交易事件走 Redis Pub/Sub + Stream；Kafka 只承载账本 outbox 且无消费者 | 全链路统一事件总线，严格分区与消费组 |
@@ -396,7 +466,7 @@ sequenceDiagram
 | --- | --- |
 | 系统分层与服务清单 | [02 系统总架构](../learning/02-system-architecture.md) |
 | 身份、会话、2FA、KYC、内部认证 | [03 账户、身份与安全](../learning/03-account-identity-security.md) |
-| 充值、提币、indexer、托管 | [04 钱包与托管](../learning/04-wallet-custody.md) |
+| 充值、提币、indexer、托管、冷热分层、储备金证明 | [04 钱包与托管](../learning/04-wallet-custody.md)、[B06 资金与流动性管理](../learning/backstage/B06-treasury-liquidity.md)、[B04 系统对账](../learning/backstage/B04-reconciliation.md) |
 | 账本、冻结、outbox | [05 账本](../learning/05-ledger.md) |
 | 订单、风控预检、撮合引擎 | [06 订单与撮合](../learning/06-order-matching.md) |
 | 结算与手续费 | [07 清算结算与手续费](../learning/07-clearing-settlement-fees.md) |

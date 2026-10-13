@@ -330,7 +330,7 @@ flowchart LR
 
 ## 8. 本仓库对照
 
-本仓库（`CEX Demo`）实现了 R1–R4 的一部分，以及提币在途的超时清理。R5–R8 的自动对账未实现。
+本仓库（`CEX Demo`）实现了 R1–R4 的一部分、提币在途的超时清理，以及一个简化版 R5（钱包 vs 账本逐币种覆盖率对账）和储备金证明。R6–R8 未实现。
 
 | 本章概念 | 本仓库实现 | 状态 |
 |---|---|---|
@@ -339,10 +339,12 @@ flowchart LR
 | 对账告警阈值 | `check-alerts` 中 `LEDGER_ALERT_MAX_BALANCE_MISMATCHES`、负余额、超时锁等阈值 | 已实现（无自动熔断） |
 | 对账 HTTP 接口 | `GET/POST /api/v1/ledger/ops/reconciliation`、`/ops/replay` | 已实现 |
 | R2 成交 ↔ 结算 | `settlement-service` 按市场维护消费者检查点；`executionSequence` 小于检查点、或相等且 `replayCursor` 不大于检查点时按重复处理；出现断档时抛出 `SETTLEMENT_EVENT_SEQUENCE_GAP`；支持 `trade-executed/replay` | 已实现 |
+| R5（简化）钱包 ↔ 账本 | `wallet-service` 的 `GET /api/v1/wallet/treasury/reconciliation`：逐币种比较链上储备（充值地址 + 热钱包 + 冷钱包 + 在途内部转账，来自 treasury 记录）与 `ledger-service` 用户负债（`GET /ops/liabilities`，扣除已广播未确认的在途提现），输出储备率、盈余与 `covered` / `shortfall`；ops-console「钱包与储备金」页展示。与真实 R5 的差别：持仓来自 treasury 自己的转账记录而不是节点 / 索引器读取的地址余额，且是覆盖率检查（储备 ≥ 负债）而非逐笔相等 | 已实现（简化） |
+| 对外快照（5.3 节 PoR） | ops-console 生成储备金证明快照（Merkle 根 + 逐币种储备率），用户在 trader-web「资产 → 储备金证明」自行验证叶子；叶子数据来自账本用户负债（`GET /ops/liabilities/users`） | 已实现（无 zk 证明） |
 | R1 订单 ↔ 撮合 | `order-service` 的 `getAnomalies`：发现 `engine_missing_open_order`、`engine_orphan_order`、`db_open_order_without_resting_quantity`；`replay-engine` 用数据库中的挂单重建订单簿 | 已实现 |
 | 提币在途超时 | `wallet-service` 的 `reconcile-stale-withdrawals`：默认 30 分钟，待审的拒绝，已批准的重新广播 | 已实现 |
 | 运营入口 | `ops-console` 提供财务对账、账户 replay 页面 | 已实现 |
-| R5 / R6 / R7 / R8、熔断、双人审批调账 | — | 未实现 |
+| R6 / R7 / R8、对账不平自动停提币的熔断、双人审批调账 | — | 未实现 |
 
 相关文件：
 
@@ -352,6 +354,7 @@ flowchart LR
 - [settlement-application-service.ts](../../services/settlement-service/src/application/settlement-application-service.ts)（序号断档检测）
 - [order-ops-service.ts](../../services/order-service/src/application/order-ops-service.ts)（订单 ↔ 撮合异常、`replayEngineBook`）
 - [wallet-ops-service.ts](../../services/wallet-service/src/application/wallet-ops-service.ts)（`reconcileStaleWithdrawals`）
+- [treasury-policy.ts](../../services/wallet-service/src/domain/treasury-policy.ts)（`computeTreasuryHoldings`、`buildReserveReconciliation`）、[ledger-liabilities.ts](../../services/ledger-service/src/application/ledger-liabilities.ts)（用户负债）
 - [ledger-service-design.md](../../docs/ledger-service-design.md) 第 11 节、[troubleshooting.md](../../docs/troubleshooting.md) 第 6.4 节
 
 排障顺序（来自本仓库排障文档）：先跑只读检查（`reconcile-balances`），再用 `replay-account` 区分单账户问题和历史回填问题；**不直接手改余额快照或状态列**；最后才做 backfill 或人工补记。这和本章第 4 节的原则一致。

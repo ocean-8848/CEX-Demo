@@ -21,6 +21,7 @@
 | `#/markets` | 市场管理 | 列出 `config/markets.json` 中的全部市场：当前状态 / 配置默认状态、步长、费率、参考价、运行时覆盖（原因 / 操作人 / 时间）；`暂停交易` / `恢复交易`（需 `ops.markets.manage`，写操作审计，经 risk-service 持久化） |
 | `#/trace` | 业务追踪 | 输入 userId / orderId / tradeId / depositId / withdrawalId / accountId / txHash（或自动识别），展示跨模块链路与命中对象；后台任意蓝色 ID 都可点击跳转到这里 |
 | `#/ledger` | 账本对账 | 对账（分录净额、活跃冻结、余额快照、差额）、账户回放（逐笔冻结 / 解冻 / 结算）、outbox 投递 |
+| `#/treasury` | 钱包与储备金 | 冷热分层持仓（充值地址 / 热钱包 / 冷钱包 / 在途，热钱包水位状态）、「立即归集」「检查水位」「发起调拨」；钱包 vs 账本对账（逐币种储备、用户负债、在途提现、储备率、热钱包覆盖率）；调拨与归集记录（待审批提案可批准 / 拒绝，提案人不能批准自己的提案；失败调拨可重新广播；详情抽屉含状态历史与归集的充值）；储备金证明（生成快照、Merkle 根、逐币种储备率、历史快照） |
 | `#/system` | 系统运维 | 各数据源告警、托管路由与熔断、订单 / 结算恢复队列与死信、事件总线运行报告与手动作业、自动化作业模板与定时计划；**实验室**页签：暂停结算消费、托管广播故障、链重组、撮合引擎重置四个故障实验（一键触发 / 观察 / 恢复，见 [fault-lab.md](../../docs/fault-lab.md)） |
 | `#/audit` | 操作审计 | 后台动作审计（可展开请求 / 响应）、提现状态迁移记录 |
 
@@ -78,6 +79,7 @@ pnpm -s ops:totp                              # 打印演示运营账户当前�
 - 市场：`GET /market-config`（配置中的市场 / 币种，供各页下拉框使用，页面不硬编码）、`GET /markets`（含 risk-service 实时状态；risk 不可用时回退为配置默认值并标记 `statusSource: "config"`）、`POST /markets/:market/status`（`{ status: "halted" | "listed", reason }`）
 - 账本：`GET /ledger/overview|reconciliation|replay`、`POST /ledger/outbox/drain`
 - 运维：恢复队列、事件总线、执行模板等见 `src/http/ops-console.controller.ts`
+- 钱包与储备金（`src/http/treasury.controller.ts`）：`GET /treasury/overview|transfers|transfers/:id|reconciliation|proof-of-reserves/snapshots[/:id]`（`ops.ledger.read`）；`POST /treasury/sweeps/run`、`/treasury/watermarks/evaluate`、`/treasury/transfers`（发起提案）、`/treasury/transfers/:id/retry`、`/treasury/proof-of-reserves/snapshots`（`ops.ledger.execute`）；`POST /treasury/transfers/:id/approve|reject`（`ops.withdrawals.review`）。全部写操作以 `treasury.*` 写入操作审计
 - 故障实验室（`src/http/fault-lab.controller.ts`）：`GET /lab/status`；`POST /lab/settlement/pause|resume`、`/lab/custody/inject|probe|clear`、`/lab/chain/halt|resume|seed-deposit|reorg`、`/lab/indexer/reorg-acknowledge`、`/lab/engine/reset`、`/lab/recover-all`。写操作需同时具备 `ops.ledger.execute`、`ops.providers.manage`、`ops.indexer.execute`（默认仅 `ops_admin`），以 `fault_lab.*` 写入操作审计
 
 ## 说明
@@ -94,6 +96,6 @@ pnpm -s ops:totp                              # 打印演示运营账户当前�
 
 ## 延伸阅读
 
-- [B07 应急响应](../../learning/backstage/B07-incident-response.md)、[B04 系统对账](../../learning/backstage/B04-reconciliation.md)
+- [B07 应急响应](../../learning/backstage/B07-incident-response.md)、[B04 系统对账](../../learning/backstage/B04-reconciliation.md)、[B06 资金与流动性管理](../../learning/backstage/B06-treasury-liquidity.md)
 - [13 可靠性与安全事故](../../learning/13-reliability-security-incidents.md)
 - [故障实验室](../../docs/fault-lab.md)、[安全设计](../../docs/security.md)

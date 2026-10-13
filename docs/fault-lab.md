@@ -72,6 +72,8 @@
 
 探测广播不落库、不产生提现，只发往 `mock-*` 通道，但会计入路由的成功 / 失败统计。如果路由选中了真实通道，探测会停止并标记「跳过真实通道」。
 
+归集和冷热调拨也经 `custody-adapter` 广播。故障期间如果主备通道都不可用，归集会记为 `failed` 并把充值释放回待归集池，下一轮归集（默认每 10 个块）自动重试；失败的调拨可在「钱包与储备金」页点「重新广播」。暂停出块期间模拟器也暂停归集与水位检查。
+
 学习章节：[../learning/04-wallet-custody.md](../learning/04-wallet-custody.md)、[../learning/13-reliability-security-incidents.md](../learning/13-reliability-security-incidents.md)。
 
 ### ③ 链重组

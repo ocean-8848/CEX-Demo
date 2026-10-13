@@ -138,7 +138,21 @@
 - 广播请求带幂等键，失败有重试上限（`CUSTODY_MAX_BROADCAST_ATTEMPTS`）。
 - 充值与提现按确认数阈值推进（`DEPOSIT_CONFIRMATION_THRESHOLD`、`WITHDRAWAL_CONFIRMATION_THRESHOLD`、`INDEXER_CONFIRMATION_THRESHOLD`，默认 12）；模拟链支持停止出块和重组演练。
 
-详见 [custody-adapter README](../services/custody-adapter/README.md)、[blockchain-indexer README](../services/blockchain-indexer/README.md)。
+### 2.10 冷热分层与储备金证明（wallet-service treasury）
+
+- 平台链上持仓按 **充值地址 → 热钱包 ⇄ 冷钱包** 分层记录（`treasury_transfers`），与账本分开记账：账本记"欠用户多少"，treasury 记"币在哪里"。两本账独立，`/treasury/reconciliation` 才能逐币种发现储备不足。
+- 提现一律从热钱包付出；热钱包设水位上下限（`TREASURY_HOT_WALLET_WATERMARKS`），高于上限自动提出 热→冷 调拨，低于下限提出 冷→热 补充。调拨提案必须经运营审批：审批人需有 `ops.withdrawals.review`，且不能是提案人（`TREASURY_SAME_APPROVER`），批准前校验来源钱包余额，所有动作写 `ops_action_audit_logs` 并在转账记录的 `events` 中留痕。
+- 归集（充值地址 → 热钱包）不需要审批：目标是平台自己的热钱包地址，由服务端固定，不能由请求指定。
+- 储备金证明：叶子 = 盐化用户哈希 + 各币种余额，盐值是每期快照、每个用户随机生成的 nonce；网关只按当前登录用户返回他自己的叶子和兄弟哈希路径，响应里不含其他用户 ID 或余额。
+
+**与真实环境的差距**（演示简化）：
+
+- 热钱包、冷钱包都只是派生出来的演示地址，冷钱包"签名"同样经 `custody-adapter`（转账元数据标注 `cold-wallet (simulated offline signing)`），没有离线签名、多签 / MPC、硬件隔离。
+- 冷→热补充只要一人审批，没有分级审批、时间窗、单笔上限和白名单变更审批（见 [B06](../learning/backstage/B06-treasury-liquidity.md) 第 5.2 节）。
+- 演示环境的储备由"注资上链"（genesis）记录补足：模拟器把期初权益发给用户的余额对应为平台自有资金上链（`DEMO_RESERVE_KEEPER_ENABLED`）。真实交易所的储备必须来自链上可查的地址余额，并由第三方审计。
+- 储备金证明只有 Merkle 包含证明，没有 zk-SNARK 证明"无负余额叶子、叶子总和等于负债"；资产端没有链上地址签名证明（proof of control）。
+
+详见 [custody-adapter README](../services/custody-adapter/README.md)、[blockchain-indexer README](../services/blockchain-indexer/README.md)、[wallet-service README](../services/wallet-service/README.md)。
 
 ## 3. 威胁模型
 
@@ -152,7 +166,8 @@
 | 2FA 种子 | 数据库泄露后可伪造动态码 | 动态码单次使用；恢复码哈希存储 | TOTP 种子加密存储或放入独立密钥服务；支持 WebAuthn / 硬件密钥 |
 | 运营会话与审批权 | 运营 token 被盗或内部人员作恶，批准恶意提现 | 运营强制 2FA；12 小时 TTL；RBAC 细粒度权限；大额双人审批；全量动作审计 | 审批时 step-up、硬件密钥、审批 IP / 设备绑定、批量审批分权、审计日志防篡改 |
 | 提现链路 | 账号被盗后快速提走资产 | 已开 2FA 必须带动态码；KYC 分级限额；安全冷却期；可选白名单 | 默认强制白名单与冷却期、地址风险筛查（制裁 / 混币）、行为风控、紧急全局暂停 |
-| 热钱包私钥 | 环境变量泄露、误把真实私钥 / RPC 配进来 | 默认走 mock provider；模拟链；无真实资产 | HSM / MPC / KMS 签名，冷热分离，热钱包余额上限，链上监控与对账 |
+| 热钱包私钥 | 环境变量泄露、误把真实私钥 / RPC 配进来 | 默认走 mock provider；模拟链；无真实资产；冷热分层 + 热钱包水位上限，超限自动提出 热→冷 调拨 | HSM / MPC / KMS 签名，冷钱包离线 / 多签，链上监控 |
+| 平台储备 | 挪用用户资产、储备不足仍继续营业 | 钱包 vs 账本逐币种覆盖率对账；调拨需第二人审批并审计；储备金证明让用户自证余额被计入 | 第三方审计、zk 负债证明、链上地址控制权证明、储备不足自动停提现 |
 | 账本 | 伪造记账、重复记账、绕过冻结 | 借贷平衡校验；幂等键；冻结 / 消耗状态校验；无直接改余额接口 | 定期账实对账、journal 不可变存储、独立对账系统与告警 |
 | 内部服务 | 内网横向移动后直接调用 ledger / wallet 等接口 | HMAC 签名 + 30 秒时间窗 + 调用方允许列表；默认回环监听 | mTLS 与每服务独立身份、按调用方最小权限、私网 ACL、密钥轮换 |
 | 撮合通道 | 伪造下单 / 撤单 / reset 命令 | 仅回环监听 | 认证与加密通道、命令来源校验 |
@@ -164,12 +179,12 @@
 
 按风险从高到低排列：
 
-1. **密钥托管**：移除 `custody-adapter` 从环境变量读私钥 / 助记词的路径，改用 HSM / MPC / KMS；冷热钱包分离，热钱包设余额上限。
+1. **密钥托管**：移除 `custody-adapter` 从环境变量读私钥 / 助记词的路径，改用 HSM / MPC / KMS；冷钱包真正离线签名（多签 / MPC），冷→热调拨分级审批与时间窗（当前冷热分层和水位只在 treasury 账面上实现，见 2.10 节）。
 2. **服务身份**：把共享 HMAC 密钥升级为 mTLS 或每服务独立凭证，补上 `blockchain-indexer`、`custody-adapter`、`market-data-service` 的入口认证，撮合 TCP 通道加认证；所有服务显式绑定内网地址。
 3. **密钥与配置管理**：所有默认密钥（内部签名密钥、API Key 加密主密钥、数据库口令）进入密钥管理系统，可轮换；演示账号与固定 TOTP 种子不能出现在任何共享环境。
 4. **提现默认策略收紧**：默认强制 2FA、白名单和冷却期；审批时 step-up；引入地址风险筛查与紧急暂停开关。
 5. **账号安全**：登录失败锁定与验证码、设备管理、异常登录提醒；TOTP 种子加密存储；支持 WebAuthn。
 6. **Web 安全头**：CSP、`X-Frame-Options`、HSTS；Cookie 默认 `Secure`；全站 HTTPS。
 7. **入口防护**：限流不信任客户端传入的 `X-Forwarded-For`；公共行情 WS 加连接与消息限流；私有 WS 去掉 query 参数认证。
-8. **对账与监控**：链上余额、托管余额、账本余额三方对账，资金异常告警；审计日志写入不可篡改存储。
+8. **对账与监控**：当前的钱包 vs 账本对账基于 treasury 自己记录的持仓，还要与真实链上地址余额、托管商余额三方核对；储备不足时自动暂停提现；审计日志写入不可篡改存储。
 9. **基础设施**：数据库、Redis、Kafka 走私网与 TLS，最小权限账号，备份与访问审计。

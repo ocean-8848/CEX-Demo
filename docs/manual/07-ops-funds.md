@@ -96,7 +96,7 @@
 
 - **wallet-service**：提现状态机、规则校验（2FA、白名单、KYC 限额、每日额度）、双人复核策略与批准记录。
 - **ledger-service**：用户发起提现时冻结金额 + 手续费；拒绝时解冻；链上确认后最终扣除。
-- **custody-adapter**：按路由选择托管通道签名广播；**blockchain-indexer** 追踪确认数。
+- **custody-adapter**：按路由选择托管通道签名广播；**blockchain-indexer** 追踪确认数。提现一律从平台热钱包付出，热钱包余额、归集和冷热调拨在「钱包与储备金」页管理（见 [08 · 交易、市场与账本](08-ops-trading-and-ledger.md) 第 4 节）。
 - **ops-console BFF**：把提现、审计轨迹和托管记录拼成详情，并记录每次审核动作。
 
 ### 延伸学习

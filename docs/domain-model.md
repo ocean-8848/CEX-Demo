@@ -24,6 +24,9 @@ erDiagram
   LEDGER_ACCOUNT ||--o{ SPOT_ORDER : places
   SPOT_ORDER ||--o{ SPOT_TRADE : "maker / taker"
   SPOT_TRADE ||--o| TRADE_SETTLEMENT : "settled by"
+  DEPOSIT ||--o| TREASURY_TRANSFER : "swept by"
+  TREASURY_TRANSFER ||--o| CUSTODY_TRANSFER : broadcasts
+  POR_SNAPSHOT ||--|{ POR_LEAF : "one per user"
 ```
 
 | 实体 | 所属服务 | 表 | 说明 |
@@ -44,6 +47,8 @@ erDiagram
 | 提币 `Withdrawal` | wallet-service | `withdrawals` | 业务状态 `status` + 审核状态 `review_status` |
 | 提币地址簿 | wallet-service | `withdrawal_address_book` | `(user_id, network, address)` 唯一，可加入 / 移出白名单 |
 | 提币审计 / 通知 | wallet-service | `withdrawal_audit_logs`、`wallet_notifications` | 每次状态迁移写一条审计（含前后快照） |
+| 平台内部转账 `TreasuryTransfer` | wallet-service | `treasury_transfers`、`treasury_sweep_deposits` | 注资、归集、冷热调拨；见 [4.5](#45-冷热分层与内部转账wallet-service-treasury) |
+| 储备金证明 | wallet-service | `proof_of_reserves_snapshots`、`proof_of_reserves_leaves` | Merkle 根 + 每用户一个叶子与路径；见 [4.6](#46-储备金证明快照) |
 | 链上观测 | blockchain-indexer | `blockchain_deposit_observations`、`blockchain_withdrawal_observations`、`blockchain_scan_cursors` | 充值观测 `(network, tx_hash, address)` 唯一；提币观测 `(network, tx_hash)` 唯一 |
 | 托管转账 | custody-adapter | `custody_transfers`、`custody_transfer_attempts` | `idempotency_key` 唯一 |
 | 现货订单 `SpotOrder` | order-service | `spot_orders` | `idempotency_key` 唯一，记录冻结资产与金额 |
@@ -67,7 +72,7 @@ erDiagram
 | `spot` | 用户现货账户；结算服务的平台结算账户也用此类型 |
 | `fee` | 平台手续费账户（每个资产一个） |
 | `opening_balance` | 期初权益账户，种子资金的来源，**唯一允许负余额**的类型 |
-| `main`、`funding`、`hot_wallet`、`cold_wallet`、`withdrawal_pending` | 类型中保留，演示流程未使用 |
+| `main`、`funding`、`hot_wallet`、`cold_wallet`、`withdrawal_pending` | 类型中保留，演示流程未使用。平台链上持仓（充值地址 / 热钱包 / 冷钱包）不记在账本里，而由 `wallet-service` 的 treasury 模块单独记录，见 [第 4.5 节](#45-冷热分层与内部转账wallet-service-treasury) |
 
 几个固定的系统账户：
 
@@ -204,6 +209,46 @@ stateDiagram-v2
 
 每次广播、重试、回查都在 `custody_transfer_attempts` 记一条（`broadcast` / `retry` / `sync_status`，`succeeded` / `failed`）。provider 有健康状态（`healthy` / `degraded` / `unhealthy`）和熔断器（`closed` / `open` / `half_open`）。
 
+### 4.5 冷热分层与内部转账（wallet-service treasury）
+
+平台链上持仓分 `deposit`（用户充值地址）、`hot`、`cold` 三层，所有平台内部的链上移动都是一条 `treasury_transfers`：
+
+| `kind` | 方向 | 触发 | 是否审批 |
+| --- | --- | --- | --- |
+| `genesis` | 外部 → hot / cold | 演示注资（bootstrap、模拟器储备补足），按 `reference` 幂等 | 否，直接 `confirmed` |
+| `sweep` | deposit → hot | 归集任务（`trigger=sweep_job`），每个 (充值地址, 币种) 一笔 | 否，创建即 `approved` 并广播 |
+| `rebalance_to_cold` | hot → cold | 热钱包高于水位上限（`trigger=watermark`）或运营手动（`manual`） | 是 |
+| `rebalance_to_hot` | cold → hot | 热钱包低于水位下限或运营手动 | 是 |
+
+```mermaid
+stateDiagram-v2
+  [*] --> proposed: 水位提案 / 手动提案
+  [*] --> approved: 归集
+  [*] --> confirmed: genesis
+  proposed --> approved: 运营批准（≠ 提案人，来源余额充足）
+  proposed --> rejected: 运营拒绝
+  approved --> broadcasted: custody-adapter 广播成功
+  approved --> failed: 广播失败
+  failed --> broadcasted: 调拨重新广播（新的托管幂等键）
+  broadcasted --> confirmed: 确认数 ≥ TREASURY_TRANSFER_CONFIRMATION_THRESHOLD
+  rejected --> [*]
+  confirmed --> [*]
+```
+
+- 归集失败时删除它在 `treasury_sweep_deposits` 中关联的充值，下一轮归集重新纳入；一笔充值同一时间只能属于一个归集（主键 `deposit_id`）。
+- 同一币种同一时间最多一笔未完成（`proposed` / `approved` / `broadcasted`）的水位调拨；水位提案的幂等键是 `watermark:<asset>:<network>:<序号>`，并发评估只会成功一笔。
+- 每次状态迁移追加到 `events`（时间、动作、操作人、备注），运营动作另写 `ops_action_audit_logs`。
+- 持仓由事实推导、不落余额表：来源钱包在广播时扣减，目标钱包在确认时增加，中间计为"在途"；提现在广播时从热钱包扣 `amount`。规则见 `services/wallet-service/src/domain/treasury-policy.ts`。
+
+### 4.6 储备金证明快照
+
+| 实体 | 表 | 说明 |
+| --- | --- | --- |
+| 快照 `ProofOfReservesSnapshot` | `proof_of_reserves_snapshots` | Merkle 根、叶子数、树高、逐币种 `assets`（储备、负债 = 叶子合计、在途提现、净负债、储备率、状态 `covered` / `shortfall` / `no_liabilities`）、生成人 |
+| 叶子 `ProofOfReservesLeaf` | `proof_of_reserves_leaves` | 每个 (快照, 用户) 一行：随机 `nonce`、盐化用户哈希、规范化余额、叶子哈希、位置、兄弟哈希路径 `proof` |
+
+叶子来自 `ledger-service` 中属于用户的账户（`accounts.user_id` 非空）的 `available + locked` 合计，按盐化用户哈希排序后建树；奇数个节点时最后一个与自身配对。
+
 ## 5. 现货订单与成交
 
 ### 5.1 订单字段
@@ -333,6 +378,10 @@ stateDiagram-v2
 | 资金变动与事件原子一致 | outbox 事件与余额、journal 在同一数据库事务中写入 |
 | 提币状态迁移可追溯 | 每次迁移写 `withdrawal_audit_logs`（含前后快照、操作人） |
 | 大额提币需两名不同审核人 | `applyApproval` 拒绝同一人第二次批准（`WITHDRAWAL_SAME_APPROVER`） |
+| 冷热调拨的提案人不能批准自己的提案 | `TreasuryService.approveTransfer`（`TREASURY_SAME_APPROVER`） |
+| 内部转账不改变平台链上总持仓 | 来源广播时扣、目标确认时加，中间计"在途"（`computeTreasuryHoldings`） |
+| 链上钱包余额不为负 | 调拨批准与重新广播前校验来源钱包余额（`TREASURY_INSUFFICIENT_BALANCE`） |
+| 储备金叶子不泄露其他用户 | 网关按登录用户取叶子；路径只含兄弟哈希；用户 ID 用随机 nonce 盐化 |
 
 ## 10. 共享事件信封
 

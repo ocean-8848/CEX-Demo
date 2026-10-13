@@ -256,6 +256,7 @@ Content-Type: application/json
 | GET | `/balances` | 会话/Key(read) | 当前用户余额，过滤：`accountId`、`assetCode`、`accountType`、`accountStatus`、`limit`、`offset`。每行含 `available`、`locked`、`total` |
 | GET | `/ledger/entries` | 会话/Key(read) | 现货账户的资金流水（见下） |
 | GET | `/withdrawals/limits` | 会话/Key(read) | 当前 KYC 等级下各资产的单笔 / 每日提币额度与当日已用额度 |
+| GET | `/proof-of-reserves` | 会话/Key(read) | 最新储备金证明快照 + 当前用户自己的 Merkle 叶子与路径（见下） |
 
 `GET /ledger/entries` 查询参数：
 
@@ -302,6 +303,40 @@ Content-Type: application/json
 ```
 
 `balanceDerivable[asset]` 为 `false` 表示该资产的历史无法完整解释当前快照，此时不返回 `balanceAfter`。行的计算规则见 [ledger-service-design.md](ledger-service-design.md#9-资金流水statement)。
+
+`GET /proof-of-reserves`：网关用当前登录用户的 `userId` 调 wallet-service，用户无法查询别人的叶子。还没有快照时返回 `{ "available": false }`；有快照时：
+
+```json
+{
+  "available": true,
+  "snapshot": {
+    "snapshotId": "…",
+    "merkleRoot": "a285ff…",
+    "leafCount": 4,
+    "treeDepth": 2,
+    "createdAt": "…",
+    "assets": [
+      { "assetCode": "USDT", "reserves": "1250000", "liabilities": "1040000", "withdrawalsInFlight": "0",
+        "netLiabilities": "1040000", "hot": "125000", "cold": "1124975", "depositAddresses": "25",
+        "internalInTransit": "0", "reserveRatio": "1.2019", "status": "covered" }
+    ],
+    "format": { "hashAlgorithm": "SHA-256", "userHash": "…", "leaf": "…", "node": "…" }
+  },
+  "included": true,
+  "leaf": {
+    "userId": "<自己的 userId>",
+    "nonce": "9f1c…",
+    "userHash": "…",
+    "balances": { "ETH": "5", "USDT": "25000" },
+    "leafIndex": 2,
+    "leafHash": "…",
+    "message": "por-leaf:v1|<userHash>|ETH=5,USDT=25000"
+  },
+  "proof": [{ "position": "left", "hash": "…" }, { "position": "right", "hash": "…" }]
+}
+```
+
+验证：`userHash = SHA-256("por-user:v1|" + userId + "|" + nonce)`，`leafHash = SHA-256("por-leaf:v1|" + userHash + "|" + 按币种排序的 "ASSET=amount" 逗号拼接)`，然后对 `proof` 每一步计算 `SHA-256("por-node:v1|" + 左 + "|" + 右)`（`position` 是兄弟节点所在的一侧），最终结果应等于 `merkleRoot`。快照之后才产生余额的用户 `included=false`。
 
 ### 2.3 充值
 
@@ -702,6 +737,26 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 
 没有分配角色的运营账号默认是 `ops_observer`。完整映射见 `services/identity-service/src/domain/rbac.ts`。
 
+### 5.6 钱包与储备金（`/api/v1/ops/treasury`）
+
+冷热分层、归集、热钱包水位调拨、钱包 vs 账本对账和储备金证明，全部转发给 wallet-service 的 `/api/v1/wallet/treasury/*`。所有写操作写 `ops_action_audit_logs`（动作 `treasury.*`），并把运营人（邮箱，缺省为 userId）作为 `requestedBy` / `reviewedBy` / `generatedBy` 传下去。
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/overview` | `ops.ledger.read` | 每个币种的充值地址 / 热 / 冷 / 在途持仓、水位与水位状态、热冷钱包地址、未完成转账数、待审批数 |
+| GET | `/transfers` | `ops.ledger.read` | 内部转账列表（`kind?`、`status?`、`statuses?` 逗号分隔、`assetCode?`、分页） |
+| GET | `/transfers/:transferId` | `ops.ledger.read` | 详情，归集附带 `sweptDepositIds`，`events` 为状态历史 |
+| POST | `/transfers` | `ops.ledger.execute` | 手动发起调拨提案（`kind`：`rebalance_to_cold` / `rebalance_to_hot`，`assetCode`、`amount`、`network?`、`reason?`） |
+| POST | `/transfers/:transferId/approve` | `ops.withdrawals.review` | 批准并广播（`note?`）；提案人自己批准返回 `409 TREASURY_SAME_APPROVER`，来源钱包余额不足返回 `409 TREASURY_INSUFFICIENT_BALANCE` |
+| POST | `/transfers/:transferId/reject` | `ops.withdrawals.review` | 拒绝提案（`reason?`） |
+| POST | `/transfers/:transferId/retry` | `ops.ledger.execute` | 重新广播失败的调拨 |
+| POST | `/sweeps/run` | `ops.ledger.execute` | 立即执行一轮归集 |
+| POST | `/watermarks/evaluate` | `ops.ledger.execute` | 立即检查热钱包水位，越界时生成提案 |
+| GET | `/reconciliation` | `ops.ledger.read` | 钱包 vs 账本对账（见 6.3 节） |
+| POST | `/proof-of-reserves/snapshots` | `ops.ledger.execute` | 生成储备金证明快照 |
+| GET | `/proof-of-reserves/snapshots` | `ops.ledger.read` | 快照列表（`limit?`，不含叶子） |
+| GET | `/proof-of-reserves/snapshots/:snapshotId` | `ops.ledger.read` | 快照详情（不含叶子） |
+
 ---
 
 ## 6. 内部服务 API
@@ -757,6 +812,8 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | POST | `/ops/replay/run` | 同上，参数放请求体 |
 | GET | `/ops/overview` | 运维总览（`staleLockMinutes?`） |
 | POST | `/ops/outbox/drain` | 重排死信并发布（`requeueDeadLetter?`、`maxCycles?`） |
+| GET | `/ops/liabilities` | 用户负债汇总（`assetCode?`）：只统计 `user_id` 非空账户的 `available + locked`，返回 `{ generatedAt, userCount, assets: [{ assetCode, available, locked, total, userCount }] }` |
+| GET | `/ops/liabilities/users` | 每个用户各币种负债合计（`assetCode?`），`{ items: [{ userId, balances: { ETH: "5" } }] }`，供储备金证明建树 |
 
 `/ops/*` 只在 Postgres 模式下可用。各操作语义见 [ledger-service-design.md](ledger-service-design.md)。
 
@@ -788,6 +845,27 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | POST | `/notifications/read` | 标记已读（`userId`、`notificationIds?`，省略即全部） |
 | POST | `/ops/notifications/deliver` | 投递通知 |
 | POST | `/ops/withdrawals/reconcile-stale` | 处理停滞提币 |
+
+treasury（冷热分层与储备金证明，`/api/v1/wallet/treasury`，错误码 `TREASURY_TRANSFER_NOT_FOUND` 404、`TREASURY_INVALID_STATE` / `TREASURY_SAME_APPROVER` / `TREASURY_INSUFFICIENT_BALANCE` 409、`TREASURY_INVALID_REQUEST` 400、`TREASURY_UPSTREAM_FAILED` 502、`POR_SNAPSHOT_NOT_FOUND` 404）：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/treasury/overview` | 持仓分层、水位、热冷钱包地址 |
+| GET | `/treasury/transfers` | 内部转账列表（`kind?`、`status?`、`statuses?`、`assetCode?`、`network?`、`txHash?`、分页） |
+| GET | `/treasury/transfers/:transferId` | 详情（含 `sweptDepositIds`） |
+| POST | `/treasury/transfers` | 调拨提案（`kind`、`assetCode`、`amount`、`requestedBy`、`network?`、`reason?`） |
+| POST | `/treasury/transfers/:transferId/approve` | 批准并经 custody-adapter 广播（`reviewedBy`、`note?`） |
+| POST | `/treasury/transfers/:transferId/reject` | 拒绝（`reviewedBy`、`reason?`） |
+| POST | `/treasury/transfers/:transferId/retry` | 重新广播失败的调拨（`requestedBy`） |
+| POST | `/treasury/transfers/confirm` | 链上确认回报（`network`、`txHash`、`confirmations`、`blockNumber?`），达到 `TREASURY_TRANSFER_CONFIRMATION_THRESHOLD` 后到账；演示中由 demo-simulator 调用 |
+| POST | `/treasury/sweeps/run` | 归集：未归集的已入账充值按 (地址, 币种) 各发一笔到热钱包（`requestedBy?`） |
+| POST | `/treasury/watermarks/evaluate` | 水位检查，越界生成 `proposed` 调拨（`requestedBy?`） |
+| POST | `/treasury/genesis` | 记录平台资金上链（`assetCode`、`walletType`：`hot`/`cold`、`amount`、`reference`、`network?`、`note?`），按 `reference` 幂等；演示 bootstrap 与储备补足使用 |
+| GET | `/treasury/reconciliation` | 钱包 vs 账本：`items[]` 每个币种 `depositAddresses`、`hot`、`cold`、`internalInTransit`、`reserves`、`ledgerLiabilities`、`withdrawalsInFlight`、`netLiabilities`、`surplus`、`reserveRatio`、`hotCoverage`、`status`（`covered` / `shortfall` / `no_liabilities`），顶层 `status`、`shortfallCount`、`holdings` |
+| POST | `/treasury/proof-of-reserves/snapshots` | 生成快照（`generatedBy?`） |
+| GET | `/treasury/proof-of-reserves/snapshots` | 快照列表（`limit?`） |
+| GET | `/treasury/proof-of-reserves/snapshots/:snapshotId` | 快照详情 |
+| GET | `/treasury/proof-of-reserves/me` | 某用户在最新快照中的叶子与路径（`userId`），网关 `/proof-of-reserves` 使用 |
 
 ### 6.4 order-service（HMAC）
 
@@ -846,7 +924,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/transfers` | 创建托管转账（广播提币） |
+| POST | `/transfers` | 创建托管转账：广播提币（幂等键 `withdrawal:<id>`），以及 wallet-service treasury 的归集 / 冷热调拨（幂等键 `treasury:<transferId>[:<attempt>]`，`metadata.purpose` 为 `treasury_sweep` 等） |
 | GET | `/transfers/:custodyTransferId` | 转账详情 |
 | POST | `/transfers/:custodyTransferId/retry` | 重试 |
 | POST | `/transfers/:custodyTransferId/sync-status` | 同步链上状态 |
