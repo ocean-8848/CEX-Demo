@@ -152,6 +152,12 @@ export class OrderOpsController {
     return this.orderHttpService.replayEngineBook(requireMarket(body.market));
   }
 
+  /** Runs one stop-order trigger pass now (the worker also polls on its own). */
+  @Post("/stop-orders/trigger")
+  async runStopOrderTriggers() {
+    return this.orderHttpService.runStopOrderTriggers();
+  }
+
   @Post("/lab/engine-reset")
   async injectEngineReset(
     @Body() body: OrderOpsQueryDto & { resetSequences?: boolean | string }

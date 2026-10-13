@@ -15,6 +15,8 @@ import {
 const DEFAULT_ALLOWED_CALLERS = [
   "api-gateway",
   "blockchain-indexer",
+  // new-device login notifications (security.new_device_login)
+  "identity-service",
   "ops-console",
   "demo-scripts"
 ];

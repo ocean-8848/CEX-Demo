@@ -26,13 +26,15 @@ export class HttpIdentityClient implements IdentityGatewayClient {
     twoFactorCode?: string;
     userAgent?: string;
     ipAddress?: string;
+    deviceId?: string;
   }): Promise<CustomerSessionInfo & { token: string }> {
     return this.fetchJson("/api/v1/identity/auth/sessions", {
       method: "POST",
       body: JSON.stringify({
         email: command.email,
         password: command.password,
-        twoFactorCode: command.twoFactorCode
+        twoFactorCode: command.twoFactorCode,
+        deviceId: command.deviceId
       }),
       headers: {
         ...(command.userAgent ? { "user-agent": command.userAgent } : {}),
@@ -155,6 +157,30 @@ export class HttpIdentityClient implements IdentityGatewayClient {
       method: "POST",
       body: JSON.stringify(command)
     });
+  }
+
+  async listLoginEvents(
+    userId: string,
+    query: { limit?: number; offset?: number }
+  ): Promise<Record<string, unknown>> {
+    const search = new URLSearchParams();
+    if (query.limit !== undefined) search.set("limit", String(query.limit));
+    if (query.offset !== undefined) search.set("offset", String(query.offset));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return this.fetchWithIdentityErrors(
+      `/api/v1/identity/users/${encodeURIComponent(userId)}/login-events${suffix}`
+    );
+  }
+
+  async listDevices(userId: string): Promise<Record<string, unknown>> {
+    return this.fetchWithIdentityErrors(`/api/v1/identity/users/${encodeURIComponent(userId)}/devices`);
+  }
+
+  async revokeDevice(userId: string, deviceId: string): Promise<Record<string, unknown>> {
+    return this.fetchWithIdentityErrors(
+      `/api/v1/identity/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(deviceId)}/revoke`,
+      { method: "POST", body: JSON.stringify({}) }
+    );
   }
 
   /**

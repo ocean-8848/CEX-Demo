@@ -51,10 +51,13 @@
 
 - [.env.example](.env.example)
 
-默认端口: `3003`
+默认端口: `3003`，默认只监听 `127.0.0.1`。所有 `/api/v1/indexer/*` 接口要求内部服务 HMAC 签名，默认允许 `ops-console`、`demo-scripts`（`demo-simulator` 以此身份推送链上观测），见 `src/http/internal-service-auth.guard.ts`。
 
 关键环境变量:
 
+- `INTERNAL_SERVICE_AUTH_SECRET`（必填；既用于校验入站请求，也用于签名调用 `wallet-service`）
+- `INTERNAL_SERVICE_ALLOWED_CALLERS`（覆盖默认调用方白名单）
+- `INTERNAL_SERVICE_BIND_HOST`（默认 `127.0.0.1`）
 - `BLOCKCHAIN_INDEXER_REPOSITORY`（`postgres` / `memory`）
 - `WALLET_SERVICE_BASE_URL`
 - `INDEXER_CONFIRMATION_THRESHOLD`（默认 `12`）

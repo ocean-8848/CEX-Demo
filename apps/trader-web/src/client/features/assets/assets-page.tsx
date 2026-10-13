@@ -404,6 +404,14 @@ function DepositPanel(props: { initialAsset?: string }) {
   );
 }
 
+/** KYT levels from wallet-service (validate result / withdrawal record). */
+const RISK_LEVEL_TEXT: Record<string, string> = {
+  low: "低",
+  medium: "中（需人工审核关注）",
+  high: "高（需两名运营复核）",
+  blocked: "已拦截"
+};
+
 function WithdrawPanel(props: { initialAsset?: string }) {
   const { state, actions, assets } = useExchange();
   const defaultAsset = useValuationAsset();
@@ -453,11 +461,13 @@ function WithdrawPanel(props: { initialAsset?: string }) {
     setBusy("validate");
     try {
       const result = await actions.validateWithdrawal(input());
+      const risk = result.risk as { level?: string } | undefined;
       setCheck({
         ok: result.valid !== false,
         message:
           result.valid !== false
-            ? `校验通过：将冻结 ${formatAmount(String(result.frozenAmount ?? ""))} ${asset}（金额 + 手续费）`
+            ? `校验通过：将冻结 ${formatAmount(String(result.frozenAmount ?? ""))} ${asset}（金额 + 手续费）` +
+              (risk?.level ? ` · 地址风险：${RISK_LEVEL_TEXT[risk.level] ?? risk.level}` : "")
             : String(result.reason ?? "校验未通过")
       });
     } catch (error) {
@@ -719,6 +729,7 @@ function WithdrawalHistory(props: { highlight?: string }) {
                 </td>
                 <td>
                   <Badge tone={status.tone}>{status.label}</Badge>
+                  {withdrawal.riskLevel === "blocked" ? <Badge tone="negative">风控拦截</Badge> : null}
                 </td>
               </tr>
             );

@@ -3,6 +3,7 @@ import type {
   OrderStatus,
   OrderType,
   SpotMarket,
+  StpMode,
   TimeInForce
 } from "@web3-cex/domain";
 
@@ -17,6 +18,12 @@ export interface CreateSpotOrderCommand {
   quantity: string;
   idempotencyKey: string;
   traceId?: string;
+  /** Maker-only limit order (rejected instead of taking liquidity). */
+  postOnly?: boolean;
+  /** Self-trade prevention mode; the engine defaults to expire_taker. */
+  stpMode?: StpMode;
+  /** Required for stop_limit / stop_market. */
+  triggerPrice?: string;
 }
 
 export interface CancelSpotOrderCommand {
@@ -47,6 +54,12 @@ export interface SpotOrderRecord {
   cancelledAt?: string;
   createdAt: string;
   updatedAt: string;
+  postOnly?: boolean;
+  stpMode?: StpMode;
+  /** Stop orders: last-price trigger; the order waits in pending_trigger. */
+  triggerPrice?: string;
+  /** When a stop order was handed to the matching engine. */
+  triggeredAt?: string;
 }
 
 export type SpotOrderRecoveryStage = "persist_matched_outcome";
@@ -267,10 +280,18 @@ export interface MatchingSubmitResult {
     takerCreatedAt?: string;
     makerRemainingQuantity: string;
   }>;
+  /** Own resting orders removed by self-trade prevention (expire_maker / expire_both). */
+  expiredMakers?: Array<{
+    orderId: string;
+    quantity: string;
+    reason: string;
+  }>;
 }
 
 export interface MatchingBookSnapshotOrder {
   orderId: string;
+  /** Owner account id (absent for orders seeded without one). */
+  ownerId?: string;
   side: "buy" | "sell";
   price: string;
   quantity: string;

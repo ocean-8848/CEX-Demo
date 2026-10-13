@@ -1,4 +1,4 @@
-import type { OrderSide, OrderType, SpotMarket, TimeInForce } from "@web3-cex/domain";
+import type { OrderSide, OrderType, SpotMarket, StpMode, TimeInForce } from "@web3-cex/domain";
 
 import type { MatchingBookSnapshot, MatchingSubmitResult } from "./types.js";
 
@@ -12,6 +12,9 @@ export interface RiskOrderClient {
     timeInForce?: TimeInForce;
     price?: string;
     quantity: string;
+    postOnly?: boolean;
+    stpMode?: StpMode;
+    triggerPrice?: string;
   }): Promise<{
     market: SpotMarket;
     baseAsset: string;
@@ -71,11 +74,16 @@ export interface MatchingEngineClient {
     orderId: string;
     market: SpotMarket;
     side: OrderSide;
-    type: OrderType;
+    /** Engine order type: stop orders are submitted as limit / market once triggered. */
+    type: "limit" | "market";
     timeInForce: TimeInForce;
     price?: string;
     quantity: string;
     createdAt: string;
+    /** Owner (account id) for self-trade prevention. */
+    ownerId?: string;
+    stpMode?: StpMode;
+    postOnly?: boolean;
   }): Promise<MatchingSubmitResult>;
   seedOrder(command: {
     orderId: string;
@@ -84,6 +92,7 @@ export interface MatchingEngineClient {
     price: string;
     quantity: string;
     createdAt: string;
+    ownerId?: string;
   }): Promise<{ outcome: "seeded"; orderId: string }>;
   cancelOrder(command: {
     orderId: string;

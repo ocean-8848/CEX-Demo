@@ -15,7 +15,7 @@
 当前实现:
 
 - `POST /api/v1/gateway/auth/register`
-- `POST /api/v1/gateway/auth/sessions`
+- `POST /api/v1/gateway/auth/sessions`（`{ email, password, twoFactorCode?, deviceId? }`；响应带 `device`，失败过多时透传 `429 LOGIN_TEMPORARILY_LOCKED`）
 - `GET /api/v1/gateway/auth/me`
 - `POST /api/v1/gateway/auth/logout`
 - `POST /api/v1/gateway/auth/api-keys`
@@ -26,6 +26,9 @@
 - `POST /api/v1/gateway/auth/two-factor/enable`（`{ code }`，响应带只显示一次的 `recoveryCodes`）
 - `POST /api/v1/gateway/auth/two-factor/disable`（`{ code }`，当前动态码或恢复码）
 - `POST /api/v1/gateway/auth/two-factor/recovery-codes`（`{ code }`，重新生成恢复码）
+- `GET /api/v1/gateway/auth/login-events`（登录记录，session-only）
+- `GET /api/v1/gateway/auth/devices`（设备列表，session-only）
+- `POST /api/v1/gateway/auth/devices/{deviceId}/revoke`（吊销该设备的全部会话，session-only）
 - `GET /api/v1/gateway/auth/kyc`（当前等级与最近申请）
 - `POST /api/v1/gateway/auth/kyc/requests`（`{ requestedTier: "L1" | "L2", fullName, idNumber }`，演示字段）
 - `GET /api/v1/gateway/withdrawals/limits`（等级、各币种限额、今日已用、双人复核阈值、冷却期；session 或带 `read` 的 API Key）
@@ -45,7 +48,7 @@
 - `GET /api/v1/gateway/notifications/unread-count`（通知中心铃铛未读数）
 - `POST /api/v1/gateway/notifications/{notificationId}/read`、`POST /api/v1/gateway/notifications/read-all`（标记已读，API Key 只需 `read` scope；只作用于调用者自己的通知，别人的 id 返回 404）
 - `GET /api/v1/gateway/ledger/entries?assetCode=&category=&businessType=&includeLockEvents=&from=&to=&limit=&offset=`（资金流水；账户固定为调用者自己的现货账户，请求里不接受 accountId）
-- `POST /api/v1/gateway/orders`
+- `POST /api/v1/gateway/orders`（可选 `postOnly`、`stpMode`，止损单 `type=stop_limit|stop_market` + `triggerPrice`；网关在 `src/application/order-options.ts` 做格式校验与归一化，业务规则由 risk-service 校验）
 - `GET /api/v1/gateway/orders`
 - `GET /api/v1/gateway/orders/{orderId}`
 - `POST /api/v1/gateway/orders/{orderId}/cancel`
@@ -147,6 +150,8 @@ pnpm --filter @web3-cex/api-gateway start
 当前运行说明:
 
 - 默认使用 Redis 做固定窗口限流和幂等键存储
+- 默认只监听 `127.0.0.1`（`GATEWAY_BIND_HOST`），启动日志打印实际地址
+- 匿名限流、幂等作用域、请求审计和登录会话 IP 默认取 socket 对端地址；只有设置 `GATEWAY_TRUST_PROXY=true` 时才信任 `X-Forwarded-For` 第一段（`src/http/client-ip.ts`）
 - 会输出结构化请求审计日志到应用日志
 - 如果 Redis 不可用，可通过 `GATEWAY_RATE_LIMIT_STORE=memory` 和 `GATEWAY_IDEMPOTENCY_STORE=memory` 回退到单实例内存模式
 - 实时层环境变量 `GATEWAY_WS_PATH` / `GATEWAY_WS_SNAPSHOT_LIMIT` / `GATEWAY_WS_CACHE_SIZE` 见 [.env.example](.env.example)；`GATEWAY_WS_ALLOWED_ORIGINS`、`GATEWAY_WS_MESSAGE_*`、`GATEWAY_WS_REAUTH_INTERVAL_MS`、`GATEWAY_WS_REPLAY_BUFFER_SIZE`（默认 200）未写入示例文件，使用代码默认值

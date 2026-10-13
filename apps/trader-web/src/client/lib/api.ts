@@ -150,6 +150,8 @@ export function readErrorMessage(error: unknown): string {
 // can act on, while keeping the original text for debugging.
 const ERROR_HINTS: Array<[RegExp, string]> = [
   // M4-1 / M4-4 / M5-2 codes first: they are more specific than the generic hints below.
+  [/WITHDRAWAL_ADDRESS_BLOCKED|blocked by platform risk control/, "该地址已被平台风控拦截（命中制裁 / 黑名单地址），无法向其提现；如有疑问请联系客服"],
+  [/LOGIN_TEMPORARILY_LOCKED|temporarily locked/, "登录失败次数过多，账户已临时锁定，请稍后再试"],
   [/WITHDRAWAL_2FA_NOT_ENABLED/, "请先在账户页开启二次验证"],
   [/WITHDRAWAL_2FA_REQUIRED/, "已开启二次验证，提现需要输入动态码"],
   [/TWO_FACTOR_RECOVERY_CODE_INVALID/, "恢复码无效或已被使用"],
@@ -191,11 +193,15 @@ export function humanizeError(message: string, code?: string): string {
  * errors; turn it into a readable countdown.
  */
 export function describeCooldownError(text: string): string | null {
-  if (!/WITHDRAWAL_SECURITY_COOLDOWN|Withdrawals are locked/.test(text)) {
+  if (!/WITHDRAWAL_SECURITY_COOLDOWN|WITHDRAWAL_NEW_DEVICE_LOCK|Withdrawals are locked/.test(text)) {
     return null;
   }
   const remaining = Number(/remainingSeconds=(\d+)/.exec(text)?.[1] ?? NaN);
-  const reason = /two-factor/i.test(text) ? "修改二次验证" : "新增提现地址";
+  const reason = /new device|WITHDRAWAL_NEW_DEVICE_LOCK/i.test(text)
+    ? "新设备登录"
+    : /two-factor/i.test(text)
+      ? "修改二次验证"
+      : "新增提现地址";
   const wait = Number.isFinite(remaining) ? formatWait(remaining) : "一段时间";
   return `安全冷却期：${reason}后暂停提现，还需等待 ${wait}`;
 }

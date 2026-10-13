@@ -4,7 +4,8 @@ export const LOCAL_INTERNAL_SERVICE_AUTH_SECRET =
   process.env.INTERNAL_SERVICE_AUTH_SECRET ?? "web3-cex-local-internal-auth";
 
 const DEFAULT_CALLER_NAME = process.env.INTERNAL_SERVICE_CALLER_NAME ?? "demo-scripts";
-const PROTECTED_INTERNAL_PORTS = new Set(["3001", "3002", "3005", "3008", "3009", "3010"]);
+// ledger, wallet, indexer, custody, identity, risk, order, settlement
+const PROTECTED_INTERNAL_PORTS = new Set(["3001", "3002", "3003", "3004", "3005", "3008", "3009", "3010"]);
 
 export function maybeBuildInternalServiceHeaders(url, init = {}) {
   if (!isProtectedInternalServiceUrl(url)) {

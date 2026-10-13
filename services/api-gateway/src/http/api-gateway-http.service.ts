@@ -7,6 +7,7 @@ import type {
   OrderStatus,
   OrderType,
   SpotMarket,
+  StpMode,
   TimeInForce
 } from "@web3-cex/domain";
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
@@ -117,6 +118,7 @@ export class ApiGatewayHttpService implements OnModuleInit, OnModuleDestroy {
     twoFactorCode?: string;
     userAgent?: string;
     ipAddress?: string;
+    deviceId?: string;
   }) {
     return this.applicationService.createCustomerSession(command);
   }
@@ -178,6 +180,18 @@ export class ApiGatewayHttpService implements OnModuleInit, OnModuleDestroy {
 
   async regenerateRecoveryCodes(principal: GatewayPrincipal, code: unknown) {
     return this.applicationService.regenerateRecoveryCodes(principal, code);
+  }
+
+  async listLoginEvents(principal: GatewayPrincipal, query: { limit?: number; offset?: number }) {
+    return this.applicationService.listLoginEvents(principal, query);
+  }
+
+  async listDevices(principal: GatewayPrincipal) {
+    return this.applicationService.listDevices(principal);
+  }
+
+  async revokeDevice(principal: GatewayPrincipal, deviceId: string) {
+    return this.applicationService.revokeDevice(principal, deviceId);
   }
 
   async getKycProfile(principal: GatewayPrincipal) {
@@ -381,6 +395,9 @@ export class ApiGatewayHttpService implements OnModuleInit, OnModuleDestroy {
       quantity: string;
       idempotencyKey: string;
       traceId?: string;
+      postOnly?: boolean;
+      stpMode?: StpMode;
+      triggerPrice?: string;
     }
   ) {
     return this.applicationService.createOrder(principal, command);

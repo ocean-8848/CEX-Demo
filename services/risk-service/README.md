@@ -19,8 +19,9 @@
 - 支持的市场与规则（步长、最小数量、费率、价格偏离上限、兜底参考价、默认状态）全部来自 [config/markets.json](../../config/markets.json)，默认为 `BTC-USDT`、`ETH-USDT`、`SOL-USDT`
 - 市场状态：`halted` 拒绝新委托（`409 MARKET_HALTED`，含暂停原因），`delisted` 拒绝新委托（`409 MARKET_DELISTED`）；撤单不经过风控，始终允许
 - 订单类型:
-  - `limit`
+  - `limit`（可带 `postOnly`）
   - `market`
+  - `stop_limit` / `stop_market`（必须带 `triggerPrice`）
 - 时效:
   - `gtc`
   - `ioc`
@@ -30,8 +31,11 @@
   - 价格 step 对齐
   - 数量 step 对齐
   - 价格偏离参考价上限
+  - Post-Only 只允许 GTC 限价单（`POST_ONLY_REQUIRES_GTC_LIMIT`）
+  - `stpMode` 只能是 `expire_taker` / `expire_maker` / `expire_both`（`INVALID_STP_MODE`）
+  - 止损单：`triggerPrice` 必填、为正、对齐价格 step，相对参考价不超过 `maxPriceDeviationRatio`（`TRIGGER_PRICE_DEVIATION_TOO_HIGH`）；止损限价的委托价相对触发价受同一上限约束；非止损单不允许带 `triggerPrice`
   - 账户可用余额
-- 买单锁 `quote`，卖单锁 `base`
+- 买单锁 `quote`，卖单锁 `base`；止损限价按委托价计算，止损市价买单按 `触发价 × 数量 × (1 + maxPriceDeviationRatio)` 计算
 
 市场监控（`src/domain/surveillance.ts`、`src/application/surveillance-service.ts`）:
 
@@ -40,7 +44,7 @@
 
 | 类型 | 规则 | 默认阈值 | 证据 |
 | --- | --- | --- | --- |
-| `wash_trade` 对敲 / 自成交 | 同一用户同时是买方和卖方（没有设备 / IP 数据，只按同一用户判断） | 1 小时内 ≥ 1 笔 | 自成交的成交 |
+| `wash_trade` 对敲 / 自成交 | 同一用户同时是买方和卖方（同账户自成交已被撮合引擎 STP 阻止，这里兜底同一用户跨账户的成交；未用登录设备 / IP 做关联） | 1 小时内 ≥ 1 笔 | 自成交的成交 |
 | `concentrated_volume` 成交集中 | 单一账户占市场“买卖双边参与度”的比例（自成交算两次） | > 30%，近 1 小时、市场成交额 ≥ 1000、≥ 5 笔 | 该账户的成交 |
 | `spoofing` 幌骗 | 名义金额 ≥ 阈值的委托未成交即在 N 秒内撤单，反复出现 | ≥ 2000、30 秒内撤、10 分钟内 ≥ 3 笔 | 被撤的委托（含存活时长） |
 | `price_move` 价格异动 | 窗口内最高价与最低价之差 / 最低价（市场级） | 5 分钟内 > 3% | 首笔、最高、最低、末笔成交 |

@@ -284,3 +284,119 @@ test("a failing tier resolver falls back to market default rates", async () => {
   assert.equal(trade?.sellerFeeRate, "0.0005");
   assert.equal(trade?.sellerFeeTier, undefined);
 });
+
+function tierHarness(engine: MatchingEngineClient["submitOrder"]) {
+  const repository = new InMemoryOrderRepository();
+  const feeTiers = new FeeTierService(new InMemoryFeeTierRepository(), { config, now: () => NOW });
+  const service = new OrderApplicationService(
+    repository,
+    {
+      async validateSpotOrder(command) {
+        return {
+          market: command.market,
+          baseAsset: "BTC",
+          quoteAsset: "USDT",
+          lockAssetCode: command.side === "buy" ? "USDT" : "BTC",
+          lockAmount: command.side === "buy" ? "65000" : command.quantity,
+          feeRate: "0.001",
+          timeInForce: command.type === "market" || command.type === "stop_market" ? "ioc" : "gtc"
+        };
+      }
+    },
+    { async freezeBalance() { return {}; }, async releaseBalance() { return {}; } },
+    { async settleTrade() { return { settlementId: "settlement-1" }; } },
+    { ...matchingEngine(), submitOrder: engine },
+    { now: () => NOW, feeTierResolver: feeTiers }
+  );
+  return { repository, feeTiers, service };
+}
+
+const restingMaker = {
+  orderId: "maker-1",
+  idempotencyKey: "maker",
+  traceId: "maker-trace",
+  userId: "seller",
+  accountId: "acct-seller",
+  market: "BTC-USDT",
+  side: "sell" as const,
+  type: "limit" as const,
+  timeInForce: "gtc" as const,
+  price: "65000",
+  quantity: "1",
+  filledQuantity: "0",
+  restingQuantity: "1",
+  status: "accepted" as const,
+  lockAssetCode: "BTC",
+  lockAmount: "1",
+  createdAt: "2026-03-08T10:00:00.000Z",
+  updatedAt: "2026-03-08T10:00:00.000Z"
+};
+
+test("a stop order triggered by the worker is charged its owner's tier rate at fill time", async () => {
+  const { repository, feeTiers, service } = tierHarness(async (command) => ({
+    outcome: "matched",
+    orderId: command.orderId,
+    takerStatus: "filled",
+    takerRemainingQuantity: "0",
+    trades: [
+      {
+        makerOrderId: "maker-1",
+        takerOrderId: command.orderId,
+        price: "65000",
+        quantity: "1",
+        executedAt: NOW.toISOString(),
+        executionId: "exec-stop",
+        executionBatchId: `BTC-USDT:${command.orderId}:batch`,
+        executionSequence: 1,
+        executionBatchSequence: 1,
+        replayCursor: "BTC-USDT:1",
+        protocolVersion: "v2",
+        makerRemainingQuantity: "0"
+      }
+    ]
+  }));
+  await repository.saveOrder(restingMaker);
+  const placed = await service.createOrder({
+    userId: "stopper",
+    accountId: "acct-stopper",
+    market: "BTC-USDT",
+    side: "buy",
+    type: "stop_limit",
+    timeInForce: "gtc",
+    triggerPrice: "64900",
+    price: "65000",
+    quantity: "1",
+    idempotencyKey: "stop-tier"
+  });
+  assert.equal(placed.status, "pending_trigger");
+  // The tier is resolved when the stop fires, not when it was placed.
+  await feeTiers.setOverride({ userId: "stopper", tier: "VIP2", note: "test", actor: "ops" });
+  const result = await service.triggerStopOrders("BTC-USDT", "64950");
+  assert.deepEqual(result.triggeredOrderIds, [placed.orderId]);
+  const [trade] = await service.listTrades({ userId: "stopper" });
+  assert.equal(trade?.buyerFeeTier, "VIP2");
+  assert.equal(trade?.buyerFeeRate, "0.0008", "taker after the trigger, VIP2 taker rate");
+});
+
+test("an STP-expired taker without fills produces no trade and therefore no fee", async () => {
+  const { repository, service } = tierHarness(async (command) => ({
+    outcome: "cancelled",
+    orderId: command.orderId,
+    reason: "stp_expired_taker",
+    trades: []
+  }));
+  const order = await service.createOrder({
+    userId: "self",
+    accountId: "acct-self",
+    market: "BTC-USDT",
+    side: "buy",
+    type: "limit",
+    timeInForce: "gtc",
+    price: "65000",
+    quantity: "1",
+    idempotencyKey: "stp-expired"
+  });
+  assert.equal(order.status, "rejected");
+  assert.equal(order.rejectedReason, "stp_expired_taker");
+  assert.equal((await repository.listTrades({ userId: "self" })).length, 0);
+});

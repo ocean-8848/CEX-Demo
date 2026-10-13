@@ -7,6 +7,7 @@ import { navigate } from "../../lib/router.js";
 import type { ApiKeyRecord, ApiKeyScope } from "../../lib/types.js";
 import { useExchange } from "../../state/store.js";
 import { FeeTierPanel } from "./fee-tier-panel.js";
+import { LoginSecurityPanels } from "./device-panels.js";
 import { KycPanel, TwoFactorPanel } from "./security-panels.js";
 
 export function AccountPage() {
@@ -123,6 +124,7 @@ export function AccountPage() {
       </div>
 
       <FeeTierPanel />
+      <LoginSecurityPanels />
 
       <Panel
         title="API Key"

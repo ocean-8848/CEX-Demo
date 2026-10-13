@@ -176,11 +176,12 @@ pnpm db:prepare:demo
 
 ### 8.1 内部服务鉴权
 
-`identity-service`、`wallet-service`、`ledger-service`、`order-service`、`settlement-service`、`risk-service` 默认只监听 `127.0.0.1`，并要求每个请求带 HMAC 签名头（`x-internal-service-name`、`x-internal-service-timestamp`、`x-internal-service-signature`）。
+`identity-service`、`wallet-service`、`ledger-service`、`order-service`、`settlement-service`、`risk-service`、`blockchain-indexer`、`custody-adapter` 默认只监听 `127.0.0.1`，并要求每个请求带 HMAC 签名头（`x-internal-service-name`、`x-internal-service-timestamp`、`x-internal-service-signature`）。
 
 - `pnpm stack:start` 会自动为所有调用方和被调方注入同一个本地密钥（默认 `web3-cex-local-internal-auth`），并把 `INTERNAL_SERVICE_CALLER_NAME` 设为服务名。
 - 根目录 `scripts/` 下的演示与测试脚本在未设置环境变量时也使用同一个默认值，调用名为 `demo-scripts`。
-- **服务本身没有默认密钥。** 单独启动任何服务（包括调用方如 `api-gateway`、`ops-console`、`blockchain-indexer`、`market-data-service`）时，必须在同一运行面显式设置相同的密钥:
+- 直接用 `curl` 调 `blockchain-indexer`（3003）或 `custody-adapter`（3004）会得到 401；请通过 `ops-console` 或 `scripts/mvp-demo-lib.mjs` 的 `fetchJson`（自动签名）调用。
+- **服务本身没有默认密钥。** 单独启动任何服务（包括调用方如 `api-gateway`、`ops-console`、`wallet-service`、`market-data-service`）时，必须在同一运行面显式设置相同的密钥:
 
 ```bash
 export INTERNAL_SERVICE_AUTH_SECRET=web3-cex-local-internal-auth
@@ -195,7 +196,7 @@ pnpm --filter @web3-cex/ledger-service start
 | `INTERNAL_SERVICE_CALLER_NAME` | 各服务默认是自己的服务名 | 签名中的调用方名称 |
 | `INTERNAL_SERVICE_ALLOWED_CALLERS` | 各被调服务内置白名单 | 逗号分隔，覆盖允许的调用方 |
 | `INTERNAL_SERVICE_AUTH_MAX_SKEW_MS` | `30000` | 签名时间戳允许的最大偏差 |
-| `INTERNAL_SERVICE_BIND_HOST` | `127.0.0.1` | 上述 6 个内部服务的监听地址 |
+| `INTERNAL_SERVICE_BIND_HOST` | `127.0.0.1` | 上述 8 个内部服务的监听地址 |
 
 安全设计的细节见 [security.md](./security.md)。
 
@@ -206,13 +207,27 @@ pnpm --filter @web3-cex/ledger-service start
 | 变量 | 作用于 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `PORT` | 各服务 | 见第 4 节 | 服务监听端口 |
+| `GATEWAY_BIND_HOST` | `api-gateway` | `127.0.0.1` | 监听地址（内部服务用 `INTERNAL_SERVICE_BIND_HOST`，撮合引擎用 `MATCHING_ENGINE_HOST`） |
+| `MARKET_DATA_BIND_HOST` | `market-data-service` | `127.0.0.1` | 监听地址 |
+| `OPS_CONSOLE_BIND_HOST` | `ops-console` | `127.0.0.1` | 监听地址 |
+| `TRADER_WEB_BIND_HOST` | `trader-web` | `127.0.0.1` | 监听地址；需要局域网访问时设为 `0.0.0.0` 并自行加防火墙 |
+| `DEMO_SIMULATOR_BIND_HOST` | `demo-simulator` | `127.0.0.1` | 监听地址 |
+| `GATEWAY_TRUST_PROXY` | `api-gateway` | `false` | 设为 `true` 时匿名限流、幂等作用域、审计和登录 IP 采用 `X-Forwarded-For` 第一段；默认使用 socket 对端地址，只应在网关前有可信反向代理时开启 |
 | `DATABASE_URL` | 各使用 PostgreSQL 的服务 | `postgres://web3:web3@127.0.0.1:5432/web3_cex` | 数据库连接 |
 | `WITHDRAWAL_SECURITY_COOLDOWN_SECONDS` | `wallet-service` | 代码默认 `86400`；`stack:start` 传入 `0` | 新增地址 / 修改 2FA 后的提现冷却期。演示冷却期: `WITHDRAWAL_SECURITY_COOLDOWN_SECONDS=120 pnpm stack:start` |
 | `WITHDRAWAL_REQUIRE_2FA` | `wallet-service` | `false` | 设为 `true` 时所有提现强制 2FA |
 | `WITHDRAWAL_DUAL_APPROVAL_THRESHOLD_BY_ASSET` | `wallet-service` | `USDT=5000,USDC=5000,ETH=2,BTC=0.1,SOL=50` | 超过阈值的提现需双人复核 |
 | `WITHDRAWAL_KYC_LIMITS_*` | `wallet-service` | 见 `.env.example` | 各 KYC 等级的单笔 / 日提现限额 |
+| `WITHDRAWAL_RISK_ENABLED` | `wallet-service` | `true` | 简化 KYT：提现地址风险评分与黑名单拦截；`false` 时全部评为低风险 |
+| `WITHDRAWAL_RISK_LARGE_AMOUNT_BY_ASSET` | `wallet-service` | `USDT=1000,USDC=1000,ETH=0.5,BTC=0.02,SOL=10` | 首次地址且金额超过该值时加 40 分 |
+| `WITHDRAWAL_RISK_NEW_ADDRESS_WINDOW_SECONDS` | `wallet-service` | `86400` | 地址簿新地址在此时间内加 30 分 |
+| `WITHDRAWAL_RISK_ADDRESS_LABELS` | `wallet-service` | 空 | 追加演示风险标签（`0x…=mixer,0x…=high_risk`），命中加 70 分 |
+| `WITHDRAWAL_NEW_DEVICE_LOCK_SECONDS` | `wallet-service` | `0`（关闭） | 新设备登录后多少秒内禁止提现 |
 | `OPS_REQUIRE_TWO_FACTOR` | `identity-service` | `true` | 运营账户登录是否要求 TOTP |
+| `IDENTITY_LOGIN_MAX_FAILURES` / `IDENTITY_LOGIN_FAILURE_WINDOW_SECONDS` / `IDENTITY_LOGIN_LOCK_SECONDS` | `identity-service` | `5` / `900` / `300` | 登录失败锁定：窗口内（自上次成功登录起）累计失败次数达到阈值后锁定的秒数；`IDENTITY_LOGIN_MAX_FAILURES=0` 关闭 |
+| `IDENTITY_NEW_DEVICE_NOTIFY` / `IDENTITY_WALLET_SERVICE_BASE_URL` | `identity-service` | `true` / `http://127.0.0.1:3002` | 新设备登录时向 wallet-service 写站内信 |
 | `OTEL_ENABLED` / `OTEL_EXPORTER_OTLP_ENDPOINT` | 各 Node 服务 | 关闭 / `http://127.0.0.1:4318` | OpenTelemetry 追踪 |
+| `ORDER_STOP_TRIGGER_POLL_INTERVAL_MS` | `order-service` | `1000` | 止损单触发检查间隔（按最新成交价）；`0` 关闭定时检查 |
 | `TRADER_WEB_DEMO_MODE` | `trader-web` | `true` | 是否显示「一键登录演示账户」与水龙头 |
 | `ORDER_FEE_TIERS_ENABLED` / `ORDER_FEE_TIER_CACHE_MS` | `order-service` | 开启 / `30000` | VIP 手续费等级开关与等级缓存时长；关闭时全部按市场默认费率 |
 | `RISK_SURVEILLANCE_ENABLED` / `RISK_SURVEILLANCE_INTERVAL_MS` | `risk-service` | 开启 / `60000` | 市场监控定时扫描；各检测器阈值 `RISK_SURVEILLANCE_*` 见 [risk-service README](../services/risk-service/README.md) |
@@ -303,6 +318,6 @@ pnpm stack:stop:infra
 说明:
 
 - 浏览器 E2E 需要本机 Chrome。非 macOS 环境通过 `TRADER_WEB_SMOKE_CHROME_PATH` 和 `OPS_CONSOLE_E2E_CHROME_PATH` 指定路径（CI 中为 `/usr/bin/google-chrome`）。
-- `test:features` 可以只跑部分段落，例如 `node scripts/verify-feature-e2e.mjs lab`；可选段落为 `apikey`、`websocket`、`fees`、`sol`、`notifications`、`security`、`lab`。
+- `test:features` 可以只跑部分段落，例如 `node scripts/verify-feature-e2e.mjs lab`；可选段落为 `apikey`、`websocket`、`fees`、`sol`、`notifications`、`security`、`lab`、`risk-security`（KYT 评分 / 黑名单拦截与自动拒绝、新设备提醒与设备吊销、登录失败锁定）。
 - E2E 会修改演示数据（KYC 等级、余额等），结束后执行 `pnpm demo:prepare` 即可恢复基线。
 - 服务日志在 `.runtime/full-stack/logs/`，CI 失败时会上传这一目录。

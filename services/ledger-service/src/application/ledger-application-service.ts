@@ -1,6 +1,6 @@
 import type { AssetCode } from "@web3-cex/domain";
 
-import { LedgerError } from "../domain/errors.js";
+import { DuplicateJournalIdempotencyKeyError, LedgerError } from "../domain/errors.js";
 import {
   addAmounts,
   compareAmounts,
@@ -9,6 +9,7 @@ import {
 } from "../domain/money.js";
 import type { LedgerRepository } from "../domain/repository.js";
 import { buildAccountStatement } from "./account-statement.js";
+import { resolveJournalReplay } from "./journal-idempotency.js";
 import type {
   AccountStatement,
   AccountStatementQuery,
@@ -71,18 +72,44 @@ export class LedgerApplicationService {
   }
 
   async postJournal(command: PostJournalCommand): Promise<LedgerJournal> {
+    try {
+      return await this.postJournalOnce(command);
+    } catch (error) {
+      if (!(error instanceof DuplicateJournalIdempotencyKeyError)) {
+        throw error;
+      }
+
+      // A concurrent request with the same key committed first and our
+      // transaction was rolled back; answer from the winner instead of a 500.
+      const winner = await this.repository.findJournalByIdempotencyKey(command.idempotencyKey);
+      if (!winner) {
+        throw error;
+      }
+
+      return resolveJournalReplay(winner, command);
+    }
+  }
+
+  private async postJournalOnce(command: PostJournalCommand): Promise<LedgerJournal> {
     return this.repository.withTransaction(async (repository) => {
       this.ensureBalanced(command.entries);
 
       const existing = await repository.findJournalByIdempotencyKey(command.idempotencyKey);
       if (existing) {
-        return existing;
+        return resolveJournalReplay(existing, command);
       }
 
       for (const entry of command.entries) {
         await repository.ensureAccount(entry.accountId);
       }
       await repository.lockBalances(command.entries, { createMissing: true });
+
+      // Re-check under the balance row locks: a concurrent request with the
+      // same key touching the same balances has committed by now.
+      const raced = await repository.findJournalByIdempotencyKey(command.idempotencyKey);
+      if (raced) {
+        return resolveJournalReplay(raced, command);
+      }
 
       const createdAt = this.now().toISOString();
       const journal: LedgerJournal = {

@@ -15,7 +15,7 @@ The repository has two parts:
 
 ## What the demo covers
 
-- **Spot trading** on `ETH/USDT` (default), `BTC/USDT` and `SOL/USDT`: limit / market orders, GTC / IOC / FOK, order book, trades, K-lines; maker / taker fees with VIP tiers by 30-day volume (`config/fee-tiers.json`).
+- **Spot trading** on `ETH/USDT` (default), `BTC/USDT` and `SOL/USDT`: limit / market / stop-limit / stop-market orders, GTC / IOC / FOK, post-only, self-trade prevention, order book, trades, K-lines; maker / taker fees with VIP tiers by 30-day volume (`config/fee-tiers.json`).
 - **Funds**: deposit addresses, a test faucet with confirmation tracking, withdrawals with review, a double-entry ledger with freeze / unfreeze / consume.
 - **Accounts & security**: sessions (HttpOnly cookie), self-service 2FA, KYC levels and withdrawal limits, API keys (keyId + secret signing), RBAC, signed service-to-service calls.
 - **Operations**: withdrawal review with dual approval for large amounts, KYC review, fee-tier overrides, market halt / resume, market surveillance alerts (wash trading, spoofing, concentrated volume, price moves), ledger reconciliation, business tracing by any ID, audit log, and a fault-injection lab.

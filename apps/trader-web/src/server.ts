@@ -397,7 +397,9 @@ async function handleSession(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "user-agent": String(request.headers["user-agent"] ?? "trader-web")
+        "user-agent": String(request.headers["user-agent"] ?? "trader-web"),
+        // Login history shows the browser's address, not the Web Host's.
+        ...(request.socket.remoteAddress ? { "x-forwarded-for": request.socket.remoteAddress } : {})
       },
       body: body ? new Uint8Array(body) : "{}"
     });

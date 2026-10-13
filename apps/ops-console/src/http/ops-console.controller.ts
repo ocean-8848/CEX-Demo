@@ -408,6 +408,7 @@ export class OpsConsoleController {
       reviewStatus: query.reviewStatus,
       txHash: query.txHash,
       toAddress: query.toAddress,
+      riskLevel: query.riskLevel || undefined,
       limit: parseOptionalNumber(query.limit),
       offset: parseOptionalNumber(query.offset)
     });
@@ -425,6 +426,7 @@ export class OpsConsoleController {
       status: query.status,
       txHash: query.txHash,
       toAddress: query.toAddress,
+      riskLevel: query.riskLevel || undefined,
       limit: parseOptionalNumber(query.limit),
       offset: parseOptionalNumber(query.offset)
     });

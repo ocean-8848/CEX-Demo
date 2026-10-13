@@ -4,6 +4,8 @@ import type { Pool } from "pg";
 import { FaultLabApplicationService } from "../application/fault-lab-application-service.js";
 import { FeesSurveillanceApplicationService } from "../application/fees-surveillance-application-service.js";
 import { OpsConsoleApplicationService } from "../application/ops-console-application-service.js";
+import { OpsRiskSecurityService } from "../application/ops-risk-security-service.js";
+import { HttpRiskSecurityOpsClient } from "../infrastructure/http-risk-security-ops-client.js";
 import type { OpsActionAuditLogQuery } from "../domain/action-audit.js";
 import type {
   OpsApproveWithdrawalCommand,
@@ -73,6 +75,8 @@ export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
   readonly faultLab: FaultLabApplicationService;
   /** A7 user fee tier / override + A9 市场监控. */
   readonly feesSurveillance: FeesSurveillanceApplicationService;
+  /** KYT address blacklist + user login history / devices. */
+  readonly riskSecurity: OpsRiskSecurityService;
   private readonly pool?: Pool;
   private schedulerTimer?: NodeJS.Timeout;
 
@@ -130,6 +134,10 @@ export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
         orderBaseUrl,
         riskBaseUrl: process.env.OPS_RISK_SERVICE_URL ?? "http://127.0.0.1:3008"
       }),
+      (options, operation) => this.applicationService.runAuditedAction(options, operation)
+    );
+    this.riskSecurity = new OpsRiskSecurityService(
+      new HttpRiskSecurityOpsClient(walletBaseUrl, identityBaseUrl),
       (options, operation) => this.applicationService.runAuditedAction(options, operation)
     );
   }

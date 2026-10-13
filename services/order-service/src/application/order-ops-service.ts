@@ -3,6 +3,7 @@ import { compareAmounts, type SpotMarket } from "@web3-cex/domain";
 import type { MatchingEngineClient } from "../domain/clients.js";
 import type { OrderRepository } from "../domain/repository.js";
 import type { SpotOrderRecord } from "../domain/types.js";
+import { bookTimeOf } from "./order-application-service.js";
 
 export interface OrderOpsAnomaly {
   type: string;
@@ -18,6 +19,8 @@ export interface OrderOpsOverview {
   filledOrderCount: number;
   cancelledOrderCount: number;
   rejectedOrderCount: number;
+  /** Stop orders waiting for their trigger price (not in the engine book). */
+  pendingTriggerOrderCount: number;
   tradeCount: number;
   engineBidCount: number;
   engineAskCount: number;
@@ -32,12 +35,13 @@ export class OrderOpsService {
   ) {}
 
   async getOverview(market: SpotMarket): Promise<OrderOpsOverview> {
-    const [openOrders, filledOrders, cancelledOrders, rejectedOrders, trades, anomalies, snapshot] =
+    const [openOrders, filledOrders, cancelledOrders, rejectedOrders, pendingTriggerOrders, trades, anomalies, snapshot] =
       await Promise.all([
         this.listOpenOrders(market),
         this.repository.listOrders({ market, status: "filled", limit: 500, offset: 0 }),
         this.repository.listOrders({ market, status: "cancelled", limit: 500, offset: 0 }),
         this.repository.listOrders({ market, status: "rejected", limit: 500, offset: 0 }),
+        this.repository.listOrders({ market, status: "pending_trigger", limit: 500, offset: 0 }),
         this.repository.listTrades({ market, limit: 500, offset: 0 }),
         this.getAnomalies(market),
         this.matchingEngineClient.getBookSnapshot({ market, limit: 500 })
@@ -50,6 +54,7 @@ export class OrderOpsService {
       filledOrderCount: filledOrders.length,
       cancelledOrderCount: cancelledOrders.length,
       rejectedOrderCount: rejectedOrders.length,
+      pendingTriggerOrderCount: pendingTriggerOrders.length,
       tradeCount: trades.length,
       engineBidCount: snapshot.bids.length,
       engineAskCount: snapshot.asks.length,
@@ -186,7 +191,7 @@ export class OrderOpsService {
     await this.matchingEngineClient.resetBook({ market });
 
     const replayedOrderIds: string[] = [];
-    for (const order of openOrders.sort((left, right) => left.createdAt.localeCompare(right.createdAt))) {
+    for (const order of openOrders.sort((left, right) => bookTimeOf(left).localeCompare(bookTimeOf(right)))) {
       if (compareAmounts(order.restingQuantity, "0") <= 0) {
         continue;
       }
@@ -197,7 +202,9 @@ export class OrderOpsService {
         side: order.side,
         price: order.price,
         quantity: order.restingQuantity,
-        createdAt: order.createdAt
+        createdAt: bookTimeOf(order),
+        // Owner keeps self-trade prevention working after a replay.
+        ownerId: order.accountId
       });
       replayedOrderIds.push(order.orderId);
     }

@@ -1,7 +1,9 @@
 import type { Network } from "@web3-cex/domain";
 
+import type { AddressBlacklistEntry } from "./withdrawal-risk.js";
 import type {
   CreateWithdrawalAddressBookEntryCommand,
+  ListAddressBlacklistQuery,
   ConfirmDepositCommand,
   CreateDepositAddressCommand,
   DepositRecord,
@@ -104,4 +106,16 @@ export interface WalletRepository {
     from: string;
     to: string;
   }): Promise<string>;
+  // --- simplified KYT ------------------------------------------------------
+  /** Withdrawals of the user to this address that were approved or went further. */
+  countSuccessfulWithdrawalsToAddress(params: {
+    userId: string;
+    network: Network;
+    address: string;
+  }): Promise<number>;
+  listAddressBlacklist(query: ListAddressBlacklistQuery): Promise<PagedResult<AddressBlacklistEntry>>;
+  findActiveAddressBlacklistEntry(network: Network, address: string): Promise<AddressBlacklistEntry | null>;
+  findAddressBlacklistEntryById(entryId: string): Promise<AddressBlacklistEntry | null>;
+  /** Inserts or updates (by entryId). */
+  saveAddressBlacklistEntry(entry: AddressBlacklistEntry): Promise<void>;
 }

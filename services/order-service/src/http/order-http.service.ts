@@ -13,6 +13,7 @@ import { FeeTierService } from "../application/fee-tier-service.js";
 import { OrderApplicationService } from "../application/order-application-service.js";
 import { OrderOpsService } from "../application/order-ops-service.js";
 import { OrderRecoveryWorker } from "../application/order-recovery-worker.js";
+import { StopOrderTriggerWorker } from "../application/stop-order-trigger-worker.js";
 import { OrderServiceError } from "../domain/errors.js";
 import type {
   MaintainOrderTradeEventStreamCommand,
@@ -55,6 +56,7 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
   readonly surveillanceData: SurveillanceDataSource;
   private readonly opsService: OrderOpsService;
   private readonly recoveryWorker: OrderRecoveryWorker;
+  private readonly stopOrderTriggerWorker: StopOrderTriggerWorker;
   private readonly eventPublisher?: OrderEventPublisher;
   private readonly pool?: Pool;
   private readonly redisClient?: RedisClientType;
@@ -182,6 +184,9 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
         process.env.ORDER_RECOVERY_WORKER_ID?.trim() ||
         `order-recovery:http:${typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Date.now()}`
     });
+    this.stopOrderTriggerWorker = new StopOrderTriggerWorker(this.applicationService, {
+      pollIntervalMs: Number(process.env.ORDER_STOP_TRIGGER_POLL_INTERVAL_MS ?? "1000")
+    });
   }
 
   async onModuleInit(): Promise<void> {
@@ -197,6 +202,8 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
         void this.syncEngineState();
       }, engineSyncIntervalMs);
     }
+    // Stop orders: watch the last trade price and submit triggered orders.
+    this.stopOrderTriggerWorker.start();
     if (process.env.ORDER_RECOVERY_RUN_FOREVER === "true") {
       const intervalMs = Number(process.env.ORDER_RECOVERY_POLL_INTERVAL_MS ?? "5000");
       this.recoveryTimer = setInterval(() => {
@@ -223,6 +230,7 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.stopOrderTriggerWorker.stop();
     if (this.engineSyncTimer) {
       clearInterval(this.engineSyncTimer);
       this.engineSyncTimer = undefined;
@@ -425,7 +433,15 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getOpsOverview(market: Parameters<OrderOpsService["getOverview"]>[0]) {
-    return this.opsService.getOverview(market);
+    return {
+      ...(await this.opsService.getOverview(market)),
+      stopTrigger: this.stopOrderTriggerWorker.getStatus()
+    };
+  }
+
+  /** Runs one stop-trigger pass immediately (ops / tests); the worker also polls. */
+  async runStopOrderTriggers() {
+    return this.stopOrderTriggerWorker.runOnce();
   }
 
   async getOpsAnomalies(market: Parameters<OrderOpsService["getAnomalies"]>[0]) {

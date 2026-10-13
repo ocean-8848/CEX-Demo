@@ -6,6 +6,7 @@ import type {
   OrderStatus,
   OrderType,
   SpotMarket,
+  StpMode,
   TimeInForce
 } from "@web3-cex/domain";
 
@@ -110,6 +111,10 @@ export interface GatewayOrderRecord {
   cancelledAt?: string;
   createdAt: string;
   updatedAt: string;
+  postOnly?: boolean;
+  stpMode?: StpMode;
+  triggerPrice?: string;
+  triggeredAt?: string;
 }
 
 export interface GatewayTradeRecord {
@@ -171,6 +176,7 @@ export interface IdentityGatewayClient {
     twoFactorCode?: string;
     userAgent?: string;
     ipAddress?: string;
+    deviceId?: string;
   }): Promise<CustomerSessionInfo & { token: string }>;
   introspectCustomerSession(token: string): Promise<CustomerSessionInfo>;
   revokeCustomerSession(token: string): Promise<{ revoked: true; revokedAt: string }>;
@@ -202,6 +208,13 @@ export interface IdentityGatewayClient {
     userId: string,
     command: { requestedTier: string; fullName: string; idNumber: string }
   ): Promise<Record<string, unknown>>;
+  /** Login history, devices and device revocation (optional for test fakes). */
+  listLoginEvents?(
+    userId: string,
+    query: { limit?: number; offset?: number }
+  ): Promise<Record<string, unknown>>;
+  listDevices?(userId: string): Promise<Record<string, unknown>>;
+  revokeDevice?(userId: string, deviceId: string): Promise<Record<string, unknown>>;
 }
 
 export interface WalletGatewayClient {
@@ -363,6 +376,9 @@ export interface OrderGatewayClient {
     quantity: string;
     idempotencyKey: string;
     traceId?: string;
+    postOnly?: boolean;
+    stpMode?: StpMode;
+    triggerPrice?: string;
   }): Promise<GatewayOrderRecord>;
   cancelOrder(command: {
     orderId: string;

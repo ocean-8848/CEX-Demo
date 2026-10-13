@@ -205,6 +205,7 @@ const requiredPaths = [
   "services/order-service/src/scripts/run-db-prepare.ts",
   "services/order-service/sql/002_add_resting_quantity_to_spot_orders.sql",
   "services/order-service/sql/005_add_order_recovery_heartbeat_and_metrics.sql",
+  "services/order-service/sql/010_add_fee_tiers.sql",
   "services/order-service/src/application/order-ops-service.ts",
   "services/order-service/src/domain/event-publisher.ts",
   "services/order-service/src/infrastructure/order-redis.ts",
