@@ -6,6 +6,7 @@ import type {
   OrderStatus,
   OrderType,
   SpotMarket,
+  StpMode,
   TimeInForce
 } from "@web3-cex/domain";
 
@@ -110,6 +111,10 @@ export interface GatewayOrderRecord {
   cancelledAt?: string;
   createdAt: string;
   updatedAt: string;
+  postOnly?: boolean;
+  stpMode?: StpMode;
+  triggerPrice?: string;
+  triggeredAt?: string;
 }
 
 export interface GatewayTradeRecord {
@@ -363,6 +368,9 @@ export interface OrderGatewayClient {
     quantity: string;
     idempotencyKey: string;
     traceId?: string;
+    postOnly?: boolean;
+    stpMode?: StpMode;
+    triggerPrice?: string;
   }): Promise<GatewayOrderRecord>;
   cancelOrder(command: {
     orderId: string;

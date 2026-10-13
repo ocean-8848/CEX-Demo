@@ -5,6 +5,7 @@ import type {
   OrderStatus,
   OrderType,
   SpotMarket,
+  StpMode,
   TimeInForce
 } from "@web3-cex/domain";
 
@@ -152,6 +153,12 @@ export interface CreateSpotOrderRequestDto {
   quantity: string;
   idempotencyKey: string;
   traceId?: string;
+  /** Maker-only (GTC limit only). */
+  postOnly?: boolean;
+  /** Self-trade prevention: expire_taker (default) | expire_maker | expire_both. */
+  stpMode?: StpMode;
+  /** stop_limit / stop_market only. */
+  triggerPrice?: string;
 }
 
 export interface ListSpotOrdersQueryDto {

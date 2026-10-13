@@ -7,6 +7,7 @@ import type {
   OrderStatus,
   OrderType,
   SpotMarket,
+  StpMode,
   TimeInForce
 } from "@web3-cex/domain";
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
@@ -381,6 +382,9 @@ export class ApiGatewayHttpService implements OnModuleInit, OnModuleDestroy {
       quantity: string;
       idempotencyKey: string;
       traceId?: string;
+      postOnly?: boolean;
+      stpMode?: StpMode;
+      triggerPrice?: string;
     }
   ) {
     return this.applicationService.createOrder(principal, command);

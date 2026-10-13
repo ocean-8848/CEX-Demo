@@ -3,6 +3,7 @@ import type {
   OrderSide,
   OrderType,
   SpotMarket,
+  StpMode,
   TimeInForce
 } from "@web3-cex/domain";
 
@@ -16,6 +17,11 @@ export interface ValidateSpotOrderRiskCommand {
   price?: string;
   quantity: string;
   referencePrice?: string;
+  /** Maker-only limit order: only valid for GTC limit orders. */
+  postOnly?: boolean;
+  stpMode?: StpMode;
+  /** stop_limit / stop_market only. */
+  triggerPrice?: string;
 }
 
 export interface RiskCheckResult {
@@ -38,6 +44,7 @@ export interface SpotOrderRiskDecision {
   /** Price the deviation guard and market-buy lock were computed against. */
   referencePrice?: string;
   referencePriceSource?: "request" | "last_trade" | "mid_price" | "configured";
+  triggerPrice?: string;
   checks: RiskCheckResult[];
 }
 

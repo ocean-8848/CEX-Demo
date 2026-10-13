@@ -20,6 +20,9 @@ export class HttpOrderClient implements OrderGatewayClient {
     quantity: string;
     idempotencyKey: string;
     traceId?: string;
+    postOnly?: boolean;
+    stpMode?: string;
+    triggerPrice?: string;
   }): Promise<GatewayOrderRecord> {
     return this.fetchJson("/api/v1/orders", {
       method: "POST",
