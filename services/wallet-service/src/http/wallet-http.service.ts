@@ -119,6 +119,11 @@ export class WalletHttpService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /** Same database pool / memory store, shared with the treasury module. */
+  get sharedStore(): { repository: WalletRepository; pool?: Pool } {
+    return { repository: this.repository, pool: this.pool };
+  }
+
   async onModuleInit(): Promise<void> {
     // Without an open connection every deposit / withdrawal / notification event
     // is dropped and the gateway's private WebSocket never pushes funding updates.

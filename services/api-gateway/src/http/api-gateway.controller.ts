@@ -167,6 +167,11 @@ export class ApiGatewayController {
     return this.apiGatewayHttpService.submitKycRequest(principal, body ?? {});
   }
 
+  @Get("/proof-of-reserves")
+  async getProofOfReserves(@CurrentGatewayAuth() principal: GatewayPrincipal) {
+    return this.apiGatewayHttpService.getProofOfReserves(principal);
+  }
+
   @Get("/withdrawals/limits")
   async getWithdrawalLimits(@CurrentGatewayAuth() principal: GatewayPrincipal) {
     return this.apiGatewayHttpService.getWithdrawalLimits(principal);
