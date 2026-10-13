@@ -13,11 +13,13 @@ import { Amount, IdLink, PageHeader, QueryView, RefreshButton, StatCard, StatusB
 import { useOpsAction, useOpsQuery } from "../state/hooks.js";
 import { useSession } from "../state/session.js";
 import { useWithdrawalReview } from "./withdrawals-page.js";
+import { AlertRow, SeverityCounts } from "../components/severity.js";
 
 const MODULE_SOURCE: Record<string, string> = {
   "ledger-service": "ledger",
   "blockchain-indexer": "indexer",
-  "custody-adapter": "custody"
+  "custody-adapter": "custody",
+  "risk-service": "controls"
 };
 
 export function DashboardPage() {
@@ -55,8 +57,14 @@ export function DashboardPage() {
         <StatCard
           label="系统告警"
           value={alerts.data?.alertCount ?? "--"}
-          tone={alerts.data?.alertCount ? "negative" : "positive"}
-          hint={alerts.data ? `${alerts.data.sources.length} 个数据源` : undefined}
+          tone={alerts.data?.countsBySeverity?.P1 ? "negative" : alerts.data?.alertCount ? "warning" : "positive"}
+          hint={
+            alerts.data?.countsBySeverity
+              ? `P1 ${alerts.data.countsBySeverity.P1} · P2 ${alerts.data.countsBySeverity.P2} · P3 ${alerts.data.countsBySeverity.P3}`
+              : alerts.data
+                ? `${alerts.data.sources.length} 个数据源`
+                : undefined
+          }
           href={href("/system")}
         />
         <StatCard
@@ -119,21 +127,25 @@ export function DashboardPage() {
           </QueryView>
         </Panel>
 
-        <Panel title="告警" actions={alerts.data ? <StatusBadge status={alerts.data.status} /> : null}>
+        <Panel title="告警" actions={alerts.data ? (alerts.data.countsBySeverity ? <SeverityCounts counts={alerts.data.countsBySeverity} /> : <StatusBadge status={alerts.data.status} />) : null}>
           <QueryView state={alerts}>
             {(data) =>
               data.alertCount === 0 ? (
-                <Empty icon="✓" title="一切正常" hint="账本、链上观察与托管都在阈值内。" />
+                <Empty icon="✓" title="一切正常" hint="账本、对账、链上观察、托管与交易都在阈值内，紧急开关全部关闭。" />
               ) : (
-                <ul className="alert-list">
-                  {data.sources.flatMap((source) =>
-                    source.alerts.map((alert) => (
-                      <li key={`${source.source}:${alert}`}>
-                        <span className="alert-source">{source.source}</span>
-                        <span>{alert}</span>
-                      </li>
-                    ))
-                  )}
+                <ul className="alert-list" id="dashboard-alerts">
+                  {data.items
+                    ? data.items.slice(0, 12).map((item, index) => (
+                        <AlertRow key={`${item.source}:${item.code}:${index}`} item={item} showSource />
+                      ))
+                    : data.sources.flatMap((source) =>
+                        source.alerts.map((alert) => (
+                          <li key={`${source.source}:${alert}`}>
+                            <span className="alert-source">{source.source}</span>
+                            <span>{alert}</span>
+                          </li>
+                        ))
+                      )}
                 </ul>
               )
             }

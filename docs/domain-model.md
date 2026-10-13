@@ -86,6 +86,7 @@ erDiagram
 
 - 入金国库账户（`LEDGER_DEPOSIT_SOURCE_ACCOUNT_ID`，默认 `00000000-0000-0000-0000-000000000098`）：充值入账时被借记；提币最终消耗也贷记到这里（`LEDGER_WITHDRAWAL_SETTLEMENT_ACCOUNT_ID` 未设置时）。
 - 平台结算账户 `platform:spot:settlement:<asset>` 与手续费账户 `platform:spot:fee:<asset>`：由 `settlement-service` 按需创建。
+- 故障实验室账户 `00000000-0000-0000-0000-0000000000a1`（`account_type = fault_lab`）：只在「账本对账差额」实验中出现，写入没有分录的余额用来触发对账熔断，清除后没有余额行。
 
 ### 2.2 余额与冻结
 
@@ -193,7 +194,7 @@ KYT 风险等级 `riskLevel`：`low`（< 30 分）、`medium`（≥ 30）、`hig
 
 ### 4.2 提币申请校验
 
-在冻结之前依次检查：资产与网络受支持、金额与手续费合法、KYT 地址风险（黑名单 `WITHDRAWAL_ADDRESS_BLOCKED`）、安全冷却期（`WITHDRAWAL_SECURITY_COOLDOWN`）、新设备提现锁（可选，`WITHDRAWAL_NEW_DEVICE_LOCK`）、最小金额 / 最小手续费、地址在白名单中（`WITHDRAWAL_ADDRESS_NOT_WHITELISTED`）、按 KYC 等级的单笔与日限额（`WITHDRAWAL_SINGLE_LIMIT_EXCEEDED` / `WITHDRAWAL_DAILY_LIMIT_EXCEEDED`）、2FA。
+在冻结之前依次检查：紧急开关（全站 / 该币种提现暂停 `WITHDRAWALS_PAUSED` / `ASSET_WITHDRAWALS_PAUSED`，API 写入冻结 `API_WRITE_FROZEN`；批准与广播时也会再查提现暂停）、资产与网络受支持、金额与手续费合法、KYT 地址风险（黑名单 `WITHDRAWAL_ADDRESS_BLOCKED`）、安全冷却期（`WITHDRAWAL_SECURITY_COOLDOWN`）、新设备提现锁（可选，`WITHDRAWAL_NEW_DEVICE_LOCK`）、最小金额 / 最小手续费、地址在白名单中（`WITHDRAWAL_ADDRESS_NOT_WHITELISTED`）、按 KYC 等级的单笔与日限额（`WITHDRAWAL_SINGLE_LIMIT_EXCEEDED` / `WITHDRAWAL_DAILY_LIMIT_EXCEEDED`）、2FA。
 
 默认 KYC 限额（单笔 / 日累计，节选）：
 
@@ -407,6 +408,18 @@ stateDiagram-v2
 
 `halted` 和 `delisted` 的市场下单会被风控拒绝（`MARKET_HALTED` / `MARKET_DELISTED`），做市模拟器也会停止在该市场报价。
 
+### 8.1 紧急开关
+
+risk-service 持有三个开关，开启时各有一行 `risk_control_switches`，关闭即删除；每次变更追加 `risk_control_switch_events`。
+
+| 开关 `scope` | 键 | 影响 |
+| --- | --- | --- |
+| `withdrawals_global` | `withdrawals_global` | 全部提现申请 / 批准 / 广播 |
+| `withdrawals_asset` | `withdrawals_asset:<ASSET>` | 该币种的提现申请 / 批准 / 广播 |
+| `api_write` | `api_write` | 新委托、提现申请（撤单不受影响） |
+
+每个开关带 `reason`、`source`（`manual` 人工 / `automatic` 对账熔断）、`updatedBy`、`updatedAt`。自动来源不覆盖已开启的开关、不能关闭开关；熔断开启的币种恢复前必须有一轮一致的对账。
+
 ## 9. 关键不变量
 
 | 不变量 | 由谁保证 |
@@ -431,6 +444,8 @@ stateDiagram-v2
 | 链上钱包余额不为负 | 调拨批准与重新广播前校验来源钱包余额（`TREASURY_INSUFFICIENT_BALANCE`） |
 | 储备金叶子不泄露其他用户 | 网关按登录用户取叶子；路径只含兄弟哈希；用户 ID 用随机 nonce 盐化 |
 | 不向黑名单地址出金 | 申请时 KYT 拦截；加入黑名单时自动拒绝待审核提现并释放冻结；批准时再查一次黑名单 |
+| 余额快照 = 分录净额 − 活跃冻结 | 定时余额对账；不平立即暂停该币种提现（对账熔断） |
+| 委托的账本冻结 = 未成交部分冻结 + 账本尚未消耗的成交 | 定时委托冻结对账（ledger-service ↔ order-service）；同一委托连续 2 轮不一致时熔断 |
 
 ## 10. 共享事件信封
 

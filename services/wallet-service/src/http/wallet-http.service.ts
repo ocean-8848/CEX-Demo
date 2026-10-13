@@ -1,4 +1,5 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { CachedControlSwitchReader, createHttpControlSwitchLoader } from "@web3-cex/domain";
 import type { Pool } from "pg";
 import type { RedisClientType } from "redis";
 
@@ -103,7 +104,19 @@ export class WalletHttpService implements OnModuleInit, OnModuleDestroy {
         withdrawalConfirmationThreshold: Number(
           process.env.WITHDRAWAL_CONFIRMATION_THRESHOLD ?? "12"
         ),
-        withdrawalValidationRules: loadWithdrawalValidationRulesFromEnv()
+        withdrawalValidationRules: loadWithdrawalValidationRulesFromEnv(),
+        // Emergency switches live in risk-service (see docs/security.md).
+        controlSwitches: new CachedControlSwitchReader(
+          createHttpControlSwitchLoader({
+            baseUrl: process.env.WALLET_RISK_SERVICE_URL ?? "http://127.0.0.1:3008",
+            callerName: "wallet-service"
+          }),
+          {
+            cacheMs: Number(process.env.CONTROL_SWITCH_CACHE_MS ?? "2000"),
+            onError: (error) =>
+              console.warn(`[wallet-service] control switches unavailable: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        )
       },
       new HttpIdentityClient(
         process.env.IDENTITY_SERVICE_BASE_URL ?? "http://127.0.0.1:3005"

@@ -66,6 +66,11 @@ export class LedgerHttpService implements OnModuleDestroy {
     await this.pool?.end();
   }
 
+  /** Shared pool + ops reporter for the reconciliation job (absent with LEDGER_REPOSITORY=memory). */
+  getOpsInfrastructure(): { pool?: Pool; reporter?: LedgerOpsReporter } {
+    return { pool: this.pool, reporter: this.opsReporter };
+  }
+
   async createAccount(command: CreateAccountCommand): Promise<LedgerAccount> {
     return this.applicationService.createAccount(command);
   }

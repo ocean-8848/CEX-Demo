@@ -1166,6 +1166,52 @@ code.wrap {
   }
 }
 
+/* Alert levels (P1 / P2 / P3) and emergency switches */
+.alert-list li.sev-P2 {
+  background: var(--warning-soft);
+}
+
+.alert-list li.sev-P3 {
+  background: var(--panel-2);
+}
+
+.severity-counts {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.control-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.control-card.on {
+  border-color: var(--down);
+  background: var(--down-soft);
+}
+
+.control-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.data-table tr.row-highlight td {
+  background: var(--accent-soft);
+}
+
 /* ------------------------------------------------- 钱包与储备金 (treasury) */
 
 .treasury-explain {

@@ -56,6 +56,7 @@
 - `GET /api/v1/gateway/trades`
 - `GET /api/v1/gateway/fees/tier`：本人 VIP 手续费等级、实际费率、30 日成交量与距下一等级的差额（转发 order-service `/api/v1/fee-tiers/users/:userId`，去掉运营备注；`src/http/fee-tier.controller.ts`）
 - `GET /api/v1/gateway/trades/{tradeId}/journals`：成交分录（T 型账户视图），只允许买方 / 卖方读取，对手方账户脱敏为「对手方」；脱敏与借贷平衡校验在 `src/domain/journal-view.ts`，分录读取复用 `LedgerGatewayClient.listJournalsWithEntries`
+- `GET /api/v1/gateway/system/controls`（公开，无需登录）：当前开启的紧急开关 `{ withdrawalsPaused, pausedWithdrawalAssets, apiWriteFrozen }`，不含运营原因；trader-web 用来显示提现暂停 / 只读模式提示
 - `WS /api/v1/gateway/realtime`
 
 认证方式:
@@ -108,6 +109,14 @@ pnpm --filter @web3-cex/api-gateway start
 - `ledger-service`
 - `wallet-service`
 - `order-service`
+- `risk-service`（只读紧急开关，`GATEWAY_RISK_SERVICE_URL`，默认 `http://127.0.0.1:3008`）
+
+紧急开关守卫（`src/http/api-gateway-control-switch.guard.ts`）:
+
+- 在认证与限流之后、幂等拦截之前执行，被拒的请求不会占用幂等键
+- `@ControlledWrite("spot_order")`：`POST /orders`，API 写入冻结时 `409 API_WRITE_FROZEN`
+- `@ControlledWrite("withdrawal")`：`POST /withdrawals/validate`、`POST /withdrawals/request`，依次检查全站提现暂停 `409 WITHDRAWALS_PAUSED`、该币种暂停 `409 ASSET_WITHDRAWALS_PAUSED`、API 写入冻结 `409 API_WRITE_FROZEN`
+- 撤单与所有查询不受影响；开关状态在进程内缓存 `CONTROL_SWITCH_CACHE_MS`（默认 2000），守卫与 `/system/controls` 共用同一份缓存；读取失败时沿用上次状态，从未读到过则放行
 
 私有 WebSocket:
 

@@ -107,6 +107,7 @@ HTTP 接口:
 
 当前提币流:
 
+- 紧急开关（`risk-service` 持有，经 `CachedControlSwitchReader` 读取、缓存 `CONTROL_SWITCH_CACHE_MS`，默认 2 秒）：`validateWithdrawalRequest` / `requestWithdrawal` 最先检查全站 / 该币种提现暂停和 API 写入冻结；`approveWithdrawal` / `rebroadcastWithdrawal` 检查提现暂停（API 写入冻结不影响运营审核）。命中时返回 `409 WITHDRAWALS_PAUSED` / `ASSET_WITHDRAWALS_PAUSED` / `API_WRITE_FROZEN`，不会冻结资金也不会消耗 2FA 动态码；`rejectWithdrawal` 不受影响。读取失败时沿用上次状态，从未读到过则放行。单元测试见 `src/__tests__/withdrawal-controls.test.ts`
 - 简化 KYT 先于其他规则执行（`src/domain/withdrawal-risk.ts`，纯函数；单测 `src/__tests__/withdrawal-risk.test.ts`）：
   - 黑名单命中 → `blocked`：`validate` 与 `request` 都返回 `403 WITHDRAWAL_ADDRESS_BLOCKED`；`request` 另外保存一条 `rejected` 记录（`riskLevel=blocked`、`frozenAmount=0`、审计操作人 `system:kyt`）并发 `withdrawal.rejected` 通知
   - 演示标签（混币 / 高风险 / 博彩，`DEMO_ADDRESS_RISK_LABELS` + `WITHDRAWAL_RISK_ADDRESS_LABELS`）+70；白名单或该用户曾成功提现到此地址 → 不加分；否则首次地址 +10、首次且金额 > `WITHDRAWAL_RISK_LARGE_AMOUNT_BY_ASSET` +40、地址簿条目新于 `WITHDRAWAL_RISK_NEW_ADDRESS_WINDOW_SECONDS` +30
@@ -157,6 +158,7 @@ HTTP 接口:
 关键环境变量:
 
 - `LEDGER_SERVICE_BASE_URL` / `CUSTODY_ADAPTER_BASE_URL`
+- `WALLET_RISK_SERVICE_URL`（紧急开关来源，默认 `http://127.0.0.1:3008`）/ `CONTROL_SWITCH_CACHE_MS`（默认 `2000`）
 - `DEPOSIT_CONFIRMATION_THRESHOLD` / `WITHDRAWAL_CONFIRMATION_THRESHOLD`（默认 `12`）
 - `WITHDRAWAL_REQUIRE_2FA`
 - `WITHDRAWAL_REQUIRE_WHITELIST`

@@ -10,10 +10,15 @@ import {
 } from "@web3-cex/domain";
 
 import { FeeTierService } from "../application/fee-tier-service.js";
-import { OrderApplicationService } from "../application/order-application-service.js";
+import { OrderApplicationService, createStableUuid } from "../application/order-application-service.js";
+import {
+  buildOrderLockExpectations,
+  type OrderLockSource
+} from "../application/order-lock-expectations.js";
 import { OrderOpsService } from "../application/order-ops-service.js";
 import { OrderRecoveryWorker } from "../application/order-recovery-worker.js";
 import { StopOrderTriggerWorker } from "../application/stop-order-trigger-worker.js";
+import { RiskStopTriggerGate } from "../application/stop-trigger-gate.js";
 import { OrderServiceError } from "../domain/errors.js";
 import type {
   MaintainOrderTradeEventStreamCommand,
@@ -77,6 +82,7 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
   private recoveryTimer?: NodeJS.Timeout;
   private eventStreamMaintenanceTimer?: NodeJS.Timeout;
   private engineSyncTimer?: NodeJS.Timeout;
+  private readonly lockSource: OrderLockSource;
 
   constructor() {
     const repositoryMode = process.env.ORDER_SERVICE_REPOSITORY ?? "postgres";
@@ -126,6 +132,7 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
     this.surveillanceData = this.pool
       ? new PostgresSurveillanceDataSource(this.pool)
       : new RepositorySurveillanceDataSource(repository);
+    this.lockSource = repository;
 
     const redisUrl = process.env.ORDER_EVENT_REDIS_URL ?? "redis://127.0.0.1:6379";
     if (this.eventPublisherMode === "redis" || this.eventPublisherMode === "redis_stream") {
@@ -164,7 +171,11 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
         settlementMode: this.settlementMode,
         tradeEventVersionGate: this.tradeEventVersionGate,
         eventPublisher: this.eventPublisher,
-        feeTierResolver: process.env.ORDER_FEE_TIERS_ENABLED === "false" ? undefined : this.feeTiers
+        feeTierResolver: process.env.ORDER_FEE_TIERS_ENABLED === "false" ? undefined : this.feeTiers,
+        stopTriggerGate: new RiskStopTriggerGate(
+          process.env.RISK_SERVICE_BASE_URL ?? "http://127.0.0.1:3008",
+          { cacheMs: Number(process.env.CONTROL_SWITCH_CACHE_MS ?? "2000") }
+        )
       }
     );
     this.opsService = new OrderOpsService(
@@ -446,6 +457,19 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
 
   async getOpsAnomalies(market: Parameters<OrderOpsService["getAnomalies"]>[0]) {
     return this.opsService.getAnomalies(market);
+  }
+
+  /** Order-vs-lock reconciliation input for ledger-service (see order-lock-expectations.ts). */
+  async getLockExpectations(params: { orderIds: string[]; includeOpenOrders: boolean }) {
+    const report = await buildOrderLockExpectations({
+      source: this.lockSource,
+      orderIds: params.orderIds,
+      includeOpenOrders: params.includeOpenOrders,
+      // Async mode stores a placeholder settlement id until settlement acks the trade.
+      isTradeSettled: (trade) => trade.settlementId !== createStableUuid(`pending-settlement:${trade.tradeId}`),
+      generatedAt: new Date().toISOString()
+    });
+    return { ...report, settlementMode: this.settlementMode };
   }
 
   async injectEngineReset(

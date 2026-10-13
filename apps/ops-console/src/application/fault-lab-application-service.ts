@@ -1,7 +1,8 @@
-import { DEFAULT_SPOT_MARKET, listSpotMarkets } from "@web3-cex/domain";
+import { DEFAULT_SPOT_MARKET, isAssetCode, listSpotMarkets } from "@web3-cex/domain";
 
 import { OpsConsoleError } from "../domain/errors.js";
 import type { OpsOrderClient, OpsSessionInfo } from "../domain/clients.js";
+import type { OpsReconciliationClient } from "../domain/controls.js";
 import { FAULT_LAB_AUDIT_PERMISSION, type OpsFaultLabClient } from "../domain/fault-lab.js";
 import type { AuditedActionOptions } from "./ops-console-application-service.js";
 
@@ -18,7 +19,7 @@ export type FaultLabSection =
   | { available: false; error: string };
 
 export interface FaultLabActiveFault {
-  experiment: "settlement" | "custody" | "chain" | "engine";
+  experiment: "settlement" | "custody" | "chain" | "engine" | "reconciliation";
   summary: string;
   expiresAt?: string;
 }
@@ -30,24 +31,34 @@ export interface FaultLabActiveFault {
  */
 export class FaultLabApplicationService {
   private readonly now: () => Date;
+  private readonly reconciliationClient?: Pick<OpsReconciliationClient, "getDrift" | "injectDrift" | "clearDrift">;
 
   constructor(
     private readonly labClient: OpsFaultLabClient,
     private readonly orderClient: Pick<OpsOrderClient, "getTradeOpsAnomalies" | "getTradeOpsOverview" | "replayEngineBook">,
     private readonly runAudited: AuditedRunner,
-    options: { now?: () => Date } = {}
+    options: {
+      now?: () => Date;
+      /** Reconciliation drift experiment (ledger-service lab account). */
+      reconciliationClient?: Pick<OpsReconciliationClient, "getDrift" | "injectDrift" | "clearDrift">;
+    } = {}
   ) {
     this.now = options.now ?? (() => new Date());
+    this.reconciliationClient = options.reconciliationClient;
   }
 
   async getStatus(query: { market?: string } = {}) {
     const market = requireMarket(query.market ?? DEFAULT_LAB_MARKET);
-    const [settlement, custody, chain, anomalies, overview] = await Promise.all([
+    const reconciliationClient = this.reconciliationClient;
+    const [settlement, custody, chain, anomalies, overview, reconciliation] = await Promise.all([
       section(() => this.labClient.getSettlementConsumerState()),
       section(() => this.labClient.getCustodyLabState(LAB_NETWORK)),
       section(() => this.labClient.getChainLabStatus()),
       section(async () => ({ items: await this.orderClient.getTradeOpsAnomalies({ market }) })),
-      section(() => this.orderClient.getTradeOpsOverview({ market }))
+      section(() => this.orderClient.getTradeOpsOverview({ market })),
+      reconciliationClient
+        ? section(() => reconciliationClient.getDrift())
+        : Promise.resolve<FaultLabSection>({ available: false, error: "reconciliation client is not configured" })
     ]);
 
     return {
@@ -57,7 +68,8 @@ export class FaultLabApplicationService {
       custody,
       chain,
       engine: { anomalies, overview },
-      activeFaults: collectActiveFaults({ settlement, custody, chain, anomalies })
+      reconciliation,
+      activeFaults: collectActiveFaults({ settlement, custody, chain, anomalies, reconciliation })
     };
   }
 
@@ -167,6 +179,42 @@ export class FaultLabApplicationService {
     });
   }
 
+  /**
+   * Reconciliation drift: ledger-service writes a balance snapshot without a
+   * journal on its dedicated lab account. The next reconciliation run reports
+   * the asset as mismatched and the circuit breaker pauses its withdrawals.
+   */
+  injectReconciliationDrift(session: OpsSessionInfo, command: { assetCode?: string; amount?: string }) {
+    const client = this.requireReconciliationClient();
+    const assetCode = (command.assetCode ?? "").trim().toUpperCase();
+    if (!isAssetCode(assetCode)) {
+      throw new OpsConsoleError("VALIDATION_ERROR", 400, `Unsupported asset ${command.assetCode ?? ""}`);
+    }
+    const amount = command.amount?.trim() || "1";
+    if (!/^\d+(\.\d{1,18})?$/.test(amount) || Number(amount) <= 0) {
+      throw new OpsConsoleError("VALIDATION_ERROR", 400, "amount must be a positive decimal");
+    }
+    const payload = { assetCode, amount };
+    return this.audit(session, "fault_lab.reconciliation.inject_drift", "ledger_lab_account", assetCode, payload, () =>
+      client.injectDrift(payload)
+    );
+  }
+
+  /** Removes the drift. Withdrawals the breaker paused stay paused until an operator resumes them. */
+  clearReconciliationDrift(session: OpsSessionInfo) {
+    const client = this.requireReconciliationClient();
+    return this.audit(session, "fault_lab.reconciliation.clear_drift", "ledger_lab_account", "all", {}, () =>
+      client.clearDrift()
+    );
+  }
+
+  private requireReconciliationClient() {
+    if (!this.reconciliationClient) {
+      throw new OpsConsoleError("LEDGER_UPSTREAM_FAILED", 503, "reconciliation client is not configured");
+    }
+    return this.reconciliationClient;
+  }
+
   /** Clears every lab fault and rebuilds engine books that have drifted from the DB. */
   recoverAll(session: OpsSessionInfo) {
     return this.audit(session, "fault_lab.recover_all", "fault_lab", "all", {}, async () => {
@@ -195,6 +243,14 @@ export class FaultLabApplicationService {
       await run("indexer.reorg_acknowledge", () =>
         this.labClient.acknowledgeIndexerReorg({ network: LAB_NETWORK })
       );
+      const reconciliationClient = this.reconciliationClient;
+      if (reconciliationClient) {
+        // Only the drift is removed; breaker pauses are resumed by a person (紧急开关).
+        await run("reconciliation.clear_drift", async () => {
+          const drift = (await reconciliationClient.getDrift()) as { drifts?: unknown[] };
+          return drift.drifts?.length ? reconciliationClient.clearDrift() : undefined;
+        });
+      }
 
       return {
         recoveredAt: this.now().toISOString(),
@@ -239,8 +295,16 @@ function collectActiveFaults(sections: {
   custody: FaultLabSection;
   chain: FaultLabSection;
   anomalies: FaultLabSection;
+  reconciliation?: FaultLabSection;
 }): FaultLabActiveFault[] {
   const faults: FaultLabActiveFault[] = [];
+
+  if (sections.reconciliation?.available) {
+    const drifts = (sections.reconciliation.data.drifts ?? []) as Array<{ assetCode?: string; amount?: string }>;
+    for (const drift of drifts) {
+      faults.push({ experiment: "reconciliation", summary: `${drift.assetCode ?? "?"} 账本快照被注入 ${drift.amount ?? "?"} 的差额` });
+    }
+  }
 
   if (sections.settlement.available) {
     const pause = sections.settlement.data.pause as { paused?: boolean; expiresAt?: string } | undefined;

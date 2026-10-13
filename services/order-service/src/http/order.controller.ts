@@ -29,6 +29,7 @@ import type {
   TrimOrderEventStreamRequestDto,
   RequeueDeadLetterJobsRequestDto
 } from "./dto.js";
+import { MAX_LOCK_EXPECTATION_ORDER_IDS } from "../application/order-lock-expectations.js";
 import { OrderExceptionFilter } from "./order-exception.filter.js";
 import { OrderHttpService } from "./order-http.service.js";
 
@@ -145,6 +146,25 @@ export class OrderOpsController {
   @Get("/anomalies")
   async getAnomalies(@Query() query: OrderOpsQueryDto) {
     return this.orderHttpService.getOpsAnomalies(requireMarket(query.market));
+  }
+
+  /**
+   * What each order's ledger lock should hold (open quantity + unsettled
+   * fills). Called by the ledger-service reconciliation job with its active
+   * `spot_order` lock ids, at most MAX_LOCK_EXPECTATION_ORDER_IDS per call.
+   */
+  @Post("/lock-expectations")
+  async getLockExpectations(@Body() body: { orderIds?: unknown; includeOpenOrders?: unknown }) {
+    const orderIds = Array.isArray(body?.orderIds)
+      ? body.orderIds.filter((id): id is string => typeof id === "string")
+      : [];
+    if (orderIds.length > MAX_LOCK_EXPECTATION_ORDER_IDS) {
+      throw new BadRequestException(`At most ${MAX_LOCK_EXPECTATION_ORDER_IDS} orderIds per request`);
+    }
+    return this.orderHttpService.getLockExpectations({
+      orderIds,
+      includeOpenOrders: body?.includeOpenOrders === true
+    });
   }
 
   @Post("/replay-engine")

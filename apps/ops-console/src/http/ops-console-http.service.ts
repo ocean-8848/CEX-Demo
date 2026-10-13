@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import type { Pool } from "pg";
 
 import { FaultLabApplicationService } from "../application/fault-lab-application-service.js";
+import { OpsControlsApplicationService } from "../application/ops-controls-application-service.js";
 import { FeesSurveillanceApplicationService } from "../application/fees-surveillance-application-service.js";
 import { OpsConsoleApplicationService } from "../application/ops-console-application-service.js";
 import { TreasuryApplicationService } from "../application/treasury-application-service.js";
@@ -56,6 +57,7 @@ import type {
   OpsWithdrawalQuery
 } from "../domain/clients.js";
 import { HttpAlertSinkClient } from "../infrastructure/http-alert-sink-client.js";
+import { HttpControlSwitchClient, HttpReconciliationClient } from "../infrastructure/http-controls-clients.js";
 import { HttpCustodyOpsClient } from "../infrastructure/http-custody-ops-client.js";
 import { HttpFaultLabClient } from "../infrastructure/http-fault-lab-client.js";
 import { HttpFeesSurveillanceClient } from "../infrastructure/http-fees-surveillance-client.js";
@@ -75,6 +77,7 @@ import { createOpsConsolePool } from "../infrastructure/postgres.js";
 export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
   private readonly applicationService: OpsConsoleApplicationService;
   readonly faultLab: FaultLabApplicationService;
+  readonly controls: OpsControlsApplicationService;
   readonly treasury: TreasuryApplicationService;
   /** A7 user fee tier / override + A9 市场监控. */
   readonly feesSurveillance: FeesSurveillanceApplicationService;
@@ -121,17 +124,34 @@ export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
         )
       }
     );
+    const faultLabClient = new HttpFaultLabClient({
+      settlementBaseUrl,
+      custodyBaseUrl,
+      orderBaseUrl,
+      indexerBaseUrl,
+      simulatorBaseUrl
+    });
+    const reconciliationClient = new HttpReconciliationClient(ledgerBaseUrl);
     this.faultLab = new FaultLabApplicationService(
-      new HttpFaultLabClient({
-        settlementBaseUrl,
-        custodyBaseUrl,
-        orderBaseUrl,
-        indexerBaseUrl,
-        simulatorBaseUrl
-      }),
+      faultLabClient,
       orderClient,
-      (options, operation) => this.applicationService.runAuditedAction(options, operation)
+      (options, operation) => this.applicationService.runAuditedAction(options, operation),
+      { reconciliationClient }
     );
+    // Emergency switches (risk-service), reconciliation job (ledger-service), P1/P2/P3 alerts.
+    this.controls = new OpsControlsApplicationService({
+      switches: new HttpControlSwitchClient(process.env.OPS_RISK_SERVICE_URL ?? "http://127.0.0.1:3008"),
+      reconciliation: reconciliationClient,
+      runAudited: (options, operation) => this.applicationService.runAuditedAction(options, operation),
+      baseAlerts: () => this.applicationService.getAlertsOverview(),
+      settlementReport: () => this.applicationService.getTradeSettlementReport({}),
+      settlementConsumer: () => faultLabClient.getSettlementConsumerState(),
+      treasuryReconciliation: () => this.treasury.getReconciliation(),
+      failedTreasuryTransfers: () => this.treasury.listTransfers({ status: "failed", limit: 100 }),
+      blockedWithdrawals: () => this.applicationService.listWithdrawals({ riskLevel: "blocked", limit: 50, offset: 0 }),
+      highRiskReviewQueue: () => this.applicationService.listWithdrawalReviewQueue({ riskLevel: "high", limit: 1, offset: 0 }),
+      surveillanceOverview: () => this.feesSurveillance.getSurveillanceOverview()
+    });
     this.treasury = new TreasuryApplicationService(
       new HttpTreasuryClient(walletBaseUrl),
       (options, operation) => this.applicationService.runAuditedAction(options, operation)
@@ -648,7 +668,8 @@ export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getAlertsOverview() {
-    return this.applicationService.getAlertsOverview();
+    // Same payload as before plus a P1/P2/P3 level per alert (see domain/alert-severity.ts).
+    return this.controls.getAlertsOverview();
   }
 
   async exportTradeRuntimeAlerts(query: OpsTradeRuntimeReportQuery) {

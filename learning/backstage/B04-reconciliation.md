@@ -330,13 +330,16 @@ flowchart LR
 
 ## 8. 本仓库对照
 
-本仓库（`CEX Demo`）实现了 R1–R4 的一部分、提币在途的超时清理，以及一个简化版 R5（钱包 vs 账本逐币种覆盖率对账）和储备金证明。R6–R8 未实现。
+本仓库（`CEX Demo`）实现了 R1–R4 的一部分、订单冻结 ↔ 账本冻结对账、定时对账与按币种的提币熔断、提币在途的超时清理，以及一个简化版 R5（钱包 vs 账本逐币种覆盖率对账，覆盖率不足只告警 P1、不接熔断）和储备金证明。R6–R8 未实现。
 
 | 本章概念 | 本仓库实现 | 状态 |
 |---|---|---|
 | R4 流水 ↔ 快照 | `ledger-service` 的 `reconcile-balances` 脚本：对每个 `(account_id, asset_code)`，用 `ledger_entries` 净额减去活跃 `balance_locks`，得到期望可用和期望冻结，与 `balances` 快照比较；差异原因为 `available_mismatch` / `locked_mismatch` / `total_mismatch` | 已实现 |
 | 单账户定位 | `replay-account` 脚本：按时间序回放 `entry_credit`、`entry_debit`、`lock`、`release`、`consume`，输出每一步后的余额，并与快照比较 | 已实现 |
-| 对账告警阈值 | `check-alerts` 中 `LEDGER_ALERT_MAX_BALANCE_MISMATCHES`、负余额、超时锁等阈值 | 已实现（无自动熔断） |
+| 对账告警阈值 | `check-alerts` 中 `LEDGER_ALERT_MAX_BALANCE_MISMATCHES`、负余额、超时锁等阈值；ops-console 把对账差异、负余额定为 P1 | 已实现 |
+| 订单冻结 ↔ 账本冻结 | `ledger-service` 的 `order-lock-reconciliation.ts`：对每个账户 + 币种，比较「order-service 的未成交部分冻结 + 账本快照中尚未消耗的成交」与账本 `spot_order` 冻结；刚下单 / 刚成交 / 恢复中的委托按在途处理（第 5.4 节的「能被在途清单解释」） | 已实现 |
+| 定时对账 | `ledger-service` 的 `reconciliation-job.ts`：每 `RECONCILIATION_INTERVAL_SECONDS`（演示栈 30 秒）跑余额对账 + 订单冻结对账，结果写入 `ledger_reconciliation_runs`，ops-console「账本对账」展示历史 | 已实现 |
+| 熔断：对账不平就停提币 | `reconciliation-breaker.ts`：余额对账不平立即暂停该币种提币；订单冻结不一致需同一委托连续 2 轮才触发，首轮只告警 P2；经 `risk-service` 紧急开关自动暂停（来源「对账熔断」）并告警 P1；恢复必须人工，且要有一轮一致的对账（第 5.4 节最后一条）。故障实验室可注入差额演示 | 已实现。对账任务失败时本仓库按「部分完成 / 失败」告警，不按不平处理（未 Fail-Closed） |
 | 对账 HTTP 接口 | `GET/POST /api/v1/ledger/ops/reconciliation`、`/ops/replay` | 已实现 |
 | R2 成交 ↔ 结算 | `settlement-service` 按市场维护消费者检查点；`executionSequence` 小于检查点、或相等且 `replayCursor` 不大于检查点时按重复处理；出现断档时抛出 `SETTLEMENT_EVENT_SEQUENCE_GAP`；支持 `trade-executed/replay` | 已实现 |
 | R5（简化）钱包 ↔ 账本 | `wallet-service` 的 `GET /api/v1/wallet/treasury/reconciliation`：逐币种比较链上储备（充值地址 + 热钱包 + 冷钱包 + 在途内部转账，来自 treasury 记录）与 `ledger-service` 用户负债（`GET /ops/liabilities`，扣除已广播未确认的在途提现），输出储备率、盈余与 `covered` / `shortfall`；ops-console「钱包与储备金」页展示。与真实 R5 的差别：持仓来自 treasury 自己的转账记录而不是节点 / 索引器读取的地址余额，且是覆盖率检查（储备 ≥ 负债）而非逐笔相等 | 已实现（简化） |
@@ -344,7 +347,7 @@ flowchart LR
 | R1 订单 ↔ 撮合 | `order-service` 的 `getAnomalies`：发现 `engine_missing_open_order`、`engine_orphan_order`、`db_open_order_without_resting_quantity`；`replay-engine` 用数据库中的挂单重建订单簿 | 已实现 |
 | 提币在途超时 | `wallet-service` 的 `reconcile-stale-withdrawals`：默认 30 分钟，待审的拒绝，已批准的重新广播 | 已实现 |
 | 运营入口 | `ops-console` 提供财务对账、账户 replay 页面 | 已实现 |
-| R6 / R7 / R8、对账不平自动停提币的熔断、双人审批调账 | — | 未实现 |
+| R6 / R7 / R8、双人审批调账 | — | 未实现 |
 
 相关文件：
 
@@ -354,12 +357,13 @@ flowchart LR
 - [settlement-application-service.ts](../../services/settlement-service/src/application/settlement-application-service.ts)（序号断档检测）
 - [order-ops-service.ts](../../services/order-service/src/application/order-ops-service.ts)（订单 ↔ 撮合异常、`replayEngineBook`）
 - [wallet-ops-service.ts](../../services/wallet-service/src/application/wallet-ops-service.ts)（`reconcileStaleWithdrawals`）
+- [reconciliation-job.ts](../../services/ledger-service/src/application/reconciliation-job.ts)、[order-lock-reconciliation.ts](../../services/ledger-service/src/application/order-lock-reconciliation.ts)、[reconciliation-breaker.ts](../../services/ledger-service/src/application/reconciliation-breaker.ts)（定时对账、订单冻结对账、熔断）
 - [treasury-policy.ts](../../services/wallet-service/src/domain/treasury-policy.ts)（`computeTreasuryHoldings`、`buildReserveReconciliation`）、[ledger-liabilities.ts](../../services/ledger-service/src/application/ledger-liabilities.ts)（用户负债）
 - [ledger-service-design.md](../../docs/ledger-service-design.md) 第 11 节、[troubleshooting.md](../../docs/troubleshooting.md) 第 6.4 节
 
 排障顺序（来自本仓库排障文档）：先跑只读检查（`reconcile-balances`），再用 `replay-account` 区分单账户问题和历史回填问题；**不直接手改余额快照或状态列**；最后才做 backfill 或人工补记。这和本章第 4 节的原则一致。
 
-> 💡 注意：`reconcile-balances` 的 `LEDGER_RECONCILE_FAIL_ON_MISMATCH` 默认为 `true`，发现差异时进程退出码为 1。它适合接入定时任务做"不平即告警"，但本仓库没有把它接到提币开关。
+> 💡 注意：`reconcile-balances` 的 `LEDGER_RECONCILE_FAIL_ON_MISMATCH` 默认为 `true`，发现差异时进程退出码为 1，适合接入外部定时任务做"不平即告警"。服务内的定时对账任务则直接接到了提币开关（对账熔断）。
 
 ---
 

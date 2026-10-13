@@ -160,6 +160,8 @@ rm -rf .runtime/full-stack
 | 提交时被拒绝 | 超出 KYC 等级限额、低于最小金额、开启了强制 2FA（`WITHDRAWAL_REQUIRE_2FA=true`）但未提供有效动态码 |
 | 新增地址 / 修改 2FA 后无法提现 | 处于安全冷却期。`stack:start` 默认传入 `WITHDRAWAL_SECURITY_COOLDOWN_SECONDS=0`；**单独启动 `wallet-service` 时代码默认是 `86400`（24 小时）**，需显式设为 `0` |
 | 一位运营批准后仍是待审核 | 金额超过双人复核阈值，需要第二位运营（`ops-reviewer@example.com`）批准，且两人不能是同一账户 |
+| 返回 `409 WITHDRAWALS_PAUSED` / `ASSET_WITHDRAWALS_PAUSED`，运营批准也被拒 | 运营开启了紧急开关，或定时对账发现该币种不平触发了对账熔断。到 ops-console「系统运维 → 紧急开关」查看来源与原因；熔断来源需先在「账本对账」得到一致的对账结果再恢复 |
+| 下单 / 提现返回 `409 API_WRITE_FROZEN` | 开启了 API 写入冻结（只读模式），撤单仍可用；在「紧急开关」恢复 |
 | 批准后迟迟没有 `txHash` / 停在已广播 | `custody-adapter` 广播失败（检查是否注入了托管故障）或 `demo-simulator` 没有推进确认 |
 
 ### 6.3 下单失败或成交后余额不变
@@ -170,7 +172,8 @@ rm -rf .runtime/full-stack
 
 ### 6.4 账本对账不一致或 outbox 堆积
 
-- 运营后台「账本对账」可以直接执行对账与 replay。
+- 运营后台「账本对账」可以直接执行对账与 replay；「定时对账与熔断」面板列出每一轮的结果。状态「可疑（待确认）」表示委托冻结首次不一致，通常是时序造成，下一轮会自行消失；连续不一致或余额对账不平才会熔断。
+- 对账结果一直是「部分完成」：委托冻结对账调用 `order-service` 失败（服务未运行或调用方白名单被覆盖），检查 `ledger-service` 日志中的 `Reconciliation` 记录。
 - `ledger-outbox-publisher` 负责把 outbox 事件发到 Kafka。Kafka 不可用时 outbox 会堆积；确认 `web3-cex-kafka` 容器正常、`ledger-outbox-publisher` 在运行。
 - 命令行工具（会先构建；需要数据库可用）:
 

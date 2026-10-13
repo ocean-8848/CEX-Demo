@@ -47,6 +47,7 @@ import type {
   SpotTradeRecord
 } from "../domain/types.js";
 import { selectTriggeredStopOrders } from "./stop-order-trigger.js";
+import type { StopTriggerGate, StopTriggerHoldReason } from "./stop-trigger-gate.js";
 
 interface ServiceOptions {
   now?: () => Date;
@@ -59,6 +60,11 @@ interface ServiceOptions {
   settlementMode?: "sync" | "async";
   /** VIP tier resolver (A7). Absent = every side pays the market default rate. */
   feeTierResolver?: FeeTierResolver;
+  /**
+   * Holds crossed stop triggers while the market is halted / delisted or the
+   * API write freeze is on (see stop-trigger-gate.ts). Absent = never held.
+   */
+  stopTriggerGate?: StopTriggerGate;
 }
 
 interface RecoveryPlan {
@@ -81,6 +87,7 @@ export class OrderApplicationService {
   private readonly tradeEventVersionGate: TradeEventVersionGate;
   private readonly settlementMode: "sync" | "async";
   private readonly feeTierResolver?: FeeTierResolver;
+  private readonly stopTriggerGate?: StopTriggerGate;
 
   constructor(
     private readonly repository: OrderRepository,
@@ -110,6 +117,7 @@ export class OrderApplicationService {
       options.tradeEventVersionGate ?? DEFAULT_TRADE_EVENT_VERSION_GATE;
     this.settlementMode = options.settlementMode ?? "sync";
     this.feeTierResolver = options.feeTierResolver;
+    this.stopTriggerGate = options.stopTriggerGate;
   }
 
   async createOrder(command: CreateSpotOrderCommand): Promise<SpotOrderRecord> {
@@ -196,7 +204,12 @@ export class OrderApplicationService {
   async triggerStopOrders(
     market: SpotMarket,
     lastPrice?: string
-  ): Promise<{ market: SpotMarket; lastPrice?: string; triggeredOrderIds: string[] }> {
+  ): Promise<{
+    market: SpotMarket;
+    lastPrice?: string;
+    triggeredOrderIds: string[];
+    heldReason?: StopTriggerHoldReason;
+  }> {
     const pending = await this.repository.listOrders({
       market,
       status: "pending_trigger",
@@ -212,8 +225,18 @@ export class OrderApplicationService {
       return { market, triggeredOrderIds: [] };
     }
 
+    const crossed = selectTriggeredStopOrders(pending, price);
+    if (crossed.length > 0 && this.stopTriggerGate) {
+      // Halted market / API write freeze: keep the orders pending_trigger
+      // (funds stay frozen) and fire them on the first tick after it clears.
+      const gate = await this.stopTriggerGate.check(market);
+      if (gate.hold) {
+        return { market, lastPrice: price, triggeredOrderIds: [], heldReason: gate.reason };
+      }
+    }
+
     const triggeredOrderIds: string[] = [];
-    for (const order of selectTriggeredStopOrders(pending, price)) {
+    for (const order of crossed) {
       const triggeredAt = this.now().toISOString();
       const claimed: SpotOrderRecord = {
         ...order,
@@ -1537,7 +1560,7 @@ function buildPreMatchingError(
   );
 }
 
-function createStableUuid(value: string): string {
+export function createStableUuid(value: string): string {
   const hex = createHash("sha256").update(value).digest("hex");
   const version = `5${hex.slice(13, 16)}`;
   const variant = ((parseInt(hex[16] ?? "0", 16) & 0x3) | 0x8).toString(16);

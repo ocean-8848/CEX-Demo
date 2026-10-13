@@ -33,7 +33,10 @@ export class WalletError extends Error {
       | "WITHDRAWAL_ADDRESS_BLOCKED"
       | "WITHDRAWAL_NEW_DEVICE_LOCK"
       | "BLACKLIST_ENTRY_NOT_FOUND"
-      | "INVALID_BLACKLIST_ENTRY",
+      | "INVALID_BLACKLIST_ENTRY"
+      | "WITHDRAWALS_PAUSED"
+      | "ASSET_WITHDRAWALS_PAUSED"
+      | "API_WRITE_FROZEN",
     message: string
   ) {
     super(message);

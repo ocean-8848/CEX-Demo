@@ -53,7 +53,7 @@
   - 触发用 `saveOrderIfStatus(pending_trigger → pending_risk)` 比较交换，多实例 / 重启 / 重复轮询都只提交一次；随后按 `stop_limit → limit`、`stop_market → market` 走普通撮合流程，订单 `type` 保持原值并记录 `triggeredAt`
   - 触发后的时间优先级按 `triggeredAt` 计算（引擎 `created_at` 与订单簿回放都用它）
   - 触发前撤单同样用比较交换（`pending_trigger → cancelled`），释放全部冻结资金；与触发并发时以先到者为准
-  - 触发时不再调用 `risk-service`（资金在下单时已冻结）；ops 暂停市场不会阻止已挂的止损单触发
+  - 触发时不再走下单风控（资金在下单时已冻结），但会经 [stop-trigger-gate.ts](src/application/stop-trigger-gate.ts) 检查 `risk-service` 的市场状态与紧急开关：市场暂停 / 下架或 API 写入冻结期间，已越过触发价的止损单**保持** `pending_trigger`（资金继续冻结，不拒单），条件解除后的下一轮轮询立即触发；worker 状态 `heldMarkets` 列出被暂缓的市场。状态缓存 `CONTROL_SWITCH_CACHE_MS`（默认 2000），读取失败沿用上次状态
 - 时效:
   - `gtc`
   - `ioc`
@@ -156,6 +156,7 @@ HTTP 接口:
 - `GET /api/v1/orders/ops/anomalies`
 - `POST /api/v1/orders/ops/replay-engine`
 - `POST /api/v1/orders/ops/stop-orders/trigger`（立即执行一轮止损触发检查；overview 返回 `pendingTriggerOrderCount` 与 `stopTrigger` 状态）
+- `POST /api/v1/orders/ops/lock-expectations`（ledger-service 委托冻结对账的输入，`{ orderIds?(≤2000), includeOpenOrders? }`：每笔委托未成交部分的冻结、全部成交及其消耗的冻结金额（ledger-service 在自己的快照里判断哪些成交已被消耗）；`pending_risk` / `recovery_pending` 标记为在途。逻辑在 `src/application/order-lock-expectations.ts`）
 - `POST /api/v1/orders/ops/lab/engine-reset`（故障实验室：`market`、`resetSequences`；仅清空订单簿时需手动 replay-engine 修复，重置序号时由自动同步自愈，详见 [fault-lab.md](../../docs/fault-lab.md)）
 - `GET /api/v1/orders/ops/recovery-jobs`
 - `GET /api/v1/orders/ops/recovery-metrics`

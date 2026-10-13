@@ -28,6 +28,7 @@ import {
 } from "../../lib/records.js";
 import { navigate } from "../../lib/router.js";
 import type { FaucetReceipt, FaucetStatus } from "../../lib/types.js";
+import { isWithdrawalPaused, useSystemControls } from "../../state/system-controls.js";
 import { useExchange } from "../../state/store.js";
 import { BalancesTable } from "../trade/account-tables.js";
 
@@ -417,6 +418,7 @@ const RISK_LEVEL_TEXT: Record<string, string> = {
 
 function WithdrawPanel(props: { initialAsset?: string }) {
   const { state, actions, assets } = useExchange();
+  const controls = useSystemControls();
   const defaultAsset = useValuationAsset();
   const [asset, setAsset] = useState(props.initialAsset ?? defaultAsset);
   const { network, withdrawalFee } = useAssetConfig(asset);
@@ -504,13 +506,32 @@ function WithdrawPanel(props: { initialAsset?: string }) {
   }
 
   const amountValue = toNumber(amount);
-  const canSubmit = /^0x[0-9a-fA-F]{40}$/.test(toAddress.trim()) && amountValue > 0 && amountValue <= maxAmount + 1e-12;
+  // Emergency switches (运营紧急开关): the gateway rejects these anyway; disable the form up front.
+  const withdrawalPaused = isWithdrawalPaused(controls, asset);
+  const writeFrozen = Boolean(controls?.apiWriteFrozen);
+  const canSubmit =
+    !withdrawalPaused &&
+    !writeFrozen &&
+    /^0x[0-9a-fA-F]{40}$/.test(toAddress.trim()) &&
+    amountValue > 0 &&
+    amountValue <= maxAmount + 1e-12;
 
   return (
     <div className="funding-panel" id="withdraw-panel">
       <Field label="币种">
         <AssetPicker value={asset} onChange={setAsset} id="withdraw-asset" />
       </Field>
+      {withdrawalPaused ? (
+        <div className="form-error" role="status" id="withdraw-paused-notice">
+          {controls?.withdrawalsPaused
+            ? "平台已暂停全部提现（运营紧急开关），恢复前无法提交，已提交的提现也会暂缓处理。"
+            : `平台已暂停 ${asset} 提现（运营紧急开关，例如对账异常时的自动熔断），其他币种不受影响；充值和交易照常。`}
+        </div>
+      ) : writeFrozen ? (
+        <div className="form-error" role="status" id="withdraw-frozen-notice">
+          平台处于只读模式（API 写入冻结）：暂时不能提交新的提现申请。
+        </div>
+      ) : null}
       <Field label="提现地址" hint={savedEntry ? `地址簿：${savedEntry.label ?? ""}${savedEntry.isWhitelisted ? " · 白名单" : ""}` : "EVM 地址（0x 开头 40 位十六进制）"}>
         <input
           name="toAddress"

@@ -167,7 +167,7 @@ stateDiagram-v2
 
 > 💡 注意：交易所最重要的告警不是"服务挂了"，而是"资金对不上"。服务挂了，用户会立即发现。资金对不上，可能几天后才有人发现。
 
-告警分级示例（业界常见做法；本仓库未实现 P1/P2/P3 分级，`ops-console` 的告警只区分 `warning` / `critical`）：
+告警分级示例（业界常见做法；本仓库 `ops-console` 按同样的思路把每条告警定为 P1/P2/P3，规则表见 `docs/security.md` 第 2.12 节）：
 
 - **P1**：资金错误、提币异常扩大、账实不一致。立即呼叫值班。
 - **P2**：核心交易受影响、订单堆积。15 分钟内响应（示例）。
@@ -300,8 +300,9 @@ flowchart LR
 | 撮合快照 | `matching-engine` 支持 book snapshot / reset / seed | `engines/matching-engine/src/main.rs` |
 | 订单簿重放 | `order-service` 支持订单簿 replay 和异常检测 | `services/order-service/README.md` |
 | 账本重放与对账 | `ledger-service` 的 `reconcile-balances`、`replay-account`、`check-alerts` | `docs/ledger-service-design.md` 第 11 节、`docs/troubleshooting.md` 第 6.4 节 |
-| 降级与紧急开关 | 只有单市场交易开关：运营可把市场设为 `halted`，拒绝新单、撤单放行。全站提币、单资产提币、API 写入开关本仓库未实现 | `services/risk-service/src/application/market-status-service.ts`、`docs/api-contracts.md` 第 5.1 节 |
-| 告警分级 | 本仓库未实现 P1/P2/P3 分级。`ops-console` 的交易运行时告警只分 `warning` / `critical`；`ledger-service` 的 `check-alerts` 按阈值输出 `alert` | `apps/ops-console/src/application/ops-console-application-service.ts`、`docs/ledger-service-design.md` 第 11.3 节 |
+| 降级与紧急开关 | 单市场交易开关（市场 `halted`，拒绝新单、撤单放行）；全站提币暂停、单资产提币暂停、API 写入冻结（只读模式，撤单放行）三个紧急开关，由 risk-service 持久化，在 api-gateway、wallet-service（申请 / 审批 / 广播）和下单风控中执行，ops-console「系统运维 → 紧急开关」操作（必填原因、二次确认、审计，仅 `ops_admin`）；trader-web 显示暂停 / 只读提示 | `services/risk-service/src/application/control-switch-service.ts`、`services/api-gateway/src/http/api-gateway-control-switch.guard.ts`、`apps/ops-console/client/features/controls-tab.tsx`、`docs/security.md` 第 2.11 节 |
+| 告警分级 | 已实现 P1/P2/P3：账本、对账、紧急开关、托管、链上观察、钱包、交易域与交易运行时告警逐条定级（P1 资金正确性 / 资金出口，P2 核心链路受损，P3 非核心），运营总览和系统运维按级别排序、着色、计数；没有值班呼叫 | `apps/ops-console/src/domain/alert-severity.ts`、`docs/security.md` 第 2.12 节 |
+| 对账与熔断 | ledger-service 定时（演示栈 30 秒）做余额对账与委托冻结对账，不平时自动暂停该币种提现并产生 P1 告警，人工恢复前需一轮一致的对账 | `services/ledger-service/src/application/reconciliation-job.ts`、`docs/ledger-service-design.md` 第 11.5 节 |
 | 审计日志 | `ops_action_audit_logs` 记录运营写操作的操作人、角色、权限、目标、请求 / 响应和结果；`withdrawal_audit_logs` 记录提现各状态的操作人、`trace_id` 和前后快照 | `docs/security.md` 第 2.8 节 |
 | 权限控制 | 6 个运营角色映射到细粒度权限，提现审核（`ops_reviewer`）与账本执行（`ops_finance_operator`）分属不同角色 | `services/identity-service/src/domain/rbac.ts`、`docs/security.md` 第 2.2 节 |
 | 托管熔断 | `custody-adapter` 多 provider 路由、失败熔断、健康检查 | `services/custody-adapter/README.md`、`docs/fault-lab.md` |

@@ -227,6 +227,9 @@ export interface AlertSource {
   status: string;
   alerts: string[];
   summary?: Record<string, unknown>;
+  /** Same alerts with a P1/P2/P3 level, sorted P1 first. */
+  items?: AlertItem[];
+  highestSeverity?: AlertSeverity | null;
 }
 
 export interface AlertsReport {
@@ -234,6 +237,9 @@ export interface AlertsReport {
   status: string;
   alertCount: number;
   sources: AlertSource[];
+  items?: AlertItem[];
+  countsBySeverity?: Record<AlertSeverity, number>;
+  highestSeverity?: AlertSeverity | null;
 }
 
 export interface Paged<T> {
@@ -417,4 +423,93 @@ export interface MarketsReport {
   statusSource: "risk-service" | "config";
   statusError: string | null;
   markets: ManagedMarket[];
+}
+
+// --- Emergency switches, reconciliation job, alert levels ---------------------
+
+export type AlertSeverity = "P1" | "P2" | "P3";
+
+export interface AlertItem {
+  source: string;
+  code: string;
+  severity: AlertSeverity;
+  message: string;
+  summary?: string;
+}
+
+export type ControlSwitchScope = "withdrawals_global" | "withdrawals_asset" | "api_write";
+
+export interface ControlSwitchEntry {
+  scope: ControlSwitchScope;
+  assetCode?: string;
+  reason: string | null;
+  source: "manual" | "automatic";
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface ControlSwitchEvent {
+  eventId: string;
+  scope: ControlSwitchScope;
+  assetCode?: string;
+  action: "enabled" | "disabled";
+  reason: string | null;
+  source: "manual" | "automatic";
+  operator: string;
+  createdAt: string;
+}
+
+export interface ReconciliationRun {
+  runId: string;
+  trigger: string;
+  status: string;
+  startedAt: string;
+  completedAt: string;
+  durationMs?: number;
+  balance?: { scannedCount?: number; mismatchCount?: number; mismatchedAssets?: string[] } | null;
+  orderLock?: {
+    scannedOrders?: number;
+    scannedAccountAssets?: number;
+    matchedCount?: number;
+    inFlightCount?: number;
+    mismatchCount?: number;
+    mismatchedAssets?: string[];
+    graceMs?: number;
+    mismatches?: Array<{ orderId: string; accountId: string; assetCode: string; ledgerLocked: string; expectedLocked: string; difference: string; reason: string }>;
+    items?: Array<{ accountId: string; assetCode: string; ledgerLocked: string; ledgerOrderLocked: string; ledgerOtherLocked: string; orderExpectedLocked: string; difference: string; inFlightCount: number; mismatchCount: number; status: string }>;
+  } | null;
+  orderLockError?: string;
+  breaker?: {
+    enabled?: boolean;
+    confirmations?: number;
+    trips?: Array<{ assetCode: string; reason: string }>;
+    suspects?: Array<{ assetCode: string; orderIds: string[] }>;
+    actions?: Array<{ assetCode: string; reason: string; outcome: string; error?: string }>;
+  };
+  alerts?: Array<{ level: AlertSeverity; code: string; message: string }>;
+  error?: string;
+}
+
+export interface ReconciliationJobStatus {
+  enabled: boolean;
+  intervalSeconds: number;
+  graceMs: number;
+  breakerEnabled: boolean;
+  confirmations: number;
+  running?: boolean;
+  lastRunAt?: string;
+  lastStatus?: string;
+  nextRunAt?: string;
+}
+
+export interface ControlsReport {
+  generatedAt: string;
+  assets: string[];
+  state: {
+    withdrawalsPaused: ControlSwitchEntry | null;
+    assetWithdrawalPauses: ControlSwitchEntry[];
+    apiWriteFrozen: ControlSwitchEntry | null;
+  };
+  events: ControlSwitchEvent[];
+  reconciliation: { job: ReconciliationJobStatus; latestRun: ReconciliationRun | null } | null;
 }

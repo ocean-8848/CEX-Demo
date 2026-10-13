@@ -12,7 +12,16 @@ import {
   verifyInternalServiceSignature
 } from "@web3-cex/domain";
 
-const DEFAULT_ALLOWED_CALLERS = ["order-service", "ops-console", "demo-scripts"];
+const DEFAULT_ALLOWED_CALLERS = [
+  "order-service",
+  "ops-console",
+  "demo-scripts",
+  // Emergency switches: enforced by wallet-service / api-gateway, tripped by
+  // the ledger-service reconciliation breaker.
+  "wallet-service",
+  "api-gateway",
+  "ledger-service"
+];
 
 @Injectable()
 export class InternalServiceAuthGuard implements CanActivate {

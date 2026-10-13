@@ -226,6 +226,10 @@ pnpm --filter @web3-cex/ledger-service start
 | `OPS_REQUIRE_TWO_FACTOR` | `identity-service` | `true` | 运营账户登录是否要求 TOTP |
 | `IDENTITY_LOGIN_MAX_FAILURES` / `IDENTITY_LOGIN_FAILURE_WINDOW_SECONDS` / `IDENTITY_LOGIN_LOCK_SECONDS` | `identity-service` | `5` / `900` / `300` | 登录失败锁定：窗口内（自上次成功登录起）累计失败次数达到阈值后锁定的秒数；`IDENTITY_LOGIN_MAX_FAILURES=0` 关闭 |
 | `IDENTITY_NEW_DEVICE_NOTIFY` / `IDENTITY_WALLET_SERVICE_BASE_URL` | `identity-service` | `true` / `http://127.0.0.1:3002` | 新设备登录时向 wallet-service 写站内信 |
+| `RECONCILIATION_INTERVAL_SECONDS` | `ledger-service` | 代码默认 `0`（不调度）；`stack:start` 传入 `30` | 定时对账（余额 + 委托冻结）与对账熔断的间隔，见 [ledger-service-design.md](./ledger-service-design.md) 第 11.5 节 |
+| `RECONCILIATION_ORDER_LOCK_GRACE_SECONDS` / `RECONCILIATION_BREAKER_CONFIRMATIONS` / `RECONCILIATION_BREAKER_ENABLED` | `ledger-service` | `15` / `2` / `true` | 委托冻结对账的在途宽限、熔断前需连续不一致的轮数、是否自动暂停提现 |
+| `CONTROL_SWITCH_CACHE_MS` | `api-gateway`、`wallet-service` | `2000` | 紧急开关的本地缓存时间（开关变更最多延迟这么久生效）；`RISK_CONTROL_SWITCH_CACHE_MS`（risk-service 自身，默认 `1000`） |
+| `GATEWAY_RISK_SERVICE_URL` / `WALLET_RISK_SERVICE_URL` / `LEDGER_RISK_SERVICE_URL` / `LEDGER_ORDER_SERVICE_URL` | 对应服务 | 本地默认地址 | 紧急开关与对账任务调用的下游地址 |
 | `OTEL_ENABLED` / `OTEL_EXPORTER_OTLP_ENDPOINT` | 各 Node 服务 | 关闭 / `http://127.0.0.1:4318` | OpenTelemetry 追踪 |
 | `ORDER_STOP_TRIGGER_POLL_INTERVAL_MS` | `order-service` | `1000` | 止损单触发检查间隔（按最新成交价）；`0` 关闭定时检查 |
 | `TRADER_WEB_DEMO_MODE` | `trader-web` | `true` | 是否显示「一键登录演示账户」与水龙头 |
@@ -323,6 +327,6 @@ pnpm stack:stop:infra
 说明:
 
 - 浏览器 E2E 需要本机 Chrome。非 macOS 环境通过 `TRADER_WEB_SMOKE_CHROME_PATH` 和 `OPS_CONSOLE_E2E_CHROME_PATH` 指定路径（CI 中为 `/usr/bin/google-chrome`）。
-- `test:features` 可以只跑部分段落，例如 `node scripts/verify-feature-e2e.mjs lab`；可选段落为 `apikey`、`websocket`、`fees`、`sol`、`notifications`、`security`、`lab`、`risk-security`（KYT 评分 / 黑名单拦截与自动拒绝、新设备提醒与设备吊销、登录失败锁定）。
+- `test:features` 可以只跑部分段落，例如 `node scripts/verify-feature-e2e.mjs lab`；可选段落为 `apikey`、`websocket`、`fees`、`sol`、`notifications`、`security`、`lab`、`hardening`、`matching`、`risk-security`（KYT 评分 / 黑名单拦截与自动拒绝、新设备提醒与设备吊销、登录失败锁定）、`reserves`、`fees-surveillance`、`controls`（紧急开关、告警分级、定时对账与对账熔断，结束时会关闭所有开关）。
 - E2E 会修改演示数据（KYC 等级、余额等），结束后执行 `pnpm demo:prepare` 即可恢复基线。
 - 服务日志在 `.runtime/full-stack/logs/`，CI 失败时会上传这一目录。

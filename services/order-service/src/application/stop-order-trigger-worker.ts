@@ -21,6 +21,8 @@ export class StopOrderTriggerWorker {
   private lastRunAt?: string;
   private lastError?: string;
   private triggeredCount = 0;
+  /** Markets whose crossed triggers are currently held (halted market / API write freeze). */
+  private readonly heldMarkets = new Map<string, string>();
 
   constructor(
     private readonly applicationService: Pick<OrderApplicationService, "triggerStopOrders">,
@@ -63,7 +65,8 @@ export class StopOrderTriggerWorker {
       running: Boolean(this.timer),
       lastRunAt: this.lastRunAt,
       lastError: this.lastError,
-      triggeredCount: this.triggeredCount
+      triggeredCount: this.triggeredCount,
+      heldMarkets: Object.fromEntries(this.heldMarkets)
     };
   }
 
@@ -74,6 +77,11 @@ export class StopOrderTriggerWorker {
       try {
         const result = await this.applicationService.triggerStopOrders(market);
         this.triggeredCount += result.triggeredOrderIds.length;
+        if (result.heldReason) {
+          this.heldMarkets.set(market, result.heldReason);
+        } else {
+          this.heldMarkets.delete(market);
+        }
         results.push(result);
         this.lastError = undefined;
       } catch (error) {

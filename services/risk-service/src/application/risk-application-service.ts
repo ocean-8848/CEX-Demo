@@ -1,6 +1,7 @@
 import {
   MARKET_CATALOG,
   addAmounts,
+  evaluateApiWriteGate,
   alignsToStep,
   compareAmounts,
   divideAmounts,
@@ -14,6 +15,7 @@ import {
   type SpotMarket
 } from "@web3-cex/domain";
 
+import type { ControlSwitchService } from "./control-switch-service.js";
 import { MarketStatusService } from "./market-status-service.js";
 import { RiskServiceError } from "../domain/errors.js";
 import type { RiskLedgerClient } from "../domain/ledger-client.js";
@@ -33,6 +35,8 @@ interface ServiceOptions {
   catalog?: MarketCatalog;
   /** Effective market status (config default + ops overrides). */
   marketStatus?: MarketStatusService;
+  /** Emergency switches; when set, an API write freeze rejects new orders. */
+  controlSwitches?: Pick<ControlSwitchService, "getState">;
   env?: Record<string, string | undefined>;
 }
 
@@ -59,6 +63,7 @@ export class RiskApplicationService {
   private readonly referencePriceProvider?: ReferencePriceProvider;
   private readonly catalog: MarketCatalog;
   readonly marketStatus: MarketStatusService;
+  private readonly controlSwitches?: Pick<ControlSwitchService, "getState">;
 
   constructor(
     private readonly ledgerClient: RiskLedgerClient,
@@ -74,6 +79,7 @@ export class RiskApplicationService {
     };
     this.referencePriceProvider = options.referencePriceProvider;
     this.marketStatus = options.marketStatus ?? new MarketStatusService({ catalog: this.catalog });
+    this.controlSwitches = options.controlSwitches;
   }
 
   /** Request override > last trade > book mid > configured value. */
@@ -97,6 +103,16 @@ export class RiskApplicationService {
         400,
         `Market ${command.market} is not supported`
       );
+    }
+
+    // API write freeze (read-only mode): order-service always validates here
+    // before freezing funds, so this is the defence-in-depth check behind the
+    // api-gateway guard. Cancels never pass through risk.
+    if (this.controlSwitches) {
+      const frozen = evaluateApiWriteGate(await this.controlSwitches.getState());
+      if (frozen) {
+        throw new RiskServiceError(frozen.code, 409, frozen.message);
+      }
     }
 
     // Halted / delisted markets reject new orders. Cancels never pass through

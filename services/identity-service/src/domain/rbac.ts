@@ -32,7 +32,9 @@ const ROLE_PERMISSIONS: Record<IdentityOpsRole, IdentityOpsPermission[]> = {
     "ops.markets.read",
     "ops.markets.manage",
     "ops.risk.read",
-    "ops.risk.manage"
+    "ops.risk.manage",
+    // Emergency switches (withdrawal pauses, API write freeze): admin only.
+    "ops.controls.manage"
   ],
   ops_reviewer: [
     "ops.dashboard.read",

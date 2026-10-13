@@ -18,6 +18,7 @@ import { stopTriggerHint } from "../../lib/order-options.js";
 import type { OrderSide, OrderType, StpMode, TimeInForce } from "../../lib/types.js";
 import { useFeeTier } from "../../state/fee-tier.js";
 import { useExchange } from "../../state/store.js";
+import { useSystemControls } from "../../state/system-controls.js";
 import { useDisplayPrice } from "./market-header.js";
 
 const TIF_HELP: Record<TimeInForce, string> = {
@@ -45,6 +46,7 @@ export function OrderForm(props: { pickedPrice?: { price: string; nonce: number 
   const minQuantity = toNumber(marketDefinition?.minQuantity ?? "0");
   const displayPrice = useDisplayPrice(state.market);
   const loggedIn = Boolean(state.token);
+  const writeFrozen = Boolean(useSystemControls()?.apiWriteFrozen);
 
   const [side, setSide] = useState<OrderSide>("buy");
   const [mode, setMode] = useState<FormMode>("limit");
@@ -385,6 +387,12 @@ export function OrderForm(props: { pickedPrice?: { price: string; nonce: number 
         </div>
       </dl>
 
+      {writeFrozen ? (
+        <div className="form-error" role="status" id="order-frozen-notice">
+          平台处于只读模式（运营开启了 API 写入冻结）：暂时不能下新单，已有挂单仍可撤销。
+        </div>
+      ) : null}
+
       {postOnlyWouldTake && !error && !validation ? (
         <div className="form-error" role="status" id="order-post-only-warning">
           当前价格会立即与对手盘成交，只做 Maker 单将被撮合引擎拒绝
@@ -404,6 +412,7 @@ export function OrderForm(props: { pickedPrice?: { price: string; nonce: number 
           size="lg"
           block
           loading={submitting}
+          disabled={writeFrozen}
           id="order-submit"
         >
           {side === "buy" ? "买入" : "卖出"} {base}

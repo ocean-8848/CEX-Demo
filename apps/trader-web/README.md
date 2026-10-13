@@ -25,6 +25,8 @@
 
 登录时页面从 `src/client/lib/device.ts` 取出（或首次生成）保存在 localStorage `web3-cex:device-id` 的随机设备 ID 一并提交，Web Host 代理登录时把浏览器地址放进 `X-Forwarded-For`，identity-service 据此记录登录事件和识别新设备；这个 ID 不是设备指纹，清除站点数据后浏览器会被当作新设备。
 
+运营紧急开关：页面每 15 秒读取公开接口 `GET /api/gateway/system/controls`（`src/client/state/system-controls.ts`）。当前币种提现被暂停（全站或单币种，含对账熔断）时，提现面板显示红色提示并禁用「预校验 / 提交提现」；API 写入冻结（只读模式）时提现面板与下单表单都显示提示并禁用提交，撤单不受影响。网关仍会以 `409 WITHDRAWALS_PAUSED / ASSET_WITHDRAWALS_PAUSED / API_WRITE_FROZEN` 拒绝，错误提示已映射为中文。
+
 全局：顶栏通知中心（铃铛 + 未读数 + 下拉列表；中文标题按 eventType 映射，点击跳转到对应提现 / 充值记录并标记已读，支持「全部已读」；已读状态由 wallet-service 持久化，刷新 / 换设备保持；REST 首屏 + 私有 WS `notifications` 频道增量）、深色 / 浅色主题、行情与账户连接状态、Toast 通知（成交、充值到账、提现状态变化、错误）、学习模式抽屉（服务时间线 + 服务职责说明）、移动端自适应。
 
 学习功能：

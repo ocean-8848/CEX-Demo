@@ -22,6 +22,7 @@ import {
 } from "./api-gateway-auth.decorator.js";
 import { ApiGatewayAuthGuard } from "./api-gateway-auth.guard.js";
 import { ApiGatewayAuditInterceptor } from "./api-gateway-audit.interceptor.js";
+import { ApiGatewayControlSwitchGuard, ControlledWrite } from "./api-gateway-control-switch.guard.js";
 import { ApiGatewayExceptionFilter } from "./api-gateway-exception.filter.js";
 import { ApiGatewayHttpService } from "./api-gateway-http.service.js";
 import { GatewayIdempotentRoute } from "./api-gateway-idempotency.decorator.js";
@@ -51,7 +52,7 @@ import type {
 } from "./dto.js";
 
 @UseFilters(ApiGatewayExceptionFilter)
-@UseGuards(ApiGatewayAuthGuard, ApiGatewayRateLimitGuard)
+@UseGuards(ApiGatewayAuthGuard, ApiGatewayRateLimitGuard, ApiGatewayControlSwitchGuard)
 @UseInterceptors(ApiGatewayAuditInterceptor, ApiGatewayIdempotencyInterceptor)
 @Controller("/api/v1/gateway")
 export class ApiGatewayController {
@@ -307,6 +308,7 @@ export class ApiGatewayController {
   }
 
   @RequireApiKeyScope("withdraw")
+  @ControlledWrite("withdrawal")
   @Post("/withdrawals/validate")
   async validateWithdrawal(
     @CurrentGatewayAuth() principal: GatewayPrincipal,
@@ -316,6 +318,7 @@ export class ApiGatewayController {
   }
 
   @RequireApiKeyScope("withdraw")
+  @ControlledWrite("withdrawal")
   @Post("/withdrawals/request")
   @GatewayIdempotentRoute()
   async requestWithdrawal(
@@ -409,6 +412,7 @@ export class ApiGatewayController {
     });
   }
 
+  @ControlledWrite("spot_order")
   @Post("/orders")
   @GatewayIdempotentRoute()
   async createOrder(

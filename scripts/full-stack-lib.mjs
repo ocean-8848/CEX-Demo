@@ -65,7 +65,11 @@ export const serviceDefinitions = [
     cwd: path.join(rootDir, "services", "ledger-service"),
     command: "node",
     args: [...telemetryPreloadArgs, "./dist/main.js"],
-    port: 3001
+    port: 3001,
+    env: {
+      // Scheduled reconciliation + circuit breaker (code default 0 = off).
+      RECONCILIATION_INTERVAL_SECONDS: process.env.RECONCILIATION_INTERVAL_SECONDS ?? "30"
+    }
   },
   {
     // Background worker (no port): publishes ledger outbox events to Kafka.

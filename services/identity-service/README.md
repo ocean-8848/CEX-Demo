@@ -52,7 +52,7 @@
   - `GET /users/:userId/login-security` 返回 `lastNewDeviceLoginAt`，供 wallet-service 的可选新设备提现锁使用
 - PostgreSQL 持久化、表结构初始化脚本、HTTP API
 - 被 `wallet-service` 提币 2FA 校验链路调用
-- 支撑 `ops-console` ops 登录和 RBAC
+- 支撑 `ops-console` ops 登录和 RBAC（角色 → 权限映射在 `src/domain/rbac.ts`；紧急开关权限 `ops.controls.manage` 只授予 `ops_admin`）
 
 SQL schema:
 

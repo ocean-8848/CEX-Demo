@@ -19,6 +19,9 @@ function mapWalletErrorCodeToStatus(code: WalletError["code"]): number {
     case "DEPOSIT_ALREADY_CREDITED":
     case "INVALID_WITHDRAWAL_STATE":
     case "WITHDRAWAL_SAME_APPROVER":
+    case "WITHDRAWALS_PAUSED":
+    case "ASSET_WITHDRAWALS_PAUSED":
+    case "API_WRITE_FROZEN":
       return HttpStatus.CONFLICT;
     case "WITHDRAWAL_APPROVER_REQUIRED":
       return HttpStatus.BAD_REQUEST;

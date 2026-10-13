@@ -381,7 +381,7 @@ pnpm demo:verify    # 校验余额、充值地址、盘口和后台模块
 - 「冷热分层」表：每个币种在充值地址、热钱包、冷钱包和在途内部转账中的数量，以及热钱包水位状态。「立即归集」把已入账充值归集到热钱包，「检查水位」按上下限生成调拨提案，「发起调拨」手动提案。
 - 「钱包 vs 账本对账」：链上储备对比 `ledger-service` 的用户负债（扣除在途提现），给出储备率和盈余。
 - 「调拨与归集记录」：待审批提案由另一名运营批准（发起人不能批准自己的提案），广播后由模拟链推进确认数。
-- 「储备金证明」：生成 Merkle 快照，用户在前台自行验证。详见 [manual/08-ops-trading-and-ledger.md](manual/08-ops-trading-and-ledger.md) 第 4 节和 [architecture.md](architecture.md) 第 5.4 节。
+- 「储备金证明」：生成 Merkle 快照，用户在前台自行验证。详见 [manual/08-ops-trading-and-ledger.md](manual/08-ops-trading-and-ledger.md) 第 4 节和 [architecture.md](architecture.md) 第 5.5 节。
 
 ### 4.11 系统运维（`#/system`）
 

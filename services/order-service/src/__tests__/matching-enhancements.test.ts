@@ -4,6 +4,7 @@ import test from "node:test";
 import { OrderApplicationService } from "../application/order-application-service.js";
 import { selectTriggeredStopOrders } from "../application/stop-order-trigger.js";
 import { StopOrderTriggerWorker } from "../application/stop-order-trigger-worker.js";
+import { evaluateStopTriggerHold, type StopTriggerGate } from "../application/stop-trigger-gate.js";
 import type { MatchingEngineClient, RiskOrderClient } from "../domain/clients.js";
 import type { MatchingSubmitResult, SpotOrderRecord, SpotTradeRecord } from "../domain/types.js";
 import { InMemoryOrderRepository } from "../infrastructure/in-memory-order-repository.js";
@@ -63,7 +64,10 @@ function trade(price: string, executionSequence: number): SpotTradeRecord {
   };
 }
 
-function createHarness(engineResult: (command: SubmitCommand) => MatchingSubmitResult) {
+function createHarness(
+  engineResult: (command: SubmitCommand) => MatchingSubmitResult,
+  extraOptions: { stopTriggerGate?: StopTriggerGate } = {}
+) {
   const repository = new InMemoryOrderRepository();
   const ledger: string[] = [];
   const submits: SubmitCommand[] = [];
@@ -122,7 +126,8 @@ function createHarness(engineResult: (command: SubmitCommand) => MatchingSubmitR
     },
     {
       now: () => new Date((clock += 1000)),
-      createId: () => `id-${++counter}`
+      createId: () => `id-${++counter}`,
+      ...extraOptions
     }
   );
   return { repository, service, ledger, submits, riskCalls };
@@ -332,4 +337,90 @@ test("STP expire_maker closes the own resting order and releases its remaining f
   assert.equal(maker?.restingQuantity, "0");
   // 0.4 * 3200 left frozen for the expired remainder.
   assert.ok(ledger.includes("release:own-bid:1280"), ledger.join(","));
+});
+
+test("stop trigger hold rule: halted / delisted market or API write freeze", () => {
+  assert.deepEqual(evaluateStopTriggerHold({ marketStatus: "listed", apiWriteFrozen: false }), { hold: false });
+  assert.deepEqual(evaluateStopTriggerHold({ marketStatus: "halted", apiWriteFrozen: false }), { hold: true, reason: "market_halted" });
+  assert.deepEqual(evaluateStopTriggerHold({ marketStatus: "delisted", apiWriteFrozen: false }), { hold: true, reason: "market_delisted" });
+  assert.deepEqual(evaluateStopTriggerHold({ marketStatus: undefined, apiWriteFrozen: true }), { hold: true, reason: "api_write_frozen" });
+});
+
+test("a crossed stop trigger is held while the market is halted or API writes are frozen, then fires once", async () => {
+  const conditions = { marketStatus: "halted", apiWriteFrozen: false };
+  const gateCalls: string[] = [];
+  const gate: StopTriggerGate = {
+    async check(market) {
+      gateCalls.push(market);
+      return evaluateStopTriggerHold(conditions);
+    }
+  };
+  const { repository, service, ledger, submits } = createHarness(resting, { stopTriggerGate: gate });
+  const placed = await service.createOrder({
+    userId: "user-1",
+    accountId: "acct-1",
+    market: "ETH-USDT",
+    side: "buy",
+    type: "stop_limit",
+    price: "3300",
+    triggerPrice: "3250",
+    quantity: "1",
+    idempotencyKey: "stop-held"
+  });
+  await repository.saveTrade(trade("3260", 1));
+
+  const held = await service.triggerStopOrders("ETH-USDT");
+  assert.deepEqual(held.triggeredOrderIds, []);
+  assert.equal(held.heldReason, "market_halted");
+  assert.equal(submits.length, 0, "nothing reaches the engine while halted");
+  const waiting = await repository.findOrderById(placed.orderId);
+  assert.equal(waiting?.status, "pending_trigger", "held, not rejected");
+  assert.deepEqual(ledger, ["freeze:id-1:3300"], "funds stay frozen, nothing released");
+
+  conditions.marketStatus = "listed";
+  conditions.apiWriteFrozen = true;
+  const frozen = await service.triggerStopOrders("ETH-USDT");
+  assert.equal(frozen.heldReason, "api_write_frozen");
+  assert.equal(submits.length, 0);
+
+  // Worker reports the held market, then clears it once the trigger fires.
+  const worker = new StopOrderTriggerWorker(service, { pollIntervalMs: 0, listMarkets: () => ["ETH-USDT"] });
+  await worker.runOnce();
+  assert.deepEqual(worker.getStatus().heldMarkets, { "ETH-USDT": "api_write_frozen" });
+
+  conditions.apiWriteFrozen = false;
+  await worker.runOnce();
+  assert.equal(submits.length, 1, "fires on the first tick after the condition clears");
+  assert.equal((await repository.findOrderById(placed.orderId))?.status, "accepted");
+  assert.deepEqual(worker.getStatus().heldMarkets, {});
+  await worker.runOnce();
+  assert.equal(submits.length, 1, "and only once");
+  assert.ok(gateCalls.length >= 3);
+});
+
+test("the stop trigger gate is not consulted when no trigger is crossed", async () => {
+  let calls = 0;
+  const { repository, service } = createHarness(resting, {
+    stopTriggerGate: {
+      async check() {
+        calls += 1;
+        return { hold: true, reason: "market_halted" };
+      }
+    }
+  });
+  await service.createOrder({
+    userId: "user-1",
+    accountId: "acct-1",
+    market: "ETH-USDT",
+    side: "buy",
+    type: "stop_limit",
+    price: "3300",
+    triggerPrice: "3250",
+    quantity: "1",
+    idempotencyKey: "stop-idle"
+  });
+  await repository.saveTrade(trade("3100", 1));
+  const result = await service.triggerStopOrders("ETH-USDT");
+  assert.equal(result.heldReason, undefined);
+  assert.equal(calls, 0);
 });

@@ -21,6 +21,16 @@ import {
 import type { LedgerUserBalanceRow } from "../application/ledger-liabilities.js";
 import { Pool } from "pg";
 
+import type { LedgerLockedBalance, LedgerOrderLock } from "../application/order-lock-reconciliation.js";
+
+export interface OrderLockSnapshot {
+  snapshotAt: string;
+  locks: LedgerOrderLock[];
+  lockedBalances: LedgerLockedBalance[];
+  /** Which of these consume-journal idempotency keys exist in the same snapshot. */
+  findConsumedFillKeys(keys: string[]): Promise<Set<string>>;
+}
+
 import type { SqlClient } from "./postgres.js";
 
 interface BalanceAggregateRow {
@@ -153,6 +163,85 @@ export class LedgerOpsReporter {
       entryNets,
       activeLocks,
       includeMatched: params.includeMatched
+    });
+  }
+
+  /**
+   * Order ↔ lock reconciliation input, read inside ONE repeatable-read
+   * snapshot: every active `spot_order` lock, the locked balance per
+   * account + asset (split into order / other locks), and — through
+   * `findConsumedFillKeys`, called by `work` once it knows the fills from
+   * order-service — which fills that snapshot has already consumed.
+   * `snapshotAt` is the database clock at the first read.
+   */
+  async withOrderLockSnapshot<T>(work: (snapshot: OrderLockSnapshot) => Promise<T>): Promise<T> {
+    return this.inSnapshot(async (reader) => {
+      const clock = await reader.db.query<{ now: Date }>("select clock_timestamp() as now");
+      const locks = await reader.db.query<{
+        reference_id: string;
+        account_id: string;
+        asset_code: AssetCode;
+        remaining_amount: string;
+        created_at: Date;
+      }>(
+        `select reference_id, account_id, asset_code, remaining_amount::text as remaining_amount, created_at
+           from balance_locks
+          where status = 'locked' and reference_type = 'spot_order'`
+      );
+      const balances = await reader.db.query<{
+        account_id: string;
+        asset_code: AssetCode;
+        locked: string;
+        other_locked: string;
+      }>(
+        `select b.account_id,
+                b.asset_code,
+                b.locked::text as locked,
+                coalesce((
+                  select sum(l.remaining_amount)
+                    from balance_locks l
+                   where l.account_id = b.account_id
+                     and l.asset_code = b.asset_code
+                     and l.status = 'locked'
+                     and l.reference_type <> 'spot_order'
+                ), 0)::text as other_locked
+           from balances b
+          where b.locked <> 0
+             or exists (
+               select 1 from balance_locks l
+                where l.account_id = b.account_id and l.asset_code = b.asset_code and l.status = 'locked'
+             )`
+      );
+      return work({
+        snapshotAt: (clock.rows[0]?.now ?? new Date()).toISOString(),
+        locks: locks.rows.map((row) => ({
+          orderId: row.reference_id,
+          accountId: row.account_id,
+          assetCode: row.asset_code,
+          remainingAmount: row.remaining_amount,
+          createdAt: row.created_at.toISOString()
+        })),
+        lockedBalances: balances.rows.map((row) => ({
+          accountId: row.account_id,
+          assetCode: row.asset_code,
+          locked: row.locked,
+          otherLocked: row.other_locked
+        })),
+        findConsumedFillKeys: async (keys) => {
+          const consumed = new Set<string>();
+          // Unique index on idempotency_key; batch to keep parameter arrays small.
+          for (let index = 0; index < keys.length; index += 5000) {
+            const result = await reader.db.query<{ idempotency_key: string }>(
+              `select idempotency_key from ledger_journals where idempotency_key = any($1::text[])`,
+              [keys.slice(index, index + 5000)]
+            );
+            for (const row of result.rows) {
+              consumed.add(row.idempotency_key);
+            }
+          }
+          return consumed;
+        }
+      });
     });
   }
 

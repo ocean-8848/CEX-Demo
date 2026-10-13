@@ -224,6 +224,7 @@ try {
       ["/system", "事件总线", "system-eventbus"],
       ["/system", "自动化作业", "system-automation"],
       ["/system", "实验室", "system-lab"],
+      ["/system", "紧急开关", "system-controls"],
       ["/trading", "成交", "trading-trades"],
       ["/trading", "结算", "trading-settlements"],
       ["/trading", "订单簿健康", "trading-book"],
