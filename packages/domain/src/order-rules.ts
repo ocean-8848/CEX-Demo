@@ -36,14 +36,3 @@ export function isStopTriggered(
   return side === "buy" ? comparison >= 0 : comparison <= 0;
 }
 
-/** Engine / order-service reason codes surfaced in order history. */
-export const ORDER_REASON_LABELS: Record<string, string> = {
-  post_only_would_take: "只做 Maker：下单会立即成交，已拒绝",
-  post_only_requires_limit: "只做 Maker 仅支持限价单",
-  stp_expired_taker: "自成交保护：新订单剩余部分已过期",
-  stp_expired_maker: "自成交保护：挂单被新订单撤销",
-  stp_expired_both: "自成交保护：挂单与新订单剩余部分均已过期",
-  fok_liquidity_not_found: "FOK：无可成交流动性",
-  fok_quantity_not_met: "FOK：流动性不足以全部成交",
-  no_executable_liquidity: "无可成交流动性（IOC/市价单剩余已撤销）"
-};

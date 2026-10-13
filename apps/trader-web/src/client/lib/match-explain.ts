@@ -8,6 +8,7 @@
 //
 // Amounts are 18-decimal strings from the services; all math uses bigint.
 
+import { describeOrderReason } from "./order-options.js";
 import type { DepthLevel, DepthSnapshot, OrderSide } from "./types.js";
 
 const SCALE = 18;
@@ -407,6 +408,6 @@ function describeOutcome(explanation: MatchExplanation, order: MatchOrderInput):
     case "fok_rejected":
       return `FOK（全部成交否则取消）要求一次成交全部 ${explanation.quantity}；下单前限价范围内的对手盘只有 ${explanation.availableWithinLimit}，不够，所以一笔也不成交、整单拒绝并解冻资金。`;
     default:
-      return order.rejectedReason ? `拒绝原因：${order.rejectedReason}` : "委托没有进入撮合。";
+      return order.rejectedReason ? `拒绝原因：${describeOrderReason(order.rejectedReason)}` : "委托没有进入撮合。";
   }
 }

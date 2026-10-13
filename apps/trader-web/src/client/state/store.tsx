@@ -54,6 +54,7 @@ import type {
   PrivateRealtimeMessage,
   PublicRealtimeMessage,
   SessionInfo,
+  StpMode,
   TimeInForce,
   TradeRecord,
   TraderWebRuntimeConfig,
@@ -62,6 +63,7 @@ import type {
   WithdrawalLimits,
   WithdrawalRecord
 } from "../lib/types.js";
+import { describeOrderReason, engineTypeOf, isStopType } from "../lib/order-options.js";
 import { explainPrivateItems, learnEvent, type LearnEvent } from "./learn.js";
 import { ManagedSocket, type FeedStatus } from "./socket.js";
 
@@ -402,6 +404,12 @@ export interface PlaceOrderInput {
   timeInForce: TimeInForce;
   price?: string;
   quantity: string;
+  /** Maker-only (GTC limit). */
+  postOnly?: boolean;
+  /** Self-trade prevention; the engine defaults to expire_taker. */
+  stpMode?: StpMode;
+  /** stop_limit / stop_market. */
+  triggerPrice?: string;
 }
 
 export interface WithdrawalInput {
@@ -449,7 +457,7 @@ function buildActions(
       const explanation = explainMatch({
         order: {
           side: order.side ?? input.side,
-          type: order.type ?? input.type,
+          type: engineTypeOf(order.type ?? input.type),
           timeInForce: order.timeInForce ?? input.timeInForce,
           price: order.price ?? input.price,
           quantity: order.quantity ?? input.quantity,
@@ -660,15 +668,20 @@ function buildActions(
       const idempotencyKey = createIdempotencyKey();
       // Depth just before submission: the book the new order is about to walk.
       const depthBefore = { bids: [...state.depth.bids], asks: [...state.depth.asks] };
+      const isStop = isStopType(input.type);
+      const isMarketPriced = engineTypeOf(input.type) === "market";
       const body = {
         accountId,
         market: state.market,
         side: input.side,
         type: input.type,
-        timeInForce: input.type === "market" ? "ioc" : input.timeInForce,
-        price: input.type === "market" ? undefined : input.price,
+        timeInForce: isMarketPriced ? "ioc" : input.timeInForce,
+        price: isMarketPriced ? undefined : input.price,
         quantity: input.quantity,
-        idempotencyKey
+        idempotencyKey,
+        ...(input.postOnly && input.type === "limit" ? { postOnly: true } : {}),
+        ...(input.stpMode ? { stpMode: input.stpMode } : {}),
+        ...(isStop ? { triggerPrice: input.triggerPrice } : {})
       };
       learn(
         learnEvent({
@@ -679,7 +692,11 @@ function buildActions(
         learnEvent({
           service: "risk-service",
           title: "下单前风控检查",
-          detail: "最小数量、步长、价格偏离；并计算需冻结的资金。"
+          detail: isStop
+            ? "最小数量、步长；止损单还要检查触发价在参考价偏离范围内，并按触发后的订单计算需冻结的资金。"
+            : body.postOnly
+              ? "最小数量、步长、价格偏离；只做 Maker 仅允许 GTC 限价单。"
+              : "最小数量、步长、价格偏离；并计算需冻结的资金。"
         })
       );
       const order = await api().gateway<OrderRecord>("/orders", {
@@ -690,25 +707,46 @@ function buildActions(
       });
       const orderTraceId = takeLastTraceId();
       dispatch({ type: "privateItems", channel: "orders", items: [order] });
+      const reasonLabel = describeOrderReason(order.rejectedReason);
       learn(
         learnEvent({
           service: "ledger-service",
           title: `冻结 ${formatAmount(order.lockAmount)} ${order.lockAssetCode ?? ""}`,
           detail: "资金从 available 移到 locked，保证撮合成交后一定能结算。"
         }),
-        learnEvent({
-          service: "matching-engine",
-          title: `订单进入撮合：${order.status === "filled" ? "立即全部成交" : order.status === "partially_filled" ? "部分成交" : order.status === "rejected" ? "被拒绝" : "挂入订单簿"}`,
-          tone: order.status === "rejected" ? "negative" : "positive",
-          traceId: orderTraceId
-        })
+        order.status === "pending_trigger"
+          ? learnEvent({
+              service: "order-service",
+              title: `止损单待触发：触发价 ${formatAmount(order.triggerPrice)}`,
+              detail: `订单以 pending_trigger 状态保存在数据库，不进入订单簿；StopOrderTriggerWorker 盯着最新成交价，${input.side === "buy" ? "价格 ≥ 触发价" : "价格 ≤ 触发价"} 时把它按${input.type === "stop_limit" ? "限价" : "市价"}单提交给撮合引擎。触发前撤单会解冻全部资金。`,
+              traceId: orderTraceId
+            })
+          : learnEvent({
+              service: "matching-engine",
+              title: `订单进入撮合：${order.status === "filled" ? "立即全部成交" : order.status === "partially_filled" ? "部分成交" : order.status === "rejected" ? "被拒绝" : order.status === "cancelled" ? "部分成交后剩余过期" : "挂入订单簿"}`,
+              detail: [
+                body.postOnly ? "只做 Maker：若到达时会与对手盘成交，引擎整单拒绝，不吃单。" : null,
+                "自成交保护（STP）：引擎带着账户 ID 撮合，同一账户的买卖单不会互相成交（默认 expire_taker：保留挂单，新订单剩余部分过期）。",
+                reasonLabel ? `结果：${reasonLabel}` : null
+              ]
+                .filter(Boolean)
+                .join(" "),
+              tone: order.status === "rejected" ? "negative" : "positive",
+              traceId: orderTraceId
+            })
       );
-      if (stateRef.current.prefs.learnMode) {
+      if (stateRef.current.prefs.learnMode && order.status !== "pending_trigger") {
         void buildMatchReplay(order, input, depthBefore);
       }
       const sideLabel = input.side === "buy" ? "买入" : "卖出";
       if (order.status === "rejected") {
-        toast("negative", "委托被拒绝", order.rejectedReason ?? undefined);
+        toast("negative", "委托被拒绝", reasonLabel);
+      } else if (order.status === "pending_trigger") {
+        toast(
+          "positive",
+          `止损${sideLabel}委托已提交`,
+          `${formatAmount(order.quantity)} ${marketLabel(order.market ?? state.market)} · 待触发（触发价 ${formatAmount(order.triggerPrice)}）`
+        );
       } else {
         toast(
           "positive",

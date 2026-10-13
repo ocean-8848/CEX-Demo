@@ -131,7 +131,9 @@ export interface BalanceRecord {
 }
 
 export type OrderSide = "buy" | "sell";
-export type OrderType = "limit" | "market";
+export type OrderType = "limit" | "market" | "stop_limit" | "stop_market";
+/** Self-trade prevention mode (matching engine). */
+export type StpMode = "expire_taker" | "expire_maker" | "expire_both";
 export type TimeInForce = "gtc" | "ioc" | "fok";
 
 export interface OrderRecord {
@@ -151,6 +153,11 @@ export interface OrderRecord {
   lockAmount?: string;
   createdAt?: string;
   updatedAt?: string;
+  postOnly?: boolean;
+  stpMode?: StpMode;
+  /** Stop orders: waits in pending_trigger until the last price crosses it. */
+  triggerPrice?: string;
+  triggeredAt?: string;
 }
 
 export interface TradeRecord {
