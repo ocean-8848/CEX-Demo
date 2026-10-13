@@ -130,6 +130,20 @@ async function placeOrder(token, accountId, order) {
   });
 }
 
+// A crossing IOC buy at the best ask can miss when the makers move the book in
+// between; retry with a fresh ask until it fills (or return the last response).
+async function placeFilledOrder(token, accountId, order) {
+  let last;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    last = await placeOrder(token, accountId, { ...order, price: await bestAsk(order.market) });
+    if (last.status !== 201 || last.body.status !== "rejected" || last.body.rejectedReason !== "no_executable_liquidity") {
+      return last;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return last;
+}
+
 async function waitSettled(orderId) {
   return waitFor(`settlement of order ${orderId}`, async () => {
     const result = items(await fetchJson(`${SETTLEMENT}/api/v1/settlement/trades?orderId=${orderId}`));
@@ -213,7 +227,7 @@ const sections = {
   /** M2-2 + M3-3: dual fees and a balanced T-account view of a real trade. */
   async fees(ctx) {
     const market = config.demoMarket;
-    const order = await placeOrder(ctx.token, ctx.accountId, { market, price: await bestAsk(market) });
+    const order = await placeFilledOrder(ctx.token, ctx.accountId, { market });
     assert.equal(order.status, 201, JSON.stringify(order.body));
     assert.equal(order.body.status, "filled", "crossing IOC fills");
     const [settlement] = await waitSettled(order.body.orderId);
@@ -234,7 +248,7 @@ const sections = {
   async sol(ctx) {
     const runtime = await fetchJson(`${TRADER_WEB}/api/config`);
     assert.ok(runtime.markets.some((item) => item.market === CONFIG_LISTED_MARKET), `${CONFIG_LISTED_MARKET} is configured`);
-    const order = await placeOrder(ctx.token, ctx.accountId, { market: CONFIG_LISTED_MARKET, price: await bestAsk(CONFIG_LISTED_MARKET), quantity: "0.1" });
+    const order = await placeFilledOrder(ctx.token, ctx.accountId, { market: CONFIG_LISTED_MARKET, quantity: "0.1" });
     assert.equal(order.body.status, "filled");
     await waitSettled(order.body.orderId);
 
@@ -262,7 +276,7 @@ const sections = {
       await ops(ctx.opsToken, `/markets/${CONFIG_LISTED_MARKET}/status`, { status: "listed" });
     }
     await sleep(1_500);
-    const after = await placeOrder(ctx.token, ctx.accountId, { market: CONFIG_LISTED_MARKET, price: await bestAsk(CONFIG_LISTED_MARKET), quantity: "0.1" });
+    const after = await placeFilledOrder(ctx.token, ctx.accountId, { market: CONFIG_LISTED_MARKET, quantity: "0.1" });
     assert.equal(after.status, 201, "orders accepted again after resume");
     return "SOL fill settled · SOL deposit credited · halt 409 / cancel ok / resume ok";
   },
@@ -356,7 +370,7 @@ const sections = {
     const t = ctx.opsToken;
     const pause = await ops(t, "/lab/settlement/pause", { durationSeconds: 60 });
     assert.equal(pause.body.pause.paused, true);
-    const paused = await placeOrder(ctx.token, ctx.accountId, { market: config.demoMarket, price: await bestAsk(config.demoMarket) });
+    const paused = await placeFilledOrder(ctx.token, ctx.accountId, { market: config.demoMarket });
     await sleep(6_000);
     const unsettled = items(await fetchJson(`${SETTLEMENT}/api/v1/settlement/trades?orderId=${paused.body.orderId}`));
     assert.equal(unsettled.length, 0, "no settlement while the consumer is paused");
@@ -390,7 +404,7 @@ const sections = {
       const status = (await ops(t, `/lab/status?market=${config.demoMarket}`)).body;
       return status.engine?.overview?.data?.anomalyCount === 0;
     }, 20_000);
-    const healed = await placeOrder(ctx.token, ctx.accountId, { market: config.demoMarket, price: await bestAsk(config.demoMarket) });
+    const healed = await placeFilledOrder(ctx.token, ctx.accountId, { market: config.demoMarket });
     await waitSettled(healed.body.orderId);
 
     assert.equal((await ops(t, "/lab/recover-all", {})).status, 201);
@@ -474,7 +488,7 @@ const sections = {
     assert.equal(noTrigger.status, 400, JSON.stringify(noTrigger.body));
 
     // Own some base asset for the sell-side checks.
-    const bought = await placeOrder(ctx.token, ctx.accountId, { market, price: await bestAsk(market), quantity: "0.05" });
+    const bought = await placeFilledOrder(ctx.token, ctx.accountId, { market, quantity: "0.05" });
     assert.equal(bought.body.status, "filled", JSON.stringify(bought.body));
     await waitSettled(bought.body.orderId);
 
@@ -770,7 +784,7 @@ const sections = {
     const ownRate = tier.body.markets.find((item) => item.market === market).takerFeeRate;
 
     // 2. A taker fill records the resolved tier + rate on the trade and the settlement.
-    const first = await placeOrder(ctx.token, ctx.accountId, { market, price: await bestAsk(market) });
+    const first = await placeFilledOrder(ctx.token, ctx.accountId, { market });
     assert.equal(first.body.status, "filled", JSON.stringify(first.body));
     const [firstSettlement] = await waitSettled(first.body.orderId);
     assert.equal(firstSettlement.buyerFeeTier, tier.body.tier);
@@ -786,7 +800,7 @@ const sections = {
       assert.equal(override.body.tier, "VIP2");
       assert.equal(override.body.source, "override");
       vip2Rate = override.body.markets.find((item) => item.market === market).takerFeeRate;
-      const second = await placeOrder(ctx.token, ctx.accountId, { market, price: await bestAsk(market) });
+      const second = await placeFilledOrder(ctx.token, ctx.accountId, { market });
       assert.equal(second.body.status, "filled", JSON.stringify(second.body));
       const [secondSettlement] = await waitSettled(second.body.orderId);
       assert.equal(secondSettlement.buyerFeeTier, "VIP2");
