@@ -216,7 +216,7 @@ stateDiagram-v2
 stateDiagram-v2
   [*] --> pending_risk: 风控通过，落单
   pending_risk --> accepted: 引擎返回 resting
-  pending_risk --> rejected: 引擎 cancelled / 无成交 / 调用异常（释放冻结）
+  pending_risk --> rejected: 冻结失败（ORDER_FREEZE_FAILED）/ 引擎 cancelled / 无成交 / 调用异常（释放冻结）
   pending_risk --> filled: matched 且全部成交
   pending_risk --> partially_filled: matched，剩余挂簿 (GTC)
   pending_risk --> cancelled: matched 部分成交，剩余被取消 (IOC)
@@ -234,7 +234,7 @@ stateDiagram-v2
 ```
 
 - 风控拒绝时订单不会落库，网关直接返回风控错误码（如 `INSUFFICIENT_AVAILABLE_BALANCE`、`PRICE_DEVIATION_TOO_HIGH`、`MARKET_HALTED`）。
-- 落单后冻结失败（例如风控检查和冻结之间余额被占用）时异常直接返回，订单停留在 `pending_risk`，没有对应的冻结。
+- 落单后冻结失败（例如风控检查和冻结之间余额被占用、ledger 不可达）时，订单置为 `rejected`，`rejected_reason` 以 `ORDER_FREEZE_FAILED:` 开头；同时尽力释放该订单引用下可能已部分写入的冻结（请求超时但 ledger 已提交时），发布 `order.rejected`，调用方收到 `ORDER_FREEZE_FAILED` 错误。撮合提交失败时同样先释放冻结再置为 `rejected`；释放失败也不会让订单停在 `pending_risk`，原因里会注明 `lock release failed`。因此 `pending_risk` 只是一次下单请求内部的瞬时状态。
 - `FOK` 流动性不足、市价单无对手盘时引擎返回 `cancelled`，订单为 `rejected`。
 - 只有 `accepted` / `partially_filled` 且 `resting_quantity > 0` 的订单可撤；终态订单撤单直接返回原订单。
 - 恢复任务失败到上限时订单仍停在 `recovery_pending`，任务进入 dead-letter，等待运营重排。

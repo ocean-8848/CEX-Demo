@@ -146,6 +146,8 @@ pnpm --filter @web3-cex/api-gateway start
 当前运行说明:
 
 - 默认使用 Redis 做固定窗口限流和幂等键存储
+- 默认只监听 `127.0.0.1`（`GATEWAY_BIND_HOST`），启动日志打印实际地址
+- 匿名限流、幂等作用域、请求审计和登录会话 IP 默认取 socket 对端地址；只有设置 `GATEWAY_TRUST_PROXY=true` 时才信任 `X-Forwarded-For` 第一段（`src/http/client-ip.ts`）
 - 会输出结构化请求审计日志到应用日志
 - 如果 Redis 不可用，可通过 `GATEWAY_RATE_LIMIT_STORE=memory` 和 `GATEWAY_IDEMPOTENCY_STORE=memory` 回退到单实例内存模式
 - 实时层环境变量 `GATEWAY_WS_PATH` / `GATEWAY_WS_SNAPSHOT_LIMIT` / `GATEWAY_WS_CACHE_SIZE` 见 [.env.example](.env.example)；`GATEWAY_WS_ALLOWED_ORIGINS`、`GATEWAY_WS_MESSAGE_*`、`GATEWAY_WS_REAUTH_INTERVAL_MS`、`GATEWAY_WS_REPLAY_BUFFER_SIZE`（默认 200）未写入示例文件，使用代码默认值

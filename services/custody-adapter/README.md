@@ -38,7 +38,7 @@
 - `pnpm --filter @web3-cex/custody-adapter start`
 - `pnpm --filter @web3-cex/custody-adapter test`
 
-HTTP 接口:
+HTTP 接口（全部要求内部服务 HMAC 签名，默认允许 `wallet-service`、`ops-console`、`demo-scripts`，见 `src/http/internal-service-auth.guard.ts`；默认只监听 `127.0.0.1`）:
 
 - `POST /api/v1/custody/transfers`
 - `POST /api/v1/custody/transfers/:custodyTransferId/retry`
@@ -59,6 +59,9 @@ HTTP 接口:
 
 关键环境变量:
 
+- `INTERNAL_SERVICE_AUTH_SECRET`（必填，与调用方一致；`pnpm stack:start` 自动注入）
+- `INTERNAL_SERVICE_ALLOWED_CALLERS`（覆盖默认调用方白名单）
+- `INTERNAL_SERVICE_BIND_HOST`（默认 `127.0.0.1`）
 - `CUSTODY_PROVIDER`
 - `CUSTODY_PROVIDER_ORDER`
 - `CUSTODY_PROVIDER_ORDER_BY_NETWORK`

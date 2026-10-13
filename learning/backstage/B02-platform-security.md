@@ -352,8 +352,8 @@ flowchart LR
 |---|---|---|
 | 运营后台 RBAC、职责分离 | [`services/identity-service/src/domain/rbac.ts`](../../services/identity-service/src/domain/rbac.ts) | 已实现。`ops_reviewer`（审核提币）和 `ops_finance_operator`（执行账本）是不同角色；`ops_admin` 仍拥有全部权限 |
 | 运营操作审计 | [`apps/ops-console/sql/001_init.sql`](../../apps/ops-console/sql/001_init.sql) 的 `ops_action_audit_logs` 表；[`apps/ops-console/src/domain/action-audit.ts`](../../apps/ops-console/src/domain/action-audit.ts) | 已实现。审计写入普通 Postgres 表，不是 WORM 存储 |
-| 服务间鉴权 | [`services/identity-service/src/http/internal-service-auth.guard.ts`](../../services/identity-service/src/http/internal-service-auth.guard.ts) | 已实现 HMAC 共享密钥鉴权，默认监听 `127.0.0.1`。尚未升级到 mTLS |
-| 网关审计与限流 | [`services/api-gateway/src/http/api-gateway-audit.interceptor.ts`](../../services/api-gateway/src/http/api-gateway-audit.interceptor.ts)、[`api-gateway-rate-limit.guard.ts`](../../services/api-gateway/src/http/api-gateway-rate-limit.guard.ts) | 已实现 |
+| 服务间鉴权 | [`services/identity-service/src/http/internal-service-auth.guard.ts`](../../services/identity-service/src/http/internal-service-auth.guard.ts) | 已实现 HMAC 共享密钥鉴权，覆盖 identity / wallet / ledger / order / risk / settlement / blockchain-indexer / custody-adapter，均带调用方白名单；所有服务默认监听 `127.0.0.1`。尚未升级到 mTLS |
+| 网关审计与限流 | [`services/api-gateway/src/http/api-gateway-audit.interceptor.ts`](../../services/api-gateway/src/http/api-gateway-audit.interceptor.ts)、[`api-gateway-rate-limit.guard.ts`](../../services/api-gateway/src/http/api-gateway-rate-limit.guard.ts) | 已实现；客户端 IP 默认取 socket 对端地址，仅在 `GATEWAY_TRUST_PROXY=true` 时信任 `X-Forwarded-For`（[`client-ip.ts`](../../services/api-gateway/src/http/client-ip.ts)） |
 | 安全基线与紧急开关 | [`docs/security.md`](../../docs/security.md) 第 2、4 节 | 已编写，按代码列出已实现的控制和缺口。紧急开关只有单市场暂停（`risk-service` 市场 `halted`）；全站 / 单资产提币开关、API 写入开关和变更单流程本仓库未实现 |
 | 威胁模型 | [`docs/security.md`](../../docs/security.md) 第 3 节 | 已编写。按资产列出威胁、现有缓解和真实 CEX 的做法；第 4 节把"`custody-adapter` 从环境变量读私钥 / 助记词"列为最高风险缺口 |
 | 签名策略引擎、MPC/HSM、意图校验 | — | 未实现。`custody-adapter` 仍可用环境变量中的私钥直接签名 |

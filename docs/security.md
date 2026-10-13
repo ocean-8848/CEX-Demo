@@ -44,10 +44,15 @@
 
 | 组件 | 监听方式 | 说明 |
 | --- | --- | --- |
-| `identity / wallet / ledger / order / settlement / risk` | `INTERNAL_SERVICE_BIND_HOST`，默认 `127.0.0.1` | 见各服务 `src/main.ts` |
+| `identity / wallet / ledger / order / settlement / risk / blockchain-indexer / custody-adapter` | `INTERNAL_SERVICE_BIND_HOST`，默认 `127.0.0.1` | 见各服务 `src/main.ts`；`pnpm stack:start` 也显式注入该变量 |
 | `matching-engine` | `MATCHING_ENGINE_HOST`，默认 `127.0.0.1` | 见 `engines/matching-engine/src/main.rs` |
-| `trader-web`、`demo-simulator` | 显式绑定 `127.0.0.1` | 见 `apps/trader-web/src/main.ts`、`scripts/demo-simulator.mjs` |
-| `api-gateway`、`market-data-service`、`ops-console`、`blockchain-indexer`、`custody-adapter` | `app.listen(port)`，未传 host | 启动日志打印的是 `127.0.0.1`，但未指定 host 时 Node 会监听所有网卡；在共享网络里需自行加防火墙或改为显式绑定 |
+| `api-gateway` | `GATEWAY_BIND_HOST`，默认 `127.0.0.1` | `services/api-gateway/src/main.ts` |
+| `market-data-service` | `MARKET_DATA_BIND_HOST`，默认 `127.0.0.1` | `services/market-data-service/src/main.ts` |
+| `ops-console` | `OPS_CONSOLE_BIND_HOST`，默认 `127.0.0.1` | `apps/ops-console/src/main.ts` |
+| `trader-web` | `TRADER_WEB_BIND_HOST`，默认 `127.0.0.1` | `apps/trader-web/src/main.ts` |
+| `demo-simulator` | `DEMO_SIMULATOR_BIND_HOST`，默认 `127.0.0.1` | `scripts/demo-simulator.mjs` |
+
+所有服务的启动日志打印的都是实际绑定的 host。需要从局域网其他机器访问时，只对需要的入口（通常是 `trader-web` / `ops-console`）设置对应变量为 `0.0.0.0`，并自行加防火墙。
 
 ### 2.2 用户与运营身份（identity-service）
 
@@ -75,6 +80,7 @@
   - scope 分为 `read / trade / withdraw`，默认只给 `read + trade`，`withdraw` 需显式申请。路由上用 `@RequireApiKeyScope` 标注；未标注时 `GET` 需要 `read`，其他方法需要 `trade`。
 - **账户归属**：涉及 `accountId / ledgerAccountId` 的请求都会校验账户属于当前主体，否则返回 403（`application/api-gateway-application-service.ts`）。
 - **限流**（`api-gateway-rate-limit.guard.ts`）：固定窗口，默认 60 秒内匿名 30 次（按 IP）、已认证 120 次（按主体），存储默认 Redis；响应带 `x-rate-limit-*` 头。
+- **客户端 IP**（`client-ip.ts`）：限流、幂等作用域、请求审计和登录会话记录统一取 socket 对端地址；只有显式设置 `GATEWAY_TRUST_PROXY=true`（网关前面确实有可信反向代理）时才采用 `X-Forwarded-For` 的第一个值，避免客户端伪造该头换取新的限流桶。
 - **幂等**（`api-gateway-idempotency.interceptor.ts`）：标注 `@GatewayIdempotentRoute` 的写接口（下单、提现申请、创建 API Key、新增地址簿等）按 `Idempotency-Key` 缓存结果，默认 1 小时；下单接口强制要求幂等键。
 - **请求审计**：`api-gateway-audit.interceptor.ts` 对每个请求记录主体、路径、状态码、耗时与限流信息。
 - **私有 WebSocket**（`api-gateway-realtime-server.ts`、`realtime-connection-guards.ts`）：
@@ -97,17 +103,18 @@
 
 代码位置：`packages/domain/src/index.ts`（签名算法）、各服务 `src/http/internal-service-auth.guard.ts`（校验）、各服务 `src/infrastructure/internal-service-request.ts`（签名）、`scripts/internal-service-auth.mjs`（脚本侧实现）。
 
-- `identity / wallet / ledger / order / settlement / risk` 6 个服务通过 `APP_GUARD` 全局启用 `InternalServiceAuthGuard`。
+- `identity / wallet / ledger / order / settlement / risk / blockchain-indexer / custody-adapter` 8 个服务通过 `APP_GUARD` 全局启用 `InternalServiceAuthGuard`。`custody-adapter` 默认允许 `wallet-service / ops-console / demo-scripts`，`blockchain-indexer` 默认允许 `ops-console / demo-scripts`（`demo-simulator` 与各验证脚本以 `demo-scripts` 身份签名）。
 - 调用方带 `x-internal-service-name / x-internal-service-timestamp / x-internal-service-signature` 三个头；签名串为 `callerName \n METHOD \n path \n timestamp \n SHA256(rawBody)`，HMAC-SHA256。
 - 校验项：调用方在允许列表内（`INTERNAL_SERVICE_ALLOWED_CALLERS` 可覆盖默认列表）、时间戳偏差不超过 30 秒、签名常量时间比较。
 - 未配置 `INTERNAL_SERVICE_AUTH_SECRET` 时守卫直接返回 503，即“未配置即拒绝”。
-- 所有服务共用同一个密钥；`blockchain-indexer`、`custody-adapter`、`market-data-service` 作为调用方会签名，但自身入口不校验。`demo-simulator` 的 `/internal/lab/*` 故障演练接口同样要求签名。
+- 所有服务共用同一个密钥；`market-data-service` 是公开行情入口，作为调用方会签名，但自身入口不校验。`demo-simulator` 的 `/internal/lab/*` 故障演练接口同样要求签名。
 - `order-service → matching-engine` 是单行 JSON over TCP，无认证，只依赖回环监听。
 
 ### 2.6 交易与账本
 
 - **下单前风控**（`services/risk-service/src/application/risk-application-service.ts`）：市场状态（暂停 / 下架时拒绝新单、撤单始终放行）、价格与数量步长、可用余额校验。详见 [risk-service README](../services/risk-service/README.md)。
-- **账本不变量**（`services/ledger-service/src/application/ledger-application-service.ts`）：每笔 journal 按资产借贷平衡，否则拒绝；`idempotencyKey` 去重；冻结 / 释放 / 消耗都检查可用余额与锁状态。运营端没有“直接改余额”的接口，余额调整也必须走 journal。详见 [ledger-service-design.md](ledger-service-design.md)。
+- **账本不变量**（`services/ledger-service/src/application/ledger-application-service.ts`）：每笔 journal 按资产借贷平衡，否则拒绝；`idempotencyKey` 去重——同键同内容（并发也一样）返回原 journal，同键不同内容返回 409 `DUPLICATE_IDEMPOTENCY_KEY`，并发撞上唯一索引不会变成 500（`application/journal-idempotency.ts`）；冻结 / 释放 / 消耗都检查可用余额与锁状态。运营端没有“直接改余额”的接口，余额调整也必须走 journal。详见 [ledger-service-design.md](ledger-service-design.md)。
+- **下单失败收敛**（`services/order-service/src/application/order-application-service.ts`）：订单落库后若冻结失败或撮合前任何一步失败，订单都会进入终态 `rejected`（冻结失败的原因以 `ORDER_FREEZE_FAILED:` 开头），尽力释放可能已部分冻结的资金并发布 `order.rejected`，调用方收到明确错误码，不会留下卡在 `pending_risk` 的订单。
 
 ### 2.7 提现控制（wallet-service）
 
@@ -147,14 +154,14 @@
 | 资产 | 威胁 | demo 中的现有缓解 | 真实 CEX 还会加什么 |
 | --- | --- | --- | --- |
 | 客户会话 | XSS / 恶意扩展窃取 token；CSRF 冒用会话 | HttpOnly + SameSite=Strict Cookie；double-submit CSRF；token 哈希存储、可吊销、冻结即失效 | CSP 与输入转义、设备绑定、新设备登录提醒、会话轮换、敏感操作 step-up |
-| 登录凭证 | 撞库、暴力破解 | PBKDF2 高迭代哈希；网关按 IP 限流；可选 2FA | 登录失败锁定、验证码、风险评分、泄露密码库比对；限流 IP 不直接信任 `X-Forwarded-For`（当前取其第一个值） |
+| 登录凭证 | 撞库、暴力破解 | PBKDF2 高迭代哈希；网关按 socket 对端 IP 限流（默认不信任 `X-Forwarded-For`）；可选 2FA | 登录失败锁定、验证码、风险评分、泄露密码库比对 |
 | API Key | 泄露、重放、越权使用 | keyId + 加密 secret；nonce 防重放；5 分钟漂移窗口；`read/trade/withdraw` scope | IP 白名单、key 有效期、提现权限单独审批、异常调用告警 |
 | 2FA 种子 | 数据库泄露后可伪造动态码 | 动态码单次使用；恢复码哈希存储 | TOTP 种子加密存储或放入独立密钥服务；支持 WebAuthn / 硬件密钥 |
 | 运营会话与审批权 | 运营 token 被盗或内部人员作恶，批准恶意提现 | 运营强制 2FA；12 小时 TTL；RBAC 细粒度权限；大额双人审批；全量动作审计 | 审批时 step-up、硬件密钥、审批 IP / 设备绑定、批量审批分权、审计日志防篡改 |
 | 提现链路 | 账号被盗后快速提走资产 | 已开 2FA 必须带动态码；KYC 分级限额；安全冷却期；可选白名单 | 默认强制白名单与冷却期、地址风险筛查（制裁 / 混币）、行为风控、紧急全局暂停 |
 | 热钱包私钥 | 环境变量泄露、误把真实私钥 / RPC 配进来 | 默认走 mock provider；模拟链；无真实资产 | HSM / MPC / KMS 签名，冷热分离，热钱包余额上限，链上监控与对账 |
 | 账本 | 伪造记账、重复记账、绕过冻结 | 借贷平衡校验；幂等键；冻结 / 消耗状态校验；无直接改余额接口 | 定期账实对账、journal 不可变存储、独立对账系统与告警 |
-| 内部服务 | 内网横向移动后直接调用 ledger / wallet 等接口 | HMAC 签名 + 30 秒时间窗 + 调用方允许列表；默认回环监听 | mTLS 与每服务独立身份、按调用方最小权限、私网 ACL、密钥轮换 |
+| 内部服务 | 内网横向移动后直接调用 ledger / wallet / custody / indexer 等接口 | HMAC 签名 + 30 秒时间窗 + 调用方允许列表（含 `custody-adapter`、`blockchain-indexer`）；全部服务默认回环监听 | mTLS 与每服务独立身份、按调用方最小权限、私网 ACL、密钥轮换 |
 | 撮合通道 | 伪造下单 / 撤单 / reset 命令 | 仅回环监听 | 认证与加密通道、命令来源校验 |
 | 公开行情 | 大量连接 / 订阅压垮 market-data 与 order-service | REST 查询有 `limit` 上限；网关 REST 限流 | 公共 WS 连接数与消息限流、CDN / 边缘缓存、快照去抖 |
 | 私有实时流 | URL 中的 token 被日志记录后复用；跨站 WS 劫持 | Origin 白名单；会话过期断开；trader-web 不把 token 放进 URL | 禁止 query 参数认证，只允许首帧或 Cookie 认证 |
@@ -165,11 +172,11 @@
 按风险从高到低排列：
 
 1. **密钥托管**：移除 `custody-adapter` 从环境变量读私钥 / 助记词的路径，改用 HSM / MPC / KMS；冷热钱包分离，热钱包设余额上限。
-2. **服务身份**：把共享 HMAC 密钥升级为 mTLS 或每服务独立凭证，补上 `blockchain-indexer`、`custody-adapter`、`market-data-service` 的入口认证，撮合 TCP 通道加认证；所有服务显式绑定内网地址。
+2. **服务身份**：把共享 HMAC 密钥升级为 mTLS 或每服务独立凭证，撮合 TCP 通道加认证；部署到多机时把各服务的 bind host 改为内网地址并配私网 ACL。
 3. **密钥与配置管理**：所有默认密钥（内部签名密钥、API Key 加密主密钥、数据库口令）进入密钥管理系统，可轮换；演示账号与固定 TOTP 种子不能出现在任何共享环境。
 4. **提现默认策略收紧**：默认强制 2FA、白名单和冷却期；审批时 step-up；引入地址风险筛查与紧急暂停开关。
 5. **账号安全**：登录失败锁定与验证码、设备管理、异常登录提醒；TOTP 种子加密存储；支持 WebAuthn。
 6. **Web 安全头**：CSP、`X-Frame-Options`、HSTS；Cookie 默认 `Secure`；全站 HTTPS。
-7. **入口防护**：限流不信任客户端传入的 `X-Forwarded-For`；公共行情 WS 加连接与消息限流；私有 WS 去掉 query 参数认证。
+7. **入口防护**：公共行情 WS 加连接与消息限流；私有 WS 去掉 query 参数认证；放在反向代理后时由代理覆盖（而不是追加）`X-Forwarded-For` 并开启 `GATEWAY_TRUST_PROXY`。
 8. **对账与监控**：链上余额、托管余额、账本余额三方对账，资金异常告警；审计日志写入不可篡改存储。
 9. **基础设施**：数据库、Redis、Kafka 走私网与 TLS，最小权限账号，备份与访问审计。

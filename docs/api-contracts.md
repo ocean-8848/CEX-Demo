@@ -30,7 +30,7 @@
 | `services/settlement-service` | 3010 | `/api/v1/settlement/*` | 内部 |
 | `engines/matching-engine`（Rust） | 3011 | 原始 TCP，单行 JSON | 仅 order-service |
 
-端口都可以用各自的 `PORT` 环境变量覆盖。
+端口都可以用各自的 `PORT` 环境变量覆盖。所有组件默认只监听 `127.0.0.1`，监听地址变量见 [getting-started.md](getting-started.md) 的环境变量表。
 
 ### 1.2 认证方式一览
 
@@ -40,8 +40,8 @@
 | 用户 Bearer 会话 | api-gateway | `Authorization: Bearer <session token>` |
 | API key 签名 | api-gateway（REST 与私有 WS） | `X-API-Key` / `X-API-Timestamp` / `X-API-Nonce` / `X-API-Signature` |
 | 运营会话 + TOTP | ops-console | 登录时必须带 TOTP；之后用 `ops_session` Cookie（+ `ops_csrf`）或 Bearer |
-| 内部服务 HMAC | identity / ledger / wallet / order / risk / settlement | `x-internal-service-name` / `x-internal-service-timestamp` / `x-internal-service-signature` |
-| 无认证 | market-data（公开）、blockchain-indexer、custody-adapter、matching-engine | 仅应在本地 / 内网可达 |
+| 内部服务 HMAC | identity / ledger / wallet / order / risk / settlement / blockchain-indexer / custody-adapter | `x-internal-service-name` / `x-internal-service-timestamp` / `x-internal-service-signature` |
+| 无认证 | market-data（公开）、matching-engine | 仅应在本地 / 内网可达 |
 
 #### 用户浏览器 Cookie 会话（trader-web）
 
@@ -117,14 +117,18 @@ SHA256(body)      原始请求体的 hex 摘要，空体为空串的摘要
 | order-service | `api-gateway`、`settlement-service`、`market-data-service`、`ops-console`、`demo-scripts` |
 | risk-service | `order-service`、`ops-console`、`demo-scripts` |
 | settlement-service | `order-service`、`ops-console`、`demo-scripts` |
+| custody-adapter | `wallet-service`、`ops-console`、`demo-scripts` |
+| blockchain-indexer | `ops-console`、`demo-scripts` |
+
+脚本（`scripts/internal-service-auth.mjs`）按目标端口自动签名：3001–3005、3008–3010，调用方名默认 `demo-scripts`（`demo-simulator` 同样使用它）。
 
 ### 1.3 幂等
 
 | 层 | 机制 |
 | --- | --- |
 | api-gateway | 标记为“幂等”的写接口读取 `Idempotency-Key` 头。作用域为“当前主体（或匿名 IP）+ key”，请求指纹为 `METHOD + URL + SHA256(body)`，记录默认保留 1 小时（`GATEWAY_IDEMPOTENCY_TTL_MS`）。同 key 同指纹重放会返回第一次的状态码和响应体，并带 `x-idempotent-replay: true`；同 key 不同指纹返回 `409`；上一个同 key 请求还没完成也返回 `409`；处理失败时释放该 key。不带头时不做网关层幂等 |
-| 下单 | `POST /orders` 必须有幂等键，可放请求体 `idempotencyKey` 或 `Idempotency-Key` 头（两者都缺返回 400）。order-service 按 `idempotencyKey` 去重，重复提交返回已存在的订单 |
-| ledger | `POST /journals` 以 `idempotencyKey` 唯一，重复提交返回已存在的 journal；冻结以 `(referenceType, referenceId, accountId, assetCode)` 唯一 |
+| 下单 | `POST /orders` 必须有幂等键，可放请求体 `idempotencyKey` 或 `Idempotency-Key` 头（两者都缺返回 400）。order-service 按 `idempotencyKey` 去重，重复提交返回已存在的订单（包括已 `rejected` 的订单） |
+| ledger | `POST /journals` 以 `idempotencyKey` 唯一：同键同内容（`businessType`、`businessId` 与分录集合，分录顺序和金额写法不限，`traceId` / `description` 不参与比较）返回已存在的 journal，并发提交也一样；同键不同内容返回 `409 DUPLICATE_IDEMPOTENCY_KEY`；不会因唯一索引冲突返回 500。冻结以 `(referenceType, referenceId, accountId, assetCode)` 唯一 |
 | wallet | 充值入账 journal 的幂等键为 `deposit:<depositId>` |
 | settlement | 成交结算 journal 的幂等键为 `spot_trade:base:<tradeId>` / `spot_trade:quote:<tradeId>` |
 
@@ -149,11 +153,11 @@ SHA256(body)      原始请求体的 hex 摘要，空体为空串的摘要
 | --- | --- |
 | api-gateway | `UNAUTHORIZED`、`SESSION_REQUIRED`、`INVALID_API_KEY`、`INVALID_API_KEY_NONCE`、`INVALID_API_KEY_TIMESTAMP`、`API_KEY_TIMESTAMP_EXPIRED`、`API_KEY_NONCE_REPLAYED`、`API_KEY_SCOPE_DENIED`、`ACCOUNT_FORBIDDEN`、`ACCOUNT_NOT_ACTIVE`、`RESOURCE_FORBIDDEN`、`TWO_FACTOR_CODE_REQUIRED`、`INVALID_STATEMENT_QUERY`、`INVALID_NOTIFICATION_ID` |
 | identity | `INVALID_CREDENTIALS`、`USER_ALREADY_EXISTS`、`USER_NOT_ACTIVE`、`TWO_FACTOR_REQUIRED`、`OPS_TWO_FACTOR_REQUIRED`、`TWO_FACTOR_INVALID_CODE`、`TWO_FACTOR_CODE_REUSED`、`TWO_FACTOR_RECOVERY_CODE_INVALID`、`OPS_ACCESS_DENIED`、`KYC_REQUEST_PENDING`、`KYC_NOT_ALLOWED`、`API_KEY_NOT_FOUND`、`API_KEY_REVOKED`、`INVALID_API_KEY_SIGNATURE` |
-| ledger | `ACCOUNT_NOT_FOUND`、`BALANCE_NOT_FOUND`、`INSUFFICIENT_AVAILABLE_BALANCE`、`JOURNAL_NOT_BALANCED`、`INVALID_AMOUNT`、`DUPLICATE_BALANCE_LOCK`、`BALANCE_LOCK_NOT_FOUND`、`INVALID_BALANCE_LOCK_STATE`、`SETTLEMENT_ACCOUNT_REQUIRED` |
-| order / risk | `UNSUPPORTED_MARKET`、`MARKET_HALTED`、`MARKET_DELISTED`、`PRICE_REQUIRED`、`INVALID_ORDER_PRICE`、`INVALID_ORDER_QUANTITY`、`INVALID_STEP_ALIGNMENT`、`ORDER_MIN_QUANTITY_NOT_MET`、`PRICE_DEVIATION_TOO_HIGH`、`UNSUPPORTED_TIME_IN_FORCE`、`ORDER_NOT_FOUND`、`ORDER_NOT_CANCELLABLE` |
+| ledger | `ACCOUNT_NOT_FOUND`、`BALANCE_NOT_FOUND`、`INSUFFICIENT_AVAILABLE_BALANCE`、`JOURNAL_NOT_BALANCED`、`INVALID_AMOUNT`、`DUPLICATE_IDEMPOTENCY_KEY`、`DUPLICATE_BALANCE_LOCK`、`BALANCE_LOCK_NOT_FOUND`、`INVALID_BALANCE_LOCK_STATE`、`SETTLEMENT_ACCOUNT_REQUIRED` |
+| order / risk | `UNSUPPORTED_MARKET`、`MARKET_HALTED`、`MARKET_DELISTED`、`PRICE_REQUIRED`、`INVALID_ORDER_PRICE`、`INVALID_ORDER_QUANTITY`、`INVALID_STEP_ALIGNMENT`、`ORDER_MIN_QUANTITY_NOT_MET`、`PRICE_DEVIATION_TOO_HIGH`、`UNSUPPORTED_TIME_IN_FORCE`、`ORDER_NOT_FOUND`、`ORDER_NOT_CANCELLABLE`、`ORDER_FREEZE_FAILED` |
 | wallet | `INVALID_AMOUNT`、`INVALID_DESTINATION_ADDRESS`、`WITHDRAWAL_AMOUNT_BELOW_MINIMUM`、`WITHDRAWAL_FEE_BELOW_MINIMUM`、`WITHDRAWAL_SINGLE_LIMIT_EXCEEDED`、`WITHDRAWAL_DAILY_LIMIT_EXCEEDED`、`WITHDRAWAL_2FA_REQUIRED`、`WITHDRAWAL_2FA_NOT_ENABLED`、`WITHDRAWAL_2FA_INVALID`、`WITHDRAWAL_ADDRESS_NOT_WHITELISTED`、`WITHDRAWAL_SECURITY_COOLDOWN`、`WITHDRAWAL_SAME_APPROVER`、`INVALID_WITHDRAWAL_STATE` |
 
-风控拒绝（校验类错误）在订单落库前直接返回 HTTP 错误；撮合阶段无法成交的 IOC / FOK / 市价单则返回 `status: "rejected"` 的订单并附 `rejectedReason`。
+风控拒绝（校验类错误）在订单落库前直接返回 HTTP 错误；撮合阶段无法成交的 IOC / FOK / 市价单则返回 `status: "rejected"` 的订单并附 `rejectedReason`。订单落库后冻结失败时返回 `ORDER_FREEZE_FAILED`（上游 4xx 如余额不足保留原状态码，其余为 502，`message` 中带上游原因），订单同时被置为 `rejected`、`rejectedReason` 以 `ORDER_FREEZE_FAILED:` 开头，并发布 `order.rejected`；撮合提交失败时同样置为 `rejected` 后返回原错误。
 
 ### 1.5 限流
 
@@ -161,7 +165,7 @@ api-gateway 在认证之后执行固定窗口限流：
 
 | 主体 | 限流键 | 默认额度 |
 | --- | --- | --- |
-| 匿名（公开接口） | 客户端 IP（取 `x-forwarded-for` 第一段） | 30 次 / 60 s（`GATEWAY_RATE_LIMIT_PUBLIC_MAX`） |
+| 匿名（公开接口） | 客户端 IP：默认取 socket 对端地址；仅当 `GATEWAY_TRUST_PROXY=true` 时取 `x-forwarded-for` 第一段 | 30 次 / 60 s（`GATEWAY_RATE_LIMIT_PUBLIC_MAX`） |
 | 会话 / API key | `authType + userId + sessionId 或 apiKeyId` | 120 次 / 60 s（`GATEWAY_RATE_LIMIT_AUTHENTICATED_MAX`） |
 
 窗口长度由 `GATEWAY_RATE_LIMIT_WINDOW_MS` 控制，存储默认 Redis（`GATEWAY_RATE_LIMIT_STORE=memory` 切内存）。每个响应带 `x-rate-limit-limit`、`x-rate-limit-remaining`、`x-rate-limit-reset`（ISO 时间），超限返回 `429`。私有 WebSocket 另有消息限流，见 2.8 节。
@@ -407,7 +411,7 @@ Content-Type: application/json
 ```
 
 - `type`：`limit` / `market`；`timeInForce`：`gtc` / `ioc` / `fok`；`limit` 必须带 `price`
-- 订单状态：`pending_risk`、`accepted`、`partially_filled`、`filled`、`cancelled`、`rejected`、`recovery_pending`（成交后续步骤失败，等待恢复任务）
+- 订单状态：`pending_risk`（已落库、尚未拿到冻结与撮合结果的瞬时状态）、`accepted`、`partially_filled`、`filled`、`cancelled`、`rejected`、`recovery_pending`（成交后续步骤失败，等待恢复任务）
 - 价格、数量需对齐市场的 `priceStep` / `quantityStep`，并满足最小数量与价格偏离限制
 
 ### 2.7 用 API key 调用的完整示例
@@ -741,7 +745,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | --- | --- | --- |
 | POST | `/accounts` | 创建账户（`accountId`、`userId?`、`accountType`、`status?`），已存在时返回原记录 |
 | GET | `/accounts/:accountId` | 账户详情 |
-| POST | `/journals` | 记一笔借贷平衡的 journal（按 `idempotencyKey` 幂等） |
+| POST | `/journals` | 记一笔借贷平衡的 journal（按 `idempotencyKey` 幂等；同键不同内容返回 409 `DUPLICATE_IDEMPOTENCY_KEY`） |
 | GET | `/journals` | journal 摘要（`businessType`、`businessId`、`idempotencyKey`、分页） |
 | GET | `/journals/:journalId` | journal 及分录 |
 | GET | `/balances` | 余额列表（`userId`、`accountId`、`assetCode`、`accountType`、`accountStatus`、分页） |
@@ -842,7 +846,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/lab/consumer` | 故障实验：消费者状态 |
 | POST | `/lab/consumer/pause`、`/lab/consumer/resume` | 暂停 / 恢复消费者 |
 
-### 6.7 custody-adapter（`/api/v1/custody`，无）
+### 6.7 custody-adapter（`/api/v1/custody`，HMAC）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -856,7 +860,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | GET | `/lab/state` | 故障实验状态（`network?`） |
 | POST | `/lab/failure-injection`、`/lab/failure-injection/clear`、`/lab/probe-broadcast` | 注入 / 清除故障、探测广播 |
 
-### 6.8 blockchain-indexer（`/api/v1/indexer`，无）
+### 6.8 blockchain-indexer（`/api/v1/indexer`，HMAC）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |

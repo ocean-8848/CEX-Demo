@@ -164,7 +164,7 @@ flowchart TB
 
 ### 4.3 内部服务认证
 
-六个核心内部服务 `identity-service`、`wallet-service`、`ledger-service`、`order-service`、`settlement-service`、`risk-service` 要求每个请求带 HMAC 签名头，并默认只监听 `127.0.0.1`（`INTERNAL_SERVICE_BIND_HOST`）。
+八个内部服务 `identity-service`、`wallet-service`、`ledger-service`、`order-service`、`settlement-service`、`risk-service`、`blockchain-indexer`、`custody-adapter` 要求每个请求带 HMAC 签名头，并默认只监听 `127.0.0.1`（`INTERNAL_SERVICE_BIND_HOST`）。`api-gateway`、`market-data-service`、`ops-console`、`trader-web`、`demo-simulator` 也默认只监听 `127.0.0.1`，各自的监听地址变量见 [getting-started.md](./getting-started.md)。
 
 - 请求头：`x-internal-service-name`、`x-internal-service-timestamp`、`x-internal-service-signature`。
 - 签名：`HMAC-SHA256(secret, callerName \n METHOD \n path \n timestamp \n sha256(body))`，时间戳允许 30 秒偏差，实现在 `packages/domain` 的 `createInternalServiceSignature` / `verifyInternalServiceSignature`。
@@ -179,6 +179,8 @@ flowchart TB
 | `order-service` | api-gateway、settlement-service、market-data-service、ops-console、demo-scripts |
 | `settlement-service` | order-service、ops-console、demo-scripts |
 | `risk-service` | order-service、ops-console、demo-scripts |
+| `custody-adapter` | wallet-service、ops-console、demo-scripts |
+| `blockchain-indexer` | ops-console、demo-scripts |
 
 `demo-simulator` 的 `/internal/lab/*` 也校验同样的签名，只接受 `ops-console` 和 `demo-scripts`。更多安全设计见 [security.md](./security.md)。
 

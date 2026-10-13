@@ -62,7 +62,7 @@ flowchart LR
 | `order.accepted` | 引擎返回 `resting`，订单挂入订单簿 | `spot_order` / `orderId` |
 | `order.updated` | 撮合后订单进入 `partially_filled`、`filled`、`recovery_pending` 等状态（taker 和被吃的 maker 各发一条） | 同上 |
 | `order.cancelled` | 用户撤单成功；或 IOC 部分成交后剩余取消 | 同上 |
-| `order.rejected` | 引擎无成交（IOC / FOK / 市价无流动性）或下单过程异常 | 同上 |
+| `order.rejected` | 引擎无成交（IOC / FOK / 市价无流动性），或落单后冻结失败（`rejectedReason` 以 `ORDER_FREEZE_FAILED:` 开头）、撮合提交异常 | 同上 |
 
 `payload.order` 字段：`orderId`、`userId`、`market`、`side`、`type`、`price`（市价单为 `null`）、`quantity`、`filledQuantity`、`restingQuantity`、`timeInForce`、`status`、`createdAt`。
 
