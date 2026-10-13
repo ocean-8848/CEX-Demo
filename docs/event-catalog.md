@@ -60,11 +60,11 @@ flowchart LR
 | `eventType` | 触发时机 | `aggregateType` / `aggregateId` |
 | --- | --- | --- |
 | `order.accepted` | 引擎返回 `resting`，订单挂入订单簿 | `spot_order` / `orderId` |
-| `order.updated` | 撮合后订单进入 `partially_filled`、`filled`、`recovery_pending` 等状态（taker 和被吃的 maker 各发一条） | 同上 |
-| `order.cancelled` | 用户撤单成功；或 IOC 部分成交后剩余取消 | 同上 |
-| `order.rejected` | 引擎无成交（IOC / FOK / 市价无流动性），或落单后冻结失败（`rejectedReason` 以 `ORDER_FREEZE_FAILED:` 开头）、撮合提交异常 | 同上 |
+| `order.updated` | 撮合后订单进入 `partially_filled`、`filled`、`recovery_pending` 等状态（taker 和被吃的 maker 各发一条）；止损单下单后进入 `pending_trigger` | 同上 |
+| `order.cancelled` | 用户撤单成功（含撤销待触发的止损单）；IOC 部分成交后剩余取消；挂单被同账户新订单按 STP `expire_maker` 撤销 | 同上 |
+| `order.rejected` | 引擎无成交（IOC / FOK / 市价无流动性、Post-Only 会吃单、STP 过期）或落单后冻结失败（`rejectedReason` 以 `ORDER_FREEZE_FAILED:` 开头）、撮合提交异常 | 同上 |
 
-`payload.order` 字段：`orderId`、`userId`、`market`、`side`、`type`、`price`（市价单为 `null`）、`quantity`、`filledQuantity`、`restingQuantity`、`timeInForce`、`status`、`createdAt`。
+`payload.order` 字段：`orderId`、`userId`、`market`、`side`、`type`（`limit` / `market` / `stop_limit` / `stop_market`）、`price`（市价单、止损市价单为 `null`）、`quantity`、`filledQuantity`、`restingQuantity`、`timeInForce`、`status`、`createdAt`，以及可选的 `postOnly`、`stpMode`、`triggerPrice`、`triggeredAt`、`rejectedReason`。
 
 这些事件只通过 Pub/Sub `web3-cex:trading.events` 发布。
 

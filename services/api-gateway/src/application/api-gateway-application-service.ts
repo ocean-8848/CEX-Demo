@@ -7,10 +7,12 @@ import type {
   OrderStatus,
   OrderType,
   SpotMarket,
+  StpMode,
   TimeInForce
 } from "@web3-cex/domain";
 
 import { ApiGatewayError } from "../domain/errors.js";
+import { normalizeOrderOptions } from "./order-options.js";
 import type {
   ApiKeyScope,
   GatewayAccountStatementQuery,
@@ -647,12 +649,15 @@ export class ApiGatewayApplicationService {
       quantity: string;
       idempotencyKey: string;
       traceId?: string;
+      postOnly?: boolean;
+      stpMode?: StpMode;
+      triggerPrice?: string;
     }
   ) {
     await this.assertAccountOwnership(command.accountId, principal.userId);
     return this.orderClient.createOrder({
       userId: principal.userId,
-      ...command
+      ...normalizeOrderOptions(command)
     });
   }
 

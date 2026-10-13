@@ -45,7 +45,7 @@
 - `GET /api/v1/gateway/notifications/unread-count`（通知中心铃铛未读数）
 - `POST /api/v1/gateway/notifications/{notificationId}/read`、`POST /api/v1/gateway/notifications/read-all`（标记已读，API Key 只需 `read` scope；只作用于调用者自己的通知，别人的 id 返回 404）
 - `GET /api/v1/gateway/ledger/entries?assetCode=&category=&businessType=&includeLockEvents=&from=&to=&limit=&offset=`（资金流水；账户固定为调用者自己的现货账户，请求里不接受 accountId）
-- `POST /api/v1/gateway/orders`
+- `POST /api/v1/gateway/orders`（可选 `postOnly`、`stpMode`，止损单 `type=stop_limit|stop_market` + `triggerPrice`；网关在 `src/application/order-options.ts` 做格式校验与归一化，业务规则由 risk-service 校验）
 - `GET /api/v1/gateway/orders`
 - `GET /api/v1/gateway/orders/{orderId}`
 - `POST /api/v1/gateway/orders/{orderId}/cancel`

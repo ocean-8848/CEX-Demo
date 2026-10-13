@@ -152,6 +152,11 @@ export interface OrderRecord {
   status?: string;
   createdAt?: string;
   updatedAt?: string;
+  rejectedReason?: string;
+  postOnly?: boolean;
+  stpMode?: string;
+  triggerPrice?: string;
+  triggeredAt?: string;
 }
 
 export interface TradeRecord {

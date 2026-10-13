@@ -1,6 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import type { AssetCode, Network, SpotMarket } from "./market-config.js";
+import type { StpMode } from "./order-rules.js";
 
 export type AccountType =
   | "main"
@@ -21,11 +22,13 @@ export type BalanceBucket =
 
 export type OrderSide = "buy" | "sell";
 
-export type OrderType = "limit" | "market";
+/** `stop_*` orders wait in `pending_trigger` until the last price crosses `triggerPrice`. */
+export type OrderType = "limit" | "market" | "stop_limit" | "stop_market";
 
 export type TimeInForce = "gtc" | "ioc" | "fok";
 
 export type OrderStatus =
+  | "pending_trigger"
   | "pending_risk"
   | "accepted"
   | "partially_filled"
@@ -107,6 +110,15 @@ export interface Order {
   timeInForce: TimeInForce;
   status: OrderStatus;
   createdAt: string;
+  /** Maker-only limit order. */
+  postOnly?: boolean;
+  /** Self-trade prevention mode carried to the matching engine. */
+  stpMode?: StpMode;
+  /** Stop orders only: last-price trigger. */
+  triggerPrice?: string;
+  triggeredAt?: string;
+  /** Why the order was rejected / expired (post-only, STP, risk ...). */
+  rejectedReason?: string;
 }
 
 export interface Trade {
@@ -558,3 +570,4 @@ function parseProtocolVersion(version: string): number {
 
 export * from "./decimal.js";
 export * from "./market-config.js";
+export * from "./order-rules.js";

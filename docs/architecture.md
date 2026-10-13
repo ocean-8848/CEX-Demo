@@ -92,7 +92,7 @@ flowchart TB
 
 | 服务 | 端口 | 存储 | 职责 |
 | --- | --- | --- | --- |
-| `order-service` | 3009 | PostgreSQL `spot_orders`、`spot_trades`、`spot_order_recovery_jobs`、`spot_order_automation_executions`；Redis | 订单生命周期的编排中心：调 `risk-service` 预检 → 调 `ledger-service` 冻结 → 经 TCP 调撮合引擎 → 落库订单与成交 → 发布交易事件。负责撤单、恢复队列（lease / dead-letter）、撮合引擎状态同步（引擎重启后自动恢复序号并重放挂单）。 |
+| `order-service` | 3009 | PostgreSQL `spot_orders`、`spot_trades`、`spot_order_recovery_jobs`、`spot_order_automation_executions`；Redis | 订单生命周期的编排中心：调 `risk-service` 预检 → 调 `ledger-service` 冻结 → 经 TCP 调撮合引擎 → 落库订单与成交 → 发布交易事件。负责撤单、恢复队列（lease / dead-letter）、撮合引擎状态同步（引擎重启后自动恢复序号并重放挂单）、止损单触发（`StopOrderTriggerWorker`）。 |
 | `risk-service` | 3008 | PostgreSQL `risk_market_status_overrides` | 下单前校验：市场状态（listed / halted / delisted）、`timeInForce`、价格与数量 step 对齐、最小数量、限价单价格偏离、可用余额（查 ledger），并算出需要冻结的资产与金额。运营的市场暂停/恢复写在这里。 |
 | `matching-engine` | 3011 | 无（纯内存） | Rust 实现，每行一条 JSON 命令（`submit` / `seed` / `cancel` / `reset` / `restore` / `snapshot`）。每个市场一本订单簿，价格优先、时间优先，支持 `limit` / `market` 与 `gtc` / `ioc` / `fok`，多档扫单、部分成交。为每笔成交生成 `executionSequence`、`replayCursor`（`<market>:<seq>`）和协议版本 `v2`。不访问数据库，不改余额。 |
 | `settlement-service` | 3010 | PostgreSQL `trade_settlements`、`trade_settlement_recovery_jobs`、`trade_event_consumer_checkpoints`、汇总表；Redis | 消费 Redis Stream 中的 `trade.executed`，按成交幂等结算：消耗买卖双方的冻结，过账 base / quote 两笔 journal（含手续费），再把 `settlementId` 回写给 `order-service`。失败进入恢复队列。 |
@@ -333,12 +333,47 @@ sequenceDiagram
 
 要点：
 
-- **冻结金额**由 `risk-service` 计算：卖单冻结 base 数量；限价买单冻结 `price × quantity` 的 quote；市价买单冻结 `参考价 × quantity × (1 + maxPriceDeviationRatio)`。
+- **冻结金额**由 `risk-service` 计算：卖单冻结 base 数量；限价 / 止损限价买单冻结 `price × quantity` 的 quote；市价买单冻结 `参考价 × quantity × (1 + maxPriceDeviationRatio)`；止损市价买单用触发价代替参考价。
+- **Post-Only 与自成交保护**：`order-service` 提交订单时带 `owner_id`（账户 ID）、可选 `stp_mode` 和 `post_only`。Post-Only 订单到达即会成交时被引擎整单拒绝；同账户的买卖单不会互相成交，引擎按 `expire_taker`（默认）/ `expire_maker` / `expire_both` 让新订单剩余部分或旧挂单过期，被撤挂单通过响应里的 `expiredMakers` 交回 `order-service` 撤单解冻。
 - **手续费**：每方用自己收到的资产付费——卖方从 quote 扣，买方从 base 扣。maker / taker 费率由 `order-service` 按订单在本笔成交中的角色从市场配置解析。
 - **异步结算的后果**：订单可能已显示 `filled`，而结算还在路上；成交记录的 `settlementId` 先是占位值，结算完成后被回写。撤单时只释放真正从订单簿撤下的数量对应的冻结，已成交待结算的冻结保留。
 - **撮合失败补偿**：撮合后落库或结算失败时，订单进入 `recovery_pending`，由恢复任务（lease + 重试 + dead-letter）收尾；若无法继续则按数据库中的挂单重放引擎订单簿。
 - **引擎状态同步**：撮合引擎是纯内存的。`order-service` 定期比对引擎序号与数据库最新成交序号，发现引擎落后（例如重启）时用 `restore` 抬高序号并 `seed` 重放所有挂单。
 - **同步模式**（`ORDER_SETTLEMENT_MODE=sync`）下，`order-service` 在返回前直接调用 `settlement-service` 的 `settleTrade`。
+
+### 5.4 止损单触发
+
+止损单（`stop_limit` / `stop_market`）在触发前不进入撮合引擎，触发逻辑在 `order-service` 内：
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant G as api-gateway
+  participant O as order-service
+  participant R as risk-service
+  participant L as ledger-service
+  participant DB as spot_orders / spot_trades
+  participant W as StopOrderTriggerWorker
+  participant E as matching-engine
+  G->>O: POST /orders type=stop_limit triggerPrice
+  O->>R: validate（触发价偏离、委托价相对触发价、冻结金额）
+  O->>DB: 落库 status=pending_trigger
+  O->>L: freeze（与触发后的订单相同的冻结）
+  O-->>G: 订单（待触发）
+  loop 每 ORDER_STOP_TRIGGER_POLL_INTERVAL_MS
+    W->>DB: 读 pending_trigger 订单 + 最新成交价
+    alt 买单 最新价 ≥ 触发价 / 卖单 最新价 ≤ 触发价
+      W->>DB: UPDATE … SET status=pending_risk, triggered_at WHERE status='pending_trigger'
+      W->>E: submit（limit / market，created_at = triggered_at，owner_id）
+      W->>DB: 按普通订单流程落库成交与状态
+    end
+  end
+```
+
+- 最新成交价来自 `spot_trades` 中按 `execution_sequence` 最新的一笔，也就是 `trade.executed` 事件的来源；订单和触发状态都在 PostgreSQL 中，服务重启后继续监控。
+- 触发是对 `status = 'pending_trigger'` 的条件更新，多次轮询、多实例或与撤单并发时只有一方成功，因此不会重复提交。
+- 触发前撤单直接把订单置为 `cancelled` 并释放全部冻结，不经过撮合引擎。
+- 触发时不再调用风控；触发后产生的成交可能继续触发其他止损单（下一次轮询处理）。
 
 对应学习章节：[06 订单与撮合](../learning/06-order-matching.md)、[07 清算结算与手续费](../learning/07-clearing-settlement-fees.md)、[08 行情](../learning/08-market-data.md)、[09 风控](../learning/09-risk-control.md)。
 

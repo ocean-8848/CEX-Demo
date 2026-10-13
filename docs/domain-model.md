@@ -208,13 +208,18 @@ stateDiagram-v2
 
 ### 5.1 订单字段
 
-`spot_orders` 的关键字段：`side`（`buy` / `sell`）、`type`（`limit` / `market`）、`time_in_force`（`gtc` / `ioc` / `fok`）、`price`（市价单存 0）、`quantity`、`filled_quantity`、`resting_quantity`（仍在簿内的数量）、`lock_asset_code`、`lock_amount`、`idempotency_key`、`trace_id`、`otel_trace_id`。
+`spot_orders` 的关键字段：`side`（`buy` / `sell`）、`type`（`limit` / `market` / `stop_limit` / `stop_market`）、`time_in_force`（`gtc` / `ioc` / `fok`）、`price`（市价单、止损市价单存 0）、`quantity`、`filled_quantity`、`resting_quantity`（仍在簿内的数量）、`lock_asset_code`、`lock_amount`、`idempotency_key`、`trace_id`、`otel_trace_id`、`post_only`（只做 Maker）、`stp_mode`（自成交保护模式，空表示引擎默认 `expire_taker`）、`trigger_price`（止损触发价）、`triggered_at`（止损单提交到引擎的时间）、`rejected_reason`（拒绝或过期原因，如 `post_only_would_take`、`stp_expired_taker`、`stp_expired_maker`）。
+
+撮合时订单的 owner 是 `account_id`：引擎不会让同一账户的买卖单互相成交（STP）。
 
 ### 5.2 订单状态机
 
 ```mermaid
 stateDiagram-v2
   [*] --> pending_risk: 风控通过，落单
+  [*] --> pending_trigger: 止损单风控通过、冻结资金
+  pending_trigger --> pending_risk: 最新成交价越过触发价（CAS，只触发一次）
+  pending_trigger --> cancelled: 触发前用户撤单（释放全部冻结）
   pending_risk --> accepted: 引擎返回 resting
   pending_risk --> rejected: 冻结失败（ORDER_FREEZE_FAILED）/ 引擎 cancelled / 无成交 / 调用异常（释放冻结）
   pending_risk --> filled: matched 且全部成交
@@ -224,8 +229,8 @@ stateDiagram-v2
   accepted --> partially_filled: 作为 maker 部分成交
   accepted --> filled: 作为 maker 全部成交
   partially_filled --> filled: 作为 maker 剩余成交
-  accepted --> cancelled: 用户撤单
-  partially_filled --> cancelled: 用户撤单
+  accepted --> cancelled: 用户撤单 / 被同账户新订单按 STP expire_maker 撤销
+  partially_filled --> cancelled: 用户撤单 / STP expire_maker
   recovery_pending --> filled: 恢复任务完成
   recovery_pending --> partially_filled: 恢复任务完成
   filled --> [*]
@@ -236,7 +241,10 @@ stateDiagram-v2
 - 风控拒绝时订单不会落库，网关直接返回风控错误码（如 `INSUFFICIENT_AVAILABLE_BALANCE`、`PRICE_DEVIATION_TOO_HIGH`、`MARKET_HALTED`）。
 - 落单后冻结失败（例如风控检查和冻结之间余额被占用、ledger 不可达）时，订单置为 `rejected`，`rejected_reason` 以 `ORDER_FREEZE_FAILED:` 开头；同时尽力释放该订单引用下可能已部分写入的冻结（请求超时但 ledger 已提交时），发布 `order.rejected`，调用方收到 `ORDER_FREEZE_FAILED` 错误。撮合提交失败时同样先释放冻结再置为 `rejected`；释放失败也不会让订单停在 `pending_risk`，原因里会注明 `lock release failed`。因此 `pending_risk` 只是一次下单请求内部的瞬时状态。
 - `FOK` 流动性不足、市价单无对手盘时引擎返回 `cancelled`，订单为 `rejected`。
-- 只有 `accepted` / `partially_filled` 且 `resting_quantity > 0` 的订单可撤；终态订单撤单直接返回原订单。
+- Post-Only 订单到达时会与对手盘成交：引擎整单拒绝，订单 `rejected`、`rejected_reason = post_only_would_take`。
+- STP：taker 遇到同账户挂单时按 `stp_mode` 处理。taker 剩余部分过期时，无成交为 `rejected`、部分成交为 `cancelled`（`stp_expired_taker` / `stp_expired_both`）；被撤的同账户挂单为 `cancelled`（`stp_expired_maker`），按剩余量解冻。
+- 止损单在 `pending_trigger` 时不在引擎订单簿里，可撤；触发后 `type` 保持 `stop_limit` / `stop_market`，按 `limit` / `market` 撮合，后续状态与普通订单相同。
+- 只有 `pending_trigger`，或 `accepted` / `partially_filled` 且 `resting_quantity > 0` 的订单可撤；终态订单撤单直接返回原订单。
 - 恢复任务失败到上限时订单仍停在 `recovery_pending`，任务进入 dead-letter，等待运营重排。
 
 ### 5.3 订单恢复任务
@@ -328,6 +336,8 @@ stateDiagram-v2
 | 冻结最终一定被释放或消耗 | 撤单、拒单、成交后多余部分 `release`；成交与提币确认 `consume` |
 | 同一链上交易不重复入账 | 观测表与充值表 `(network, tx_hash, address)` 唯一 + journal 幂等键 |
 | 同一订单请求只建一次单 | `spot_orders.idempotency_key` 唯一 |
+| 同一账户的买卖单不互相成交 | 撮合引擎按 `owner_id`（账户 ID）执行 STP |
+| 止损单只触发一次 | `order-service` 用 `status = 'pending_trigger'` 条件更新（CAS）认领触发 |
 | 同一成交只结算一次 | `trade_settlements.trade_id` 唯一，已 `settled` 直接返回 |
 | 成交按序结算 | `executionSequence` 在每个市场单调递增，结算按位点检测重复与跳号 |
 | 资金变动与事件原子一致 | outbox 事件与余额、journal 在同一数据库事务中写入 |

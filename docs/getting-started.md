@@ -220,6 +220,7 @@ pnpm --filter @web3-cex/ledger-service start
 | `WITHDRAWAL_KYC_LIMITS_*` | `wallet-service` | 见 `.env.example` | 各 KYC 等级的单笔 / 日提现限额 |
 | `OPS_REQUIRE_TWO_FACTOR` | `identity-service` | `true` | 运营账户登录是否要求 TOTP |
 | `OTEL_ENABLED` / `OTEL_EXPORTER_OTLP_ENDPOINT` | 各 Node 服务 | 关闭 / `http://127.0.0.1:4318` | OpenTelemetry 追踪 |
+| `ORDER_STOP_TRIGGER_POLL_INTERVAL_MS` | `order-service` | `1000` | 止损单触发检查间隔（按最新成交价）；`0` 关闭定时检查 |
 | `TRADER_WEB_DEMO_MODE` | `trader-web` | `true` | 是否显示「一键登录演示账户」与水龙头 |
 | `DEMO_MAKERS_ENABLED` | `demo-simulator` | 开启 | 设为 `false` 关闭做市商 |
 | `DEMO_CHAIN_BLOCK_MS` / `DEMO_CHAIN_REQUIRED_CONFIRMATIONS` | `demo-simulator` | `1500` / `12` | 模拟链出块间隔与确认数 |
