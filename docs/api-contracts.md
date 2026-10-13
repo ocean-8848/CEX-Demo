@@ -406,8 +406,12 @@ Content-Type: application/json
 }
 ```
 
-- `type`：`limit` / `market`；`timeInForce`：`gtc` / `ioc` / `fok`；`limit` 必须带 `price`
-- 订单状态：`pending_risk`、`accepted`、`partially_filled`、`filled`、`cancelled`、`rejected`、`recovery_pending`（成交后续步骤失败，等待恢复任务）
+- `type`：`limit` / `market` / `stop_limit` / `stop_market`；`timeInForce`：`gtc` / `ioc` / `fok`；`limit`、`stop_limit` 必须带 `price`
+- `postOnly?: boolean`：只做 Maker，仅限 GTC 限价单（否则 400 `POST_ONLY_REQUIRES_GTC_LIMIT`）。到达时会与对手盘成交则订单返回 `status: "rejected"`、`rejectedReason: "post_only_would_take"`，冻结全部释放
+- `stpMode?`：自成交保护，`expire_taker`（默认）/ `expire_maker` / `expire_both`，其他值 400 `INVALID_STP_MODE`。同一账户的买卖单不会互相成交：新订单剩余部分被过期时 `rejectedReason` 为 `stp_expired_taker` / `stp_expired_both`；被撤的旧挂单变为 `cancelled`、`rejectedReason: "stp_expired_maker"`
+- `triggerPrice`：`stop_limit` / `stop_market` 必填（缺失 400 `TRIGGER_PRICE_REQUIRED`），其他类型不允许（400 `TRIGGER_PRICE_NOT_ALLOWED`）。须对齐 `priceStep`、相对参考价不超过 `maxPriceDeviationRatio`（400 `TRIGGER_PRICE_DEVIATION_TOO_HIGH`）；止损限价的 `price` 相对 `triggerPrice` 也受同一上限约束。下单后订单为 `pending_trigger`（资金已冻结），最新成交价买单 ≥ / 卖单 ≤ 触发价时提交到撮合引擎，并记录 `triggeredAt`；触发前可撤单
+- 订单响应额外字段：`postOnly?`、`stpMode?`、`triggerPrice?`、`triggeredAt?`、`rejectedReason?`
+- 订单状态：`pending_trigger`（止损单待触发）、`pending_risk`、`accepted`、`partially_filled`、`filled`、`cancelled`、`rejected`、`recovery_pending`（成交后续步骤失败，等待恢复任务）
 - 价格、数量需对齐市场的 `priceStep` / `quantityStep`，并满足最小数量与价格偏离限制
 
 ### 2.7 用 API key 调用的完整示例
@@ -795,7 +799,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/v1/orders` | 下单（`userId`、`accountId`、`market`、`side`、`type`、`timeInForce?`、`price?`、`quantity`、`idempotencyKey`、`traceId?`）：风控 → 冻结 → 撮合 → 结算 |
+| POST | `/api/v1/orders` | 下单（`userId`、`accountId`、`market`、`side`、`type`、`timeInForce?`、`price?`、`quantity`、`idempotencyKey`、`traceId?`、`postOnly?`、`stpMode?`、`triggerPrice?`）：风控 → 冻结 → 撮合 → 结算；止损单在冻结后停在 `pending_trigger` |
 | POST | `/api/v1/orders/:orderId/cancel` | 撤单（`userId`） |
 | GET | `/api/v1/orders` | 订单列表（`userId`、`accountId`、`market`、`status`、分页） |
 | GET | `/api/v1/orders/:orderId` | 订单详情 |
@@ -809,7 +813,8 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/overview`、`/anomalies` | 总览与异常 |
-| POST | `/replay-engine` | 用持久化挂单重建撮合订单簿 |
+| POST | `/replay-engine` | 用持久化挂单重建撮合订单簿（带 `owner_id`，STP 继续生效） |
+| POST | `/stop-orders/trigger` | 立即执行一轮止损触发检查，返回各市场最新价与本轮触发的订单 ID |
 | POST | `/lab/engine-reset` | 故障实验：清空引擎订单簿 |
 | GET | `/recovery-jobs`、`/recovery-metrics`、`/recovery-governance`、`/automation-executions` | 恢复任务与治理 |
 | POST | `/recovery-jobs/process`、`/recovery-jobs/:jobId/recover` | 处理恢复任务 |
@@ -822,7 +827,7 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/orders/validate` | 下单风控：市场状态、步长、最小数量、价格偏离；返回 `lockAssetCode`、`lockAmount`、`timeInForce` |
+| POST | `/orders/validate` | 下单风控：市场状态、订单类型、步长、最小数量、价格偏离、Post-Only 仅限 GTC 限价、`stpMode` 取值、止损触发价（必填、步长、偏离）；返回 `lockAssetCode`、`lockAmount`、`timeInForce`、`triggerPrice?` |
 | GET | `/markets` | 市场及状态 |
 | GET | `/markets/:market` | 单个市场 |
 | POST | `/markets/:market/status` | 设置状态覆盖（`status`、`reason?`、`operator?`） |
@@ -880,11 +885,14 @@ trader-web 本身也暴露少量接口，其余请求按前缀代理：
 
 | `action` | 字段 | 说明 |
 | --- | --- | --- |
-| `submit` | `order_id`、`market`、`side`、`order_type`、`time_in_force`、`price?`、`quantity`、`created_at` | 提交订单并撮合，返回成交列表或挂单结果 |
-| `seed` | `order_id`、`market`、`side`、`price`、`quantity`、`created_at` | 不撮合直接挂单（重建订单簿用） |
+| `submit` | `order_id`、`market`、`side`、`order_type`、`time_in_force`、`price?`、`quantity`、`created_at`、`owner_id?`、`stp_mode?`、`post_only?` | 提交订单并撮合，返回成交列表或挂单结果；STP 撤掉的同 owner 挂单在 `expiredMakers` 中返回 |
+| `seed` | `order_id`、`market`、`side`、`price`、`quantity`、`created_at`、`owner_id?` | 不撮合直接挂单（重建订单簿用） |
 | `cancel` | `order_id`、`market` | 撤单 |
 | `reset` | `market`、`reset_sequences?` | 清空订单簿；`reset_sequences` 只在全量重置时使用 |
 | `restore` | `market`、`next_execution_sequence`、`next_batch_sequence` | 重启后抬高序号，避免复用已持久化的成交 ID |
 | `snapshot` | `market`、`limit?`（默认 50） | 订单簿快照 |
+
+- `stp_mode`：`expire_taker`（默认）/ `expire_maker` / `expire_both`；只有 taker 与挂单都带相同 `owner_id` 时生效，不带 `owner_id` 的旧指令行为不变。
+- 新增的 `cancelled` 原因：`post_only_would_take`、`post_only_requires_limit`、`stp_expired_taker`、`stp_expired_both`；部分成交后被 STP 过期时 `matched` 响应带 `reason`。
 
 错误以 `{ "error": { "code": "...", "message": "..." } }` 形式返回，例如 `INVALID_COMMAND`、`PRICE_REQUIRED`。引擎状态只在内存中，重启后由 order-service 通过 `seed` + `restore` 重建，见 [architecture.md](architecture.md)。

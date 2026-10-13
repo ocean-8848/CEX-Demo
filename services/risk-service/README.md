@@ -18,8 +18,9 @@
 - 支持的市场与规则（步长、最小数量、费率、价格偏离上限、兜底参考价、默认状态）全部来自 [config/markets.json](../../config/markets.json)，默认为 `BTC-USDT`、`ETH-USDT`、`SOL-USDT`
 - 市场状态：`halted` 拒绝新委托（`409 MARKET_HALTED`，含暂停原因），`delisted` 拒绝新委托（`409 MARKET_DELISTED`）；撤单不经过风控，始终允许
 - 订单类型:
-  - `limit`
+  - `limit`（可带 `postOnly`）
   - `market`
+  - `stop_limit` / `stop_market`（必须带 `triggerPrice`）
 - 时效:
   - `gtc`
   - `ioc`
@@ -29,8 +30,11 @@
   - 价格 step 对齐
   - 数量 step 对齐
   - 价格偏离参考价上限
+  - Post-Only 只允许 GTC 限价单（`POST_ONLY_REQUIRES_GTC_LIMIT`）
+  - `stpMode` 只能是 `expire_taker` / `expire_maker` / `expire_both`（`INVALID_STP_MODE`）
+  - 止损单：`triggerPrice` 必填、为正、对齐价格 step，相对参考价不超过 `maxPriceDeviationRatio`（`TRIGGER_PRICE_DEVIATION_TOO_HIGH`）；止损限价的委托价相对触发价受同一上限约束；非止损单不允许带 `triggerPrice`
   - 账户可用余额
-- 买单锁 `quote`，卖单锁 `base`
+- 买单锁 `quote`，卖单锁 `base`；止损限价按委托价计算，止损市价买单按 `触发价 × 数量 × (1 + maxPriceDeviationRatio)` 计算
 
 当前限制:
 

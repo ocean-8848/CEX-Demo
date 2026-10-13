@@ -399,16 +399,20 @@ sequenceDiagram
 | 撮合内核 | `engines/matching-engine`：Rust，TCP + JSON line 协议，支持 `submit` / `cancel` / `snapshot` / `reset` / `seed` | 结构清晰，适合学习 |
 | 订单簿数据结构 | `OrderBook { bids: Vec, asks: Vec }`，每次插入后整体排序 | 生产级用红黑树/跳表 + 双向链表 + 哈希索引 |
 | 优先级 | 价格优先，同价按 `created_at` 时间排序 | 一致 |
-| 订单类型 / TIF | `limit`、`market`；`gtc`、`ioc`、`fok`；FOK 先累加可成交量再决定 | 未实现止损、OCO、冰山、Post-Only、STP |
+| 订单类型 / TIF | `limit`、`market`；`gtc`、`ioc`、`fok`；FOK 先累加可成交量再决定 | 未实现 OCO、冰山 |
+| Post-Only | 引擎 `submit` 带 `post_only: true`：到达时若与对手盘最优价交叉就整单拒绝（`post_only_would_take`），订单簿不变；`order-service` 把订单记为 `rejected` 并解冻全部资金；`risk-service` 只允许 GTC 限价单 | 一致；未实现"价格自动调整为挂单价"（post-only slide） |
+| 自成交预防 STP | 引擎 `submit` / `seed` 带 `owner_id`（账户 ID），`stp_mode` 支持 `expire_taker`（默认）/ `expire_maker` / `expire_both`；被撤的挂单在响应 `expiredMakers` 中返回，由 `order-service` 置为 `cancelled` 并按剩余量解冻（`engines/matching-engine/src/main.rs`、`services/order-service/src/application/order-application-service.ts`） | 一致；生产级还会按用户组 / 子账户设置 STP 范围 |
+| 止损单 | `stop_limit` / `stop_market` + `triggerPrice`：`order-service` 以 `pending_trigger` 存库并冻结资金，`StopOrderTriggerWorker`（`services/order-service/src/application/stop-order-trigger-worker.ts`）按最新成交价判断（买 ≥ / 卖 ≤ 触发价），用比较交换（CAS）把订单幂等地提交给引擎；触发前可撤单 | 触发在撮合引擎之外、按轮询检查，触发与成交之间有毫秒级延迟；生产级在引擎内按成交事件即时触发 |
 | 并发模型 | `Arc<Mutex<HashMap<market, OrderBook>>>`，所有交易对共享一把锁 | 生产级按交易对分片、单线程、无锁 |
 | 数值 | `f64` + `0.00000001` 容差比较 | 生产级用整数 tick / step |
 | 恢复 | `order-service` 的 `POST /api/v1/orders/ops/replay-engine` 从数据库读出挂单，用 `seed` 重建订单簿 | 没有定序器和事件日志，重建依赖数据库快照，不是逐条重放 |
 | 精度校验 | `risk-service` 校验最小数量、价格 step、数量 step、价格偏离 | 与币安 filters 思路一致 |
-| 订单状态 | `order-service`：`pending_risk` → `accepted` / `partially_filled` → `filled` / `cancelled` / `rejected` | 多了 `pending_risk`、`recovery_pending` 等编排状态 |
+| 订单状态 | `order-service`：（止损单 `pending_trigger` →）`pending_risk` → `accepted` / `partially_filled` → `filled` / `cancelled` / `rejected` | 多了 `pending_risk`、`recovery_pending` 等编排状态 |
 
 相关文件：
 
-- [engines/matching-engine/src/main.rs](../engines/matching-engine/src/main.rs)：`submit_order`、`crosses`、`sum_executable_quantity`
+- [engines/matching-engine/src/main.rs](../engines/matching-engine/src/main.rs)：`submit_order`、`crosses`、`sum_executable_quantity`、`same_owner`（STP）
+- [services/order-service/src/application/stop-order-trigger.ts](../services/order-service/src/application/stop-order-trigger.ts)：止损触发规则
 - [services/order-service/README.md](../services/order-service/README.md)
 - [docs/architecture.md](../docs/architecture.md)
 

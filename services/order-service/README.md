@@ -17,7 +17,7 @@
 当前实现:
 
 - HTTP 服务，默认端口 `3009`
-- PostgreSQL 持久化和数据库表结构初始化（[sql/](sql/) 下 `001`–`008` 迁移）
+- PostgreSQL 持久化和数据库表结构初始化（[sql/](sql/) 下 `001`–`009` 迁移；`009` 增加 `post_only`、`stp_mode`、`trigger_price`、`triggered_at` 列）
 - 主链核心能力:
   - 下单、撤单、订单查询、成交查询
   - 风控前置校验、账本预冻结、撮合桥接和成交回报处理
@@ -30,8 +30,23 @@
   - automation execution history、schema registry / version gate、Redis Stream trade event stream
   - event-bus stream 归档 / trim / maintenance
 - 订单类型:
-  - `limit`
+  - `limit`（可带 `postOnly: true`，只做 Maker）
   - `market`
+  - `stop_limit` / `stop_market`（必须带 `triggerPrice`）
+- 自成交保护（STP）:
+  - 每笔提交到引擎的订单都带 `owner_id = accountId`，可选 `stpMode`：`expire_taker`（默认）/ `expire_maker` / `expire_both`
+  - 引擎返回的 `expiredMakers` 由 `expireSelfTradeMakers` 处理：挂单置为 `cancelled`、`rejectedReason = stp_expired_maker`，并按被移除的剩余量解冻资金
+  - taker 被 STP 过期时：无成交则 `rejected`，部分成交后则 `cancelled`，`rejectedReason` 为 `stp_expired_taker` / `stp_expired_both`
+  - 订单簿回放（replay-engine、自动 compensation replay、引擎序号恢复）会带上 `owner_id`，回放后 STP 继续生效
+- Post-Only:
+  - 引擎判定会立即成交时整单拒绝，订单 `rejected`、`rejectedReason = post_only_would_take`，冻结资金全部释放
+- 止损单（[stop-order-trigger.ts](src/application/stop-order-trigger.ts)、[stop-order-trigger-worker.ts](src/application/stop-order-trigger-worker.ts)）:
+  - 下单时照常风控、冻结资金，然后落库为 `pending_trigger`，不进入撮合引擎
+  - `StopOrderTriggerWorker` 每 `ORDER_STOP_TRIGGER_POLL_INTERVAL_MS` 轮询一次：读取各市场 `pending_trigger` 订单和最新一笔成交价（即 `trade.executed` 的来源），买单 `最新价 ≥ 触发价`、卖单 `最新价 ≤ 触发价` 时触发
+  - 触发用 `saveOrderIfStatus(pending_trigger → pending_risk)` 比较交换，多实例 / 重启 / 重复轮询都只提交一次；随后按 `stop_limit → limit`、`stop_market → market` 走普通撮合流程，订单 `type` 保持原值并记录 `triggeredAt`
+  - 触发后的时间优先级按 `triggeredAt` 计算（引擎 `created_at` 与订单簿回放都用它）
+  - 触发前撤单同样用比较交换（`pending_trigger → cancelled`），释放全部冻结资金；与触发并发时以先到者为准
+  - 触发时不再调用 `risk-service`（资金在下单时已冻结）；ops 暂停市场不会阻止已挂的止损单触发
 - 时效:
   - `gtc`
   - `ioc`
@@ -56,6 +71,7 @@
 
 关键状态:
 
+- `pending_trigger`（止损单待触发）
 - `pending_risk`
 - `accepted`
 - `partially_filled`
@@ -113,6 +129,7 @@
 - `ORDER_EVENT_STREAM_MAINTENANCE_INTERVAL_MS`
 - `ORDER_ENGINE_SYNC_INTERVAL_MS`（默认 `2000`，引擎序号落后时自动恢复序号并回放挂单）
 - `ORDER_FAULT_LAB_ENABLED`（默认 `true`，故障实验室的引擎重置入口）
+- `ORDER_STOP_TRIGGER_POLL_INTERVAL_MS`（默认 `1000`，止损触发轮询间隔；`0` 关闭定时器）
 
 HTTP 接口:
 
@@ -127,6 +144,7 @@ HTTP 接口:
 - `GET /api/v1/orders/ops/overview`
 - `GET /api/v1/orders/ops/anomalies`
 - `POST /api/v1/orders/ops/replay-engine`
+- `POST /api/v1/orders/ops/stop-orders/trigger`（立即执行一轮止损触发检查；overview 返回 `pendingTriggerOrderCount` 与 `stopTrigger` 状态）
 - `POST /api/v1/orders/ops/lab/engine-reset`（故障实验室：`market`、`resetSequences`；仅清空订单簿时需手动 replay-engine 修复，重置序号时由自动同步自愈，详见 [fault-lab.md](../../docs/fault-lab.md)）
 - `GET /api/v1/orders/ops/recovery-jobs`
 - `GET /api/v1/orders/ops/recovery-metrics`
