@@ -22,6 +22,10 @@ export interface SettleTradeCommand {
   sellerFeeRate: string;
   /** Fee rate charged to the buyer, in the base asset it receives (absent on old events). */
   buyerFeeRate?: string;
+  /** VIP tier the seller rate came from (order-service, A7). */
+  sellerFeeTier?: string;
+  /** VIP tier the buyer rate came from (order-service, A7). */
+  buyerFeeTier?: string;
   executionId?: string;
   executionBatchId?: string;
   executionSequence?: number;
@@ -42,6 +46,12 @@ export interface TradeSettlement {
   feeAmount: string;
   /** Buyer fee, in the base asset. */
   buyerFeeAmount: string;
+  /** Rate the seller fee was computed with (absent on rows before fee tiers). */
+  sellerFeeRate?: string;
+  /** Rate the buyer fee was computed with (absent on rows before fee tiers). */
+  buyerFeeRate?: string;
+  sellerFeeTier?: string;
+  buyerFeeTier?: string;
   buyerOrderId: string;
   sellerOrderId: string;
   buyerUserId: string;

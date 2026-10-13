@@ -744,7 +744,16 @@ function buildActions(
                 .join(" "),
               tone: order.status === "rejected" ? "negative" : "positive",
               traceId: orderTraceId
-            })
+            }),
+        ...(order.status === "filled" || order.status === "partially_filled" || (order.status === "cancelled" && Number(order.filledQuantity ?? 0) > 0)
+          ? [
+              learnEvent({
+                service: "order-service",
+                title: "按 VIP 等级定手续费率",
+                detail: "按双方 30 日成交量（或运营指定 / 做市商计划）解析等级，费率 = min(等级费率, 市场费率)，费率和等级写进成交记录，结算与重放都按记录收费。"
+              })
+            ]
+          : [])
       );
       if (stateRef.current.prefs.learnMode && order.status !== "pending_trigger") {
         void buildMatchReplay(order, input, depthBefore);

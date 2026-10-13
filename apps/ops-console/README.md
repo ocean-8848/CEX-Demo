@@ -16,7 +16,7 @@
 | `#/` | 运营总览 | 待审核提现（可直接批准 / 拒绝）、告警、结算统计、账本对账结果、模块状态、待投递通知 |
 | `#/withdrawals` | 提现审核 | 待审核队列（单笔 / 批量批准、拒绝）、全部提现筛选（含 KYT 风险等级筛选与风险徽标列）；高风险提现无论金额都需双人复核；详情抽屉的「地址风险（KYT）」区列出分数与命中规则；大额提现显示「1/2 已批准」与批准人，同一运营不能批准两次；详情抽屉含双人复核进度、审核要点、用户余额、审计轨迹、托管广播、用户通知 |
 | `#/deposits` | 充值与链上 | 充值记录、indexer 待确认观察（确认数进度，单笔 / 批量重放、关闭） |
-| `#/users` | 用户与资产 | 用户搜索（含 KYC 等级列）、冻结 / 解冻、用户详情（KYC 等级 / 事件 / 手动调整、余额、委托、充提、设备与登录记录、退出设备）；「KYC 审核」页签（批准 L1 / L2、拒绝）；全局余额；提现地址簿白名单；「地址黑名单」页签（加入 / 移出必须填原因，`ops.risk.manage`，写审计；演示标签集） |
+| `#/users` | 用户与资产 | 用户搜索（含 KYC 等级列）、冻结 / 解冻、用户详情（KYC 等级 / 事件 / 手动调整；手续费等级 / 30 日成交量 / 运营指定与指定记录；余额、委托、充提、设备与登录记录、退出设备）；「KYC 审核」页签（批准 L1 / L2、拒绝）；全局余额；提现地址簿白名单；「地址黑名单」页签（加入 / 移出必须填原因，`ops.risk.manage`，写审计；演示标签集） |
 | `#/trading` | 交易与结算 | 按市场查看订单（含止损单触发价与「待触发」状态、Post-Only / STP 标记和拒绝 / 过期原因）、成交、结算（失败结算可重试）；订单簿健康（DB 与撮合引擎对比、从 DB 重建引擎订单簿） |
 | `#/markets` | 市场管理 | 列出 `config/markets.json` 中的全部市场：当前状态 / 配置默认状态、步长、费率、参考价、运行时覆盖（原因 / 操作人 / 时间）；`暂停交易` / `恢复交易`（需 `ops.markets.manage`，写操作审计，经 risk-service 持久化） |
 | `#/trace` | 业务追踪 | 输入 userId / orderId / tradeId / depositId / withdrawalId / accountId / txHash（或自动识别），展示跨模块链路与命中对象；后台任意蓝色 ID 都可点击跳转到这里 |
@@ -24,6 +24,7 @@
 | `#/treasury` | 钱包与储备金 | 冷热分层持仓（充值地址 / 热钱包 / 冷钱包 / 在途，热钱包水位状态）、「立即归集」「检查水位」「发起调拨」；钱包 vs 账本对账（逐币种储备、用户负债、在途提现、储备率、热钱包覆盖率）；调拨与归集记录（待审批提案可批准 / 拒绝，提案人不能批准自己的提案；失败调拨可重新广播；详情抽屉含状态历史与归集的充值）；储备金证明（生成快照、Merkle 根、逐币种储备率、历史快照） |
 | `#/system` | 系统运维 | 各数据源告警、托管路由与熔断、订单 / 结算恢复队列与死信、事件总线运行报告与手动作业、自动化作业模板与定时计划；**实验室**页签：暂停结算消费、托管广播故障、链重组、撮合引擎重置四个故障实验（一键触发 / 观察 / 恢复，见 [fault-lab.md](../../docs/fault-lab.md)） |
 | `#/audit` | 操作审计 | 后台动作审计（可展开请求 / 响应）、提现状态迁移记录 |
+| `#/surveillance` | 市场监控 | 风控与运维分组下。按类型的待处理告警数、最近一次扫描；告警列表按类型 / 状态 / 市场 / userId 过滤（默认隐藏做市商）；详情抽屉显示指标、证据成交 / 撤单（ID 可跳业务追踪）、处理记录，可确认 / 忽略 / 重新打开（必须填备注，需 `ops.markets.manage`）；「立即扫描」；各市场成交参与度（做市商标为「做市商」）与当前阈值。导航上的数字是待处理告警数 |
 
 导航、按钮按当前会话的权限点显示；无权限的操作会被隐藏或禁用，后端同样会拒绝。
 
@@ -61,7 +62,7 @@ pnpm -s ops:totp                              # 打印演示运营账户当前�
 示例见 [.env.example](.env.example)。
 
 - `PORT`（默认 `3006`）、`OPS_CONSOLE_BIND_HOST`（默认 `127.0.0.1`）、`DATABASE_URL`
-- 下游服务：`OPS_LEDGER_SERVICE_URL`、`OPS_WALLET_SERVICE_URL`、`OPS_INDEXER_SERVICE_URL`、`OPS_CUSTODY_SERVICE_URL`、`OPS_IDENTITY_SERVICE_URL`、`OPS_ORDER_SERVICE_URL`（默认 `http://127.0.0.1:3009`）、`OPS_SETTLEMENT_SERVICE_URL`（默认 `http://127.0.0.1:3010`）、`OPS_RISK_SERVICE_URL`（默认 `http://127.0.0.1:3008`，市场状态）、`OPS_DEMO_SIMULATOR_URL`（故障实验室，默认 `http://127.0.0.1:3014`）
+- 下游服务：`OPS_LEDGER_SERVICE_URL`、`OPS_WALLET_SERVICE_URL`、`OPS_INDEXER_SERVICE_URL`、`OPS_CUSTODY_SERVICE_URL`、`OPS_IDENTITY_SERVICE_URL`、`OPS_ORDER_SERVICE_URL`（默认 `http://127.0.0.1:3009`）、`OPS_SETTLEMENT_SERVICE_URL`（默认 `http://127.0.0.1:3010`）、`OPS_RISK_SERVICE_URL`（默认 `http://127.0.0.1:3008`，市场状态与市场监控）、`OPS_DEMO_SIMULATOR_URL`（故障实验室，默认 `http://127.0.0.1:3014`）
 - `OPS_CONSOLE_AUDIT_STORE`（`postgres` 默认，`memory` 可回退为内存审计）
 - `OPS_ALERT_SINKS_JSON`（告警投递目标，默认 `[]`）
 - `OPS_EXECUTION_SCHEDULER_RUN_FOREVER` / `OPS_EXECUTION_SCHEDULER_INTERVAL_MS` / `OPS_EXECUTION_SCHEDULER_BATCH_SIZE`（自动化作业定时计划）
@@ -74,6 +75,8 @@ pnpm -s ops:totp                              # 打印演示运营账户当前�
 - 总览：`GET /dashboard`、`GET /modules`、`GET /alerts`、`GET /business-trace`
 - 提现：`GET /withdrawals`、`GET /withdrawals/review-queue`、`GET /withdrawals/:id`（含审计与托管）、`POST /withdrawals/:id/approve|reject`、`POST /withdrawal-batches/approve|reject`
 - 用户与资产：`GET /users`、`POST /users/:id/freeze|unfreeze`、`GET /balances`、`GET /withdrawal-address-book`
+- 手续费等级：`GET /fee-tiers`、`GET /users/:id/fee-tier`（档案 + 指定记录）、`POST /users/:id/fee-tier/override`（`{ tier, note }`）、`POST /users/:id/fee-tier/override/clear`（`{ note }`）；写操作需要 `ops.users.manage`，审计动作 `fee_tier.override.set|clear`（`src/http/fees-surveillance.controller.ts`）
+- 市场监控：`GET /surveillance/overview`、`GET /surveillance/alerts`、`GET /surveillance/alerts/:id`（`ops.markets.read`）；`POST /surveillance/alerts/:id/status`（`{ status, note }`）、`POST /surveillance/scan`（`ops.markets.manage`，审计动作 `surveillance.alert.acknowledge|dismiss|reopen`、`surveillance.scan`）
 - 地址风险与登录安全（`src/http/ops-risk-security.controller.ts`）：`GET /risk/address-blacklist`、`POST /risk/address-blacklist`（`{ network, address, category, reason }`）、`POST /risk/address-blacklist/:entryId/remove`（`{ reason }`）、`GET /risk/address-labels`（`ops.risk.read` / `ops.risk.manage`，审计动作 `risk.blacklist.add|remove`）；`GET /users/:id/login-events`、`GET /users/:id/devices`（`ops.users.read`）、`POST /users/:id/devices/:deviceId/revoke`（`ops.users.freeze`，审计动作 `user.device.revoke`）；`GET /withdrawals` 与 `/withdrawals/review-queue` 支持 `riskLevel`
 - KYC：`GET /kyc/requests`、`POST /kyc/requests/:id/approve`（`{ tier, note }`）、`POST /kyc/requests/:id/reject`（`{ reason }`）、`GET /users/:id/kyc`、`POST /users/:id/kyc-tier`（`{ tier, reason }`）；写操作需要 `ops.users.manage`，审计动作 `user.kyc.approve|reject|set_tier`
 - 交易：`GET /spot/orders|trades|settlements`、`GET /spot/ops/overview|anomalies`（默认市场取 `config/markets.json` 的 `defaultMarket`）、`POST /spot/ops/replay-engine`
@@ -97,6 +100,6 @@ pnpm -s ops:totp                              # 打印演示运营账户当前�
 
 ## 延伸阅读
 
-- [B07 应急响应](../../learning/backstage/B07-incident-response.md)、[B04 系统对账](../../learning/backstage/B04-reconciliation.md)、[B06 资金与流动性管理](../../learning/backstage/B06-treasury-liquidity.md)
+- [B07 应急响应](../../learning/backstage/B07-incident-response.md)、[B04 系统对账](../../learning/backstage/B04-reconciliation.md)、[B06 资金与流动性管理](../../learning/backstage/B06-treasury-liquidity.md)、[B05 业务风控](../../learning/backstage/B05-business-risk.md)
 - [13 可靠性与安全事故](../../learning/13-reliability-security-incidents.md)
 - [故障实验室](../../docs/fault-lab.md)、[安全设计](../../docs/security.md)

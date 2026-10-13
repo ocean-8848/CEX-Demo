@@ -11,10 +11,12 @@ import {
 } from "@web3-cex/web-ui";
 
 import { readErrorMessage } from "../../lib/api.js";
+import { effectiveRateFor } from "../../lib/fee-tier.js";
 import { availableOf } from "../../lib/records.js";
 import { navigate } from "../../lib/router.js";
 import { stopTriggerHint } from "../../lib/order-options.js";
 import type { OrderSide, OrderType, StpMode, TimeInForce } from "../../lib/types.js";
+import { useFeeTier } from "../../state/fee-tier.js";
 import { useExchange } from "../../state/store.js";
 import { useDisplayPrice } from "./market-header.js";
 
@@ -102,7 +104,9 @@ export function OrderForm(props: { pickedPrice?: { price: string; nonce: number 
   const postOnlyActive = postOnly && type === "limit";
   // A post-only order that would cross is rejected by the engine, never a taker.
   const postOnlyWouldTake = postOnlyActive && crosses;
-  const feeRate = toNumber(crosses && !postOnlyActive ? marketDefinition?.takerFeeRate : marketDefinition?.makerFeeRate) || 0;
+  // The user's own VIP rate for this market (min(tier, market)); market defaults when logged out.
+  const feeTier = useFeeTier();
+  const feeRate = effectiveRateFor(feeTier, state.market, crosses && !postOnlyActive ? "taker" : "maker", marketDefinition);
   const triggerHint = mode === "stop" ? stopTriggerHint(side, triggerValue, displayPrice || 0) : null;
   // Buyers pay the fee in the base asset they receive, sellers in quote.
   const estimatedFee = side === "sell" ? total * feeRate : quantityValue * feeRate;
@@ -373,10 +377,10 @@ export function OrderForm(props: { pickedPrice?: { price: string; nonce: number 
         </div>
         <div>
           <dt>预估手续费</dt>
-          <dd>
+          <dd id="order-fee-estimate" title={feeTier ? `${feeTier.tier} 等级费率（min(等级费率, 市场费率)）` : "市场默认费率"}>
             {total > 0
-              ? `${formatAmount(estimatedFee, side === "sell" ? 4 : 8)} ${side === "sell" ? quote : base} (${crosses ? "Taker" : "Maker"} ${(feeRate * 100).toFixed(2)}%)`
-              : `${crosses ? "Taker" : "Maker"} ${(feeRate * 100).toFixed(2)}%`}
+              ? `${formatAmount(estimatedFee, side === "sell" ? 4 : 8)} ${side === "sell" ? quote : base} (${feeTier ? `${feeTier.tier} ` : ""}${crosses && !postOnlyActive ? "Taker" : "Maker"} ${(feeRate * 100).toFixed(2)}%)`
+              : `${feeTier ? `${feeTier.tier} ` : ""}${crosses && !postOnlyActive ? "Taker" : "Maker"} ${(feeRate * 100).toFixed(2)}%`}
           </dd>
         </div>
       </dl>

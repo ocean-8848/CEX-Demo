@@ -64,6 +64,8 @@ interface TradeRow {
   seller_account_id: string;
   seller_fee_rate: string;
   buyer_fee_rate?: string | null;
+  buyer_fee_tier?: string | null;
+  seller_fee_tier?: string | null;
   execution_id: string;
   execution_batch_id: string;
   execution_sequence: string;
@@ -266,14 +268,16 @@ export class PostgresOrderRepository implements OrderRepository {
          buyer_order_id, seller_order_id, buyer_user_id, seller_user_id,
          buyer_account_id, seller_account_id, seller_fee_rate, execution_id,
          execution_batch_id, execution_sequence, execution_batch_sequence,
-         replay_cursor, protocol_version, settlement_id, executed_at, buyer_fee_rate
+         replay_cursor, protocol_version, settlement_id, executed_at, buyer_fee_rate,
+         buyer_fee_tier, seller_fee_tier
        )
        values (
          $1, $2, $3, $4, $5, $6,
          $7, $8, $9, $10,
          $11, $12, $13, $14,
          $15, $16, $17, $18,
-         $19, $20, $21, $22
+         $19, $20, $21, $22,
+         $23, $24
        )
        on conflict (trade_id) do nothing`,
       [
@@ -298,7 +302,9 @@ export class PostgresOrderRepository implements OrderRepository {
         trade.protocolVersion,
         trade.settlementId,
         trade.executedAt,
-        trade.buyerFeeRate ?? "0"
+        trade.buyerFeeRate ?? "0",
+        trade.buyerFeeTier ?? null,
+        trade.sellerFeeTier ?? null
       ]
     );
   }
@@ -769,6 +775,8 @@ function mapTrade(row: TradeRow): SpotTradeRecord {
     sellerAccountId: row.seller_account_id,
     sellerFeeRate: row.seller_fee_rate,
     buyerFeeRate: row.buyer_fee_rate ?? "0",
+    ...(row.seller_fee_tier ? { sellerFeeTier: row.seller_fee_tier } : {}),
+    ...(row.buyer_fee_tier ? { buyerFeeTier: row.buyer_fee_tier } : {}),
     executionId: row.execution_id,
     executionBatchId: row.execution_batch_id,
     executionSequence: Number(row.execution_sequence),

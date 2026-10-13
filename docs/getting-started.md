@@ -229,6 +229,8 @@ pnpm --filter @web3-cex/ledger-service start
 | `OTEL_ENABLED` / `OTEL_EXPORTER_OTLP_ENDPOINT` | 各 Node 服务 | 关闭 / `http://127.0.0.1:4318` | OpenTelemetry 追踪 |
 | `ORDER_STOP_TRIGGER_POLL_INTERVAL_MS` | `order-service` | `1000` | 止损单触发检查间隔（按最新成交价）；`0` 关闭定时检查 |
 | `TRADER_WEB_DEMO_MODE` | `trader-web` | `true` | 是否显示「一键登录演示账户」与水龙头 |
+| `ORDER_FEE_TIERS_ENABLED` / `ORDER_FEE_TIER_CACHE_MS` | `order-service` | 开启 / `30000` | VIP 手续费等级开关与等级缓存时长；关闭时全部按市场默认费率 |
+| `RISK_SURVEILLANCE_ENABLED` / `RISK_SURVEILLANCE_INTERVAL_MS` | `risk-service` | 开启 / `60000` | 市场监控定时扫描；各检测器阈值 `RISK_SURVEILLANCE_*` 见 [risk-service README](../services/risk-service/README.md) |
 | `DEMO_MAKERS_ENABLED` | `demo-simulator` | 开启 | 设为 `false` 关闭做市商 |
 | `DEMO_CHAIN_BLOCK_MS` / `DEMO_CHAIN_REQUIRED_CONFIRMATIONS` | `demo-simulator` | `1500` / `12` | 模拟链出块间隔与确认数 |
 | `TREASURY_HOT_WALLET_WATERMARKS` | `wallet-service` | `USDT=50000/200000,USDC=10000/50000,ETH=10/40,BTC=0.5/2,SOL=200/800` | 热钱包水位 `下限/上限`，越界时生成冷热调拨提案；设为空字符串关闭 |
@@ -238,7 +240,7 @@ pnpm --filter @web3-cex/ledger-service start
 | `DEMO_RESERVE_KEEPER_ENABLED` / `DEMO_RESERVE_MIN_RATIO` / `DEMO_RESERVE_TARGET_RATIO` | `demo-simulator` | 开启 / `1.05` / `1.2` | 储备率低于下限时把冷钱包注资补到目标比例；设为 `false` 可观察储备不足 |
 | `DEMO_*_URL`、`DEMO_DATABASE_URL` 等 | 根目录脚本 | 本地默认地址 | 覆盖脚本访问的服务地址，见 `scripts/mvp-demo-lib.mjs` 中的 `loadDemoConfig` |
 
-市场与币种不通过环境变量配置，而是统一来自 `config/markets.json`，见 [config/README.md](../config/README.md)。
+市场与币种不通过环境变量配置，而是统一来自 `config/markets.json`；VIP 手续费等级与做市商计划来自 `config/fee-tiers.json`，见 [config/README.md](../config/README.md)。
 
 ## 10. 根目录脚本一览
 

@@ -650,7 +650,7 @@ export class SettlementApplicationService {
       businessId: command.tradeId,
       idempotencyKey: `spot_trade:base:${command.tradeId}`,
       traceId,
-      description: `Settle base asset for trade ${command.tradeId}`,
+      description: `Settle base asset for trade ${command.tradeId}${describeAppliedFee("buyer", command.buyerFeeTier, command.buyerFeeRate)}`,
       entries: [
         {
           accountId: baseSettlementAccountId,
@@ -688,7 +688,7 @@ export class SettlementApplicationService {
       businessId: command.tradeId,
       idempotencyKey: `spot_trade:quote:${command.tradeId}`,
       traceId,
-      description: `Settle quote asset for trade ${command.tradeId}`,
+      description: `Settle quote asset for trade ${command.tradeId}${describeAppliedFee("seller", command.sellerFeeTier, command.sellerFeeRate)}`,
       entries: [
         {
           accountId: quoteSettlementAccountId,
@@ -733,6 +733,7 @@ export class SettlementApplicationService {
       quoteAmount,
       feeAmount,
       buyerFeeAmount,
+      ...appliedFeeFields(command),
       buyerOrderId: command.buyerOrderId,
       sellerOrderId: command.sellerOrderId,
       buyerUserId: command.buyerUserId,
@@ -815,6 +816,7 @@ export class SettlementApplicationService {
         quoteAmount,
         feeAmount,
         buyerFeeAmount,
+        ...appliedFeeFields(command),
         buyerOrderId: command.buyerOrderId,
         sellerOrderId: command.sellerOrderId,
         buyerUserId: command.buyerUserId,
@@ -923,6 +925,8 @@ export class SettlementApplicationService {
       sellerAccountId: validated.trade.sellerAccountId,
       sellerFeeRate: validated.trade.sellerFeeRate,
       buyerFeeRate: validated.trade.buyerFeeRate,
+      sellerFeeTier: validated.trade.sellerFeeTier,
+      buyerFeeTier: validated.trade.buyerFeeTier,
       executionId: validated.trade.executionId,
       executionBatchId: validated.trade.executionBatchId,
       executionSequence: validated.trade.executionSequence,
@@ -1067,4 +1071,21 @@ function isRecoveryHandoffError(error: unknown): boolean {
     error instanceof SettlementServiceError &&
     (error.code === "SETTLEMENT_RECOVERY_PENDING" || error.code === "SETTLEMENT_RECOVERY_FAILED")
   );
+}
+
+/** Rate + tier actually charged, copied onto the settlement row (A7). */
+function appliedFeeFields(
+  command: SettleTradeCommand
+): Pick<TradeSettlement, "sellerFeeRate" | "buyerFeeRate" | "sellerFeeTier" | "buyerFeeTier"> {
+  return {
+    sellerFeeRate: command.sellerFeeRate,
+    buyerFeeRate: command.buyerFeeRate ?? "0",
+    ...(command.sellerFeeTier ? { sellerFeeTier: command.sellerFeeTier } : {}),
+    ...(command.buyerFeeTier ? { buyerFeeTier: command.buyerFeeTier } : {})
+  };
+}
+
+/** Journal description suffix naming the fee tier + rate charged (only when a tier was resolved). */
+function describeAppliedFee(side: "buyer" | "seller", tier: string | undefined, rate: string | undefined): string {
+  return tier ? ` (${side} fee ${tier} @ ${rate ?? "0"})` : "";
 }

@@ -137,6 +137,10 @@ export interface Trade {
   sellerFeeRate?: string;
   /** Buyer fee rate (charged in the base asset). Optional for events published before dual fees. */
   buyerFeeRate?: string;
+  /** Fee tier (VIP) the seller rate was resolved from; absent on trades before fee tiers. */
+  sellerFeeTier?: string;
+  /** Fee tier (VIP) the buyer rate was resolved from; absent on trades before fee tiers. */
+  buyerFeeTier?: string;
   executedAt: string;
   executionId?: string;
   executionBatchId?: string;
@@ -570,4 +574,5 @@ function parseProtocolVersion(version: string): number {
 
 export * from "./decimal.js";
 export * from "./market-config.js";
+export * from "./fee-tiers.js";
 export * from "./order-rules.js";

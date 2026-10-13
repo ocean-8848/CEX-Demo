@@ -1,6 +1,6 @@
 # 05 账户与安全
 
-本章介绍 `trader-web` 的「账户」页（`#/account`）：查看个人信息和当前会话、自助开启二次验证、申请 KYC 提升提现限额、管理登录设备和查看登录记录、创建 API Key，以及退出登录。
+本章介绍 `trader-web` 的「账户」页（`#/account`）：查看个人信息和当前会话、自助开启二次验证、申请 KYC 提升提现限额、查看手续费等级、管理登录设备和查看登录记录、创建 API Key，以及退出登录。
 
 ## 1. 页面总览
 
@@ -12,8 +12,9 @@
 
 1. 第一行：「个人信息」和「当前会话」（第 2 节）。
 2. 第二行：「二次验证（TOTP 2FA）」（第 3 节）和「身份认证与提现限额」（第 4 节）。
-3. 第三行：「设备管理」和「登录记录」（第 5 节）。
-4. 底部：「API Key」（第 6 节）。
+3. 第三行：「手续费等级」（第 5 节）。
+4. 第四行：「设备管理」和「登录记录」（第 6 节）。
+5. 底部：「API Key」（第 7 节）。
 
 整页截图如下：
 
@@ -114,7 +115,31 @@
 
 `identity-service` 保存 KYC 等级和申请记录（证件号只存后 4 位）；`wallet-service` 按 KYC 等级计算限额和今日已用额度，在预校验和提交提现时执行。
 
-## 5. 设备管理与登录记录
+## 5. 手续费等级（VIP）
+
+### 功能说明
+
+面板标题「手续费等级」，右侧说明「order-service 在每笔成交时按等级定费率并记录在成交上」。
+
+- **当前等级**：如「VIP0 普通用户」，后面的徽标说明等级来源：「按 30 日成交量」「做市商计划」或「运营指定」（运营在后台为该账户指定了等级，优先于成交量）。
+- **Maker / Taker**：当前等级的挂单 / 吃单费率，例如「0.05% / 0.1%」。
+- **30 日成交量**：过去 30 天你在 USDT 计价市场作为买方或卖方的成交额之和（USDT）。
+- **距下一等级**：还差多少成交量升到下一级，以及下一级的费率和进度条；已是最高等级时显示「已是最高等级」。
+- **等级阶梯表**：VIP0–VIP3 的 30 日成交量门槛和 Maker / Taker 费率，当前等级标「当前」。当前阶梯为 VIP0 ≥ 0（0.05% / 0.1%）、VIP1 ≥ 100,000（0.04% / 0.09%）、VIP2 ≥ 500,000（0.03% / 0.08%）、VIP3 ≥ 2,000,000（0.02% / 0.06%）。
+- **实际费率**：表格下方列出每个市场的实际费率 = min(等级费率, 市场费率)。VIP0 与市场默认费率相同。
+
+新的等级从下一笔成交开始生效：费率在成交发生时确定并写进成交记录，交易页「成交记录」的手续费列会显示每笔用的等级和费率，等级变化不会改写历史成交。等级每次成交后自动刷新（服务端最多缓存 30 秒）。
+
+### 操作步骤
+
+1. 打开账户页，在「手续费等级」面板查看当前等级、费率和 30 日成交量。
+2. 下单前，交易页下单表单的「预估手续费」会按这里的费率估算。
+3. 想体验运营指定：让运营在 ops-console「用户与资产」→ 用户详情 →「手续费等级」里把你指定为 VIP2，刷新账户页后来源显示「运营指定」，下一笔成交的费率随之变化（见 [07 资金运营](07-ops-funds.md) 的用户详情）。
+
+### 背后的服务
+
+`order-service` 按 `config/fee-tiers.json` 的阶梯和你的 30 日成交量解析等级（运营指定 > 做市商计划 > 成交量），在构造成交时写入费率与等级；`api-gateway` 的 `GET /api/v1/gateway/fees/tier` 返回本人档案（不含运营备注）；`settlement-service` 按成交上记录的费率扣手续费。
+## 6. 设备管理与登录记录
 
 ### 功能说明
 
@@ -145,7 +170,7 @@
 
 `identity-service` 记录登录事件（`identity_login_events`）和设备（`identity_user_devices`），判断新设备和登录失败锁定，并按设备吊销会话；新设备的站内信由 `identity-service` 通过内部接口写入 `wallet-service` 的通知表；`api-gateway` 提供只接受会话鉴权的 `/auth/login-events`、`/auth/devices` 接口。实现位置：`services/identity-service/src/application/login-security-service.ts`、`apps/trader-web/src/client/features/account/device-panels.tsx`。
 
-## 6. API Key
+## 7. API Key
 
 ![API Key 创建表单：备注与读取 / 交易 / 提现三个权限](images/trader-api-key.png)
 
@@ -179,7 +204,7 @@
 
 `identity-service` 生成 Key ID 和 Secret（Secret 加密保存）、校验签名和权限；`api-gateway` 负责重建规范请求串、检查时间戳和用 Redis 记录 nonce 防重放。实现位置：`services/api-gateway/src/http/api-key-signature.ts`、`services/identity-service/src/domain/api-key-secret.ts`。
 
-## 7. 退出登录
+## 8. 退出登录
 
 ### 功能说明
 
@@ -195,6 +220,7 @@
 - 账户、身份、2FA、API Key：[../../learning/03-account-identity-security.md](../../learning/03-account-identity-security.md)
 - 账户安全的后台视角：[../../learning/backstage/B03-account-security.md](../../learning/backstage/B03-account-security.md)
 - 提现限额与风控：[../../learning/09-risk-control.md](../../learning/09-risk-control.md)
+- 手续费与 VIP 等级：[../../learning/07-clearing-settlement-fees.md](../../learning/07-clearing-settlement-fees.md)、[../../learning/12-business-model.md](../../learning/12-business-model.md)
 - 项目安全设计说明：[../security.md](../security.md)
 
 ---

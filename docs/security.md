@@ -119,6 +119,8 @@
 ### 2.6 交易与账本
 
 - **下单前风控**（`services/risk-service/src/application/risk-application-service.ts`）：市场状态（暂停 / 下架时拒绝新单、撤单始终放行）、价格与数量步长、可用余额校验。详见 [risk-service README](../services/risk-service/README.md)。
+- **市场监控**（`services/risk-service/src/domain/surveillance.ts`）：每分钟扫描成交与撤单，对自成交（对敲）、成交集中、幌骗、价格异动生成带证据的告警，运营在 ops-console「市场监控」确认 / 忽略（备注必填、双重审计）。只做事后识别，不拦截交易；同账户自成交已由撮合引擎的 STP 阻止，对敲检测按同一用户兜底，没有用登录设备 / IP 做关联。
+- **手续费等级指定**：运营指定 VIP 等级需要 `ops.users.manage`，备注必填，写入 `spot_fee_tier_override_audit` 与运营操作审计；用户侧 `GET /fees/tier` 不返回运营备注和操作人。
 - **账本不变量**（`services/ledger-service/src/application/ledger-application-service.ts`）：每笔 journal 按资产借贷平衡，否则拒绝；`idempotencyKey` 去重——同键同内容（并发也一样）返回原 journal，同键不同内容返回 409 `DUPLICATE_IDEMPOTENCY_KEY`，并发撞上唯一索引不会变成 500（`application/journal-idempotency.ts`）；冻结 / 释放 / 消耗都检查可用余额与锁状态。运营端没有“直接改余额”的接口，余额调整也必须走 journal。详见 [ledger-service-design.md](ledger-service-design.md)。
 - **下单失败收敛**（`services/order-service/src/application/order-application-service.ts`）：订单落库后若冻结失败或撮合前任何一步失败，订单都会进入终态 `rejected`（冻结失败的原因以 `ORDER_FREEZE_FAILED:` 开头），尽力释放可能已部分冻结的资金并发布 `order.rejected`，调用方收到明确错误码，不会留下卡在 `pending_risk` 的订单。
 

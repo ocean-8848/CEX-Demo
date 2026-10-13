@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import type { Pool } from "pg";
 
 import { FaultLabApplicationService } from "../application/fault-lab-application-service.js";
+import { FeesSurveillanceApplicationService } from "../application/fees-surveillance-application-service.js";
 import { OpsConsoleApplicationService } from "../application/ops-console-application-service.js";
 import { TreasuryApplicationService } from "../application/treasury-application-service.js";
 import { OpsRiskSecurityService } from "../application/ops-risk-security-service.js";
@@ -57,6 +58,7 @@ import type {
 import { HttpAlertSinkClient } from "../infrastructure/http-alert-sink-client.js";
 import { HttpCustodyOpsClient } from "../infrastructure/http-custody-ops-client.js";
 import { HttpFaultLabClient } from "../infrastructure/http-fault-lab-client.js";
+import { HttpFeesSurveillanceClient } from "../infrastructure/http-fees-surveillance-client.js";
 import { HttpIdentityOpsClient } from "../infrastructure/http-identity-ops-client.js";
 import { HttpIndexerOpsClient } from "../infrastructure/http-indexer-ops-client.js";
 import { HttpLedgerOpsClient } from "../infrastructure/http-ledger-ops-client.js";
@@ -74,6 +76,8 @@ export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
   private readonly applicationService: OpsConsoleApplicationService;
   readonly faultLab: FaultLabApplicationService;
   readonly treasury: TreasuryApplicationService;
+  /** A7 user fee tier / override + A9 市场监控. */
+  readonly feesSurveillance: FeesSurveillanceApplicationService;
   /** KYT address blacklist + user login history / devices. */
   readonly riskSecurity: OpsRiskSecurityService;
   private readonly pool?: Pool;
@@ -130,6 +134,13 @@ export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
     );
     this.treasury = new TreasuryApplicationService(
       new HttpTreasuryClient(walletBaseUrl),
+      (options, operation) => this.applicationService.runAuditedAction(options, operation)
+    );
+    this.feesSurveillance = new FeesSurveillanceApplicationService(
+      new HttpFeesSurveillanceClient({
+        orderBaseUrl,
+        riskBaseUrl: process.env.OPS_RISK_SERVICE_URL ?? "http://127.0.0.1:3008"
+      }),
       (options, operation) => this.applicationService.runAuditedAction(options, operation)
     );
     this.riskSecurity = new OpsRiskSecurityService(

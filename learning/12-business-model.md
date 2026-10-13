@@ -258,9 +258,9 @@ flowchart LR
 |---|---|
 | 交易手续费 | `settlement-service` 在成交结算时生成手续费分录（见 `services/settlement-service/README.md` "生成手续费入账"） |
 | 手续费账户对账 | 本仓库未实现专门的手续费日级对账。手续费账户 `platform:spot:fee:<asset>` 和其他账户一样，由 `ledger-service` 的 `reconcile-balances` 按 journal 校验余额快照（见 `docs/ledger-service-design.md` 第 11 节） |
-| 费率等级、VIP | 未实现。可以在 `risk-service` 或 `settlement-service` 引入费率配置表 |
+| 费率等级、VIP | 已实现：`config/fee-tiers.json`（VIP0–VIP3，按 30 日 USDT 成交量，VIP0 = 市场默认费率），`order-service` 的 `src/application/fee-tier-service.ts` 在成交时解析等级并把费率写进成交；用户在 trader-web 账户页「手续费等级」查看等级、30 日成交量和升级进度，下单面板按本人费率预估手续费 |
 | 返佣、BNB 抵扣 | 未实现 |
-| 做市商计划 | 未实现。`matching-engine` 支持 book seed，可用于本地模拟做市深度 |
+| 做市商计划 | 部分实现：`config/fee-tiers.json` 的 `marketMakers` 列出做市账户（演示的两个做市账户固定 VIP0），ops-console 用户详情可为任意账户「指定」等级（备注必填、写审计，见 `spot_fee_tier_override_audit`）；没有负费率（返还）。做市流动性由 `demo-simulator` 模拟 |
 | 地区合规路由 | 未实现。`identity-service` 已有 KYC 状态字段，可作为扩展入口 |
 
 建议的扩展顺序（【分析】）：先实现"费率配置表 + Maker/Taker 区分"，再实现 VIP 等级，最后实现返佣。原因是返佣涉及跨用户的分账，需要账本支持更多科目。

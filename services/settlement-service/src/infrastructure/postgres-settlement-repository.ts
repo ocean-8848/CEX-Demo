@@ -28,6 +28,10 @@ interface SettlementRow {
   quote_amount: string;
   fee_amount: string;
   buyer_fee_amount?: string | null;
+  seller_fee_rate?: string | null;
+  buyer_fee_rate?: string | null;
+  seller_fee_tier?: string | null;
+  buyer_fee_tier?: string | null;
   buyer_order_id: string;
   seller_order_id: string;
   buyer_user_id: string;
@@ -162,7 +166,8 @@ export class PostgresSettlementRepository implements SettlementRepository {
          execution_sequence, execution_batch_sequence, replay_cursor, protocol_version,
          buyer_settlement_journal_id,
          seller_settlement_journal_id, status, attempt_count, last_error,
-         created_at, updated_at, last_attempt_at, settled_at, buyer_fee_amount
+         created_at, updated_at, last_attempt_at, settled_at, buyer_fee_amount,
+         seller_fee_rate, buyer_fee_rate, seller_fee_tier, buyer_fee_tier
        )
        values (
          $1, $2, $3, $4, $5, $6, $7,
@@ -170,7 +175,8 @@ export class PostgresSettlementRepository implements SettlementRepository {
          $12, $13, $14, $15,
          $16, $17, $18, $19,
          $20, $21, $22, $23, $24,
-         $25, $26, $27, $28, $29
+         $25, $26, $27, $28, $29,
+         $30, $31, $32, $33
        )
        on conflict (trade_id) do update set
          settlement_id = excluded.settlement_id,
@@ -199,7 +205,11 @@ export class PostgresSettlementRepository implements SettlementRepository {
          updated_at = excluded.updated_at,
          last_attempt_at = excluded.last_attempt_at,
          settled_at = excluded.settled_at,
-         buyer_fee_amount = excluded.buyer_fee_amount`,
+         buyer_fee_amount = excluded.buyer_fee_amount,
+         seller_fee_rate = coalesce(excluded.seller_fee_rate, trade_settlements.seller_fee_rate),
+         buyer_fee_rate = coalesce(excluded.buyer_fee_rate, trade_settlements.buyer_fee_rate),
+         seller_fee_tier = coalesce(excluded.seller_fee_tier, trade_settlements.seller_fee_tier),
+         buyer_fee_tier = coalesce(excluded.buyer_fee_tier, trade_settlements.buyer_fee_tier)`,
       [
         settlement.settlementId,
         settlement.tradeId,
@@ -229,7 +239,11 @@ export class PostgresSettlementRepository implements SettlementRepository {
         settlement.updatedAt,
         settlement.lastAttemptAt ?? null,
         settlement.settledAt ?? null,
-        settlement.buyerFeeAmount ?? "0"
+        settlement.buyerFeeAmount ?? "0",
+        settlement.sellerFeeRate ?? null,
+        settlement.buyerFeeRate ?? null,
+        settlement.sellerFeeTier ?? null,
+        settlement.buyerFeeTier ?? null
       ]
     );
 
@@ -882,6 +896,10 @@ function mapSettlement(row: SettlementRow): TradeSettlement {
     quoteAmount: row.quote_amount,
     feeAmount: row.fee_amount,
     buyerFeeAmount: row.buyer_fee_amount ?? "0",
+    ...(row.seller_fee_rate ? { sellerFeeRate: trimRate(row.seller_fee_rate) } : {}),
+    ...(row.buyer_fee_rate ? { buyerFeeRate: trimRate(row.buyer_fee_rate) } : {}),
+    ...(row.seller_fee_tier ? { sellerFeeTier: row.seller_fee_tier } : {}),
+    ...(row.buyer_fee_tier ? { buyerFeeTier: row.buyer_fee_tier } : {}),
     buyerOrderId: row.buyer_order_id,
     sellerOrderId: row.seller_order_id,
     buyerUserId: row.buyer_user_id,
@@ -970,4 +988,8 @@ function mapConsumerCheckpoint(row: ConsumerCheckpointRow): TradeEventConsumerCh
       : undefined,
     updatedAt: new Date(row.updated_at).toISOString()
   };
+}
+
+function trimRate(value: string): string {
+  return value.includes(".") ? value.replace(/0+$/, "").replace(/\.$/, "") || "0" : value;
 }

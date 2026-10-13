@@ -138,3 +138,45 @@ test("security error hints map M4/M5 wallet codes to actionable Chinese messages
   assert.match(humanizeError("Recovery code is invalid", "TWO_FACTOR_RECOVERY_CODE_INVALID"), /^恢复码无效/);
   assert.match(humanizeError("Withdrawal amount exceeds the daily limit of 2000 USDT (KYC tier unverified)"), /KYC 等级/);
 });
+
+test("fee tier helpers use the user's VIP rate and the rate recorded on the trade", async () => {
+  const { effectiveRateFor, formatRate, userTradeFeeRate } = await import("../client/lib/fee-tier.js");
+  const profile = {
+    userId: "alice",
+    tier: "VIP2",
+    name: "VIP 2",
+    source: "volume" as const,
+    makerFeeRate: "0.0003",
+    takerFeeRate: "0.0008",
+    volume: "600000",
+    volumeAsset: "USDT",
+    volumeWindowDays: 30,
+    nextTier: null,
+    remainingVolume: "0",
+    progressRatio: 1,
+    override: null,
+    marketMaker: null,
+    markets: [{ market: "ETH-USDT", makerFeeRate: "0.0003", takerFeeRate: "0.0008" }],
+    tiers: []
+  };
+  const market = { makerFeeRate: "0.0005", takerFeeRate: "0.001" };
+  assert.equal(effectiveRateFor(profile, "ETH-USDT", "taker", market), 0.0008);
+  assert.equal(effectiveRateFor(null, "ETH-USDT", "taker", market), 0.001, "logged out: market default");
+  assert.equal(effectiveRateFor(profile, "BTC-USDT", "maker", market), 0.0005, "unknown market falls back");
+  const trade = {
+    tradeId: "t1",
+    price: "3000",
+    quantity: "2",
+    buyerOrderId: "b",
+    sellerOrderId: "s",
+    buyerUserId: "alice",
+    sellerUserId: "bob",
+    sellerFeeRate: "0.0005",
+    buyerFeeRate: "0.0008",
+    buyerFeeTier: "VIP2"
+  };
+  assert.deepEqual(userTradeFeeRate(trade, "alice"), { rate: 0.0008, tier: "VIP2" });
+  assert.deepEqual(userTradeFeeRate(trade, "bob"), { rate: 0.0005, tier: undefined });
+  assert.equal(formatRate(0.001), "0.1%");
+  assert.equal(formatRate("0.0008"), "0.08%");
+});

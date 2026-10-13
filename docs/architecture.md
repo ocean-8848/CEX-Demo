@@ -84,7 +84,7 @@ flowchart TB
 | 服务 | 端口 | 存储 | 职责 |
 | --- | --- | --- | --- |
 | `trader-web` | 3013 | 无（会话放在 HttpOnly Cookie） | 用户侧交易前台。Node Web Host 提供 React SPA，并把 `/api/gateway/*` 代理到 `api-gateway`、`/api/market/*` 代理到 `market-data-service`、`/api/demo/*` 代理到 `demo-simulator`；`/api/realtime` 代理私有 WebSocket 并在服务端附加会话；CSRF double-submit。浏览器直连 `market-data-service` 的公共 WebSocket。 |
-| `ops-console` | 3006 | PostgreSQL `ops_action_audit_logs` | 运营后台（React + NestJS BFF）。登录（邮箱 + 密码 + TOTP）、提现审核与双人复核、KYC 审核、市场暂停/恢复、账本对账、恢复队列、故障实验室、操作审计。只通过 HTTP 调用各服务，不直接读别的服务的表。 |
+| `ops-console` | 3006 | PostgreSQL `ops_action_audit_logs` | 运营后台（React + NestJS BFF）。登录（邮箱 + 密码 + TOTP）、提现审核与双人复核、KYC 审核、用户手续费等级指定、市场暂停/恢复、市场监控告警处理、账本对账、恢复队列、故障实验室、操作审计。只通过 HTTP 调用各服务，不直接读别的服务的表。 |
 | `api-gateway` | 3007 | Redis（限流、幂等键） | 用户侧统一 REST 入口 `/api/v1/gateway/*` 与私有 WebSocket `/api/v1/gateway/realtime`。支持 Bearer 会话和 API Key + HMAC 两种认证，校验账户归属，下游调用 identity / wallet / ledger / order。每个响应带 `x-trace-id`（追踪开启时）。 |
 | `identity-service` | 3005 | PostgreSQL `identity_*`、`user_two_factor_profiles` | 用户与运营账号、密码与会话（`customer_web` / `ops_console` 两种 scope）、TOTP 2FA 与恢复码、RBAC（`ops_admin`、`ops_reviewer` 等 6 个角色）、API Key、KYC 等级（`unverified` / `L1` / `L2`）与审核、用户冻结、登录记录 / 设备 / 新设备提醒 / 登录失败锁定（`identity_login_events`、`identity_user_devices`）。 |
 
@@ -92,10 +92,10 @@ flowchart TB
 
 | 服务 | 端口 | 存储 | 职责 |
 | --- | --- | --- | --- |
-| `order-service` | 3009 | PostgreSQL `spot_orders`、`spot_trades`、`spot_order_recovery_jobs`、`spot_order_automation_executions`；Redis | 订单生命周期的编排中心：调 `risk-service` 预检 → 调 `ledger-service` 冻结 → 经 TCP 调撮合引擎 → 落库订单与成交 → 发布交易事件。负责撤单、恢复队列（lease / dead-letter）、撮合引擎状态同步（引擎重启后自动恢复序号并重放挂单）、止损单触发（`StopOrderTriggerWorker`）。 |
-| `risk-service` | 3008 | PostgreSQL `risk_market_status_overrides` | 下单前校验：市场状态（listed / halted / delisted）、`timeInForce`、价格与数量 step 对齐、最小数量、限价单价格偏离、可用余额（查 ledger），并算出需要冻结的资产与金额。运营的市场暂停/恢复写在这里。 |
+| `order-service` | 3009 | PostgreSQL `spot_orders`、`spot_trades`、`spot_order_recovery_jobs`、`spot_order_automation_executions`、`spot_fee_tier_overrides`、`spot_fee_tier_override_audit`；Redis | 订单生命周期的编排中心：调 `risk-service` 预检 → 调 `ledger-service` 冻结 → 经 TCP 调撮合引擎 → 落库订单与成交 → 发布交易事件。负责撤单、恢复队列（lease / dead-letter）、撮合引擎状态同步（引擎重启后自动恢复序号并重放挂单）、止损单触发（`StopOrderTriggerWorker`）。成交时按双方 VIP 手续费等级（30 日成交量 / 做市商计划 / 运营指定）定费率并把费率和等级写进成交；为 `risk-service` 的市场监控提供成交与撤单窗口。 |
+| `risk-service` | 3008 | PostgreSQL `risk_market_status_overrides`、`risk_surveillance_alerts`、`risk_surveillance_alert_events` | 下单前校验：市场状态（listed / halted / delisted）、`timeInForce`、价格与数量 step 对齐、最小数量、限价单价格偏离、可用余额（查 ledger），并算出需要冻结的资产与金额。运营的市场暂停/恢复写在这里。市场监控：每分钟从 `order-service` 读取成交与撤单窗口，检测对敲 / 自成交、成交集中、幌骗、价格异动并生成带证据的告警（只读，不拦截交易）。 |
 | `matching-engine` | 3011 | 无（纯内存） | Rust 实现，每行一条 JSON 命令（`submit` / `seed` / `cancel` / `reset` / `restore` / `snapshot`）。每个市场一本订单簿，价格优先、时间优先，支持 `limit` / `market` 与 `gtc` / `ioc` / `fok`，多档扫单、部分成交。为每笔成交生成 `executionSequence`、`replayCursor`（`<market>:<seq>`）和协议版本 `v2`。不访问数据库，不改余额。 |
-| `settlement-service` | 3010 | PostgreSQL `trade_settlements`、`trade_settlement_recovery_jobs`、`trade_event_consumer_checkpoints`、汇总表；Redis | 消费 Redis Stream 中的 `trade.executed`，按成交幂等结算：消耗买卖双方的冻结，过账 base / quote 两笔 journal（含手续费），再把 `settlementId` 回写给 `order-service`。失败进入恢复队列。 |
+| `settlement-service` | 3010 | PostgreSQL `trade_settlements`、`trade_settlement_recovery_jobs`、`trade_event_consumer_checkpoints`、汇总表；Redis | 消费 Redis Stream 中的 `trade.executed`，按成交幂等结算：消耗买卖双方的冻结，过账 base / quote 两笔 journal（含手续费，费率用成交上记录的值），在结算记录上保存双方的费率与 VIP 等级，再把 `settlementId` 回写给 `order-service`。失败进入恢复队列。 |
 | `market-data-service` | 3012 | Redis（行情快照）、ClickHouse | 订阅交易事件后从 `order-service` 拉取订单和成交，重建 ticker / depth / recent trades 快照写入 Redis，并把快照落到 ClickHouse；K 线优先从 ClickHouse 读，失败时用成交现算。提供公共 REST 与公共 WebSocket `/api/v1/market-data/ws`。 |
 
 ### 3.3 资金层
@@ -146,12 +146,13 @@ flowchart TB
 | `api-gateway` | `identity-service` | 会话 / API Key 认证、注册登录、2FA、KYC |
 | `api-gateway` | `wallet-service` | 充值地址、充提记录、提币申请、通知 |
 | `api-gateway` | `ledger-service` | 开户、余额、资金流水 |
-| `api-gateway` | `order-service` | 下单、撤单、订单 / 成交查询 |
+| `api-gateway` | `order-service` | 下单、撤单、订单 / 成交查询、本人手续费等级 |
 | `order-service` | `risk-service` | `validateSpotOrder` |
 | `order-service` | `ledger-service` | 冻结 / 释放订单资金 |
 | `order-service` | `matching-engine`（TCP） | 提交、撤单、快照、重放挂单 |
 | `order-service` | `settlement-service` | 同步结算模式和订单恢复时调用 `settleTrade` |
 | `risk-service` | `ledger-service`、`market-data-service` | 查可用余额、取参考价 |
+| `risk-service` | `order-service` | 市场监控读取成交 / 撤单窗口（`GET /api/v1/surveillance/activity`） |
 | `settlement-service` | `ledger-service` | 消耗冻结、过账 journal、创建平台账户 |
 | `settlement-service` | `order-service` | 回写 `settlementId`；`http` 传输模式下也从这里拉成交事件 |
 | `market-data-service` | `order-service` | 拉取订单（算深度）与成交 |
@@ -178,7 +179,7 @@ flowchart TB
 | `identity-service` | api-gateway、wallet-service、ops-console、demo-scripts |
 | `wallet-service` | api-gateway、blockchain-indexer、identity-service、ops-console、demo-scripts |
 | `ledger-service` | api-gateway、wallet-service、order-service、settlement-service、risk-service、ops-console、demo-scripts |
-| `order-service` | api-gateway、settlement-service、market-data-service、ops-console、demo-scripts |
+| `order-service` | api-gateway、settlement-service、market-data-service、ops-console、demo-scripts、risk-service |
 | `settlement-service` | order-service、ops-console、demo-scripts |
 | `risk-service` | order-service、ops-console、demo-scripts |
 | `custody-adapter` | wallet-service、ops-console、demo-scripts |
@@ -337,7 +338,7 @@ sequenceDiagram
 
 - **冻结金额**由 `risk-service` 计算：卖单冻结 base 数量；限价 / 止损限价买单冻结 `price × quantity` 的 quote；市价买单冻结 `参考价 × quantity × (1 + maxPriceDeviationRatio)`；止损市价买单用触发价代替参考价。
 - **Post-Only 与自成交保护**：`order-service` 提交订单时带 `owner_id`（账户 ID）、可选 `stp_mode` 和 `post_only`。Post-Only 订单到达即会成交时被引擎整单拒绝；同账户的买卖单不会互相成交，引擎按 `expire_taker`（默认）/ `expire_maker` / `expire_both` 让新订单剩余部分或旧挂单过期，被撤挂单通过响应里的 `expiredMakers` 交回 `order-service` 撤单解冻。
-- **手续费**：每方用自己收到的资产付费——卖方从 quote 扣，买方从 base 扣。maker / taker 费率由 `order-service` 按订单在本笔成交中的角色从市场配置解析。
+- **手续费**：每方用自己收到的资产付费——卖方从 quote 扣，买方从 base 扣。`order-service` 在构造成交时解析双方的 VIP 等级（运营指定 > `config/fee-tiers.json` 的做市商计划 > 30 日成交量），按订单在本笔成交中的 maker / taker 角色取 `min(等级费率, 市场费率)`，把费率和等级（`buyerFeeRate` / `buyerFeeTier` 等）写进成交和 `trade.executed` 事件。止损单被 `StopOrderTriggerWorker` 触发后按普通订单撮合，同样在成交时解析等级；被 STP 或 Post-Only 拒绝 / 过期而没有成交的部分不产生成交，也不收手续费。结算与重放只用记录的费率，不重新解析，保证同一笔成交永远收同样的手续费。等级缓存默认 30 秒（`ORDER_FEE_TIER_CACHE_MS`），解析失败时退回市场默认费率、不影响成交。
 - **异步结算的后果**：订单可能已显示 `filled`，而结算还在路上；成交记录的 `settlementId` 先是占位值，结算完成后被回写。撤单时只释放真正从订单簿撤下的数量对应的冻结，已成交待结算的冻结保留。
 - **撮合失败补偿**：撮合后落库或结算失败时，订单进入 `recovery_pending`，由恢复任务（lease + 重试 + dead-letter）收尾；若无法继续则按数据库中的挂单重放引擎订单簿。
 - **引擎状态同步**：撮合引擎是纯内存的。`order-service` 定期比对引擎序号与数据库最新成交序号，发现引擎落后（例如重启）时用 `restore` 抬高序号并 `seed` 重放所有挂单。
@@ -469,6 +470,8 @@ sequenceDiagram
 
 撮合引擎、风控、结算、行情、前端和模拟器都从这份配置派生自己的市场列表。字段说明见 [config/README.md](../config/README.md)。
 
+`config/fee-tiers.json` 是 VIP 手续费等级的唯一来源（`packages/domain/src/fee-tiers.ts` 校验，可用 `WEB3_CEX_FEE_TIERS_CONFIG` 替换）：VIP0–VIP3 的 30 日成交量门槛（USDT 计）与 maker / taker 费率，VIP0 等于市场默认费率；`marketMakers` 列出做市商计划账户（演示的两个做市账户，固定 VIP0），市场监控用它把做市商标注为「做市商」而不告警。
+
 ## 8. 可观测性
 
 追踪默认关闭。`pnpm stack:start:observability` 会额外启动 Jaeger，并给每个 Node 服务注入 `OTEL_ENABLED=true`、`OTEL_SERVICE_NAME=<服务 id>`、`OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318`。
@@ -494,7 +497,7 @@ sequenceDiagram
 | 下单链路 | 同步串行调用 risk → ledger → engine | 预冻结在内存账户中完成，异步排队进入撮合 |
 | 事件总线 | 交易事件走 Redis Pub/Sub + Stream；Kafka 只承载账本 outbox 且无消费者 | 全链路统一事件总线，严格分区与消费组 |
 | 结算 | 每笔成交独立结算，轮询拉取 | 批量 / 流式清算，轧差 |
-| 风控 | 下单前静态规则 + 提币限额，无实时风控计数器、无 AML | 实时风控引擎、反洗钱、Travel Rule、设备与行为风控 |
+| 风控 | 下单前静态规则 + 提币限额；市场监控是每分钟一次的批量扫描（同账户自成交由撮合引擎 STP 阻止，监控按同一用户兜底，没有设备 / IP 关联图），无实时风控计数器、无 AML | 实时风控引擎、流式市场监控、反洗钱、Travel Rule、设备与行为风控 |
 | KYC | 演示用等级与人工审核，证件号只做脱敏存储 | 接入第三方 KYC/KYB 服务 |
 | 部署 | 单机、单库、单节点中间件，无高可用 | 多可用区、主从、灾备演练 |
 | 内部认证 | 共享 HMAC 密钥 + 本地监听 | mTLS、每服务独立凭据、网络隔离 |
@@ -508,9 +511,10 @@ sequenceDiagram
 | 充值、提币、indexer、托管、冷热分层、储备金证明 | [04 钱包与托管](../learning/04-wallet-custody.md)、[B06 资金与流动性管理](../learning/backstage/B06-treasury-liquidity.md)、[B04 系统对账](../learning/backstage/B04-reconciliation.md) |
 | 账本、冻结、outbox | [05 账本](../learning/05-ledger.md) |
 | 订单、风控预检、撮合引擎 | [06 订单与撮合](../learning/06-order-matching.md) |
-| 结算与手续费 | [07 清算结算与手续费](../learning/07-clearing-settlement-fees.md) |
+| 结算与手续费、VIP 等级 | [07 清算结算与手续费](../learning/07-clearing-settlement-fees.md)、[12 商业模式](../learning/12-business-model.md) |
 | 行情快照、公共 WS、K 线 | [08 行情](../learning/08-market-data.md) |
 | 风控规则、提币限额、市场暂停 | [09 风控](../learning/09-risk-control.md) |
+| 市场监控（对敲、幌骗、成交集中、价格异动） | [B05 业务风控](../learning/backstage/B05-business-risk.md) |
 | 恢复队列、故障实验室、追踪 | [13 可靠性与安全事故](../learning/13-reliability-security-incidents.md) |
 
 相关文档：[domain-model.md](./domain-model.md) · [event-catalog.md](./event-catalog.md) · [api-contracts.md](./api-contracts.md) · [ledger-service-design.md](./ledger-service-design.md) · [fault-lab.md](./fault-lab.md) · [troubleshooting.md](./troubleshooting.md)

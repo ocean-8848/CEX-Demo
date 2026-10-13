@@ -16,12 +16,13 @@
 当前实现:
 
 - HTTP 服务，默认端口 `3010`
-- PostgreSQL 持久化和数据库表结构初始化（[sql/](sql/) 下 `001`–`007` 迁移）
+- PostgreSQL 持久化和数据库表结构初始化（[sql/](sql/) 下 `001`–`008` 迁移）
 - 按 `tradeId` 幂等结算
 - 自动确保平台结算账户和手续费账户存在
 - 主链核心能力:
   - 卖方 `base` 锁定资金消耗、买方 `quote` 按实际成交额部分消耗
   - `base / quote settlement journal` 和平台 fee account 入账
+  - 手续费按成交上记录的费率计算（`order-service` 按双方 VIP 等级解析，见 `config/fee-tiers.json`），不在结算时重新解析；结算记录保存 `sellerFeeRate` / `buyerFeeRate` / `sellerFeeTier` / `buyerFeeTier`，journal 描述带 `(buyer|seller) fee <等级> @ <费率>`，两笔 journal 仍各自借贷平衡
   - 结算记录查询、物化汇总驱动的 settlement report
   - `global / market / user / user_market / order / order_market` 维度汇总
   - settlementId 回写 `order-service` 成交记录

@@ -57,6 +57,8 @@ export interface SettlementOrderClient {
     sellerAccountId: string;
     sellerFeeRate: string;
     buyerFeeRate?: string;
+    sellerFeeTier?: string;
+    buyerFeeTier?: string;
     executionId?: string;
     executionBatchId?: string;
     executionSequence?: number;

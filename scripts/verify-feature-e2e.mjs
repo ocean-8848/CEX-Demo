@@ -3,7 +3,8 @@
 //
 //   node ./scripts/verify-feature-e2e.mjs [section...]
 //
-// Sections: apikey, websocket, fees, sol, notifications, security, lab, hardening, matching, risk-security, reserves.
+// Sections: apikey, websocket, fees, sol, notifications, security, lab, hardening, matching, risk-security,
+// reserves, fees-surveillance.
 // Without arguments all sections run. The demo trader is restored afterwards
 // (2FA disabled, faults recovered); KYC tier and balances change, which
 // `pnpm demo:prepare` resets.
@@ -748,6 +749,135 @@ const sections = {
       assert.ok(!serialized.includes(maker.userId) && !serialized.includes(maker.accountId), "other users are not exposed");
     }
     return `sweep ${sweep.transferId.slice(0, 8)} confirmed · hot→cold same-approver 409 → reviewer approved · reserves covered (USDT ${usdt.reserveRatio}) · PoR root ${root.slice(0, 10)} verified (${snapshot.body.leafCount} leaves)`;
+  },
+
+  /** A7 VIP fee tiers (resolution, ops override, recorded rate) + A9 market surveillance alerts. */
+  async "fees-surveillance"(ctx) {
+    const market = config.demoMarket;
+    const runtime = await fetchJson(`${TRADER_WEB}/api/config`);
+    const definition = runtime.markets.find((item) => item.market === market);
+    assert.ok(definition, `${market} is configured`);
+    const userId = DEMO_TRADER.userId;
+    const sameRate = (left, right) => Math.abs(Number(left) - Number(right)) < 1e-12;
+
+    // 1. Own tier via the gateway: resolved from 30-day volume, VIP0 = market defaults.
+    const tier = await gateway("/fees/tier", { token: ctx.token });
+    assert.equal(tier.status, 200, JSON.stringify(tier.body));
+    assert.equal(tier.body.source, "volume");
+    assert.ok(sameRate(tier.body.tiers[0].takerFeeRate, definition.takerFeeRate), "VIP0 taker = market default");
+    assert.ok(sameRate(tier.body.tiers[0].makerFeeRate, definition.makerFeeRate), "VIP0 maker = market default");
+    assert.equal(tier.body.override?.note, undefined, "ops note is not exposed to the customer");
+    const ownRate = tier.body.markets.find((item) => item.market === market).takerFeeRate;
+
+    // 2. A taker fill records the resolved tier + rate on the trade and the settlement.
+    const first = await placeOrder(ctx.token, ctx.accountId, { market, price: await bestAsk(market) });
+    assert.equal(first.body.status, "filled", JSON.stringify(first.body));
+    const [firstSettlement] = await waitSettled(first.body.orderId);
+    assert.equal(firstSettlement.buyerFeeTier, tier.body.tier);
+    assert.ok(sameRate(firstSettlement.buyerFeeRate, ownRate), `buyer charged ${ownRate}`);
+    const trades = items((await gateway(`/trades?orderId=${first.body.orderId}`, { token: ctx.token })).body);
+    assert.equal(trades[0]?.buyerFeeTier, tier.body.tier, "tier recorded on the trade");
+
+    // 3. Ops override (audited) changes the rate of the next fill only.
+    const override = await ops(ctx.opsToken, `/users/${userId}/fee-tier/override`, { tier: "VIP2", note: "e2e 做市商计划" });
+    assert.equal(override.status, 201, JSON.stringify(override.body));
+    let vip2Rate;
+    try {
+      assert.equal(override.body.tier, "VIP2");
+      assert.equal(override.body.source, "override");
+      vip2Rate = override.body.markets.find((item) => item.market === market).takerFeeRate;
+      const second = await placeOrder(ctx.token, ctx.accountId, { market, price: await bestAsk(market) });
+      assert.equal(second.body.status, "filled", JSON.stringify(second.body));
+      const [secondSettlement] = await waitSettled(second.body.orderId);
+      assert.equal(secondSettlement.buyerFeeTier, "VIP2");
+      assert.ok(sameRate(secondSettlement.buyerFeeRate, vip2Rate), `VIP2 rate ${vip2Rate}`);
+      assert.ok(
+        Math.abs(Number(secondSettlement.buyerFeeAmount) - Number(secondSettlement.quantity) * Number(vip2Rate)) < 1e-12,
+        "buyer fee = quantity x VIP2 rate"
+      );
+      const journals = await gateway(`/trades/${secondSettlement.tradeId}/journals`, { token: ctx.token });
+      for (const journal of journals.body.journals) {
+        assert.equal(journal.balanced, true, `journal ${journal.stage} balances`);
+      }
+      const unchanged = items(await fetchJson(`${SETTLEMENT}/api/v1/settlement/trades?orderId=${first.body.orderId}`))[0];
+      assert.ok(sameRate(unchanged.buyerFeeRate, ownRate), "earlier trade keeps its recorded rate");
+    } finally {
+      const cleared = await ops(ctx.opsToken, `/users/${userId}/fee-tier/override/clear`, { note: "e2e 结束" });
+      assert.equal(cleared.status, 201, JSON.stringify(cleared.body));
+    }
+    const detail = (await http(`${OPS}/users/${userId}/fee-tier`, { token: ctx.opsToken })).body;
+    assert.equal(detail.source, "volume", "override cleared");
+    assert.deepEqual(detail.audit.slice(0, 2).map((entry) => entry.action), ["clear", "set"]);
+    const opsAudit = items((await http(`${OPS}/audit-logs/actions?action=fee_tier.override.set&targetId=${userId}&limit=1`, { token: ctx.opsToken })).body);
+    assert.equal(opsAudit[0]?.action, "fee_tier.override.set", "override is in the ops action audit");
+
+    // 4. Self-trade attempt: STP (matching engine, per account) expires the taker,
+    //    so no trade, no fee and no wash-trade evidence. The wash detector stays as
+    //    defence in depth for same-user trades STP cannot see (e.g. across accounts).
+    const step = Number(definition.priceStep);
+    const decimals = (definition.priceStep.split(".")[1] ?? "").length;
+    let stpOrderId;
+    for (let attempt = 0; attempt < 4 && !stpOrderId; attempt += 1) {
+      const book = await fetchJson(`${config.marketDataBaseUrl}/api/v1/market-data/depth?market=${market}`);
+      const bid = Number(book.bids[0]?.price ?? 0);
+      const ask = Number(book.asks[0]?.price ?? 0);
+      if (!(ask - bid > step * 2)) {
+        await sleep(1_500);
+        continue;
+      }
+      const price = (Math.round((bid + ask) / 2 / step) * step).toFixed(decimals);
+      const resting = await placeOrder(ctx.token, ctx.accountId, { market, side: "sell", price, timeInForce: "gtc" });
+      assert.equal(resting.status, 201, JSON.stringify(resting.body));
+      const taker = await placeOrder(ctx.token, ctx.accountId, { market, side: "buy", price });
+      if (taker.body.rejectedReason === "stp_expired_taker") {
+        stpOrderId = taker.body.orderId;
+        assert.equal(taker.body.filledQuantity, "0");
+      }
+      await gateway(`/orders/${resting.body.orderId}/cancel`, { token: ctx.token, body: {} });
+    }
+    assert.ok(stpOrderId, "STP expired the self-crossing taker");
+    assert.equal(items((await gateway(`/trades?orderId=${stpOrderId}`, { token: ctx.token })).body).length, 0, "no self-trade");
+    assert.equal(items(await fetchJson(`${SETTLEMENT}/api/v1/settlement/trades?orderId=${stpOrderId}`)).length, 0, "no fee without a fill");
+
+    // 5. Spoofing: three large bids far below the market, each cancelled within seconds.
+    const quantityStep = Number(definition.quantityStep);
+    const qDecimals = (definition.quantityStep.split(".")[1] ?? "").length;
+    const spoofIds = [];
+    for (let index = 0; index < 3; index += 1) {
+      const book = await fetchJson(`${config.marketDataBaseUrl}/api/v1/market-data/depth?market=${market}`);
+      const price = (Math.floor((Number(book.bids[0].price) * 0.9) / step) * step).toFixed(decimals);
+      const quantity = (Math.ceil(2_500 / Number(price) / quantityStep) * quantityStep).toFixed(qDecimals);
+      const order = await placeOrder(ctx.token, ctx.accountId, { market, price, quantity, timeInForce: "gtc" });
+      assert.equal(order.body.status, "accepted", JSON.stringify(order.body));
+      await sleep(800);
+      const cancel = await gateway(`/orders/${order.body.orderId}/cancel`, { token: ctx.token, body: {} });
+      assert.equal(cancel.body.status, "cancelled");
+      spoofIds.push(order.body.orderId);
+    }
+
+    // 6. Scan now (audited) and review the alerts with evidence.
+    const scan = await ops(ctx.opsToken, "/surveillance/scan", {});
+    assert.equal(scan.status, 201, JSON.stringify(scan.body));
+    assert.equal(scan.body.error, undefined, `scan error: ${scan.body.error}`);
+    const findAlert = async (type, predicate) =>
+      items((await http(`${OPS}/surveillance/alerts?type=${type}&userId=${userId}&status=open&limit=50`, { token: ctx.opsToken })).body).find(predicate);
+    const washAlerts = items((await http(`${OPS}/surveillance/alerts?type=wash_trade&userId=${userId}&limit=50`, { token: ctx.opsToken })).body);
+    assert.ok(washAlerts.every((alert) => !alert.evidence.orderIds.includes(stpOrderId)), "STP-expired order is not wash evidence");
+    const spoof = await findAlert("spoofing", (alert) => spoofIds.every((id) => alert.evidence.orderIds.includes(id)));
+    assert.ok(spoof, "spoofing alert lists the cancelled orders as evidence");
+    const overview = (await http(`${OPS}/surveillance/overview`, { token: ctx.opsToken })).body;
+    assert.ok(overview.marketMakers.length > 0, "market makers are labelled");
+    const makerAlerts = items((await http(`${OPS}/surveillance/alerts?userId=${overview.marketMakers[0].userId}&status=open&includeMarketMakers=true`, { token: ctx.opsToken })).body);
+    assert.equal(makerAlerts.length, 0, "routine market-maker activity raises no alerts by default");
+
+    const acknowledged = await ops(ctx.opsToken, `/surveillance/alerts/${spoof.alertId}/status`, { status: "acknowledged", note: "e2e 跟进" });
+    assert.equal(acknowledged.body.status, "acknowledged", JSON.stringify(acknowledged.body));
+    const noNote = await ops(ctx.opsToken, `/surveillance/alerts/${spoof.alertId}/status`, { status: "dismissed" });
+    assert.equal(noNote.status, 400, "a note is required");
+    const dismissed = await ops(ctx.opsToken, `/surveillance/alerts/${spoof.alertId}/status`, { status: "dismissed", note: "e2e 演示数据" });
+    assert.equal(dismissed.body.status, "dismissed");
+    assert.deepEqual(dismissed.body.events.map((event) => event.action), ["detected", "acknowledged", "dismissed"]);
+    return `tier ${tier.body.tier}→VIP2 (${ownRate}→${vip2Rate}) · STP self-cross: no trade / no fee · spoof ${spoof.alertId.slice(0, 8)} reviewed`;
   }
 };
 

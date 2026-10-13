@@ -9,6 +9,7 @@ import {
   type TradeEventVersionGate
 } from "@web3-cex/domain";
 
+import { FeeTierService } from "../application/fee-tier-service.js";
 import { OrderApplicationService } from "../application/order-application-service.js";
 import { OrderOpsService } from "../application/order-ops-service.js";
 import { OrderRecoveryWorker } from "../application/order-recovery-worker.js";
@@ -29,7 +30,14 @@ import type {
   ListSpotOrderRecoveryJobsQuery,
   ListSpotTradesQuery
 } from "../domain/types.js";
+import type { SurveillanceDataSource } from "../domain/surveillance-data.js";
+import { InMemoryFeeTierRepository } from "../infrastructure/in-memory-fee-tier-repository.js";
 import { InMemoryOrderRepository } from "../infrastructure/in-memory-order-repository.js";
+import { PostgresFeeTierRepository } from "../infrastructure/postgres-fee-tier-repository.js";
+import {
+  PostgresSurveillanceDataSource,
+  RepositorySurveillanceDataSource
+} from "../infrastructure/surveillance-data-sources.js";
 import { HttpLedgerClient } from "../infrastructure/http-ledger-client.js";
 import { HttpRiskClient } from "../infrastructure/http-risk-client.js";
 import { HttpSettlementClient } from "../infrastructure/http-settlement-client.js";
@@ -42,6 +50,10 @@ import { TcpMatchingEngineClient } from "../infrastructure/tcp-matching-engine-c
 @Injectable()
 export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
   private readonly applicationService: OrderApplicationService;
+  /** A7 VIP fee tiers (resolution, overrides, audit). */
+  readonly feeTiers: FeeTierService;
+  /** A9 read-only activity window for risk-service surveillance. */
+  readonly surveillanceData: SurveillanceDataSource;
   private readonly opsService: OrderOpsService;
   private readonly recoveryWorker: OrderRecoveryWorker;
   private readonly stopOrderTriggerWorker: StopOrderTriggerWorker;
@@ -105,6 +117,16 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
             return new PostgresOrderRepository(this.pool, this.pool);
           })();
 
+    this.feeTiers = new FeeTierService(
+      this.pool
+        ? new PostgresFeeTierRepository(this.pool)
+        : new InMemoryFeeTierRepository(() => repository.listTrades({})),
+      { cacheMs: Number(process.env.ORDER_FEE_TIER_CACHE_MS ?? "30000") }
+    );
+    this.surveillanceData = this.pool
+      ? new PostgresSurveillanceDataSource(this.pool)
+      : new RepositorySurveillanceDataSource(repository);
+
     const redisUrl = process.env.ORDER_EVENT_REDIS_URL ?? "redis://127.0.0.1:6379";
     if (this.eventPublisherMode === "redis" || this.eventPublisherMode === "redis_stream") {
         this.redisClient = createOrderRedisClient(redisUrl);
@@ -141,7 +163,8 @@ export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
       {
         settlementMode: this.settlementMode,
         tradeEventVersionGate: this.tradeEventVersionGate,
-        eventPublisher: this.eventPublisher
+        eventPublisher: this.eventPublisher,
+        feeTierResolver: process.env.ORDER_FEE_TIERS_ENABLED === "false" ? undefined : this.feeTiers
       }
     );
     this.opsService = new OrderOpsService(

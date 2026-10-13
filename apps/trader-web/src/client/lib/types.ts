@@ -180,6 +180,9 @@ export interface TradeRecord {
   sellerUserId?: string;
   sellerFeeRate?: string;
   buyerFeeRate?: string;
+  /** VIP tier each side's rate was resolved from (order-service, absent on older trades). */
+  sellerFeeTier?: string;
+  buyerFeeTier?: string;
   /** Public trades from market-data carry the taker side. */
   side?: OrderSide;
   takerSide?: OrderSide;

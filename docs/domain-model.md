@@ -58,14 +58,16 @@ erDiagram
 | 链上观测 | blockchain-indexer | `blockchain_deposit_observations`、`blockchain_withdrawal_observations`、`blockchain_scan_cursors` | 充值观测 `(network, tx_hash, address)` 唯一；提币观测 `(network, tx_hash)` 唯一 |
 | 托管转账 | custody-adapter | `custody_transfers`、`custody_transfer_attempts` | `idempotency_key` 唯一 |
 | 现货订单 `SpotOrder` | order-service | `spot_orders` | `idempotency_key` 唯一，记录冻结资产与金额 |
-| 成交 `SpotTrade` | order-service | `spot_trades` | 带撮合序号、`replayCursor`、协议版本、双方费率 |
+| 成交 `SpotTrade` | order-service | `spot_trades` | 带撮合序号、`replayCursor`、协议版本、双方费率与费率来源的 VIP 等级（`buyer_fee_tier` / `seller_fee_tier`） |
+| 手续费等级指定 | order-service | `spot_fee_tier_overrides`、`spot_fee_tier_override_audit` | 每个用户最多一条运营指定；每次设置 / 取消追加一条审计（操作人、备注、前后等级） |
 | 订单恢复任务 | order-service | `spot_order_recovery_jobs` | 撮合后落库 / 结算失败时的补偿任务 |
-| 结算 `TradeSettlement` | settlement-service | `trade_settlements` | `trade_id` 唯一 |
+| 结算 `TradeSettlement` | settlement-service | `trade_settlements` | `trade_id` 唯一；保存实际收费的双方费率与 VIP 等级 |
 | 结算恢复任务 / 消费位点 | settlement-service | `trade_settlement_recovery_jobs`、`trade_event_consumer_checkpoints` | |
 | 市场状态覆盖 | risk-service | `risk_market_status_overrides` | 只允许 `listed` / `halted` |
+| 市场监控告警 | risk-service | `risk_surveillance_alerts`、`risk_surveillance_alert_events` | `alert_key` 唯一（检测器 + 市场 + 用户 + 窗口锚点）；状态 `open` / `acknowledged` / `dismissed`，每次检测与处理追加一条事件 |
 | 运营操作审计 | ops-console | `ops_action_audit_logs` | |
 
-市场和币种不是数据库实体，而是 `config/markets.json` 中的配置，见 [architecture.md 第 7 节](./architecture.md#7-市场配置)。
+市场和币种不是数据库实体，而是 `config/markets.json` 中的配置，见 [architecture.md 第 7 节](./architecture.md#7-市场配置)。VIP 手续费等级阶梯和做市商计划成员同样是配置（`config/fee-tiers.json`），数据库里只有运营指定和成交上记录的结果。
 
 ## 2. 账本
 
@@ -339,9 +341,29 @@ stateDiagram-v2
 
 结束后平台结算账户净额为 0，手续费沉淀在 `fee` 账户。
 
+`sellerFeeRate` / `buyerFeeRate` 是成交时由 `order-service` 解析并写进成交的值：
+
+- 等级：运营指定（`spot_fee_tier_overrides`）> `config/fee-tiers.json` 中做市商计划的固定等级 > 30 日成交量（该用户在报价资产为 `volumeAsset` 的市场里作为买方或卖方的成交额之和）对应的最高等级。
+- 费率：按本笔成交中的 maker / taker 角色取 `min(等级费率, 市场费率)`；VIP0 等于市场默认费率。
+- 记录：`spot_trades.buyer_fee_rate` / `seller_fee_rate` 与 `buyer_fee_tier` / `seller_fee_tier`，随 `trade.executed` 事件传给结算，结算记录也保存一份；quote 分录的 journal 描述带上 `seller fee <等级> @ <费率>`，base 分录带上 `buyer fee …`。重放或恢复只用记录值，不重新解析等级。
+
 ### 6.3 消费位点
 
 `trade_event_consumer_checkpoints` 以 `(consumerId, market)` 记录最后处理的 `eventId`、`tradeId`、`executionSequence`、`replayCursor`、`streamEntryId`。新事件序号小于等于位点视为重复；序号跳跃（大于位点 + 1）抛出 `SETTLEMENT_EVENT_SEQUENCE_GAP`。
+
+### 6.4 市场监控告警
+
+```mermaid
+stateDiagram-v2
+  [*] --> open: 检测命中
+  open --> acknowledged: 确认（跟进中）
+  open --> dismissed: 忽略
+  acknowledged --> dismissed: 忽略
+  acknowledged --> open: 重新打开
+  dismissed --> open: 重新打开
+```
+
+每次状态变化都必须带备注，并在 `risk_surveillance_alert_events` 追加一条（`detected` / `acknowledged` / `dismissed` / `reopened`）。仍为 `open` 的告警在后续扫描中更新证据和最近命中时间；已处理的告警保持处理结论，只有出现新的证据（之前任何告警都没覆盖的成交 / 委托）才会生成新的告警。
 
 ## 7. 身份与 KYC
 
@@ -438,3 +460,5 @@ interface DomainEvent<TPayload> {
 - [06 订单与撮合](../learning/06-order-matching.md)：订单状态机
 - [07 清算结算与手续费](../learning/07-clearing-settlement-fees.md)：结算分录与手续费
 - [09 风控](../learning/09-risk-control.md)：风控规则、限额、市场状态
+- [12 商业模式](../learning/12-business-model.md)：VIP 手续费等级、做市商计划
+- [B05 业务风控](../learning/backstage/B05-business-risk.md)：市场监控告警

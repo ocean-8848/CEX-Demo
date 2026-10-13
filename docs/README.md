@@ -29,7 +29,7 @@
 - 接入：[api-gateway](../services/api-gateway/README.md)
 - 交易：[risk-service](../services/risk-service/README.md) · [order-service](../services/order-service/README.md) · [matching-engine](../engines/matching-engine) · [settlement-service](../services/settlement-service/README.md) · [market-data-service](../services/market-data-service/README.md)
 - 资金：[identity-service](../services/identity-service/README.md) · [wallet-service](../services/wallet-service/README.md) · [blockchain-indexer](../services/blockchain-indexer/README.md) · [custody-adapter](../services/custody-adapter/README.md) · [ledger-service](../services/ledger-service/README.md)
-- 配置与基础设施：[config/markets.json](../config/README.md) · [infra/local](../infra/local/README.md)
+- 配置与基础设施：[config/markets.json 与 fee-tiers.json](../config/README.md) · [infra/local](../infra/local/README.md)
 
 ## 推荐阅读顺序
 

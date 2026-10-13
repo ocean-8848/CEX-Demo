@@ -54,6 +54,7 @@
 - `GET /api/v1/gateway/orders/{orderId}`
 - `POST /api/v1/gateway/orders/{orderId}/cancel`
 - `GET /api/v1/gateway/trades`
+- `GET /api/v1/gateway/fees/tier`：本人 VIP 手续费等级、实际费率、30 日成交量与距下一等级的差额（转发 order-service `/api/v1/fee-tiers/users/:userId`，去掉运营备注；`src/http/fee-tier.controller.ts`）
 - `GET /api/v1/gateway/trades/{tradeId}/journals`：成交分录（T 型账户视图），只允许买方 / 卖方读取，对手方账户脱敏为「对手方」；脱敏与借贷平衡校验在 `src/domain/journal-view.ts`，分录读取复用 `LedgerGatewayClient.listJournalsWithEntries`
 - `WS /api/v1/gateway/realtime`
 
