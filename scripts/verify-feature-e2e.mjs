@@ -3,7 +3,7 @@
 //
 //   node ./scripts/verify-feature-e2e.mjs [section...]
 //
-// Sections: apikey, websocket, fees, sol, notifications, security, lab.
+// Sections: apikey, websocket, fees, sol, notifications, security, lab, reserves.
 // Without arguments all sections run. The demo trader is restored afterwards
 // (2FA disabled, faults recovered); KYC tier and balances change, which
 // `pnpm demo:prepare` resets.
@@ -12,6 +12,7 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 
 import {
+  DEMO_MAKERS,
   DEMO_OPS,
   DEMO_OPS_REVIEWER,
   DEMO_TRADER,
@@ -391,6 +392,94 @@ const sections = {
 
     assert.equal((await ops(t, "/lab/recover-all", {})).status, 201);
     return "settlement pause/resume · custody failover · reorg ack · engine reset + self-heal";
+  },
+
+  /** Custody layering: sweep, hot -> cold approval, wallet-vs-ledger reconciliation, proof of reserves. */
+  async reserves(ctx) {
+    const t = ctx.opsToken;
+    const treasuryNumber = (rows, assetCode, field) => Number(rows.find((row) => row.assetCode === assetCode)?.[field] ?? NaN);
+
+    // 1. A faucet deposit is credited, then swept from the deposit address into the hot wallet.
+    const faucet = await http(`${TRADER_WEB}/api/demo/faucet`, { token: ctx.token, body: { assetCode: "USDT", amount: "25" } });
+    assert.equal(faucet.status, 201, JSON.stringify(faucet.body));
+    const deposit = await waitFor("USDT faucet deposit credited", async () =>
+      items((await gateway("/deposits?limit=10", { token: ctx.token })).body).find(
+        (item) => item.txHash === faucet.body.txHash && item.status === "credited"
+      ), 60_000);
+    const sweepRun = await ops(t, "/treasury/sweeps/run", {});
+    assert.equal(sweepRun.status, 201, JSON.stringify(sweepRun.body));
+    const sweep = await waitFor("sweep of the deposit confirmed", async () => {
+      const sweeps = items((await ops(t, "/treasury/transfers?kind=sweep&limit=50")).body).filter(
+        (item) => item.fromAddress === faucet.body.address
+      );
+      for (const candidate of sweeps) {
+        const detail = (await ops(t, `/treasury/transfers/${candidate.transferId}`)).body;
+        if ((detail.sweptDepositIds ?? []).includes(deposit.depositId)) {
+          if (detail.status === "failed") {
+            // The deposit is released and swept again by the next run.
+            await ops(t, "/treasury/sweeps/run", {});
+            return null;
+          }
+          return detail.status === "confirmed" ? detail : null;
+        }
+      }
+      return null;
+    }, 90_000, 2_000);
+    assert.equal(sweep.toWallet, "hot");
+
+    // 2. hot -> cold rebalance: the proposer cannot approve, a second operator can.
+    const before = (await ops(t, "/treasury/overview")).body;
+    const coldBefore = treasuryNumber(before.holdings, "USDT", "cold");
+    const proposal = await ops(t, "/treasury/transfers", { kind: "rebalance_to_cold", assetCode: "USDT", amount: "100", reason: "e2e drill" });
+    assert.equal(proposal.status, 201, JSON.stringify(proposal.body));
+    assert.equal(proposal.body.status, "proposed");
+    const same = await ops(t, `/treasury/transfers/${proposal.body.transferId}/approve`, { note: "self" });
+    assert.equal(same.status, 409, JSON.stringify(same.body));
+    assert.match(JSON.stringify(same.body), /TREASURY_SAME_APPROVER/);
+    const reviewer = await opsLogin(DEMO_OPS_REVIEWER);
+    const approved = await ops(reviewer, `/treasury/transfers/${proposal.body.transferId}/approve`, { note: "e2e" });
+    assert.equal(approved.status, 201, JSON.stringify(approved.body));
+    assert.equal(approved.body.status, "broadcasted");
+    await waitFor("rebalance confirmed on the demo chain", async () =>
+      (await ops(t, `/treasury/transfers/${proposal.body.transferId}`)).body.status === "confirmed", 60_000, 2_000);
+    const after = (await ops(t, "/treasury/overview")).body;
+    assert.ok(treasuryNumber(after.holdings, "USDT", "cold") >= coldBefore + 100, "cold wallet received the rebalance");
+
+    // 3. Wallet-vs-ledger: every asset covered (the demo reserve keeper backs opening-balance seeding).
+    const reconciliation = await waitFor("treasury reconciliation covered", async () => {
+      const report = (await ops(t, "/treasury/reconciliation")).body;
+      return report?.status === "covered" ? report : null;
+    }, 45_000, 3_000);
+    const usdt = reconciliation.items.find((item) => item.assetCode === "USDT");
+    assert.ok(Number(usdt.reserveRatio) >= 1, `USDT reserve ratio ${usdt.reserveRatio}`);
+    assert.equal(await reconciliationMismatches(t), 0, "ledger reconciliation is untouched");
+
+    // 4. Proof of reserves: the trader verifies their own leaf; nobody else's data is exposed.
+    const snapshot = await ops(t, "/treasury/proof-of-reserves/snapshots", {});
+    assert.equal(snapshot.status, 201, JSON.stringify(snapshot.body));
+    const por = await gateway("/proof-of-reserves", { token: ctx.token });
+    assert.equal(por.status, 200, JSON.stringify(por.body));
+    assert.equal(por.body.available, true);
+    assert.equal(por.body.snapshot.merkleRoot, snapshot.body.merkleRoot);
+    assert.equal(por.body.included, true, "the demo trader is a leaf");
+    const sha = (message) => createHash("sha256").update(message, "utf8").digest("hex");
+    const leaf = por.body.leaf;
+    const canonical = Object.entries(leaf.balances)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([asset, amount]) => `${asset}=${amount}`)
+      .join(",");
+    assert.equal(sha(`por-user:v1|${DEMO_TRADER.userId}|${leaf.nonce}`), leaf.userHash);
+    assert.equal(sha(`por-leaf:v1|${leaf.userHash}|${canonical}`), leaf.leafHash);
+    const root = por.body.proof.reduce(
+      (current, step) => sha(step.position === "left" ? `por-node:v1|${step.hash}|${current}` : `por-node:v1|${current}|${step.hash}`),
+      leaf.leafHash
+    );
+    assert.equal(root, snapshot.body.merkleRoot, "Merkle path leads to the published root");
+    const serialized = JSON.stringify(por.body);
+    for (const maker of Object.values(DEMO_MAKERS)) {
+      assert.ok(!serialized.includes(maker.userId) && !serialized.includes(maker.accountId), "other users are not exposed");
+    }
+    return `sweep ${sweep.transferId.slice(0, 8)} confirmed · hot→cold same-approver 409 → reviewer approved · reserves covered (USDT ${usdt.reserveRatio}) · PoR root ${root.slice(0, 10)} verified (${snapshot.body.leafCount} leaves)`;
   }
 };
 
