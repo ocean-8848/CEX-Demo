@@ -399,7 +399,11 @@ SAFU（Secure Asset Fund for Users，用户安全资产基金）：币安设立�
 | 提币冻结、消耗、解冻 | `wallet-service` 调用 `ledger-service` 的 `freeze` / `consume` / `release` | 已实现 |
 | 签名与广播 | `services/custody-adapter`：`mock-custody`、`evm-hot-wallet` provider | 已实现，支持路由、熔断、重试 |
 | 陈旧提币清理 | `reconcile-stale-withdrawals` 脚本 | 已实现 |
-| 冷热分层、归集、PoR | `hot_wallet`、`cold_wallet` 只是保留的账户类型，演示流程未使用（`docs/domain-model.md` 第 2.1 节）；`docs/security.md` 第 4 节把冷热分离列为缺口 | 本仓库未实现 |
+| 冷热分层（3.5） | `services/wallet-service` 的 treasury 模块：持仓分 充值地址 / 热钱包 / 冷钱包 三层，由 `src/domain/treasury-policy.ts` 的 `computeTreasuryHoldings` 从充值、提现、`treasury_transfers` 推导；提现一律从热钱包付出 | 已实现（账面分层；冷钱包没有真正的离线签名，见 `docs/security.md` 第 2.10 节） |
+| 水位调拨 | `evaluateHotWalletWatermark`（`TREASURY_HOT_WALLET_WATERMARKS`）：高于上限提出 热→冷、低于下限提出 冷→热；提案在 ops-console「钱包与储备金」审批，提案人不能批准自己的提案 | 已实现（单人审批，无分级审批） |
+| 归集（3.6） | `TreasuryService.runSweeps`：已入账充值按 (充值地址, 币种) 各发一笔 `sweep` 到热钱包，经 `custody-adapter` 广播、模拟链确认；`demo-simulator` 每 10 个块触发一次 | 已实现（不模拟 ERC-20 归集前的 Gas 补充） |
+| 储备金证明（3.9） | `services/wallet-service/src/domain/proof-of-reserves.ts` 构建 Merkle 树（叶子 = 盐化用户哈希 + 各币种余额）；ops-console 生成快照；trader-web「资产 → 储备金证明」用 Web Crypto 在浏览器里逐层验证（`apps/trader-web/src/client/lib/por-verify.ts`），并展示逐币种储备率 | 已实现 Merkle 包含证明；没有 zk-SNARK，资产端没有链上地址控制权证明 |
+| 钱包 vs 账本 | `GET /api/v1/wallet/treasury/reconciliation`：链上储备 vs `ledger-service` 用户负债（扣除在途提现） | 已实现 |
 
 ---
 

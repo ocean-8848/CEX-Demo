@@ -13,6 +13,11 @@
 // It also exposes a tiny faucet API (used by trader-web through /api/demo/*)
 // that lets a logged-in user "send" test funds to their own deposit address.
 //
+// Treasury: broadcast sweeps and hot <-> cold transfers gain confirmations like
+// withdrawals and are reported to wallet-service; every
+// DEMO_TREASURY_INTERVAL_BLOCKS blocks the simulator runs the sweep job, the
+// hot wallet watermark check and the demo reserve keeper (scripts/treasury-demo-lib.mjs).
+//
 // Fault lab (M3-2): /internal/lab/* lets ops-console halt block production and
 // trigger a chain reorganisation. Those routes require an HMAC-signed internal
 // request (caller ops-console / demo-scripts) and are never proxied by trader-web.
@@ -40,6 +45,7 @@ import {
   listConfiguredNetworks,
   networkForAsset
 } from "./market-config.mjs";
+import { readTreasuryDemoSettings, runTreasuryJobs } from "./treasury-demo-lib.mjs";
 
 const config = loadDemoConfig(process.env);
 const PORT = Number(process.env.DEMO_SIMULATOR_PORT ?? "3014");
@@ -53,6 +59,9 @@ const FAULT_LAB_ENABLED = process.env.DEMO_FAULT_LAB_ENABLED !== "false";
 const CHAIN_HALT_MAX_MS = Number(process.env.DEMO_CHAIN_HALT_MAX_MS ?? "600000");
 const CHAIN_HALT_DEFAULT_MS = Number(process.env.DEMO_CHAIN_HALT_DEFAULT_MS ?? "180000");
 const LAB_ALLOWED_CALLERS = ["ops-console", "demo-scripts"];
+const TREASURY_ENABLED = process.env.DEMO_TREASURY_ENABLED !== "false";
+const TREASURY_INTERVAL_BLOCKS = Math.max(Number(process.env.DEMO_TREASURY_INTERVAL_BLOCKS ?? "10") || 10, 1);
+const TREASURY_SETTINGS = readTreasuryDemoSettings(process.env);
 // A reorg deeper than the confirmation threshold could orphan a deposit that
 // was already credited, which the ledger cannot undo; keep it strictly below.
 const MAX_REORG_DEPTH = Math.max(REQUIRED_CONFIRMATIONS - 1, 1);
@@ -77,6 +86,11 @@ const state = {
   lastChainError: null,
   // txHash -> block number in which the withdrawal was "mined"
   withdrawalBlocks: new Map(),
+  // txHash -> block number of a broadcast treasury transfer (sweep / rebalance)
+  treasuryBlocks: new Map(),
+  treasuryTicks: 0,
+  lastTreasuryRun: null,
+  lastTreasuryError: null,
   faucetCount: 0,
   makersPaused: false,
   makerTickInFlight: null,
@@ -106,6 +120,9 @@ async function chainTick() {
     try {
       await advancePendingDeposits();
       await advanceBroadcastedWithdrawals();
+      if (TREASURY_ENABLED) {
+        await advanceTreasuryTransfers();
+      }
       state.lastChainError = null;
     } catch (error) {
       state.lastChainError = readErrorMessage(error);
@@ -229,6 +246,57 @@ async function advanceBroadcastedWithdrawals() {
     if (confirmations >= REQUIRED_CONFIRMATIONS) {
       state.withdrawalBlocks.delete(withdrawal.txHash);
     }
+  }
+}
+
+// Internal treasury transfers (deposit -> hot sweeps, hot <-> cold rebalances)
+// are on-chain transactions too: report their confirmations to wallet-service,
+// which moves the amount from "in transit" into the target wallet.
+async function advanceTreasuryTransfers() {
+  const broadcasted = normalizePaged(
+    await fetchJson(
+      `${config.walletBaseUrl}/api/v1/wallet/treasury/transfers?${new URLSearchParams({
+        status: "broadcasted",
+        limit: "100"
+      })}`
+    )
+  ).items;
+
+  for (const transfer of broadcasted) {
+    if (!transfer.txHash) {
+      continue;
+    }
+    if (!state.treasuryBlocks.has(transfer.txHash)) {
+      state.treasuryBlocks.set(transfer.txHash, state.blockHeight);
+    }
+    const minedAt = state.treasuryBlocks.get(transfer.txHash);
+    const confirmations = Math.min(state.blockHeight - minedAt + 1, REQUIRED_CONFIRMATIONS);
+    await fetchJson(`${config.walletBaseUrl}/api/v1/wallet/treasury/transfers/confirm`, {
+      method: "POST",
+      body: JSON.stringify({
+        network: transfer.network,
+        txHash: transfer.txHash,
+        confirmations,
+        blockNumber: minedAt
+      })
+    });
+    if (confirmations >= REQUIRED_CONFIRMATIONS) {
+      state.treasuryBlocks.delete(transfer.txHash);
+    }
+  }
+}
+
+// Sweep job + hot wallet watermark check + demo reserve keeper.
+async function treasuryTick() {
+  if (isChainHalted()) {
+    return;
+  }
+  try {
+    state.lastTreasuryRun = { at: new Date().toISOString(), ...(await runTreasuryJobs(config, TREASURY_SETTINGS)) };
+    state.treasuryTicks += 1;
+    state.lastTreasuryError = null;
+  } catch (error) {
+    state.lastTreasuryError = readErrorMessage(error);
   }
 }
 
@@ -759,6 +827,11 @@ async function triggerReorg(body = {}) {
         withdrawalsReincluded += 1;
       }
     }
+    for (const [txHash, minedAt] of state.treasuryBlocks) {
+      if (minedAt > forkPoint) {
+        state.treasuryBlocks.set(txHash, replacementBlock);
+      }
+    }
 
     state.reorgCount += 1;
     state.lastReorg = {
@@ -862,6 +935,15 @@ function buildStatus() {
     faucet: {
       limits: FAUCET_LIMITS,
       requests: state.faucetCount
+    },
+    treasury: {
+      enabled: TREASURY_ENABLED,
+      intervalBlocks: TREASURY_INTERVAL_BLOCKS,
+      reserveKeeper: TREASURY_SETTINGS,
+      ticks: state.treasuryTicks,
+      inFlight: state.treasuryBlocks.size,
+      lastRun: state.lastTreasuryRun,
+      lastError: state.lastTreasuryError
     }
   };
 }
@@ -993,6 +1075,9 @@ function schedule(task, intervalMs) {
 }
 
 const timers = [schedule(chainTick, BLOCK_MS)];
+if (TREASURY_ENABLED) {
+  timers.push(schedule(treasuryTick, BLOCK_MS * TREASURY_INTERVAL_BLOCKS));
+}
 if (MAKERS_ENABLED) {
   timers.push(schedule(makerTick, MAKER_INTERVAL_MS));
 }

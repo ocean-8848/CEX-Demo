@@ -154,6 +154,9 @@ export function AssetsPage(props: { action?: string; asset?: string; tab?: strin
           <Button variant="ghost" size="sm" onClick={() => navigate("/assets/ledger")} id="open-statement">
             资金流水 / 对账单
           </Button>
+          <Button variant="ghost" size="sm" onClick={() => navigate("/assets/reserves")} id="open-reserves">
+            储备金证明
+          </Button>
           <Button variant="ghost" size="sm" loading={state.accountLoading} onClick={() => void actions.refreshAccount()} id="refresh-account">
             刷新
           </Button>

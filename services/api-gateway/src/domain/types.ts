@@ -220,6 +220,8 @@ export interface IdentityGatewayClient {
 export interface WalletGatewayClient {
   /** M4-4 / M5-2: tier limits, today's usage and security cooldown. */
   getWithdrawalLimits(userId: string): Promise<Record<string, unknown>>;
+  /** Proof of reserves: the latest snapshot plus the caller's own leaf and Merkle path. */
+  getProofOfReserves?(userId: string): Promise<Record<string, unknown>>;
   createDepositAddress(command: {
     userId: string;
     ledgerAccountId: string;

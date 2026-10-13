@@ -32,6 +32,7 @@
 - `GET /api/v1/gateway/auth/kyc`（当前等级与最近申请）
 - `POST /api/v1/gateway/auth/kyc/requests`（`{ requestedTier: "L1" | "L2", fullName, idNumber }`，演示字段）
 - `GET /api/v1/gateway/withdrawals/limits`（等级、各币种限额、今日已用、双人复核阈值、冷却期；session 或带 `read` 的 API Key）
+- `GET /api/v1/gateway/proof-of-reserves`（最新储备金证明快照 + 当前用户自己的 Merkle 叶子与兄弟哈希路径；userId 取自认证主体，转发 wallet-service `/treasury/proof-of-reserves/me`）
 - `GET /api/v1/gateway/accounts/spot`（返回当前用户现货账户；首次调用时以确定性 ID 幂等开户，注册时也会自动开户）
 - `GET /api/v1/gateway/balances`
 - `POST /api/v1/gateway/deposit-addresses`

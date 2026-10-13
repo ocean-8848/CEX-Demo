@@ -326,6 +326,17 @@ export class ApiGatewayApplicationService {
     });
   }
 
+  /**
+   * Proof of reserves for the caller: the userId always comes from the
+   * authenticated principal, so a user can only ever see their own leaf.
+   */
+  async getProofOfReserves(principal: GatewayPrincipal) {
+    if (!this.walletClient.getProofOfReserves) {
+      throw new ApiGatewayError("PROOF_OF_RESERVES_UNAVAILABLE", 503, "Proof of reserves is not available");
+    }
+    return this.walletClient.getProofOfReserves(principal.userId);
+  }
+
   // --- login security (session only) ----------------------------------------
 
   async listLoginEvents(principal: GatewayPrincipal, query: { limit?: number; offset?: number }) {

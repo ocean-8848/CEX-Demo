@@ -4,6 +4,12 @@ import type { Pool } from "pg";
 
 import { LedgerAlertRemediator } from "../application/ledger-alert-remediator.js";
 import { LedgerApplicationService } from "../application/ledger-application-service.js";
+import {
+  buildLiabilitySummary,
+  buildUserLiabilities,
+  type LedgerLiabilitySummary,
+  type LedgerUserLiabilityList
+} from "../application/ledger-liabilities.js";
 import type {
   LedgerAccountReplayReport,
   LedgerBalanceReconciliationReport,
@@ -206,6 +212,18 @@ export class LedgerHttpService implements OnModuleDestroy {
     } finally {
       await transport.disconnect();
     }
+  }
+
+  /** Customer liabilities per asset (user-owned accounts, available + locked). */
+  async getLiabilitySummary(params: { assetCode?: AssetCode }): Promise<LedgerLiabilitySummary> {
+    const rows = await this.requireOpsReporter().listUserBalanceRows(params);
+    return buildLiabilitySummary({ generatedAt: new Date().toISOString(), rows });
+  }
+
+  /** Per-user liability totals: the leaves of the proof-of-reserves Merkle tree. */
+  async listUserLiabilities(params: { assetCode?: AssetCode }): Promise<LedgerUserLiabilityList> {
+    const rows = await this.requireOpsReporter().listUserBalanceRows(params);
+    return buildUserLiabilities({ generatedAt: new Date().toISOString(), rows });
   }
 
   private requireOpsReporter(): LedgerOpsReporter {

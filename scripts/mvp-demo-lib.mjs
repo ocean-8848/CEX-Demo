@@ -128,6 +128,10 @@ export function demoMarketAssets(config = loadDemoConfig()) {
 }
 
 const RESET_TABLES = [
+  "proof_of_reserves_leaves",
+  "proof_of_reserves_snapshots",
+  "treasury_sweep_deposits",
+  "treasury_transfers",
   "risk_market_status_overrides",
   "ops_action_audit_logs",
   "wallet_notifications",
@@ -391,6 +395,15 @@ export async function bootstrapStandardDemo(
   });
 
   await ensureDemoLiquidity(config);
+
+  // Custody layering: back the opening-balance seeding with on-chain hot / cold
+  // wallet funds so the wallet-vs-ledger reconciliation starts out covered.
+  try {
+    const { ensureTreasuryReserves } = await import("./treasury-demo-lib.mjs");
+    await ensureTreasuryReserves(config, { fundHot: true, referencePrefix: "demo_bootstrap" });
+  } catch (error) {
+    console.warn(`[bootstrap] treasury reserves not seeded: ${readErrorMessage(error)}`);
+  }
 
   const opsTwoFactor = generateTotpCode(DEMO_OPS.twoFactorSecret, new Date());
   return {

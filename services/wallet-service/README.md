@@ -4,7 +4,8 @@
 
 - 管理充值地址分配
 - 管理提币申请、审核状态、白名单地址
-- 管理充值确认入账与提币通知（不包含冷热钱包与归集管理）
+- 管理充值确认入账与提币通知
+- treasury 模块：平台链上持仓的冷热分层（充值地址 → 热钱包 ⇄ 冷钱包）、归集、热钱包水位与冷热调拨审批、钱包 vs 账本对账、储备金证明
 - 提现地址风险（简化 KYT）：规则评分、地址黑名单、高风险双人复核
 - 承载账户安全站内信（identity-service 写入的 `security.new_device_login`）
 
@@ -51,6 +52,7 @@ SQL schema:
 - [008_add_notification_read_state_and_deposit_events.sql](sql/008_add_notification_read_state_and_deposit_events.sql)（`read_at` 已读标记、`deposit_id` + `deposit.credited` 事件）
 - [009_add_dual_approval_audit_action.sql](sql/009_add_dual_approval_audit_action.sql)（审计动作新增 `first_approved`，地址簿按用户 + 创建时间索引）
 - [010_add_withdrawal_risk_and_address_blacklist.sql](sql/010_add_withdrawal_risk_and_address_blacklist.sql)（提现 `risk_score / risk_level / risk_reasons`、`withdrawal_address_blacklist` 及 3 个演示种子、`security.*` 通知类型）
+- [011_add_treasury_and_proof_of_reserves.sql](sql/011_add_treasury_and_proof_of_reserves.sql)（`treasury_transfers`、`treasury_sweep_deposits`、`proof_of_reserves_snapshots`、`proof_of_reserves_leaves`）
 
 运行脚本:
 
@@ -93,6 +95,15 @@ HTTP 接口:
 - `GET /api/v1/wallet/risk/address-labels`
 - `POST /api/v1/wallet/notifications/security`（identity-service 专用）
 - `GET /withdrawals` 与 `/withdrawals/review-queue` 支持 `riskLevel=low|medium|high|blocked`
+- treasury（`src/http/treasury.controller.ts`）：
+  - `GET /api/v1/wallet/treasury/overview`
+  - `GET /api/v1/wallet/treasury/transfers`、`GET /api/v1/wallet/treasury/transfers/:transferId`
+  - `POST /api/v1/wallet/treasury/transfers`（调拨提案）、`/:transferId/approve`、`/:transferId/reject`、`/:transferId/retry`
+  - `POST /api/v1/wallet/treasury/transfers/confirm`（链上确认回报）
+  - `POST /api/v1/wallet/treasury/sweeps/run`、`POST /api/v1/wallet/treasury/watermarks/evaluate`
+  - `POST /api/v1/wallet/treasury/genesis`（记录平台资金上链，演示注资）
+  - `GET /api/v1/wallet/treasury/reconciliation`
+  - `POST|GET /api/v1/wallet/treasury/proof-of-reserves/snapshots`、`GET .../snapshots/:snapshotId`、`GET /api/v1/wallet/treasury/proof-of-reserves/me?userId=`
 
 当前提币流:
 
@@ -125,6 +136,17 @@ HTTP 接口:
   - 归属校验在 wallet 内完成：按 id 标记时任何不属于该 `userId` 的 id 一律返回 `404 NOTIFICATION_NOT_FOUND`（不泄露存在性），批量更新的 SQL 也带 `user_id = $1` 条件
 - `reconcile-stale-withdrawals` 会按状态对陈旧提币单执行 reject / rebroadcast / confirm，帮助清理资金层 stale lock
 - 地址白名单通过 `withdrawal-address-book` 接口创建、查询和切换状态
+- 审核通过的提现由 custody-adapter 从热钱包广播（转账元数据 `sourceWallet: "hot"`），treasury 把广播金额计为热钱包流出。热钱包出金只发生在批准之后，批准时会再查一次地址黑名单；被 KYT 拦截或因黑名单自动拒绝的提现没有 txHash，不会计入热钱包流出
+
+冷热分层与储备金证明（treasury）:
+
+- 持仓不落余额表，由 `src/domain/treasury-policy.ts` 的 `computeTreasuryHoldings` 从三类事实推导：已入账充值（+ 充值地址）、`treasury_transfers`（来源钱包在广播时扣减，目标钱包在确认时增加，中间计为在途）、已广播 / 已确认提现（− 热钱包 `amount`，手续费留在热钱包）
+- 归集 `runSweeps`：未归集的已入账充值按 (充值地址, 币种) 分组，每组一笔 `sweep` 经 custody-adapter（幂等键 `treasury:<transferId>`）广播到热钱包；广播失败时释放 `treasury_sweep_deposits` 关联，下一轮重试；创建超过 60 秒仍停在 `approved` 的转账会被补发
+- 水位 `evaluateWatermarks`：热钱包高于上限 → 提出 热→冷（回到 `(下限+上限)/2`），低于下限 → 提出 冷→热（不超过冷钱包余额）；每个币种同一时间最多一笔未完成调拨。提案人为 `system:watermark`
+- 审批 `approveTransfer`：审批人不能是提案人（`409 TREASURY_SAME_APPROVER`），批准前校验来源钱包余额（`409 TREASURY_INSUFFICIENT_BALANCE`），随后广播；每次状态迁移追加到 `events`
+- 对账 `getReconciliation`：调用 ledger-service `/ops/liabilities`，逐币种比较 `储备 = 充值地址 + 热 + 冷 + 在途内部转账` 与 `净负债 = 用户负债 − 在途提现`，输出储备率、热钱包覆盖率、`covered` / `shortfall`。不写任何账本分录，账本自身对账不受影响
+- 储备金证明 `generateProofOfReserves`：调用 ledger-service `/ops/liabilities/users`，每个用户随机 nonce 盐化 userId，按 `src/domain/proof-of-reserves.ts` 建 Merkle 树，保存根、逐币种储备率和每个用户的路径；`getUserProof` 只返回该用户自己的叶子
+- 纯函数与流程测试：`src/__tests__/treasury-policy.test.ts`、`treasury-service.test.ts`、`proof-of-reserves.test.ts`（含与 trader-web 浏览器验证共享的测试向量）
 
 默认端口: `3002`
 
@@ -149,6 +171,11 @@ HTTP 接口:
 - `WITHDRAWAL_SECURITY_COOLDOWN_SECONDS`（代码默认 `86400` 即 24 小时；`pnpm stack:start` 默认传 `0`，演示时 `WITHDRAWAL_SECURITY_COOLDOWN_SECONDS=120 pnpm stack:start`）
 - `WITHDRAWAL_RISK_ENABLED`（默认 `true`）/ `WITHDRAWAL_RISK_LARGE_AMOUNT_BY_ASSET`（默认 `USDT=1000,USDC=1000,ETH=0.5,BTC=0.02,SOL=10`）/ `WITHDRAWAL_RISK_NEW_ADDRESS_WINDOW_SECONDS`（默认 `86400`）/ `WITHDRAWAL_RISK_ADDRESS_LABELS`（追加标签，`0x…=mixer|high_risk|gambling|darknet`）
 - `WITHDRAWAL_NEW_DEVICE_LOCK_SECONDS`（默认 `0` 关闭）
+- `TREASURY_HOT_WALLET_WATERMARKS`（默认 `USDT=50000/200000,USDC=10000/50000,ETH=10/40,BTC=0.5/2,SOL=200/800`，格式 `ASSET=下限/上限`；空字符串关闭水位）
+- `TREASURY_SWEEP_MIN_AMOUNT_BY_ASSET`（默认空，任意金额都归集）
+- `TREASURY_TRANSFER_CONFIRMATION_THRESHOLD`（默认取 `WITHDRAWAL_CONFIRMATION_THRESHOLD`，即 `12`）
+- `TREASURY_SWEEP_BATCH_SIZE`（每轮扫描的充值数，默认 `200`）
+- `TREASURY_HOT_WALLET_ADDRESS` / `TREASURY_COLD_WALLET_ADDRESS`（默认按网络派生的演示地址）
 - `WALLET_EVENT_PUBLISHER` / `WALLET_REDIS_URL` / `WALLET_NOTIFICATION_EVENT_CHANNEL`
 - `WALLET_NOTIFICATION_BATCH_SIZE`
 - `WALLET_NOTIFICATION_MAX_ATTEMPTS`

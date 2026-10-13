@@ -589,6 +589,8 @@ function buildActions(
     selectMarket: (market: string) => dispatch({ type: "selectMarket", market }),
     setPrefs: (prefs: Partial<Preferences>) => dispatch({ type: "prefs", prefs }),
     clearLearn: () => dispatch({ type: "clearLearn" }),
+    /** Adds explanation events to the learn drawer (pages outside the store use it, e.g. 储备金证明). */
+    learn,
     refreshAccount,
     refreshUnreadCount,
 

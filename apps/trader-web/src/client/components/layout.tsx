@@ -104,6 +104,9 @@ export function TopNav(props: { page: PageKey }) {
                 <a href={href("/assets/ledger")} onClick={() => setMenuOpen(false)}>
                   资金流水
                 </a>
+                <a href={href("/assets/reserves")} onClick={() => setMenuOpen(false)}>
+                  储备金证明
+                </a>
                 <a href={href("/orders")} onClick={() => setMenuOpen(false)}>
                   订单中心
                 </a>

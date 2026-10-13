@@ -1650,7 +1650,9 @@ export class WalletApplicationService {
         metadata: {
           userId: approvedRecord.userId,
           reviewedBy: params.requestedBy,
-          note: params.note
+          note: params.note,
+          // Custody layering: withdrawals are always paid from the hot wallet.
+          sourceWallet: "hot"
         }
       });
 

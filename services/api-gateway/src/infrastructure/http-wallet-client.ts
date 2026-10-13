@@ -48,6 +48,10 @@ export class HttpWalletClient implements WalletGatewayClient {
     return this.fetchJson(`/api/v1/wallet/deposits/${depositId}`);
   }
 
+  async getProofOfReserves(userId: string): Promise<Record<string, unknown>> {
+    return this.fetchJson(`/api/v1/wallet/treasury/proof-of-reserves/me?${toQuery({ userId })}`);
+  }
+
   async getWithdrawalLimits(userId: string): Promise<Record<string, unknown>> {
     return this.fetchJson(`/api/v1/wallet/withdrawal-limits?${toQuery({ userId })}`);
   }

@@ -16,7 +16,7 @@ The repository has two parts:
 ## What the demo covers
 
 - **Spot trading** on `ETH/USDT` (default), `BTC/USDT` and `SOL/USDT`: limit / market / stop-limit / stop-market orders, GTC / IOC / FOK, post-only, self-trade prevention, order book, trades, K-lines.
-- **Funds**: deposit addresses, a test faucet with confirmation tracking, withdrawals with review, a double-entry ledger with freeze / unfreeze / consume.
+- **Funds**: deposit addresses, a test faucet with confirmation tracking, withdrawals with review, a double-entry ledger with freeze / unfreeze / consume; hot / cold wallet layering with sweeps, watermark-driven transfers that need ops approval, wallet-vs-ledger reconciliation, and a proof-of-reserves page where users verify their Merkle leaf in the browser.
 - **Accounts & security**: sessions (HttpOnly cookie), self-service 2FA, KYC levels and withdrawal limits, API keys (keyId + secret signing), RBAC, signed service-to-service calls.
 - **Operations**: withdrawal review with dual approval for large amounts, KYC review, market halt / resume, ledger reconciliation, business tracing by any ID, audit log, and a fault-injection lab.
 - **Learning mode** in the trader app: shows which services each action passes through, replays matching step by step, and links to Jaeger traces.

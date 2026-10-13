@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { FaultLabController } from "./fault-lab.controller.js";
+import { TreasuryController } from "./treasury.controller.js";
 import { OpsRiskSecurityController } from "./ops-risk-security.controller.js";
 import { OpsAuthGuard } from "./ops-auth.guard.js";
 import { OpsConsoleController } from "./ops-console.controller.js";
@@ -8,7 +9,7 @@ import { OpsConsoleExceptionFilter } from "./ops-console-exception.filter.js";
 import { OpsConsoleHttpService } from "./ops-console-http.service.js";
 
 @Module({
-  controllers: [OpsConsoleController, FaultLabController, OpsRiskSecurityController],
+  controllers: [OpsConsoleController, FaultLabController, OpsRiskSecurityController, TreasuryController],
   providers: [OpsConsoleHttpService, OpsConsoleExceptionFilter, OpsAuthGuard]
 })
 export class OpsConsoleModule {}

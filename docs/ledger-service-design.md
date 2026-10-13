@@ -68,7 +68,15 @@
 | `fee` | 平台手续费账户，按资产一个 |
 | `opening_balance` | 期初权益账户，演示资金的来源，允许余额为负 |
 | `treasury` | 演示种子创建的充值来源 / 提币去向账户 |
-| `main`、`funding`、`hot_wallet`、`cold_wallet`、`withdrawal_pending` | `@web3-cex/domain` 中预留的类型 |
+| `main`、`funding`、`hot_wallet`、`cold_wallet`、`withdrawal_pending` | `@web3-cex/domain` 中预留的类型，当前没有账户使用 |
+
+**平台链上持仓不进账本**。冷热钱包分层由 wallet-service 的 treasury 模块记录（`treasury_transfers`，见 [architecture.md 5.4 节](architecture.md#54-冷热分层归集与储备金证明)）。这样设计的原因：
+
+- 账本回答"平台欠谁多少"，treasury 回答"币在哪个钱包"。两本账独立记录，钱包 vs 账本对账才有意义；若把链上持仓也记成分录，就成了同一本账自己核对自己。
+- 归集、冷热调拨都是平台内部的链上移动，不改变任何用户余额。把它们记成 `hot_wallet` / `cold_wallet` 账户之间的分录，每笔充值和提现都还要多一组对冲分录，却不会让余额对账多发现任何问题。
+- 账本自身的分录对账（第 11.1 节）因此完全不受 treasury 影响，demo 中始终保持 0 差异。
+
+账本对 treasury 只提供只读的用户负债查询（第 11.4 节）。
 
 固定或派生的系统账户：
 
@@ -358,7 +366,16 @@ expectedTotal     = journalNet
 
 ops-console 的账本页面通过 `/api/v1/ops/ledger/*` 调用这些能力。
 
-### 11.4 运维脚本
+### 11.4 用户负债查询
+
+`GET /ops/liabilities` 与 `GET /ops/liabilities/users`（`src/application/ledger-liabilities.ts`、`LedgerOpsReporter.listUserBalanceRows`）把 `accounts.user_id` 非空的账户视为用户负债，按 `available + locked` 汇总：
+
+- 汇总：每个资产的可用、冻结、合计与持有人数，wallet-service 用它和链上储备做逐币种覆盖率对账。
+- 按用户：每个用户各资产合计（只保留非零，金额规范化去掉尾随零），是储备金证明 Merkle 树的叶子来源。一个用户有多个账户时合并成一个叶子。
+
+平台账户（期初权益、`treasury` 充值来源、结算中转、手续费）没有 `user_id`，不计入负债；它们与用户负债之和在每个资产上仍为零（双分录恒等）。
+
+### 11.5 运维脚本
 
 都在 `services/ledger-service` 下以 `pnpm --filter @web3-cex/ledger-service <script>` 运行，连接参数来自 `DATABASE_URL` 或 `PGHOST` / `PGPORT` / `PGUSER` / `PGPASSWORD` / `PGDATABASE`。
 

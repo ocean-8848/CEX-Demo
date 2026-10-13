@@ -125,7 +125,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     layer: "资金层",
     summary: "充值地址、充提记录、提现审核",
     detail:
-      "为用户分配充值地址；充值达到确认数后通知账本入账；提现先校验 2FA、KYC 分级限额与安全冷却期，再冻结资金，经运营审核（大额需两人复核）后交给托管广播。",
+      "为用户分配充值地址；充值达到确认数后通知账本入账；提现先校验 2FA、KYC 分级限额与安全冷却期，再冻结资金，经运营审核（大额需两人复核）后交给托管从热钱包广播。它还管理冷热分层：把充值地址里的币归集到热钱包，按热钱包水位提出冷热调拨（需运营审批），并生成储备金证明（Merkle 树）。",
     code: "services/wallet-service"
   },
   "blockchain-indexer": {
@@ -142,7 +142,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     name: "custody-adapter",
     layer: "资金层",
     summary: "托管 / 热钱包签名广播",
-    detail: "对接托管商或热钱包，负责签名并广播提现交易；带重试、熔断和多 provider 路由。",
+    detail: "对接托管商或热钱包，负责签名并广播提现交易，以及归集、冷热调拨这类平台内部转账；带重试、熔断和多 provider 路由。",
     code: "services/custody-adapter"
   },
   "demo-simulator": {
@@ -151,7 +151,7 @@ export const SERVICES: Record<ServiceKey, ServiceInfo> = {
     layer: "演示环境",
     summary: "模拟链 + 做市商",
     detail:
-      "仅用于学习环境：模拟一条每 1.5 秒出块的 EVM 链（推进充值/提现确认数），并用两个做市账户在盘口挂单、偶尔吃单，让行情和 K 线动起来。",
+      "仅用于学习环境：模拟一条每 1.5 秒出块的 EVM 链（推进充值、提现、归集与冷热调拨的确认数，并定时触发归集与水位检查），并用两个做市账户在盘口挂单、偶尔吃单，让行情和 K 线动起来。",
     code: "scripts/demo-simulator.mjs"
   }
 };

@@ -205,6 +205,10 @@ export class ApiGatewayHttpService implements OnModuleInit, OnModuleDestroy {
     return this.applicationService.submitKycRequest(principal, command);
   }
 
+  async getProofOfReserves(principal: GatewayPrincipal) {
+    return this.applicationService.getProofOfReserves(principal);
+  }
+
   async getWithdrawalLimits(principal: GatewayPrincipal) {
     return this.applicationService.getWithdrawalLimits(principal);
   }
