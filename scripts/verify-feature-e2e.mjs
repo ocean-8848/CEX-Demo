@@ -3,7 +3,7 @@
 //
 //   node ./scripts/verify-feature-e2e.mjs [section...]
 //
-// Sections: apikey, websocket, fees, sol, notifications, security, lab.
+// Sections: apikey, websocket, fees, sol, notifications, security, lab, matching.
 // Without arguments all sections run. The demo trader is restored afterwards
 // (2FA disabled, faults recovered); KYC tier and balances change, which
 // `pnpm demo:prepare` resets.
@@ -18,7 +18,8 @@ import {
   DEMO_WITHDRAWAL_ADDRESS,
   fetchJson,
   generateTotpCode,
-  loadDemoConfig
+  loadDemoConfig,
+  setDemoMakersPaused
 } from "./mvp-demo-lib.mjs";
 
 const config = loadDemoConfig();
@@ -391,6 +392,102 @@ const sections = {
 
     assert.equal((await ops(t, "/lab/recover-all", {})).status, 201);
     return "settlement pause/resume · custody failover · reorg ack · engine reset + self-heal";
+  },
+
+  /** Matching enhancements: post-only, self-trade prevention, stop orders. */
+  async matching(ctx) {
+    const market = config.demoMarket;
+    const getOrder = async (orderId) => (await gateway(`/orders/${orderId}`, { token: ctx.token })).body;
+    const depth = async () => fetchJson(`${config.marketDataBaseUrl}/api/v1/market-data/depth?market=${market}`);
+    const cancel = async (orderId) => gateway(`/orders/${orderId}/cancel`, { token: ctx.token, body: {} });
+
+    // Malformed options are rejected before they reach risk / the engine.
+    const badStp = await placeOrder(ctx.token, ctx.accountId, { market, price: await bestAsk(market), stpMode: "nope" });
+    assert.equal(badStp.status, 400, JSON.stringify(badStp.body));
+    const noTrigger = await placeOrder(ctx.token, ctx.accountId, { market, type: "stop_limit", price: await bestAsk(market), timeInForce: "gtc" });
+    assert.equal(noTrigger.status, 400, JSON.stringify(noTrigger.body));
+
+    // Own some base asset for the sell-side checks.
+    const bought = await placeOrder(ctx.token, ctx.accountId, { market, price: await bestAsk(market), quantity: "0.05" });
+    assert.equal(bought.body.status, "filled", JSON.stringify(bought.body));
+    await waitSettled(bought.body.orderId);
+
+    // Freeze the maker ladder so the book cannot move under the STP checks.
+    await setDemoMakersPaused(config, true);
+    const created = [];
+    try {
+      await sleep(1_500);
+      // 1. Post-only that would take liquidity is rejected and fully released.
+      const takingPostOnly = await placeOrder(ctx.token, ctx.accountId, {
+        market, price: await bestAsk(market), timeInForce: "gtc", postOnly: true
+      });
+      assert.equal(takingPostOnly.status, 201, JSON.stringify(takingPostOnly.body));
+      assert.equal(takingPostOnly.body.status, "rejected");
+      assert.equal(takingPostOnly.body.rejectedReason, "post_only_would_take");
+      assert.equal(takingPostOnly.body.filledQuantity, "0");
+
+      // 2. Post-only inside the spread rests as the best bid.
+      const book = await depth();
+      const bid = Number(book.bids[0].price);
+      const ask = Number(book.asks[0].price);
+      assert.ok(ask - bid >= 0.02, `spread ${bid}/${ask} leaves room inside`);
+      const inside = (Math.floor(((bid + ask) / 2) * 100) / 100).toFixed(2);
+      const ownBid = await placeOrder(ctx.token, ctx.accountId, { market, price: inside, timeInForce: "gtc", postOnly: true });
+      assert.equal(ownBid.body.status, "accepted", JSON.stringify(ownBid.body));
+      assert.equal(ownBid.body.postOnly, true);
+      created.push(ownBid.body.orderId);
+
+      // 3. STP expire_taker (default): a sell that would hit the own bid expires.
+      const selfSell = await placeOrder(ctx.token, ctx.accountId, { market, side: "sell", price: inside, timeInForce: "ioc" });
+      assert.equal(selfSell.body.status, "rejected", JSON.stringify(selfSell.body));
+      assert.equal(selfSell.body.rejectedReason, "stp_expired_taker");
+      assert.equal((await getOrder(ownBid.body.orderId)).status, "accepted", "own resting bid is kept");
+
+      // 4. STP expire_maker: the own bid is cancelled, the sell keeps going and rests.
+      const makerExpiry = await placeOrder(ctx.token, ctx.accountId, {
+        market, side: "sell", price: inside, timeInForce: "gtc", stpMode: "expire_maker"
+      });
+      assert.equal(makerExpiry.body.status, "accepted", JSON.stringify(makerExpiry.body));
+      created.push(makerExpiry.body.orderId);
+      const expiredBid = await getOrder(ownBid.body.orderId);
+      assert.equal(expiredBid.status, "cancelled");
+      assert.equal(expiredBid.rejectedReason, "stp_expired_maker");
+      assert.equal((await cancel(makerExpiry.body.orderId)).body.status, "cancelled");
+    } finally {
+      for (const orderId of created) {
+        await cancel(orderId).catch(() => undefined);
+      }
+      await setDemoMakersPaused(config, false);
+    }
+
+    // 5. Stop-limit far above the market waits in pending_trigger; cancel releases it.
+    const askNow = Number(await bestAsk(market));
+    const farTrigger = (askNow * 1.1).toFixed(2);
+    const waiting = await placeOrder(ctx.token, ctx.accountId, {
+      market, type: "stop_limit", timeInForce: "gtc", triggerPrice: farTrigger, price: (askNow * 1.11).toFixed(2)
+    });
+    assert.equal(waiting.status, 201, JSON.stringify(waiting.body));
+    assert.equal(waiting.body.status, "pending_trigger");
+    assert.equal(Number(waiting.body.triggerPrice), Number(farTrigger));
+    const openStops = items((await gateway(`/orders?market=${market}&status=pending_trigger`, { token: ctx.token })).body);
+    assert.ok(openStops.some((order) => order.orderId === waiting.body.orderId), "listed as pending_trigger");
+    const cancelledStop = await cancel(waiting.body.orderId);
+    assert.equal(cancelledStop.body.status, "cancelled");
+
+    // 6. Stop-market sell whose trigger is already above the last price fires on
+    //    the next trigger pass and executes as a market order.
+    const firing = await placeOrder(ctx.token, ctx.accountId, {
+      market, side: "sell", type: "stop_market", timeInForce: "ioc", triggerPrice: (askNow * 1.05).toFixed(2), price: undefined
+    });
+    assert.equal(firing.body.status, "pending_trigger", JSON.stringify(firing.body));
+    const fired = await waitFor("stop-market trigger", async () => {
+      const order = await getOrder(firing.body.orderId);
+      return order.status !== "pending_trigger" && order.status !== "pending_risk" ? order : null;
+    }, 20_000, 500);
+    assert.ok(fired.triggeredAt, "triggeredAt is recorded");
+    assert.equal(fired.status, "filled", JSON.stringify(fired));
+    await waitSettled(firing.body.orderId);
+    return "post-only reject/rest · STP expire_taker + expire_maker · stop pending/cancel · stop-market fired + settled";
   }
 };
 
