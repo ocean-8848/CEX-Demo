@@ -480,7 +480,7 @@ flowchart LR
 | Kafka | 账本事件流 | 否。数据库中的 `outbox_events` 才是事实源 |
 | ClickHouse | 行情 ticker / depth / trade 快照，`market_data_kline_1m` 聚合表与物化视图 | 否 |
 
-各服务的数据库表结构在 `services/*/sql/*.sql`，可用 `pnpm db:prepare:core` 等脚本初始化。
+所有服务共用 PostgreSQL 数据库 `web3_cex`，各自管理自己的表。表结构以每个服务（含 `apps/ops-console`）的 `sql/001_schema.sql` 为基线，之后的改动以更大编号的文件追加（wallet-service 的 `002_reference_data.sql` 写入演示黑名单地址）。共享 runner `packages/domain/src/schema-migrations.ts` 在 advisory lock 下按顺序执行尚未记录的文件，每个文件一个事务，并记入 `schema_migrations(service, version, checksum, applied_at)`；已执行的文件被修改或数据库存在未记录的旧表时会报错并提示 `pnpm db:reset`。`pnpm stack:start` 在构建后调用 `scripts/apply-schema.mjs`，已是最新时只做版本核对。演示数据不放在迁移里，由 `demo:bootstrap` 写入。操作说明见 [getting-started.md 第 9 节](./getting-started.md#9-数据库结构与迁移)。
 
 ## 7. 市场配置
 

@@ -1,0 +1,6 @@
+-- wallet-service: reference data that ships with the schema.
+
+-- Data for Name: withdrawal_address_blacklist; Type: TABLE DATA
+INSERT INTO withdrawal_address_blacklist (entry_id, network, address, category, reason, source, status, created_by, created_at, removed_by, removed_at, removal_reason) VALUES ('f35bff1f-4f17-4dce-b8c6-d56562734e01', 'ethereum', '0xbad0000000000000000000000000000000000001', 'sanctioned', '演示：制裁名单地址', 'seed', 'active', 'system:seed', '2026-10-14 05:25:14.808287+00', NULL, NULL, NULL);
+INSERT INTO withdrawal_address_blacklist (entry_id, network, address, category, reason, source, status, created_by, created_at, removed_by, removed_at, removal_reason) VALUES ('29d6b96a-4282-4c11-b297-d2fbfa0b784f', 'ethereum', '0xbad0000000000000000000000000000000000002', 'hack', '演示：交易所被盗资金归集地址', 'seed', 'active', 'system:seed', '2026-10-14 05:25:14.808287+00', NULL, NULL, NULL);
+INSERT INTO withdrawal_address_blacklist (entry_id, network, address, category, reason, source, status, created_by, created_at, removed_by, removed_at, removal_reason) VALUES ('7629974c-2762-44c4-9cd4-b94b2c229196', 'ethereum', '0xbad0000000000000000000000000000000000003', 'mixer', '演示：混币合约', 'seed', 'active', 'system:seed', '2026-10-14 05:25:14.808287+00', NULL, NULL, NULL);

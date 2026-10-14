@@ -1,30 +1,23 @@
-import { readdir, readFile } from "node:fs/promises";
+// Applies this service's pending SQL migrations once and records them in
+// schema_migrations; a restart with nothing new is a no-op.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { runSchemaMigrations } from "@web3-cex/domain/schema-migrations";
 
 import { createBlockchainIndexerPool } from "../infrastructure/postgres.js";
 
 async function main(): Promise<void> {
-  const currentFilePath = fileURLToPath(import.meta.url);
-  const schemaDir = path.resolve(path.dirname(currentFilePath), "../../sql");
-  const files = (await readdir(schemaDir))
-    .filter((file) => file.endsWith(".sql"))
-    .sort((left, right) => left.localeCompare(right));
-
+  const sqlDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../sql");
   const pool = createBlockchainIndexerPool();
-
   try {
-    for (const file of files) {
-      const sql = await readFile(path.join(schemaDir, file), "utf8");
-      process.stdout.write(`Applying schema file ${file}\n`);
-      await pool.query(sql);
-    }
+    await runSchemaMigrations(pool, { service: "blockchain-indexer", sqlDir });
   } finally {
     await pool.end();
   }
 }
 
 main().catch((error) => {
-  console.error(error);
+  console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 });

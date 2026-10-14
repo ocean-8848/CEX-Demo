@@ -159,10 +159,10 @@
 
 ### 2.8 审计与可追溯
 
-- `withdrawal_audit_logs`（`services/wallet-service/sql/006_add_withdrawal_audit_and_notifications.sql`）：记录提现 `requested / approved / rejected / broadcasted / confirmed`，含操作人、角色、`trace_id`、前后快照。
-- `ops_action_audit_logs`（`apps/ops-console/sql/001_init.sql`）：记录每个运营动作的操作人、角色、所用权限、目标、请求 / 响应、成功或失败；`ops-console` 中可按操作人、动作、目标检索。紧急开关的变更记为 `controls.<scope>.enable|disable`。
-- `risk_control_switch_events`（`services/risk-service/sql/003_control_switches.sql`）：紧急开关每一次开启 / 恢复（含对账熔断的自动开启）的原因、来源（`manual` / `automatic`）、操作人和时间。
-- `ledger_reconciliation_runs`（`services/ledger-service/sql/005_reconciliation_runs.sql`）：每一轮定时 / 手动对账的结果与熔断动作。
+- `withdrawal_audit_logs`（`services/wallet-service/sql/001_schema.sql`）：记录提现 `requested / approved / rejected / broadcasted / confirmed`，含操作人、角色、`trace_id`、前后快照。
+- `ops_action_audit_logs`（`apps/ops-console/sql/001_schema.sql`）：记录每个运营动作的操作人、角色、所用权限、目标、请求 / 响应、成功或失败；`ops-console` 中可按操作人、动作、目标检索。紧急开关的变更记为 `controls.<scope>.enable|disable`。
+- `risk_control_switch_events`（`services/risk-service/sql/001_schema.sql`）：紧急开关每一次开启 / 恢复（含对账熔断的自动开启）的原因、来源（`manual` / `automatic`）、操作人和时间。
+- `ledger_reconciliation_runs`（`services/ledger-service/sql/001_schema.sql`）：每一轮定时 / 手动对账的结果与熔断动作。
 - identity 的 `identity_kyc_events` 记录 KYC 申请与审核过程；`identity_login_events` 记录每次登录尝试。
 - 黑名单的加入 / 移出写入 `ops_action_audit_logs`（`risk.blacklist.add / risk.blacklist.remove`），运营退出用户设备写 `user.device.revoke`；KYT 自动拒绝在 `withdrawal_audit_logs` 中以操作人 `system:kyt` 出现。
 - 服务链路接入 OpenTelemetry，可在 Jaeger 里按 trace 串起一次请求经过的服务。

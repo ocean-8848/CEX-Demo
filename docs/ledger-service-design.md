@@ -39,7 +39,7 @@
 | `src/infrastructure/ledger-ops-reporter.ts` | 对账 / 回放 / 总览的 SQL 聚合 |
 | `src/infrastructure/kafka-ledger-outbox-transport.ts` | Kafka 发布 |
 | `src/scripts/*.ts` | 运维脚本，见第 11 节 |
-| `sql/001_init.sql` ~ `sql/004_*.sql` | 表结构 |
+| `sql/001_schema.sql` | 基线表结构（后续改动以更大编号的文件追加） |
 
 ## 3. 数据模型
 
@@ -387,7 +387,7 @@ ledger-service 进程内的 `ReconciliationJob`（`src/application/reconciliatio
    **在途处理**：两个服务的读取有先后（先账本快照、再 order-service），一笔委托还要经过 风控 → 冻结 → 撮合 → 落库 → 结算。以下差异算「在途」，不计入不一致：order-service 标记的 `pending_risk` / `recovery_pending`；委托 `updatedAt` 或最近一笔成交时间晚于「账本快照时间 − `RECONCILIATION_ORDER_LOCK_GRACE_SECONDS`（默认 15 秒）」；冻结创建于宽限期内。
 3. **熔断判定**（`src/application/reconciliation-breaker.ts`）：余额对账不平的币种立即熔断；委托冻结对账需要**同一笔委托**连续 `RECONCILIATION_BREAKER_CONFIRMATIONS`（默认 2）轮不一致才熔断，只出现一轮记为 `suspected`（P2）。熔断调用 risk-service `POST /api/v1/risk/controls`，以 `source: "automatic"` 暂停该币种提现（已暂停时记 `already_paused`），并记录 P1 告警；`RECONCILIATION_BREAKER_ENABLED=false` 时只告警不暂停。
 
-每轮结果写入 `ledger_reconciliation_runs`（`sql/005_reconciliation_runs.sql`，保留最近 `RECONCILIATION_HISTORY_LIMIT` 条，默认 2000）：
+每轮结果写入 `ledger_reconciliation_runs`（表结构见 `sql/001_schema.sql`，保留最近 `RECONCILIATION_HISTORY_LIMIT` 条，默认 2000）：
 
 | 状态 | 含义 |
 | --- | --- |
@@ -414,7 +414,7 @@ ledger-service 进程内的 `ReconciliationJob`（`src/application/reconciliatio
 
 | 脚本 | 作用 | 主要环境变量 |
 | --- | --- | --- |
-| `db:prepare` | 执行 `sql/` 下的建表脚本 | |
+| `db:prepare` | 构建后执行 `sql/` 下尚未记录在 `schema_migrations` 的文件（每个文件只执行一次） | |
 | `publish-outbox` | 发布一批 outbox；`LEDGER_OUTBOX_RUN_FOREVER=true` 时持续轮询 | `KAFKA_BROKERS`、`LEDGER_OUTBOX_TOPIC`、`LEDGER_OUTBOX_DEAD_LETTER_TOPIC`、`LEDGER_OUTBOX_BATCH_SIZE`、`LEDGER_OUTBOX_MAX_ATTEMPTS`、`LEDGER_OUTBOX_RETRY_DELAY_MS`、`LEDGER_OUTBOX_POLL_INTERVAL_MS` |
 | `drain-outbox-alerts` | 重排死信并循环发布 | `LEDGER_OUTBOX_REQUEUE_DEAD_LETTER`、`LEDGER_OUTBOX_DRAIN_MAX_CYCLES` |
 | `reconcile-balances` | 输出对账报告；有差异时默认以退出码 1 结束 | `LEDGER_RECONCILE_ACCOUNT_ID`、`LEDGER_RECONCILE_ASSET_CODE`、`LEDGER_RECONCILE_INCLUDE_MATCHED`、`LEDGER_RECONCILE_FAIL_ON_MISMATCH`（默认 `true`） |

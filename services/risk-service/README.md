@@ -61,7 +61,7 @@
 
 运行脚本:
 
-- `pnpm --filter @web3-cex/risk-service db:prepare`（建 `risk_market_status_overrides`、市场监控 `risk_surveillance_alerts` / `risk_surveillance_alert_events` 与紧急开关 `risk_control_switches` / `risk_control_switch_events` 表，见 [sql/](sql/)（紧急开关为 [003_control_switches.sql](sql/003_control_switches.sql)）；已包含在根目录 `pnpm db:prepare:core`）
+- `pnpm --filter @web3-cex/risk-service db:prepare`（建 `risk_market_status_overrides`、市场监控 `risk_surveillance_alerts` / `risk_surveillance_alert_events` 与紧急开关 `risk_control_switches` / `risk_control_switch_events` 表，基线为 [sql/001_schema.sql](sql/001_schema.sql)，只执行尚未记录在 `schema_migrations` 的文件；已包含在根目录 `pnpm db:prepare:core`）
 - `pnpm --filter @web3-cex/risk-service build`
 - `pnpm --filter @web3-cex/risk-service start`
 - `pnpm --filter @web3-cex/risk-service test`

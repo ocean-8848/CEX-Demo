@@ -481,14 +481,14 @@ flowchart TD
 
 | 能力 | 本仓库现状 | 位置 |
 |---|---|---|
-| 用户身份字段 | ⚠️ `identity_users` 只有 `email`、`status` 等字段，邮箱为明文列；没有 KYC、税务字段 | `../../services/identity-service/sql/001_init.sql` |
-| TOTP 密钥存储 | ⚠️ `user_two_factor_profiles.secret` 为 `text` 列，未做字段级加密 | `../../services/identity-service/sql/001_init.sql` |
-| API Key 存储 | ✅ 只存 `token_hash` 和前缀，不存明文 | `../../services/identity-service/sql/003_add_customer_auth_and_api_keys.sql` |
+| 用户身份字段 | ⚠️ `identity_users` 只有 `email`、`status` 等字段，邮箱为明文列；没有 KYC、税务字段 | `../../services/identity-service/sql/001_schema.sql` |
+| TOTP 密钥存储 | ⚠️ `user_two_factor_profiles.secret` 为 `text` 列，未做字段级加密 | `../../services/identity-service/sql/001_schema.sql` |
+| API Key 存储 | ✅ 只存 `token_hash` 和前缀，不存明文 | `../../services/identity-service/sql/001_schema.sql` |
 | 运营 RBAC | ✅ 已有角色与权限表，例如 `ops.users.read`；⚠️ 没有字段掩码和按工单授权 | `../../services/identity-service/src/domain/rbac.ts` |
-| 审计字段 | ✅ `ops_action_audit_logs` 记录操作人、角色、所用权限、目标、请求 / 响应；`withdrawal_audit_logs` 另有 `trace_id` 和前后快照；⚠️ 只审计运营写操作，未覆盖"查看个人资料"等只读访问 | `../../apps/ops-console/sql/001_init.sql`、`../../docs/security.md` 第 2.8 节 |
-| 税务事件来源 | ⚠️ `ledger_journals.business_type` 可作为交易分类的输入；分录不记录法币估值 | `../../services/ledger-service/sql/001_init.sql` |
-| 删除与留存 | ❌ 外键使用 `on delete cascade`，删除用户会连带删除 2FA 资料；没有留存计划和法律保全 | `../../services/identity-service/sql/001_init.sql` |
-| 账本假名化 | ✅ 账本按 `account_id`、`user_id`（UUID）记账，不含姓名和邮箱，天然适合假名化 | `../../services/ledger-service/sql/001_init.sql` |
+| 审计字段 | ✅ `ops_action_audit_logs` 记录操作人、角色、所用权限、目标、请求 / 响应；`withdrawal_audit_logs` 另有 `trace_id` 和前后快照；⚠️ 只审计运营写操作，未覆盖"查看个人资料"等只读访问 | `../../apps/ops-console/sql/001_schema.sql`、`../../docs/security.md` 第 2.8 节 |
+| 税务事件来源 | ⚠️ `ledger_journals.business_type` 可作为交易分类的输入；分录不记录法币估值 | `../../services/ledger-service/sql/001_schema.sql` |
+| 删除与留存 | ❌ 外键使用 `on delete cascade`，删除用户会连带删除 2FA 资料；没有留存计划和法律保全 | `../../services/identity-service/sql/001_schema.sql` |
+| 账本假名化 | ✅ 账本按 `account_id`、`user_id`（UUID）记账，不含姓名和邮箱，天然适合假名化 | `../../services/ledger-service/sql/001_schema.sql` |
 
 如果要补齐，建议按以下顺序：
 

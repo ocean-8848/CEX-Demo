@@ -44,23 +44,42 @@
 - `port is already allocated` / `address already in use`: 本机已有 PostgreSQL（`5432`）、Redis（`6379`）、Kafka（`9092`）或 ClickHouse（`8123` / `9000`）在运行。停止本机实例，或释放对应端口。compose 中的端口与服务默认连接地址是绑定的，不建议只改其中一边。
 - 需要 `docker compose`（Compose v2）。只有旧版 `docker-compose` 时脚本会失败。
 
-### 2.3 `db:prepare` 失败（连接被拒绝 / 数据库正在启动）
+### 2.3 数据库结构检查 / 迁移失败（连接被拒绝 / 数据库正在启动）
 
-compose 没有健康检查，第一次 `docker compose up -d` 后 PostgreSQL 可能还在初始化，`pnpm db:prepare:demo` 会报 `ECONNREFUSED` 或 `the database system is starting up`。此时还没有服务被启动，等几秒后直接重跑即可:
+compose 没有健康检查，第一次 `docker compose up -d` 后 PostgreSQL 可能还在初始化，`stack:start` 的迁移步骤（`scripts/apply-schema.mjs`）或 `pnpm db:prepare:demo` 会报 `ECONNREFUSED` 或 `the database system is starting up`。此时还没有服务被启动，等几秒后再启动即可:
 
 ```bash
 pnpm stack:start --skip-infra
 ```
 
-如果表结构损坏或想从零开始，删除数据卷后重新启动:
+迁移按 `schema_migrations` 记录只执行一次，再次启动不会重复执行已成功的文件。数据库结构机制见 [getting-started.md 第 9 节](getting-started.md#9-数据库结构与迁移)。
+
+想从零开始时重建数据库（丢弃全部数据）:
 
 ```bash
-pnpm stack:stop:infra
-docker compose -f infra/local/docker-compose.yml --profile observability down -v
+pnpm stack:stop
+pnpm db:reset
 pnpm demo:up
 ```
 
-### 2.4 `matching-engine did not become ready on port 3011`
+### 2.4 `found tables from an untracked (legacy) schema`
+
+本地数据库是在引入 `schema_migrations` 之前建的：服务的表已存在，但没有迁移记录。runner 不会在旧结构上补跑基线，直接报错。丢弃旧数据库后重建:
+
+```bash
+pnpm stack:stop
+pnpm db:reset
+pnpm demo:up
+```
+
+### 2.5 `changed after it was applied (checksum mismatch)` / `no longer exists on disk`
+
+某个服务 `sql/` 下已执行过的文件被修改（或删除）了，与 `schema_migrations` 中记录的 checksum 不一致。
+
+- 想保留数据：把文件恢复原样，把改动写进一个新的、编号更大的文件（如 `002_add_xxx.sql`），下次启动只执行这个新文件。
+- 本地数据无所谓：`pnpm stack:stop && pnpm db:reset && pnpm demo:up`，按当前文件重建。
+
+### 2.6 `matching-engine did not become ready on port 3011`
 
 `stack:start` 用 `cargo run` 启动撮合引擎，最多等 45 秒。首次编译常常超过这个时间。先单独编译一次再启动:
 
@@ -71,15 +90,15 @@ pnpm stack:start
 
 也要确认 `cargo` 在 PATH 中（`cargo --version`）。
 
-### 2.5 其他服务 `did not become ready`
+### 2.7 其他服务 `did not become ready`
 
 启动失败时脚本会停掉已启动的服务并提示日志路径。打开对应的 `.runtime/full-stack/logs/<service>.log`，常见原因:
 
 - 依赖的基础设施不可用（PostgreSQL / Redis / ClickHouse 未就绪）。
 - 构建产物缺失: 使用了 `--skip-build` 但从未构建过。去掉该参数或先执行 `pnpm build`。
-- 表结构缺失: 使用了 `--skip-db-prepare` 但数据库是新的。先执行 `pnpm db:prepare:demo`。
+- 表结构缺失或落后: 使用了 `--skip-db-prepare`，而数据库是新的或有尚未执行的迁移文件。去掉该参数，或先执行 `pnpm db:migrate`（已构建时）/ `pnpm db:prepare:demo`。
 
-### 2.6 运行时状态残留
+### 2.8 运行时状态残留
 
 `.runtime/full-stack/pids/` 中进程已不存在的 PID 文件会被自动清理。如果手动删除过 `.runtime/`、或机器重启后进程还在，`stack:stop` 将找不到它们，表现为 `port-in-use`，按 2.1 处理。确认没有服务在运行后，可以安全地删除整个目录:
 

@@ -42,17 +42,10 @@
 
 SQL schema:
 
-- [001_init.sql](sql/001_init.sql)
-- [002_add_ledger_columns.sql](sql/002_add_ledger_columns.sql)
-- [003_add_withdrawal_ledger_columns.sql](sql/003_add_withdrawal_ledger_columns.sql)
-- [004_add_withdrawal_tx_hash_index.sql](sql/004_add_withdrawal_tx_hash_index.sql)
-- [005_add_wallet_query_indexes.sql](sql/005_add_wallet_query_indexes.sql)
-- [006_add_withdrawal_audit_and_notifications.sql](sql/006_add_withdrawal_audit_and_notifications.sql)
-- [007_add_notification_delivery_fields.sql](sql/007_add_notification_delivery_fields.sql)
-- [008_add_notification_read_state_and_deposit_events.sql](sql/008_add_notification_read_state_and_deposit_events.sql)（`read_at` 已读标记、`deposit_id` + `deposit.credited` 事件）
-- [009_add_dual_approval_audit_action.sql](sql/009_add_dual_approval_audit_action.sql)（审计动作新增 `first_approved`，地址簿按用户 + 创建时间索引）
-- [010_add_withdrawal_risk_and_address_blacklist.sql](sql/010_add_withdrawal_risk_and_address_blacklist.sql)（提现 `risk_score / risk_level / risk_reasons`、`withdrawal_address_blacklist` 及 3 个演示种子、`security.*` 通知类型）
-- [011_add_treasury_and_proof_of_reserves.sql](sql/011_add_treasury_and_proof_of_reserves.sql)（`treasury_transfers`、`treasury_sweep_deposits`、`proof_of_reserves_snapshots`、`proof_of_reserves_leaves`）
+- [001_schema.sql](sql/001_schema.sql)：基线表结构（`wallet_addresses`、`deposits`、`withdrawals`（含 `risk_score / risk_level / risk_reasons`）、`withdrawal_address_book`、`withdrawal_audit_logs`、`wallet_notifications`、`withdrawal_address_blacklist`、`treasury_transfers`、`treasury_sweep_deposits`、`proof_of_reserves_snapshots`、`proof_of_reserves_leaves`）
+- [002_reference_data.sql](sql/002_reference_data.sql)：3 个演示用的提现地址黑名单（制裁 / 被盗资金 / 混币）
+
+新的表结构改动从 `003_` 开始追加（不修改已执行的文件），执行记录在 `schema_migrations`，见 [数据库结构与迁移](../../docs/getting-started.md#9-数据库结构与迁移)。
 
 运行脚本:
 

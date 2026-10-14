@@ -36,6 +36,8 @@ docker compose -f infra/local/docker-compose.yml --profile observability up -d
 
 - `postgres`: `web3 / web3`, database `web3_cex`
 
+各服务表结构以自己的 `sql/001_schema.sql` 为基线，执行记录在 `schema_migrations` 表；需要从零重建 `web3_cex` 时先 `pnpm stack:stop`，再 `pnpm db:reset`，见 [快速开始第 9 节](../../docs/getting-started.md#9-数据库结构与迁移)。
+
 建议验证命令:
 
 ```bash

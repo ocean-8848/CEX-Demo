@@ -91,7 +91,7 @@ pnpm -s ops:totp                              # 打印演示运营账户当前�
 ## 说明
 
 - 内部系统，不做公网暴露；审核动作中的 `reviewedBy` 强制使用当前会话的 `userId`
-- 审计记录持久化在 PostgreSQL（[sql/001_init.sql](sql/001_init.sql)，`pnpm --filter @web3-cex/ops-console db:prepare` 或根目录 `pnpm db:prepare:demo` 初始化）
+- 审计记录持久化在 PostgreSQL 表 `ops_action_audit_logs`（基线 [sql/001_schema.sql](sql/001_schema.sql)；`pnpm stack:start` 自动应用，也可用 `pnpm --filter @web3-cex/ops-console db:prepare` 或根目录 `pnpm db:prepare:demo`，执行记录在 `schema_migrations`，见 [数据库结构与迁移](../../docs/getting-started.md#9-数据库结构与迁移)）
 
 ## 浏览器会话
 

@@ -1,32 +1,23 @@
-import { readdir, readFile } from "node:fs/promises";
+// Applies this service's pending SQL migrations once and records them in
+// schema_migrations; a restart with nothing new is a no-op.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { runSchemaMigrations } from "@web3-cex/domain/schema-migrations";
 
 import { createRiskPool } from "../infrastructure/postgres.js";
 
 async function main(): Promise<void> {
+  const sqlDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../sql");
   const pool = createRiskPool();
-
   try {
-    const schemaDirectory = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      "../../sql"
-    );
-    const files = (await readdir(schemaDirectory))
-      .filter((file) => file.endsWith(".sql"))
-      .sort((left, right) => left.localeCompare(right));
-
-    for (const file of files) {
-      const statement = await readFile(path.join(schemaDirectory, file), "utf8");
-      process.stdout.write(`Applying schema file ${file}\n`);
-      await pool.query(statement);
-    }
+    await runSchemaMigrations(pool, { service: "risk-service", sqlDir });
   } finally {
     await pool.end();
   }
 }
 
 main().catch((error) => {
-  console.error(error);
+  console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 });

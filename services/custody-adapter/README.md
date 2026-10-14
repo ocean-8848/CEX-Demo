@@ -33,7 +33,7 @@
 
 运行脚本:
 
-- `pnpm --filter @web3-cex/custody-adapter db:prepare`
+- `pnpm --filter @web3-cex/custody-adapter db:prepare`（构建后应用 [sql/001_schema.sql](sql/001_schema.sql) 等尚未执行的文件：`custody_transfers`、`custody_transfer_attempts`）
 - `pnpm --filter @web3-cex/custody-adapter check-alerts`
 - `pnpm --filter @web3-cex/custody-adapter report-ops`
 - `pnpm --filter @web3-cex/custody-adapter sync-transfers`

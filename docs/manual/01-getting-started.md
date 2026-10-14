@@ -26,7 +26,7 @@
    pnpm demo:up
    ```
 
-   `demo:up` 等价于 `pnpm stack:start && pnpm demo:prepare`：先拉起基础设施、构建 workspace、初始化数据库并启动所有服务，再清空旧演示数据并写入固定的种子用户、初始资产、充值地址和做市商挂单。
+   `demo:up` 等价于 `pnpm stack:start && pnpm demo:prepare`：先拉起基础设施、构建 workspace、应用尚未执行的数据库迁移（已是最新时只核对版本）并启动所有服务，再清空旧演示数据并写入固定的种子用户、初始资产、充值地址和做市商挂单。
 
 3. 查看服务状态（可选）：
 

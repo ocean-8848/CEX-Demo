@@ -16,6 +16,8 @@
     "check:structure": "node ./scripts/check-structure.mjs",
     "check:markets": "pnpm build && node ./scripts/check-market-config.mjs",
     "db:prepare:core": "pnpm --filter @web3-cex/ledger-service db:prepare && pnpm --filter @web3-cex/identity-service db:prepare && pnpm --filter @web3-cex/wallet-service db:prepare && pnpm --filter @web3-cex/blockchain-indexer db:prepare && pnpm --filter @web3-cex/custody-adapter db:prepare && pnpm --filter @web3-cex/order-service db:prepare && pnpm --filter @web3-cex/settlement-service db:prepare && pnpm --filter @web3-cex/risk-service db:prepare",
+    "db:reset": "node ./scripts/reset-database.mjs",
+    "db:migrate": "node ./scripts/apply-schema.mjs",
     "db:prepare:demo": "pnpm db:prepare:core && pnpm --filter @web3-cex/ops-console db:prepare",
     "demo:bootstrap": "node ./scripts/bootstrap-mvp-demo.mjs",
     "demo:prepare": "pnpm demo:reset && pnpm demo:bootstrap",

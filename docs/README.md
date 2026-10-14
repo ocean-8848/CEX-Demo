@@ -6,7 +6,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| [getting-started.md](getting-started.md) | 环境要求、安装、一键启动、端口、演示账户、脚本与测试 |
+| [getting-started.md](getting-started.md) | 环境要求、安装、一键启动、端口、演示账户、数据库结构与迁移、脚本与测试 |
 | [demo-walkthrough.md](demo-walkthrough.md) | 交易前台与运营后台导览，充值 / 交易 / 提现等端到端演示场景 |
 | [troubleshooting.md](troubleshooting.md) | 常见问题与排查 |
 | [manual/](manual/README.md) | **使用手册**：按页面介绍前台与后台全部功能，含截图 |

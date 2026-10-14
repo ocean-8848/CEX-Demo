@@ -5,6 +5,17 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema-migrations": {
+      "types": "./dist/schema-migrations.d.ts",
+      "default": "./dist/schema-migrations.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist"
   ],

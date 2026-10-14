@@ -46,8 +46,8 @@ try {
   }
 
   if (!options.skipDbPrepare) {
-    await runForeground("pnpm", ["db:prepare:demo"], {
-      label: "initialize demo schema"
+    await runForeground("node", ["./scripts/apply-schema.mjs"], {
+      label: "apply pending schema migrations"
     });
   }
 

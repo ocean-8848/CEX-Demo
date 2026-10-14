@@ -16,7 +16,7 @@
 当前实现:
 
 - HTTP 服务，默认端口 `3010`
-- PostgreSQL 持久化和数据库表结构初始化（[sql/](sql/) 下 `001`–`008` 迁移）
+- PostgreSQL 持久化：基线表结构 [sql/001_schema.sql](sql/001_schema.sql)（`trade_settlements`、`trade_settlement_recovery_jobs`、`trade_settlement_summary_rollups`、`settlement_automation_executions`、`trade_event_consumer_checkpoints`），启动时只执行尚未记录在 `schema_migrations` 的文件，见 [数据库结构与迁移](../../docs/getting-started.md#9-数据库结构与迁移)
 - 按 `tradeId` 幂等结算
 - 自动确保平台结算账户和手续费账户存在
 - 主链核心能力:

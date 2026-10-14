@@ -56,12 +56,9 @@
 
 SQL schema:
 
-- [001_init.sql](sql/001_init.sql)
-- [002_add_ops_auth_and_rbac.sql](sql/002_add_ops_auth_and_rbac.sql)
-- [003_add_customer_auth_and_api_keys.sql](sql/003_add_customer_auth_and_api_keys.sql)
-- [004_api_key_id_scopes.sql](sql/004_api_key_id_scopes.sql)
-- [005_add_two_factor_recovery_and_kyc.sql](sql/005_add_two_factor_recovery_and_kyc.sql)（恢复码与 2FA 变更时间、KYC 等级 / 申请 / 事件）
-- [006_add_login_events_and_devices.sql](sql/006_add_login_events_and_devices.sql)（登录事件、用户设备、会话 `device_id`）
+- [001_schema.sql](sql/001_schema.sql)：基线表结构（`identity_users`、`identity_user_credentials`、`identity_user_roles`、`identity_ops_sessions`、`identity_api_keys`、`user_two_factor_profiles`、`identity_two_factor_recovery_codes`、`identity_kyc_requests` / `identity_kyc_events`、`identity_login_events`、`identity_user_devices`）
+
+新的表结构改动以更大编号的文件追加（不修改已执行的文件），执行记录在 `schema_migrations`，见 [数据库结构与迁移](../../docs/getting-started.md#9-数据库结构与迁移)。
 
 运行脚本:
 

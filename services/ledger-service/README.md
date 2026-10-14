@@ -29,11 +29,9 @@
 
 SQL schema:
 
-- [001_init.sql](sql/001_init.sql)
-- [002_add_consumed_at_to_balance_locks.sql](sql/002_add_consumed_at_to_balance_locks.sql)
-- [003_add_outbox_retry_fields.sql](sql/003_add_outbox_retry_fields.sql)
-- [004_add_remaining_amount_to_balance_locks.sql](sql/004_add_remaining_amount_to_balance_locks.sql)
-- [005_reconciliation_runs.sql](sql/005_reconciliation_runs.sql)（定时对账记录 `ledger_reconciliation_runs`）
+- [001_schema.sql](sql/001_schema.sql)：基线表结构（`accounts`、`balances`、`balance_locks`、`ledger_journals`、`ledger_entries`、`outbox_events`、定时对账记录 `ledger_reconciliation_runs`）
+
+新的表结构改动以更大编号的文件追加（不修改已执行的文件），执行记录在 `schema_migrations`，见 [数据库结构与迁移](../../docs/getting-started.md#9-数据库结构与迁移)。
 
 服务级设计:
 

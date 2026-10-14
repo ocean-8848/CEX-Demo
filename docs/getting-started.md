@@ -31,7 +31,7 @@ pnpm demo:up
 1. 检查服务端口是否已被占用（发现占用会直接退出，提示先执行 `pnpm stack:stop`）。
 2. `docker compose -f infra/local/docker-compose.yml up -d` 启动基础设施。
 3. `pnpm build` 构建整个 workspace。
-4. `pnpm db:prepare:demo` 初始化所有服务的数据库表结构。
+4. `node scripts/apply-schema.mjs` 按依赖顺序执行各服务已构建好的迁移 runner：新数据库会建好全部表；已是最新时只核对版本，约 1 秒（见 [第 9 节](#9-数据库结构与迁移)）。
 5. 按固定顺序在后台启动全部服务，每个服务等待端口就绪（撮合引擎最多等 45 秒，其余 30 秒）；任何一个失败都会自动停掉已启动的服务。
 6. `pnpm demo:reset` 清空 PostgreSQL / Redis / ClickHouse 和撮合引擎订单簿中的演示数据。
 7. `pnpm demo:bootstrap` 写入固定的种子用户、初始资产、充值地址、提币白名单和簿内流动性，并恢复做市商报价。
@@ -56,7 +56,7 @@ pnpm stack:status
 | --- | --- |
 | `--skip-infra` | 不执行 `docker compose up -d` |
 | `--skip-build` | 不执行 `pnpm build`（已经构建过时可加快启动） |
-| `--skip-db-prepare` | 不执行 `pnpm db:prepare:demo` |
+| `--skip-db-prepare` | 不执行数据库结构检查与迁移（`scripts/apply-schema.mjs`） |
 | `--observability` | 同时启动 Jaeger 并为各 Node 服务开启 OpenTelemetry 导出（即 `pnpm stack:start:observability`） |
 
 ## 4. 服务与端口
@@ -155,6 +155,8 @@ pnpm stack:stop:infra   # 同上，并 docker compose down（含 Jaeger）
 docker compose -f infra/local/docker-compose.yml --profile observability down -v
 ```
 
+只想重建 PostgreSQL 中的 `web3_cex` 数据库时，用 `pnpm db:reset` 即可（见第 9 节）。
+
 ## 8. 单独启动服务
 
 每个服务和前端都提供 `start` 脚本（会先构建再启动），例如:
@@ -167,7 +169,7 @@ cargo run --manifest-path engines/matching-engine/Cargo.toml
 pnpm demo:simulator   # 单独运行做市商 + 模拟链 + 水龙头
 ```
 
-单独启动前请先启动基础设施并初始化表结构:
+单独启动前请先启动基础设施并应用数据库结构（构建后只应用尚未执行的迁移文件）:
 
 ```bash
 docker compose -f infra/local/docker-compose.yml up -d
@@ -200,7 +202,28 @@ pnpm --filter @web3-cex/ledger-service start
 
 安全设计的细节见 [security.md](./security.md)。
 
-## 9. 重要环境变量
+## 9. 数据库结构与迁移
+
+所有服务共用本地 PostgreSQL 数据库 `web3_cex`，每个服务只管理自己的表。
+
+- **基线**: 每个服务的 `sql/001_schema.sql` 是当前完整表结构的基线（ledger-service、identity-service、wallet-service、blockchain-indexer、custody-adapter、order-service、settlement-service、risk-service、apps/ops-console）。wallet-service 另有 `sql/002_reference_data.sql`，写入 3 个演示用的提现地址黑名单。
+- **记录表**: 共享 runner `packages/domain/src/schema-migrations.ts`（以 `@web3-cex/domain/schema-migrations` 引入）被各服务的 `src/scripts/run-db-prepare.ts` 调用。它在 PostgreSQL advisory lock 下运行，把已执行的文件记入 `schema_migrations(service, version, checksum, applied_at)`；未记录的文件按文件名顺序各在一个事务中执行一次。
+- **重启行为**: 没有新文件时只核对记录与磁盘上的文件，不重复执行 SQL，`stack:start` 中这一步约 1 秒。
+- **演示数据不在迁移里**: 种子用户、资产、盘口由 `pnpm demo:bootstrap` / `pnpm demo:prepare` 写入；`pnpm demo:reset` 只清空表数据，保留表结构。
+
+修改表结构时，在对应服务的 `sql/` 下新增一个更大编号的文件（如 `002_add_xxx.sql`，wallet-service 从 `003_` 开始），下次 `stack:start` / `db:migrate` / `db:prepare:*` 会执行它且只执行一次。**不要修改已执行过的文件**: runner 会因 checksum 不一致报错，提示新增文件或执行 `pnpm db:reset`。
+
+从零重建数据库（会丢弃全部数据）:
+
+```bash
+pnpm stack:stop
+pnpm db:reset      # DROP DATABASE web3_cex WITH (FORCE) → CREATE DATABASE → pnpm db:prepare:demo
+pnpm demo:up       # 或者全栈已在运行时用 pnpm demo:prepare 写入演示数据
+```
+
+如果本地数据库是在引入 `schema_migrations` 之前建的（有表但没有迁移记录），runner 会报 legacy schema 错误并拒绝执行，同样用 `pnpm stack:stop && pnpm db:reset && pnpm demo:up` 升级，旧数据会被丢弃。
+
+## 10. 重要环境变量
 
 服务**不会自动加载 `.env` 文件**。各服务和前端目录下的 `.env.example` 列出了可配置项及本地默认值，代码中的默认值与之对应；需要覆盖时通过 shell 环境变量传入（`stack:start` 会把当前 shell 的环境变量传给所有子进程）。
 
@@ -246,7 +269,7 @@ pnpm --filter @web3-cex/ledger-service start
 
 市场与币种不通过环境变量配置，而是统一来自 `config/markets.json`；VIP 手续费等级与做市商计划来自 `config/fee-tiers.json`，见 [config/README.md](../config/README.md)。
 
-## 10. 根目录脚本一览
+## 11. 根目录脚本一览
 
 | 脚本 | 说明 |
 | --- | --- |
@@ -254,9 +277,11 @@ pnpm --filter @web3-cex/ledger-service start
 | `pnpm typecheck` | 所有包的 TypeScript 类型检查 |
 | `pnpm check:structure` | 检查仓库必需的文件与目录是否存在 |
 | `pnpm check:markets` | 构建后校验各服务 / 前端 / 脚本的市场与币种列表都派生自 `config/markets.json` |
-| `pnpm db:prepare:core` | 初始化 ledger / identity / wallet / indexer / custody / order / settlement / risk 的表结构 |
-| `pnpm db:prepare:demo` | `db:prepare:core` + `ops-console` 的表结构 |
-| `pnpm stack:start` | 启动基础设施、构建、初始化表结构并启动全部服务 |
+| `pnpm db:prepare:core` | 构建并应用 ledger / identity / wallet / indexer / custody / order / settlement / risk 尚未执行的迁移 |
+| `pnpm db:prepare:demo` | `db:prepare:core` + `ops-console` 的迁移 |
+| `pnpm db:migrate` | 不重新构建，按顺序运行各服务已构建的迁移 runner（`scripts/apply-schema.mjs`，`stack:start` 用的就是它） |
+| `pnpm db:reset` | 删除并重建 `web3_cex` 数据库，再执行 `db:prepare:demo`；会丢弃全部数据，需先 `pnpm stack:stop`，之后用 `pnpm demo:prepare` 或 `pnpm demo:up` 写入演示数据 |
+| `pnpm stack:start` | 启动基础设施、构建、应用待执行的数据库迁移并启动全部服务 |
 | `pnpm stack:start:observability` | 同上，并启动 Jaeger、开启追踪 |
 | `pnpm stack:status` | 查看托管服务状态、PID、端口和日志路径 |
 | `pnpm stack:stop` | 停止全部托管服务 |
@@ -280,9 +305,9 @@ pnpm --filter @web3-cex/ledger-service start
 | `pnpm test:trade-domain:replay` | 启动临时撮合引擎，验证成交事件序列、回放游标与结算幂等 |
 | `pnpm docs:screenshots` | 在已启动并播种的全栈上重新生成 [使用手册](manual/README.md) 的截图（需要本机 Chrome，会执行演示下单、充值、提现等操作） |
 
-## 11. 运行测试
+## 12. 运行测试
 
-### 11.1 单元测试与静态检查（对应 `.github/workflows/ci.yml`）
+### 12.1 单元测试与静态检查（对应 `.github/workflows/ci.yml`）
 
 ```bash
 pnpm install --frozen-lockfile
@@ -305,7 +330,7 @@ pnpm check:structure
 
 `pnpm test:mvp` 是另一组不需要全栈运行的回归组合。设置 `DEMO_MAIN_FLOW_VERIFY=true` 或 `TRADER_WEB_LOCAL_E2E=true` 时，它会额外运行主链验证或 `trader-web` 本地 E2E（这两项需要全栈）。
 
-### 11.2 全栈 E2E（对应 `.github/workflows/e2e.yml`）
+### 12.2 全栈 E2E（对应 `.github/workflows/e2e.yml`）
 
 ```bash
 cargo build --manifest-path engines/matching-engine/Cargo.toml   # 预编译，避免首次 cargo run 超时

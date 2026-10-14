@@ -17,7 +17,7 @@
 当前实现:
 
 - HTTP 服务，默认端口 `3009`
-- PostgreSQL 持久化和数据库表结构初始化（[sql/](sql/) 下 `001`–`010` 迁移；`009` 增加 `post_only`、`stp_mode`、`trigger_price`、`triggered_at` 列，`010` 增加成交上的 VIP 等级列与等级指定 / 审计表）
+- PostgreSQL 持久化：基线表结构 [sql/001_schema.sql](sql/001_schema.sql)（`spot_orders`（含 `post_only`、`stp_mode`、`trigger_price`、`triggered_at`）、`spot_trades`（含双方 VIP 等级）、`spot_order_automation_executions`、`spot_order_recovery_jobs`、VIP 等级指定 `spot_fee_tier_overrides` / `spot_fee_tier_override_audit`），启动时只执行尚未记录在 `schema_migrations` 的文件，见 [数据库结构与迁移](../../docs/getting-started.md#9-数据库结构与迁移)
 - 主链核心能力:
   - 下单、撤单、订单查询、成交查询
   - 风控前置校验、账本预冻结、撮合桥接和成交回报处理

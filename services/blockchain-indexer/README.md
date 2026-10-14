@@ -86,9 +86,9 @@
 
 SQL schema:
 
-- [001_init.sql](sql/001_init.sql)
-- [002_add_block_hash_to_observations.sql](sql/002_add_block_hash_to_observations.sql)
-- [003_add_deposit_manual_action_fields.sql](sql/003_add_deposit_manual_action_fields.sql)
+- [001_schema.sql](sql/001_schema.sql)：基线表结构（`blockchain_scan_cursors`、`blockchain_deposit_observations`（含区块哈希与人工处理字段）、`blockchain_withdrawal_observations`）
+
+新的表结构改动以更大编号的文件追加（不修改已执行的文件），执行记录在 `schema_migrations`，见 [数据库结构与迁移](../../docs/getting-started.md#9-数据库结构与迁移)。
 
 说明:
 
