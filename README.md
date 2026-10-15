@@ -9,7 +9,7 @@ The repository has two parts:
 | Part | What it is | Start here |
 |---|---|---|
 | **CEX Demo** | A spot exchange monorepo: trader web app, ops console, API gateway, 10 backend services, a Rust matching engine, and a market-maker / chain simulator. | [Quick start](#quick-start) · [docs/](docs/README.md) |
-| **Learning materials** | 13 core chapters, 12 "backstage" topics, 11 product deep dives, 22 interactive labs, and 40 animated slide decks explaining exchange systems. | [learning/](learning/README.md) |
+| **Learning materials** | 13 core chapters, 12 "backstage" topics, 11 product deep dives, 22 interactive labs, and 40 animated slide decks explaining exchange systems. | [learning/](learning/README.md) · [online handbook](https://claude.ai/artifact/HYgzfN2Zk8SRLbAskxh8nJ) |
 
 > Most documentation and learning content is written in **Simplified Chinese**. Code, commands and identifiers are in English.
 
@@ -91,6 +91,8 @@ pnpm test:e2e        # against a running, seeded stack (after pnpm demo:up)
 ```
 
 ## Learning path
+
+The learning materials are also available as an online handbook with search, zoomable diagrams, the interactive labs and the slides in one place: [CEX learning handbook](https://claude.ai/artifact/HYgzfN2Zk8SRLbAskxh8nJ) (Chinese).
 
 1. Read [learning/01-what-is-cex.md](learning/01-what-is-cex.md) and [learning/02-system-architecture.md](learning/02-system-architecture.md).
 2. Run the demo and follow [docs/demo-walkthrough.md](docs/demo-walkthrough.md) with learning mode on.

@@ -9,7 +9,7 @@
 | 部分 | 内容 | 入口 |
 |---|---|---|
 | **CEX Demo** | 现货交易所 monorepo：交易前台、运营后台、API 网关、10 个后端服务、Rust 撮合引擎、做市与链模拟器。 | [快速开始](#快速开始) · [docs/](docs/README.md) |
-| **学习材料** | 13 章主线、12 篇幕后核心、11 篇产品深潜、22 个交互实验、40 集动画讲解幻灯片。 | [learning/](learning/README.md) |
+| **学习材料** | 13 章主线、12 篇幕后核心、11 篇产品深潜、22 个交互实验、40 集动画讲解幻灯片。 | [learning/](learning/README.md) · [在线手册](https://claude.ai/artifact/HYgzfN2Zk8SRLbAskxh8nJ) |
 
 ## Demo 覆盖的能力
 
@@ -89,6 +89,8 @@ pnpm test:e2e        # 需要先 pnpm demo:up 启动并播种全栈
 ```
 
 ## 学习路线
+
+学习材料也有在线版：[CEX 交易所学习手册](https://claude.ai/artifact/HYgzfN2Zk8SRLbAskxh8nJ)，支持全文搜索、流程图放大，交互实验和幻灯片都能在页面里直接打开。
 
 1. 先读 [learning/01-what-is-cex.md](learning/01-what-is-cex.md) 和 [learning/02-system-architecture.md](learning/02-system-architecture.md)。
 2. 启动 Demo，打开学习模式，按 [docs/demo-walkthrough.md](docs/demo-walkthrough.md) 走一遍。
