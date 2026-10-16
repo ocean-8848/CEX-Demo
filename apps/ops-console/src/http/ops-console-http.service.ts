@@ -79,7 +79,7 @@ export class OpsConsoleHttpService implements OnModuleInit, OnModuleDestroy {
   readonly faultLab: FaultLabApplicationService;
   readonly controls: OpsControlsApplicationService;
   readonly treasury: TreasuryApplicationService;
-  /** A7 user fee tier / override + A9 市场监控. */
+  /** user fee tier / override + 市场监控. */
   readonly feesSurveillance: FeesSurveillanceApplicationService;
   /** KYT address blacklist + user login history / devices. */
   readonly riskSecurity: OpsRiskSecurityService;

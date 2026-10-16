@@ -1,5 +1,5 @@
 /**
- * Alert levels (A3). Every alert the ops console shows gets one of:
+ * Alert levels. Every alert the ops console shows gets one of:
  *
  * - P1 资金正确性 / 资金出口：账实不一致、负余额、对账熔断触发。立即处理。
  * - P2 核心链路受损：结算失败或严重滞后、托管熔断、outbox 死信、长时间冻结、

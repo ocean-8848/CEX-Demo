@@ -1,7 +1,7 @@
 import { ApiGatewayError } from "../domain/errors.js";
 import { buildInternalServiceHeaders } from "./internal-service-request.js";
 
-/** order-service `/api/v1/fee-tiers/users/:userId` (A7 VIP fee tiers). */
+/** order-service `/api/v1/fee-tiers/users/:userId` (VIP fee tiers). */
 export class HttpFeeTierClient {
   constructor(private readonly baseUrl: string) {}
 

@@ -58,7 +58,7 @@ interface ServiceOptions {
   recoveryLeaseMs?: number;
   tradeEventVersionGate?: TradeEventVersionGate;
   settlementMode?: "sync" | "async";
-  /** VIP tier resolver (A7). Absent = every side pays the market default rate. */
+  /** VIP tier resolver. Absent = every side pays the market default rate. */
   feeTierResolver?: FeeTierResolver;
   /**
    * Holds crossed stop triggers while the market is halted / delisted or the

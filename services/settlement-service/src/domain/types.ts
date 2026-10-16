@@ -22,9 +22,9 @@ export interface SettleTradeCommand {
   sellerFeeRate: string;
   /** Fee rate charged to the buyer, in the base asset it receives (absent on old events). */
   buyerFeeRate?: string;
-  /** VIP tier the seller rate came from (order-service, A7). */
+  /** VIP tier the seller rate came from (order-service). */
   sellerFeeTier?: string;
-  /** VIP tier the buyer rate came from (order-service, A7). */
+  /** VIP tier the buyer rate came from (order-service). */
   buyerFeeTier?: string;
   executionId?: string;
   executionBatchId?: string;

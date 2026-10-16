@@ -23,7 +23,7 @@ export const SURVEILLANCE_READ_PERMISSION = "ops.markets.read";
 export const SURVEILLANCE_MANAGE_PERMISSION = "ops.markets.manage";
 
 /**
- * ops-console side of A7 (user fee tier + override) and A9 (市场监控). Every
+ * ops-console side of user fee tier + override and 市场监控. Every
  * write goes through the ops action audit log in addition to the upstream
  * service's own audit trail.
  */

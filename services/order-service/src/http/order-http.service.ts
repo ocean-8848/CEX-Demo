@@ -55,9 +55,9 @@ import { TcpMatchingEngineClient } from "../infrastructure/tcp-matching-engine-c
 @Injectable()
 export class OrderHttpService implements OnModuleInit, OnModuleDestroy {
   private readonly applicationService: OrderApplicationService;
-  /** A7 VIP fee tiers (resolution, overrides, audit). */
+  /** VIP fee tiers (resolution, overrides, audit). */
   readonly feeTiers: FeeTierService;
-  /** A9 read-only activity window for risk-service surveillance. */
+  /** read-only activity window for risk-service surveillance. */
   readonly surveillanceData: SurveillanceDataSource;
   private readonly opsService: OrderOpsService;
   private readonly recoveryWorker: OrderRecoveryWorker;

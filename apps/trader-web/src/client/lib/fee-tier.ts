@@ -1,4 +1,4 @@
-// VIP fee tier view helpers (A7). Pure functions so they can be unit tested.
+// VIP fee tier view helpers. Pure functions so they can be unit tested.
 
 import { toNumber } from "@web3-cex/web-ui";
 

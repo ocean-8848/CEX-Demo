@@ -12,7 +12,7 @@ import { OpsConsoleExceptionFilter } from "./ops-console-exception.filter.js";
 import { OpsConsoleHttpService } from "./ops-console-http.service.js";
 
 /**
- * 用户详情 → 手续费等级 (A7) and 风控与运维 → 市场监控 (A9). Writes are
+ * 用户详情 → 手续费等级 and 风控与运维 → 市场监控. Writes are
  * written to the ops action audit log.
  */
 @UseFilters(OpsConsoleExceptionFilter)

@@ -40,7 +40,7 @@ const ALLOWED_TRANSITIONS: Record<SurveillanceAlertStatus, SurveillanceAlertStat
 };
 
 /**
- * A9 market surveillance: periodically reads the order-service activity
+ * market surveillance: periodically reads the order-service activity
  * window, runs the detectors and keeps one alert per finding. Ops review the
  * alerts in ops-console 「市场监控」 (acknowledge / dismiss / reopen, each with
  * a note and an audit event).

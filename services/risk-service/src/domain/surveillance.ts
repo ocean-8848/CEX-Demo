@@ -1,4 +1,4 @@
-// Market surveillance (A9): pure detectors over a trade / order activity window.
+// Market surveillance: pure detectors over a trade / order activity window.
 //
 // Detectors only read; they never block trading. Each returns alert drafts
 // with an evidence list (trade / order ids plus a compact snapshot) and a

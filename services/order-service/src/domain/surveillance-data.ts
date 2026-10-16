@@ -1,5 +1,5 @@
 /**
- * Read-only activity window for risk-service market surveillance (A9).
+ * Read-only activity window for risk-service market surveillance.
  * order-service owns trades and orders, so it serves the raw window and
  * risk-service runs the detectors.
  */

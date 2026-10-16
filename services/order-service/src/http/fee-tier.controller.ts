@@ -10,7 +10,7 @@ interface FeeTierOverrideRequestDto {
   actor?: string;
 }
 
-/** A7 VIP fee tiers. Internal (HMAC) like every order-service route. */
+/** VIP fee tiers. Internal (HMAC) like every order-service route. */
 @UseFilters(OrderExceptionFilter)
 @Controller("/api/v1/fee-tiers")
 export class FeeTierController {
@@ -59,7 +59,7 @@ export class FeeTierController {
 
 const MAX_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/** A9 surveillance activity window, read by risk-service. */
+/** surveillance activity window, read by risk-service. */
 @UseFilters(OrderExceptionFilter)
 @Controller("/api/v1/surveillance")
 export class SurveillanceDataController {

@@ -5,7 +5,7 @@ import type { SpotOrderRecord, SpotTradeRecord } from "../domain/types.js";
 /**
  * What the ledger's `spot_order` lock for one order should still hold,
  * according to order-service. Used by the ledger-service order-vs-lock
- * reconciliation (A2): the ledger compares it with the lock's
+ * reconciliation: the ledger compares it with the lock's
  * `remaining_amount`.
  *
  *   expected = desired remaining lock (open quantity)

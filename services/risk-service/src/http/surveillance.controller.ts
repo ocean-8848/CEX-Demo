@@ -4,7 +4,7 @@ import type { SurveillanceAlertStatus, SurveillanceAlertType } from "../domain/s
 import { RiskExceptionFilter } from "./risk-exception.filter.js";
 import { SurveillanceHttpService } from "./surveillance-http.service.js";
 
-/** A9 market surveillance (internal; ops-console proxies it). */
+/** market surveillance (internal; ops-console proxies it). */
 @UseFilters(RiskExceptionFilter)
 @Controller("/api/v1/risk/surveillance")
 export class SurveillanceController {

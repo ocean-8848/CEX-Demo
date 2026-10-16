@@ -73,7 +73,7 @@ const STATUS_ACTIONS: Record<SurveillanceAlertStatus, Array<{ status: Surveillan
 };
 
 /**
- * 市场监控 (A9): risk-service scans order-service trades / cancelled orders
+ * 市场监控: risk-service scans order-service trades / cancelled orders
  * every minute and keeps one alert per finding. Demo market makers are
  * labelled 「做市商」 and excluded from alerts by default.
  */

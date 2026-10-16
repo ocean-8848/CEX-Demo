@@ -765,7 +765,7 @@ const sections = {
     return `sweep ${sweep.transferId.slice(0, 8)} confirmed · hot→cold same-approver 409 → reviewer approved · reserves covered (USDT ${usdt.reserveRatio}) · PoR root ${root.slice(0, 10)} verified (${snapshot.body.leafCount} leaves)`;
   },
 
-  /** A7 VIP fee tiers (resolution, ops override, recorded rate) + A9 market surveillance alerts. */
+  /** VIP fee tiers (resolution, ops override, recorded rate) + market surveillance alerts. */
   async "fees-surveillance"(ctx) {
     const market = config.demoMarket;
     const runtime = await fetchJson(`${TRADER_WEB}/api/config`);
@@ -895,7 +895,7 @@ const sections = {
   },
 
   /**
-   * A1–A3: emergency switches (asset / global withdrawal pause, API write
+   * Emergency switches (asset / global withdrawal pause, API write
    * freeze), RBAC + reason + audit, P1/P2/P3 alerts, scheduled reconciliation
    * with order-vs-lock, and the reconciliation circuit breaker (lab drift).
    * Every switch is turned off again in `finally`.
@@ -974,7 +974,7 @@ const sections = {
       const rejected = await ops(t, `/withdrawals/${queued.body.withdrawalId}/reject`, { reason: "e2e: paused" });
       assert.equal(rejected.status, 201, `reject still works while paused: ${JSON.stringify(rejected.body)}`);
 
-      // A3: a switch that is on shows up as a P2 alert
+      // a switch that is on shows up as a P2 alert
       const alerts = await ops(t, "/alerts");
       assert.equal(alerts.status, 200);
       assert.ok(alerts.body.countsBySeverity, "alerts carry counts per level");
@@ -1013,7 +1013,7 @@ const sections = {
       assert.equal(after.status, 201, `orders accepted again: ${JSON.stringify(after.body)}`);
       await waitSettled(after.body.orderId);
 
-      // A2: scheduled reconciliation (balance + order-vs-lock) is healthy
+      // scheduled reconciliation (balance + order-vs-lock) is healthy
       const runs = await ops(t, "/ledger/reconciliation/runs?limit=5");
       assert.equal(runs.status, 200);
       assert.ok(runs.body.job.enabled && runs.body.job.intervalSeconds > 0, `scheduled reconciliation is on: ${JSON.stringify(runs.body.job)}`);

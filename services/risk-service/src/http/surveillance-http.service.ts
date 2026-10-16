@@ -8,7 +8,7 @@ import { PostgresSurveillanceRepository } from "../infrastructure/postgres-surve
 import { createRiskPool } from "../infrastructure/postgres.js";
 
 /**
- * A9 market surveillance wiring. The scan job runs every
+ * market surveillance wiring. The scan job runs every
  * RISK_SURVEILLANCE_INTERVAL_MS (default 60s) unless
  * RISK_SURVEILLANCE_ENABLED=false; ops can also trigger a scan.
  */

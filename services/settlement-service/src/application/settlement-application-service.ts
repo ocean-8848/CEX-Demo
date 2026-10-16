@@ -1073,7 +1073,7 @@ function isRecoveryHandoffError(error: unknown): boolean {
   );
 }
 
-/** Rate + tier actually charged, copied onto the settlement row (A7). */
+/** Rate + tier actually charged, copied onto the settlement row. */
 function appliedFeeFields(
   command: SettleTradeCommand
 ): Pick<TradeSettlement, "sellerFeeRate" | "buyerFeeRate" | "sellerFeeTier" | "buyerFeeTier"> {

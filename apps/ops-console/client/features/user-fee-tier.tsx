@@ -18,7 +18,7 @@ function rate(value: string): string {
   return Number.isFinite(percent) ? `${Number(percent.toFixed(4))}%` : value;
 }
 
-/** 用户详情 → 手续费等级 (A7): tier, rates, 30-day volume and the audited override control. */
+/** 用户详情 → 手续费等级: tier, rates, 30-day volume and the audited override control. */
 export function UserFeeTierSection(props: { userId: string }) {
   const { can } = useSession();
   const { busy, run } = useOpsAction();

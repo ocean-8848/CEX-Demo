@@ -2,7 +2,7 @@ import { OpsConsoleError } from "../domain/errors.js";
 import { buildInternalServiceHeaders } from "./internal-service-request.js";
 
 /**
- * A7 fee tiers (order-service `/api/v1/fee-tiers`) and A9 market surveillance
+ * fee tiers (order-service `/api/v1/fee-tiers`) and market surveillance
  * (risk-service `/api/v1/risk/surveillance`), both over internal HMAC.
  */
 export class HttpFeesSurveillanceClient {

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { FeeTierProfile } from "../lib/fee-tier.js";
 import { useExchange } from "./store.js";
 
-// One shared copy of the caller's VIP tier (A7) for the account page and the
+// One shared copy of the caller's VIP tier for the account page and the
 // order form. Refetched when the user's trade count changes (volume moved) and
 // at most once a minute otherwise.
 let cached: { key: string; profile: FeeTierProfile | null; loadedAt: number } | null = null;

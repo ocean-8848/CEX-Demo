@@ -1,4 +1,4 @@
-// Types for A7 (fee tiers) and A9 (market surveillance) BFF responses.
+// Types for fee tiers and market surveillance BFF responses.
 
 export interface FeeTierDefinition {
   tier: string;

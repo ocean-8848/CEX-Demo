@@ -3,7 +3,7 @@ import { Badge, Empty, formatAmount, marketLabel, Panel, Progress } from "@web3-
 import { FEE_TIER_SOURCE_LABEL, formatRate } from "../../lib/fee-tier.js";
 import { useFeeTier } from "../../state/fee-tier.js";
 
-/** A7: current VIP tier, rates, 30-day volume and progress to the next tier. */
+/** current VIP tier, rates, 30-day volume and progress to the next tier. */
 export function FeeTierPanel() {
   const profile = useFeeTier();
 

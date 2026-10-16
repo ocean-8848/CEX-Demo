@@ -8,7 +8,7 @@ import { ApiGatewayAuditInterceptor } from "./api-gateway-audit.interceptor.js";
 import { ApiGatewayExceptionFilter } from "./api-gateway-exception.filter.js";
 import { ApiGatewayRateLimitGuard } from "./api-gateway-rate-limit.guard.js";
 
-/** A7: the caller's VIP tier, effective rates, 30-day volume and progress. */
+/** the caller's VIP tier, effective rates, 30-day volume and progress. */
 @UseFilters(ApiGatewayExceptionFilter)
 @UseGuards(ApiGatewayAuthGuard, ApiGatewayRateLimitGuard)
 @UseInterceptors(ApiGatewayAuditInterceptor)

@@ -43,7 +43,7 @@ export interface UserFeeTierProfile extends UserFeeTier {
 }
 
 /**
- * Resolves each account's VIP tier from its trailing spot volume (A7).
+ * Resolves each account's VIP tier from its trailing spot volume.
  *
  * Determinism: the tier is resolved when a fill is built and the resulting
  * rate + tier are written onto the trade, so settlement and any replay use the
