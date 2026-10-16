@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
- * Browser sessions (M5-1): the BFF keeps the ops session token in an
+ * Browser sessions: the BFF keeps the ops session token in an
  * HttpOnly cookie, so page scripts (and any XSS) can never read it. Writes
  * also need a CSRF token (double submit: a readable cookie echoed in the
  * `x-csrf-token` header), on top of SameSite=Strict.

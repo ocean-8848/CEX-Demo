@@ -654,7 +654,7 @@ export class WalletApplicationService {
       }
 
       const approvedAt = this.now().toISOString();
-      // M5-2: the policy stored at request time wins; legacy rows fall back to
+      // the policy stored at request time wins; legacy rows fall back to
       // the current threshold configuration.
       const policy = readApprovalPolicy(
         withdrawal.metadata,
@@ -892,7 +892,7 @@ export class WalletApplicationService {
         ? await this.identityClient.getTwoFactorStatus(command.userId)
         : undefined;
 
-    // M5-2 cooldown runs before any 2FA code is consumed.
+    // cooldown runs before any 2FA code is consumed.
     const cooldown = await this.evaluateSecurityCooldown(command.userId, twoFactorStatus?.changedAt);
     if (cooldown.active) {
       throw new WalletError("WITHDRAWAL_SECURITY_COOLDOWN", describeCooldown(cooldown));
@@ -912,7 +912,7 @@ export class WalletApplicationService {
       );
     }
     // Once a user has turned 2FA on, every withdrawal needs a code, even when
-    // the platform-wide WITHDRAWAL_REQUIRE_2FA flag is off (M4-1).
+    // the platform-wide WITHDRAWAL_REQUIRE_2FA flag is off.
     const twoFactorChecked = requireTwoFactor || Boolean(twoFactorStatus?.enabled);
 
     const kycTier = await this.resolveKycTier(command.userId);
@@ -1555,11 +1555,11 @@ export class WalletApplicationService {
     return {
       ...nextMetadata,
       validation: validation.appliedRules,
-      // M5-2: fixed at request time so a config change cannot downgrade review.
+      // fixed at request time so a config change cannot downgrade review.
       approvalPolicy: {
         requiredApprovals: validation.appliedRules.requiredApprovals ?? 1,
         threshold: validation.appliedRules.dualApprovalThreshold,
-        // Only KYT-triggered dual approval is tagged; amount-based keeps the M5-2 shape.
+        // Only KYT-triggered dual approval is tagged; amount-based keeps the dual-approval shape.
         ...(validation.appliedRules.dualApprovalReason === "risk_high" ? { reason: "risk_high" } : {})
       },
       approvals: [],

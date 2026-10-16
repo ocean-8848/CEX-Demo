@@ -23,7 +23,7 @@ export interface UserRecord {
   userType?: string;
   roles?: string[];
   twoFactorEnabled?: boolean;
-  /** M4-4: unverified / L1 / L2 */
+  /** unverified / L1 / L2 */
   kycTier?: string;
   kycTierUpdatedAt?: string;
   createdAt?: string;

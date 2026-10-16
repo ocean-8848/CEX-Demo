@@ -18,7 +18,7 @@
 // DEMO_TREASURY_INTERVAL_BLOCKS blocks the simulator runs the sweep job, the
 // hot wallet watermark check and the demo reserve keeper (scripts/treasury-demo-lib.mjs).
 //
-// Fault lab (M3-2): /internal/lab/* lets ops-console halt block production and
+// Fault lab: /internal/lab/* lets ops-console halt block production and
 // trigger a chain reorganisation. Those routes require an HMAC-signed internal
 // request (caller ops-console / demo-scripts) and are never proxied by trader-web.
 

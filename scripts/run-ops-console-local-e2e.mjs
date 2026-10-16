@@ -74,7 +74,7 @@ try {
   await page.fill("#ops-login-form input[name=twoFactorCode]", generateTotpCode(DEMO_OPS.twoFactorSecret, new Date()).code);
   await page.click("#ops-login-form button[type=submit]");
   await page.waitForSelector("#nav-dashboard", { timeout: 15_000 });
-  // M5-1: the session token sits in an HttpOnly cookie that page scripts cannot read.
+  // the session token sits in an HttpOnly cookie that page scripts cannot read.
   const exposure = await page.evaluate(() => ({
     cookie: document.cookie,
     storage: Object.keys(localStorage).filter((key) => /token/i.test(key))

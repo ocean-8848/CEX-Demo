@@ -3,7 +3,7 @@ export interface IdentityTwoFactorStatus {
   enabled: boolean;
   pendingEnrollment: boolean;
   enabledAt?: string;
-  /** Last enable / disable time, used by the security cooldown (M5-2). */
+  /** Last enable / disable time, used by the security cooldown. */
   changedAt?: string;
 }
 

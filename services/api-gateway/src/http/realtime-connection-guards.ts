@@ -1,5 +1,5 @@
 /**
- * Hardening for the private WebSocket (M5-3):
+ * Hardening for the private WebSocket:
  * - Origin allow-list: browsers always send Origin, so a page on another site
  *   cannot ride a user's session over WS (cross-site WebSocket hijacking).
  *   Non-browser clients (bots signing with API keys) send no Origin and pass.

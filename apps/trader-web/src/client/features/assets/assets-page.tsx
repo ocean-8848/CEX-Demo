@@ -437,7 +437,7 @@ function WithdrawPanel(props: { initialAsset?: string }) {
   const available = availableOf(assets, asset);
   const maxAmount = Math.max(available - toNumber(fee), 0);
   const addressBook = state.addressBook.filter((entry) => !entry.network || entry.network === network);
-  // M4-1 / M4-4 / M5-2: the same rules wallet-service enforces, shown up front.
+  // 2FA / KYC / withdrawal security: the same rules wallet-service enforces, shown up front.
   const limits = state.withdrawalLimits;
   const assetLimit = limits?.assets.find((item) => item.assetCode === asset);
   const twoFactorEnabled = Boolean(state.twoFactor?.enabled ?? limits?.twoFactorEnabled);

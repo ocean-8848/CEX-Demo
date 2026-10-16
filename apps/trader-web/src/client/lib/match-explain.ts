@@ -1,4 +1,4 @@
-// M3-4 "how did my order match?" — pure logic, no React.
+// "how did my order match?" — pure logic, no React.
 //
 // Given the opposite side of the order book captured just before submission
 // and the trades the new order produced as taker, rebuild the walk the

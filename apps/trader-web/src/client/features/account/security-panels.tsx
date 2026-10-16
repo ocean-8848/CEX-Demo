@@ -54,7 +54,7 @@ function RecoveryCodesModal(props: { codes: string[] | null; onClose: () => void
   );
 }
 
-/** M4-1: bind / verify / unbind TOTP 2FA from the account page. */
+/** bind / verify / unbind TOTP 2FA from the account page. */
 export function TwoFactorPanel() {
   const { state, actions } = useExchange();
   const status = state.twoFactor;
@@ -215,7 +215,7 @@ export function TwoFactorPanel() {
   );
 }
 
-/** M4-4: KYC tier, withdrawal limits with today's usage and the demo KYC form. */
+/** KYC tier, withdrawal limits with today's usage and the demo KYC form. */
 export function KycPanel() {
   const { state, actions } = useExchange();
   const kyc = state.kyc;

@@ -1,4 +1,4 @@
-// Notification center (M4-2): turns wallet-service notification records into
+// Notification center: turns wallet-service notification records into
 // human-readable Chinese copy plus a link to the record they are about.
 // Pure functions only, so they are unit tested without React.
 

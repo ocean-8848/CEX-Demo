@@ -94,7 +94,7 @@ test("trade lines link to the trade, keep the fee and fall back for unknown sour
   assert.equal(debit.amount, "-300");
   assert.equal(debit.sourceLabel, "成交");
   assert.equal(debit.link, "/orders?tab=trades&highlight=trade-1");
-  assert.equal(debit.tradeId, "trade-1", "opens the M3-3 T-account view");
+  assert.equal(debit.tradeId, "trade-1", "opens the T-account view");
 
   const orderFreeze = toStatementRow(
     line({

@@ -196,13 +196,13 @@ export interface IdentityGatewayClient {
     canonicalRequest: string;
     signature: string;
   }): Promise<ApiKeyAuthInfo>;
-  /** M4-1 self-service 2FA (identity owns the secret and recovery codes). */
+  /** self-service 2FA (identity owns the secret and recovery codes). */
   getTwoFactorStatus(userId: string): Promise<Record<string, unknown>>;
   enrollTwoFactor(userId: string): Promise<Record<string, unknown>>;
   enableTwoFactor(userId: string, code: string): Promise<Record<string, unknown>>;
   disableTwoFactor(userId: string, code: string): Promise<Record<string, unknown>>;
   regenerateRecoveryCodes(userId: string, code: string): Promise<Record<string, unknown>>;
-  /** M4-4 KYC tier and requests. */
+  /** KYC tier and requests. */
   getKycProfile(userId: string): Promise<Record<string, unknown>>;
   submitKycRequest(
     userId: string,
@@ -218,7 +218,7 @@ export interface IdentityGatewayClient {
 }
 
 export interface WalletGatewayClient {
-  /** M4-4 / M5-2: tier limits, today's usage and security cooldown. */
+  /** tier limits, today's usage and security cooldown. */
   getWithdrawalLimits(userId: string): Promise<Record<string, unknown>>;
   /** Proof of reserves: the latest snapshot plus the caller's own leaf and Merkle path. */
   getProofOfReserves?(userId: string): Promise<Record<string, unknown>>;

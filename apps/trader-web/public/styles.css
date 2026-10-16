@@ -1014,7 +1014,7 @@
   margin-top: 16px;
 }
 
-/* M4-1 self-service 2FA / M4-4 KYC panels */
+/* self-service 2FA / KYC panels */
 .two-factor-enroll {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -1877,7 +1877,7 @@
 }
 
 /* ---------------------------------------------------------------------------
-   M3-4 match replay (learn drawer)
+   match replay (learn drawer)
    --------------------------------------------------------------------------- */
 
 .match-replay {
@@ -2076,7 +2076,7 @@
 }
 
 /* ---------------------------------------------------------------------------
-   M3-3 trade journals / T-accounts
+   trade journals / T-accounts
    --------------------------------------------------------------------------- */
 
 .clickable-row {
@@ -2270,7 +2270,7 @@
   font-family: var(--mono);
 }
 
-/* ------------------------------------------------- notification center (M4-2) */
+/* ------------------------------------------------- notification center */
 
 .notif {
   position: relative;
@@ -2427,7 +2427,7 @@
   font-size: 11px;
 }
 
-/* ------------------------------------------------------ asset statement (M4-5) */
+/* ------------------------------------------------------ asset statement */
 
 .statement-filters {
   flex-wrap: wrap;
@@ -2497,7 +2497,7 @@
   }
 }
 
-/* Guided scenarios (M3-5) */
+/* Guided scenarios */
 .tour-launcher {
   position: fixed;
   left: 16px;

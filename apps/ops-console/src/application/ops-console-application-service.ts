@@ -555,7 +555,7 @@ export class OpsConsoleApplicationService {
     );
   }
 
-  // M4-4: KYC review. Every decision goes through the ops action audit log
+  // KYC review. Every decision goes through the ops action audit log
   // and identity additionally appends a KYC event (from / to tier, actor).
   async getUserKycProfile(userId: string) {
     return this.identityClient.getKycProfile(userId);

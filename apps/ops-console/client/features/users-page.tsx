@@ -425,7 +425,7 @@ const KYC_EVENT_LABEL: Record<string, string> = {
   tier_adjusted: "手动调整"
 };
 
-/** M4-4: current tier, pending request and manual adjustment in the user drawer. */
+/** current tier, pending request and manual adjustment in the user drawer. */
 function UserKycSection(props: { userId: string; onChanged: () => void }) {
   const { can } = useSession();
   const { busy, run } = useOpsAction();
@@ -514,7 +514,7 @@ function UserKycSection(props: { userId: string; onChanged: () => void }) {
   );
 }
 
-/** M4-4: KYC review queue (demo data only — no real documents are collected). */
+/** KYC review queue (demo data only — no real documents are collected). */
 function KycTab() {
   const { can } = useSession();
   const { busy, run } = useOpsAction();

@@ -1,4 +1,4 @@
-// Guided scenarios (M3-5). Pure definitions: each step says where to go, what
+// Guided scenarios. Pure definitions: each step says where to go, what
 // to highlight and how to tell it is done from the exchange state, so a new
 // user can follow a scenario without reading the docs. The panel component
 // renders them; tests exercise the completion rules directly.

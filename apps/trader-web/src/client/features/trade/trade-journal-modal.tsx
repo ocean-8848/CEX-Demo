@@ -29,7 +29,7 @@ const ROLE_CLASS: Record<TAccount["accountRole"], string> = {
   unknown: "is-platform"
 };
 
-// M3-3: every ledger journal a trade produced, laid out as T-accounts
+// every ledger journal a trade produced, laid out as T-accounts
 // (借 debit on the left, 贷 credit on the right) with a per-asset balance check.
 export function TradeJournalModal(props: { tradeId: string | null; onClose: () => void }) {
   const { actions } = useExchange();

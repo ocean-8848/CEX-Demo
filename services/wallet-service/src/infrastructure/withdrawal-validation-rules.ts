@@ -18,9 +18,9 @@ import {
 const ASSET_CODES: AssetCode[] = listAssetCodes();
 const NETWORKS: readonly Network[] = KNOWN_NETWORKS;
 
-/** M5-2 defaults: amounts strictly above these need two different approvers. */
+/** defaults: amounts strictly above these need two different approvers. */
 export const DEFAULT_DUAL_APPROVAL_THRESHOLD_BY_ASSET = "USDT=5000,USDC=5000,ETH=2,BTC=0.1,SOL=50";
-/** M5-2 default: 24h lock after a security change. The demo stack overrides it to 0. */
+/** default: 24h lock after a security change. The demo stack overrides it to 0. */
 export const DEFAULT_SECURITY_COOLDOWN_SECONDS = 24 * 60 * 60;
 
 export function loadWithdrawalValidationRulesFromEnv(): WithdrawalValidationRules {

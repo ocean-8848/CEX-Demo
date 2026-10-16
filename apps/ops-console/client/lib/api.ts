@@ -20,7 +20,7 @@ export interface RequestOptions {
 export type OpsFetch = <T>(path: string, options?: RequestOptions) => Promise<T>;
 
 /**
- * The session token lives in an HttpOnly cookie set by the BFF (M5-1), so
+ * The session token lives in an HttpOnly cookie set by the BFF, so
  * this code never sees it. Writes echo the readable `ops_csrf` cookie in the
  * `x-csrf-token` header (double-submit CSRF protection).
  */

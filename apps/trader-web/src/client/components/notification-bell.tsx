@@ -7,7 +7,7 @@ import { navigate } from "../lib/router.js";
 import { useExchange } from "../state/store.js";
 
 /**
- * M4-2 notification center: bell with the unread count (server-side read
+ * notification center: bell with the unread count (server-side read
  * markers from wallet-service) and a dropdown of the latest notifications.
  */
 export function NotificationBell() {

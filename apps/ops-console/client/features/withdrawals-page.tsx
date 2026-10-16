@@ -57,7 +57,7 @@ interface ApprovalProgress {
   reason?: string;
 }
 
-/** M5-2: reads the dual-approval policy and approvals wallet-service stores in metadata. */
+/** reads the dual-approval policy and approvals wallet-service stores in metadata. */
 export function approvalProgress(row: WithdrawalRecord | undefined): ApprovalProgress {
   const metadata = (row?.metadata ?? {}) as Record<string, unknown>;
   const policy = (metadata.approvalPolicy ?? {}) as Record<string, unknown>;

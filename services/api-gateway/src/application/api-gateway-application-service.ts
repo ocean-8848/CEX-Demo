@@ -282,7 +282,7 @@ export class ApiGatewayApplicationService {
     return this.identityClient.revokeApiKey(principal.userId, apiKeyId);
   }
 
-  // M4-1: self-service 2FA. Session-only; identity verifies every code.
+  // self-service 2FA. Session-only; identity verifies every code.
   async getTwoFactorStatus(principal: GatewayPrincipal) {
     this.assertCustomerSession(principal);
     return this.identityClient.getTwoFactorStatus(principal.userId);
@@ -308,7 +308,7 @@ export class ApiGatewayApplicationService {
     return this.identityClient.regenerateRecoveryCodes(principal.userId, requireCode(code));
   }
 
-  // M4-4: KYC tier (demo data only).
+  // KYC tier (demo data only).
   async getKycProfile(principal: GatewayPrincipal) {
     this.assertCustomerSession(principal);
     return this.identityClient.getKycProfile(principal.userId);
@@ -400,7 +400,7 @@ export class ApiGatewayApplicationService {
     });
   }
 
-  // --- M4-5 asset statement --------------------------------------------------
+  // --- asset statement --------------------------------------------------
 
   /**
    * 资金流水 of the caller's own spot account. The account id is never taken
@@ -660,7 +660,7 @@ export class ApiGatewayApplicationService {
     });
   }
 
-  // --- M4-2 notification center: customer read markers ---------------------
+  // --- notification center: customer read markers ---------------------
 
   async countUnreadWalletNotifications(principal: GatewayPrincipal) {
     return this.walletClient.countUnreadWalletNotifications(principal.userId);
@@ -768,7 +768,7 @@ export class ApiGatewayApplicationService {
   }
 
   /**
-   * M3-3: every ledger journal a trade produced, masked for the caller. Only
+   * every ledger journal a trade produced, masked for the caller. Only
    * the buyer or the seller may read it; the other side shows as 「对手方」.
    */
   async getTradeJournals(principal: GatewayPrincipal, tradeId: string): Promise<TradeJournalView> {

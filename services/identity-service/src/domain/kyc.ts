@@ -1,5 +1,5 @@
 /**
- * KYC tiers (M4-4). Learning demo only: no real identity verification, no
+ * KYC tiers. Learning demo only: no real identity verification, no
  * document upload, and the "ID number" is a fake field that is masked before
  * it is stored.
  */

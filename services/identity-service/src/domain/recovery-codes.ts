@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
- * One-time 2FA recovery codes (M4-1).
+ * One-time 2FA recovery codes.
  *
  * - Generated when 2FA is enabled (or regenerated), shown to the user exactly once.
  * - Only a SHA-256 hash (salted with the userId) is stored; a used code is marked

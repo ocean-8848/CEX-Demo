@@ -29,7 +29,7 @@ export function takeLastTraceId(): string | undefined {
 }
 
 /**
- * Marker stored in `state.token` for a browser session (M5-1). The real token
+ * Marker stored in `state.token` for a browser session. The real token
  * lives in the trader-web Web Host's HttpOnly cookie; this page never sees it
  * and the Web Host attaches it to proxied requests.
  */
@@ -149,7 +149,7 @@ export function readErrorMessage(error: unknown): string {
 // Translate the most common backend error messages into something a learner
 // can act on, while keeping the original text for debugging.
 const ERROR_HINTS: Array<[RegExp, string]> = [
-  // M4-1 / M4-4 / M5-2 codes first: they are more specific than the generic hints below.
+  // 2FA / KYC / withdrawal-security codes first: they are more specific than the generic hints below.
   [/WITHDRAWAL_ADDRESS_BLOCKED|blocked by platform risk control/, "该地址已被平台风控拦截（命中制裁 / 黑名单地址），无法向其提现；如有疑问请联系客服"],
   [/LOGIN_TEMPORARILY_LOCKED|temporarily locked/, "登录失败次数过多，账户已临时锁定，请稍后再试"],
   [/WITHDRAWAL_2FA_NOT_ENABLED/, "请先在账户页开启二次验证"],
@@ -193,7 +193,7 @@ export function humanizeError(message: string, code?: string): string {
 }
 
 /**
- * M5-2: wallet-service reports `remainingSeconds=N` in WITHDRAWAL_SECURITY_COOLDOWN
+ * wallet-service reports `remainingSeconds=N` in WITHDRAWAL_SECURITY_COOLDOWN
  * errors; turn it into a readable countdown.
  */
 export function describeCooldownError(text: string): string | null {

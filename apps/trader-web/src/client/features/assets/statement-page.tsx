@@ -31,7 +31,7 @@ interface Filters {
 
 const EMPTY_FILTERS: Filters = { assetCode: "", category: "", includeLockEvents: true, from: "", to: "" };
 
-/** M4-5 资金流水: ledger entries + freeze / release events of the caller's spot account. */
+/** 资金流水: ledger entries + freeze / release events of the caller's spot account. */
 export function StatementPage() {
   const { state, api, actions } = useExchange();
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);

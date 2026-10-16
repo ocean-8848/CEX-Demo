@@ -1,4 +1,4 @@
-// M3-3 trade journal (T-account) view: types mirror the gateway response of
+// trade journal (T-account) view: types mirror the gateway response of
 // GET /api/v1/gateway/trades/:tradeId/journals. Account ids never reach the
 // browser; entries only carry a role + a readable label.
 

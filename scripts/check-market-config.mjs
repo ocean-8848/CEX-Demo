@@ -1,4 +1,4 @@
-// M4-3 acceptance check: config/markets.json is the single source of truth.
+// acceptance check: config/markets.json is the single source of truth.
 //
 // 1. Dynamic: loads the config and asserts that every service / BFF / script
 //    market or asset list (from the built dist output) equals what the config

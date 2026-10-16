@@ -26,7 +26,7 @@ function ratio(part: string, whole: string): number {
   return Math.max(0, Math.min(1, value));
 }
 
-// M3-4: step-by-step replay of how the user's last order walked the opposite
+// step-by-step replay of how the user's last order walked the opposite
 // book (price priority, then time priority) and what happened to the rest.
 export function MatchReplayCard(props: { replay: MatchReplay; onClose: () => void }) {
   const { explanation } = props.replay;

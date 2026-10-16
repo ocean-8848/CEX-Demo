@@ -69,7 +69,7 @@ import { describeOrderReason, engineTypeOf, isStopType } from "../lib/order-opti
 import { explainPrivateItems, learnEvent, type LearnEvent } from "./learn.js";
 import { ManagedSocket, type FeedStatus } from "./socket.js";
 
-// Older builds stored the bearer token here; it is cleared on boot (M5-1).
+// Older builds stored the bearer token here; it is cleared on boot.
 const LEGACY_TOKEN_KEY = "trader-web:token";
 // Non-secret hint that a cookie session probably exists, so boot checks it.
 const SIGNED_IN_KEY = "trader-web:signed-in";
@@ -92,7 +92,7 @@ export interface Toast {
   detail?: string;
 }
 
-/** M3-4: the last order's matching walk, shown in the learn drawer. */
+/** the last order's matching walk, shown in the learn drawer. */
 export interface MatchReplay {
   orderId: string;
   market: string;
@@ -125,11 +125,11 @@ export interface ExchangeState {
   withdrawals: WithdrawalRecord[];
   addressBook: AddressBookEntry[];
   notifications: NotificationRecord[];
-  /** M4-2: unread notifications (server count, bumped by realtime events). */
+  /** unread notifications (server count, bumped by realtime events). */
   notificationUnread: number;
   accountEvents: AccountEventRecord[];
   apiKeys: ApiKeyRecord[];
-  /** M4-1 / M4-4 / M5-2 account security snapshot (null until loaded). */
+  /** 2FA / KYC / withdrawal-security account snapshot (null until loaded). */
   twoFactor: TwoFactorStatus | null;
   kyc: KycProfile | null;
   withdrawalLimits: WithdrawalLimits | null;
@@ -594,7 +594,7 @@ function buildActions(
     refreshAccount,
     refreshUnreadCount,
 
-    /** M4-2: persist the read marker server-side (wallet-service), optimistic locally. */
+    /** persist the read marker server-side (wallet-service), optimistic locally. */
     async markNotificationRead(notificationId: string) {
       const readAt = new Date().toISOString();
       dispatch({ type: "notificationsRead", ids: [notificationId], readAt });
@@ -781,7 +781,7 @@ function buildActions(
       dispatch({ type: "matchReplay", replay: null });
     },
 
-    /** M3-3: masked ledger journals of one of the user's trades. */
+    /** masked ledger journals of one of the user's trades. */
     loadTradeJournals(tradeId: string): Promise<TradeJournalView> {
       return fetchTradeJournals(api(), token(), tradeId);
     },
@@ -907,7 +907,7 @@ function buildActions(
         snapshot: { addressBook: [entry, ...stateRef.current.addressBook] }
       });
       toast("positive", "地址已保存", entry.isWhitelisted ? "已加入白名单" : "白名单需运营审核开启");
-      // A new address may start the withdrawal cooldown (M5-2).
+      // A new address may start the withdrawal cooldown.
       void actions.refreshSecurity();
       return entry;
     },
@@ -941,7 +941,7 @@ function buildActions(
       dispatch({ type: "accountSnapshot", snapshot: { twoFactor, kyc, withdrawalLimits } });
     },
 
-    // M4-1: self-service TOTP 2FA. identity-service owns the secret; the QR
+    // self-service TOTP 2FA. identity-service owns the secret; the QR
     // code is rendered client-side from the otpauth URI.
     async enrollTwoFactor(): Promise<TwoFactorEnrollment> {
       learn(learnEvent({ service: "identity-service", title: "POST /auth/two-factor/enroll", detail: "生成新的 TOTP 密钥（待验证状态），返回 otpauth:// URI 供身份验证器扫码。" }));
@@ -981,7 +981,7 @@ function buildActions(
       return status;
     },
 
-    // M4-4: KYC (demo fields only).
+    // KYC (demo fields only).
     async submitKyc(input: { requestedTier: "L1" | "L2"; fullName: string; idNumber: string }) {
       await api().gateway("/auth/kyc/requests", { method: "POST", token: token(), body: input });
       toast("positive", "认证申请已提交", "等待运营后台审核");

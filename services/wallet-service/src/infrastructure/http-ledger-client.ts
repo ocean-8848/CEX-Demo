@@ -129,7 +129,7 @@ export class HttpLedgerClient implements LedgerClient {
   }
 
   async consumeBalance(command: LedgerConsumeBalanceCommand): Promise<{ lockId: string }> {
-    // Ledger only consumes locks through a settlement account (M2-6), so the
+    // Ledger only consumes locks through a settlement account, so the
     // withdrawn amount is journaled out of the user rather than vanishing.
     const body = {
       ...command,

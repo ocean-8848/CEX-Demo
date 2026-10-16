@@ -36,7 +36,7 @@ services:
     volumes:
       - clickhouse-data:/var/lib/clickhouse
 
-  # Optional tracing backend (M3-1). Started only with
+  # Optional tracing backend. Started only with
   # `docker compose --profile observability up -d` or `pnpm stack:start:observability`.
   jaeger:
     image: jaegertracing/all-in-one:1.62.0

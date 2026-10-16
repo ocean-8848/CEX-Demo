@@ -245,7 +245,7 @@ export interface AddressBookEntry {
   createdAt?: string;
 }
 
-/** M4-1: identity-service 2FA status (via GET /auth/two-factor). */
+/** identity-service 2FA status (via GET /auth/two-factor). */
 export interface TwoFactorStatus {
   enabled: boolean;
   pendingEnrollment: boolean;
@@ -279,7 +279,7 @@ export interface KycRequest {
   reviewedAt?: string;
 }
 
-/** M4-4: GET /auth/kyc */
+/** GET /auth/kyc */
 export interface KycProfile {
   tier: KycTier;
   tierUpdatedAt?: string;
@@ -298,7 +298,7 @@ export interface WithdrawalAssetLimit {
   dualApprovalThreshold?: string;
 }
 
-/** M4-4 / M5-2: GET /withdrawals/limits */
+/** GET /withdrawals/limits */
 export interface WithdrawalLimits {
   kycTier?: KycTier;
   kycEnforced?: boolean;

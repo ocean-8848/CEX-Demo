@@ -91,7 +91,7 @@ export const serviceDefinitions = [
     args: [...telemetryPreloadArgs, "./dist/main.js"],
     port: 3002,
     env: {
-      // M5-2: production semantics lock withdrawals for 24h after a security
+      // production semantics lock withdrawals for 24h after a security
       // change; the demo stack disables it unless you export e.g. 120.
       WITHDRAWAL_SECURITY_COOLDOWN_SECONDS: process.env.WITHDRAWAL_SECURITY_COOLDOWN_SECONDS ?? "0"
     }

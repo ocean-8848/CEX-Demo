@@ -240,7 +240,7 @@ async function ensureTraderWebAvailable() {
 async function prepareLocalTradingState(params) {
   const { page, ledgerBaseUrl: currentLedgerBaseUrl, market: currentMarket, minimumUsdtBalance: minimumBalance, withdrawAddress: currentWithdrawAddress } = params;
   const config = await fetchJson(`${baseUrl}/api/config`);
-  // M5-1: the session token is an HttpOnly cookie. Page scripts must not see it;
+  // the session token is an HttpOnly cookie. Page scripts must not see it;
   // the test harness reads it from the browser context to drive API setup.
   const exposed = await page.evaluate(() => ({
     cookie: document.cookie,

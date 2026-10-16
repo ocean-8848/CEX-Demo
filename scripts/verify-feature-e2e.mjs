@@ -1,4 +1,4 @@
-// End-to-end checks for the M2–M5 features against a running, seeded stack
+// End-to-end checks for the platform features against a running, seeded stack
 // (`pnpm demo:up`). Every check talks to real services; nothing is mocked.
 //
 //   node ./scripts/verify-feature-e2e.mjs [section...]
@@ -31,7 +31,7 @@ const OPS = `${process.env.OPS_CONSOLE_BASE_URL ?? "http://127.0.0.1:3006"}/api/
 const GATEWAY = `${config.gatewayBaseUrl}/api/v1/gateway`;
 const SETTLEMENT = config.settlementBaseUrl;
 
-// The market M4-3 lists purely through config/markets.json (acceptance target).
+// The market listed purely through config/markets.json (acceptance target).
 const CONFIG_LISTED_MARKET = process.env.E2E_CONFIG_LISTED_MARKET ?? "SOL-USDT";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -160,7 +160,7 @@ async function reconciliationMismatches(opsToken) {
 // ---------------------------------------------------------------------------
 
 const sections = {
-  /** M2-4: keyId + secret, nonce anti-replay, scopes, revocation. */
+  /** keyId + secret, nonce anti-replay, scopes, revocation. */
   async apikey(ctx) {
     const created = await gateway("/auth/api-keys", {
       token: ctx.token,
@@ -196,7 +196,7 @@ const sections = {
     return "signed 200 · replay 401 · scope 403 · revoked 401";
   },
 
-  /** M5-3: Origin allow-list and per-connection rate limiting. */
+  /** Origin allow-list and per-connection rate limiting. */
   async websocket(ctx) {
     const require = createRequire(new URL("../services/api-gateway/package.json", import.meta.url));
     const { WebSocket } = require("ws");
@@ -224,7 +224,7 @@ const sections = {
     return "evil origin 403 · flood closed 4008";
   },
 
-  /** M2-2 + M3-3: dual fees and a balanced T-account view of a real trade. */
+  /** dual fees and a balanced T-account view of a real trade. */
   async fees(ctx) {
     const market = config.demoMarket;
     const order = await placeFilledOrder(ctx.token, ctx.accountId, { market });
@@ -244,7 +244,7 @@ const sections = {
     return `trade ${settlement.tradeId.slice(0, 8)} settled · ${journals.body.journals.length} balanced journals`;
   },
 
-  /** M4-3: SOL-USDT from config — trading, deposit, halt / resume. */
+  /** SOL-USDT from config — trading, deposit, halt / resume. */
   async sol(ctx) {
     const runtime = await fetchJson(`${TRADER_WEB}/api/config`);
     assert.ok(runtime.markets.some((item) => item.market === CONFIG_LISTED_MARKET), `${CONFIG_LISTED_MARKET} is configured`);
@@ -281,7 +281,7 @@ const sections = {
     return "SOL fill settled · SOL deposit credited · halt 409 / cancel ok / resume ok";
   },
 
-  /** M4-2 + M4-5: notification read state and the ledger statement. */
+  /** notification read state and the ledger statement. */
   async notifications(ctx) {
     await gateway("/notifications/read-all", { token: ctx.token, body: {} });
     assert.equal((await gateway("/notifications/unread-count", { token: ctx.token })).body.unreadCount, 0);
@@ -300,7 +300,7 @@ const sections = {
     return `unread 0 -> >0 · statement head ${latest?.category ?? "?"} matches balance`;
   },
 
-  /** M4-1 2FA, M4-4 KYC, M5-2 dual approval. Leaves 2FA disabled. */
+  /** 2FA, KYC, dual approval. Leaves 2FA disabled. */
   async security(ctx) {
     const enroll = await gateway("/auth/two-factor/enroll", { token: ctx.token, body: {} });
     assert.equal(enroll.status, 201, JSON.stringify(enroll.body));
@@ -365,7 +365,7 @@ const sections = {
     }
   },
 
-  /** M3-2: every fault-lab experiment, then recover-all. */
+  /** every fault-lab experiment, then recover-all. */
   async lab(ctx) {
     const t = ctx.opsToken;
     const pause = await ops(t, "/lab/settlement/pause", { durationSeconds: 60 });

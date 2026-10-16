@@ -114,7 +114,7 @@ export class ApiGatewayController {
     return this.apiGatewayHttpService.revokeApiKey(principal, apiKeyId);
   }
 
-  // M4-1 self-service 2FA: session-only, so an API key can never turn 2FA off.
+  // self-service 2FA: session-only, so an API key can never turn 2FA off.
   @SessionOnlyRoute()
   @Get("/auth/two-factor")
   async getTwoFactorStatus(@CurrentGatewayAuth() principal: GatewayPrincipal) {
@@ -184,7 +184,7 @@ export class ApiGatewayController {
     return this.apiGatewayHttpService.revokeDevice(principal, deviceId);
   }
 
-  // M4-4 KYC tier (demo data only).
+  // KYC tier (demo data only).
   @SessionOnlyRoute()
   @Get("/auth/kyc")
   async getKycProfile(@CurrentGatewayAuth() principal: GatewayPrincipal) {
@@ -370,7 +370,7 @@ export class ApiGatewayController {
     });
   }
 
-  // --- M4-2 notification center ---------------------------------------------
+  // --- notification center ---------------------------------------------
 
   @Get("/notifications/unread-count")
   async countUnreadWalletNotifications(@CurrentGatewayAuth() principal: GatewayPrincipal) {
@@ -393,7 +393,7 @@ export class ApiGatewayController {
     return this.apiGatewayHttpService.markWalletNotificationRead(principal, notificationId);
   }
 
-  // --- M4-5 asset statement ---------------------------------------------------
+  // --- asset statement ---------------------------------------------------
 
   @Get("/ledger/entries")
   async getLedgerStatement(

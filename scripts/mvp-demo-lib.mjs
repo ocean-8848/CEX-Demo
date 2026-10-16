@@ -62,7 +62,7 @@ export const DEMO_OPS = {
   twoFactorSecret: "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
 };
 
-// M5-2: second ops approver. Withdrawals above the dual-approval threshold need
+// second ops approver. Withdrawals above the dual-approval threshold need
 // approvals from two different operators (DEMO_OPS + DEMO_OPS_REVIEWER).
 export const DEMO_OPS_REVIEWER = {
   userId: "10000000-0000-0000-0000-000000000902",

@@ -120,7 +120,7 @@ test(
     await waitForCondition(() => gatewayState.orderCounter >= 1);
     await waitForText(page, "#open-orders-table", "挂单中");
     await waitForText(page, "#learn-drawer", "POST /orders");
-    // M3-4: the order (buy 3200, best ask 3201) did not cross, so the replay
+    // the order (buy 3200, best ask 3201) did not cross, so the replay
     // ends with the order resting in the book.
     await waitForText(page, "#match-replay", "撮合过程回放");
     await waitForText(page, "#match-replay", "未成交，整单挂入订单簿");
@@ -130,7 +130,7 @@ test(
     await page.getByRole("tab", { name: /历史委托/ }).click();
     await waitForText(page, "#order-history-table", "已撤销");
 
-    // M3-3: a trade opens its masked ledger journals as T-accounts.
+    // a trade opens its masked ledger journals as T-accounts.
     await page.getByRole("tab", { name: /成交记录/ }).click();
     await page.locator("[data-trade-journal='trade-seed-1']").click();
     await waitForText(page, "#trade-journal-modal", "借贷平衡");
@@ -162,7 +162,7 @@ test(
     await waitForCondition(() => gatewayState.reconnectObserved, 15_000);
     await waitForAttribute(page, "#private-feed-status", "data-status", "live");
 
-    // M4-2: the bell shows the server unread count; "全部已读" persists it.
+    // the bell shows the server unread count; "全部已读" persists it.
     await waitForText(page, "#notification-unread-count", "1");
     await page.locator("#notification-bell").click();
     await waitForText(page, "#notification-panel", "提现申请已提交");
@@ -171,7 +171,7 @@ test(
     await page.waitForSelector("#notification-unread-count", { state: "detached" });
     await page.keyboard.press("Escape");
 
-    // M4-5: the statement page lists ledger lines and filters server-side.
+    // the statement page lists ledger lines and filters server-side.
     await page.goto(`${traderBaseUrl}/#/assets/ledger`);
     await waitForText(page, "#statement-table", "充值入账");
     await waitForText(page, "#statement-table", "提现冻结");
@@ -186,7 +186,7 @@ test(
     assert.equal(gatewayState.loginCount, 1);
     assert.equal(gatewayState.orderCounter >= 1, true);
     assert.equal(gatewayState.reconnectObserved, true);
-    // M5-1: the private socket was authenticated by the Web Host, and the page
+    // the private socket was authenticated by the Web Host, and the page
     // never held the session token.
     assert.equal(gatewayState.wsBearerSeen, true);
     const exposure = await page.evaluate(() => ({

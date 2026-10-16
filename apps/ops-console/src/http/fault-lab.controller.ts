@@ -15,7 +15,7 @@ import { OpsConsoleExceptionFilter } from "./ops-console-exception.filter.js";
 import { OpsConsoleHttpService } from "./ops-console-http.service.js";
 
 /**
- * 系统运维 → 实验室 (M3-2). Reading the lab is open to every ops role; any
+ * 系统运维 → 实验室. Reading the lab is open to every ops role; any
  * fault or recovery action needs all FAULT_LAB_PERMISSIONS (ops_admin) and is
  * written to the ops action audit log.
  */

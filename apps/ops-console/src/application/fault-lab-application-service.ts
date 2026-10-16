@@ -25,7 +25,7 @@ export interface FaultLabActiveFault {
 }
 
 /**
- * Orchestrates the M3-2 fault lab for ops-console: one status view across all
+ * Orchestrates the fault lab for ops-console: one status view across all
  * experiments plus audited trigger / recover actions. Every injected fault
  * expires upstream on its own; `recoverAll` clears whatever is still active.
  */

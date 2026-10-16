@@ -1,4 +1,4 @@
-// Asset statement (M4-5): maps ledger statement lines (GET /ledger/entries)
+// Asset statement: maps ledger statement lines (GET /ledger/entries)
 // to display rows and CSV. Pure functions only, unit tested in client-lib.test.
 
 export type StatementCategory = "deposit" | "withdrawal" | "trade" | "adjustment";
@@ -76,7 +76,7 @@ export interface StatementRow {
   sourceId: string;
   /** App path (without `#`) of the source record. */
   link?: string;
-  /** Set for trade lines: opens the M3-3 T-account view of that trade. */
+  /** Set for trade lines: opens the T-account view of that trade. */
   tradeId?: string;
   journalId?: string;
 }

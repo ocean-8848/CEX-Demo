@@ -1,5 +1,5 @@
 /**
- * Fault lab (M3-2): controlled, self-expiring faults for learning how the
+ * Fault lab: controlled, self-expiring faults for learning how the
  * exchange degrades and recovers. Each upstream owns its own switch:
  *
  * - settlement-service: pause the trade event consumer

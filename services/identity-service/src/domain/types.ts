@@ -106,7 +106,7 @@ export interface TwoFactorProfile {
   secret?: string;
   enabledAt?: string;
   lastVerifiedCounter?: number;
-  /** Last enable / disable; drives the wallet withdrawal cooldown (M5-2). */
+  /** Last enable / disable; drives the wallet withdrawal cooldown. */
   changedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -361,7 +361,7 @@ export interface IdentityApiKey {
   apiKeyId: string;
   userId: string;
   label: string;
-  /** Public identifier sent as X-API-Key. Legacy keys created before M2-4 have none. */
+  /** Public identifier sent as X-API-Key. Legacy keys created before keyId existed have none. */
   keyId?: string;
   keyPrefix: string;
   scopes: ApiKeyScope[];

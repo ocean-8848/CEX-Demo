@@ -45,7 +45,7 @@ function writeProgress(progress: TourProgress | null): void {
   }
 }
 
-/** Guided scenarios (M3-5): a picker plus a floating checklist for the running tour. */
+/** Guided scenarios: a picker plus a floating checklist for the running tour. */
 export function TourPanel(props: { page: PageKey }) {
   const { state } = useExchange();
   const [open, setOpen] = useState(false);

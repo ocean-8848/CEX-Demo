@@ -674,7 +674,7 @@ export class IdentityApplicationService {
   }
 
   // ---------------------------------------------------------------------------
-  // KYC tiers (M4-4)
+  // KYC tiers
   // ---------------------------------------------------------------------------
 
   async getKycProfile(userId: string): Promise<KycProfile> {
@@ -1074,7 +1074,7 @@ export class IdentityApplicationService {
       );
     }
 
-    // A one-time recovery code is accepted instead of the TOTP code (M4-1).
+    // A one-time recovery code is accepted instead of the TOTP code.
     await this.verifySecondFactor(
       user.userId,
       code,

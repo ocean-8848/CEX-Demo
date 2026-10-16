@@ -25,7 +25,7 @@ export type WithdrawalStatus =
   | "rejected";
 
 /**
- * `pending_second_approval`: a dual-approval withdrawal (M5-2) got its first
+ * `pending_second_approval`: a dual-approval withdrawal got its first
  * approval and waits for a different operator.
  */
 export type WithdrawalReviewStatus = "pending" | "pending_second_approval" | "approved" | "rejected";
@@ -263,11 +263,11 @@ export interface WithdrawalValidationRules {
   minFeeByNetwork?: Partial<Record<Network, string>>;
   singleLimitByAsset?: Partial<Record<AssetCode, string>>;
   dailyLimitByAsset?: Partial<Record<AssetCode, string>>;
-  /** M4-4: per-tier limits; when omitted KYC tiers are not enforced. */
+  /** per-tier limits; when omitted KYC tiers are not enforced. */
   kycTierLimits?: KycTierLimitTable;
-  /** M5-2: amounts strictly above this need two different approvers. */
+  /** amounts strictly above this need two different approvers. */
   dualApprovalThresholdByAsset?: Partial<Record<AssetCode, string>>;
-  /** M5-2: lock withdrawals after a security change (0 disables). */
+  /** lock withdrawals after a security change (0 disables). */
   securityCooldownSeconds?: number;
   /** KYT rules; omitted = DEFAULT_WITHDRAWAL_RISK_RULES. */
   riskRules?: WithdrawalRiskRules;

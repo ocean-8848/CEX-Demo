@@ -1,6 +1,6 @@
 /**
  * Minimal, dependency-free QR Code encoder (byte mode only), used to render the
- * TOTP `otpauth://` URI on the account page (M4-1). It follows ISO/IEC 18004
+ * TOTP `otpauth://` URI on the account page. It follows ISO/IEC 18004
  * and the well-known reference implementation by Project Nayuki (MIT):
  * Reed-Solomon ECC over GF(256), block interleaving, the 8 data masks with the
  * standard penalty rules, and BCH-coded format / version information.

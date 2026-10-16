@@ -1,4 +1,4 @@
-// Market & asset configuration (M4-3).
+// Market & asset configuration.
 //
 // `config/markets.json` at the repo root is the single source of truth for
 // which assets exist and which spot markets trade. Every service, script and

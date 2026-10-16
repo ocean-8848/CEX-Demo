@@ -310,7 +310,7 @@ export interface OpsFreezeUserCommand {
   reason?: string;
 }
 
-/** M4-4: KYC review queue. */
+/** KYC review queue. */
 export interface OpsKycRequestQuery {
   userId?: string;
   status?: "pending" | "approved" | "rejected";

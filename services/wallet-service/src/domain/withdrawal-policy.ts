@@ -3,13 +3,13 @@ import type { AssetCode } from "@web3-cex/domain";
 import { addAmounts, compareAmounts, fromAtomicUnits, toAtomicUnits } from "./money.js";
 
 /**
- * Pure withdrawal policy rules (M4-4 KYC limits, M5-2 dual approval and
+ * Pure withdrawal policy rules (KYC limits, dual approval and
  * security cooldown). Everything here is deterministic and unit-tested; the
  * application service only feeds it data from repositories / identity.
  */
 
 // ---------------------------------------------------------------------------
-// KYC tier limits (M4-4)
+// KYC tier limits
 // ---------------------------------------------------------------------------
 
 export const KYC_TIERS = ["unverified", "L1", "L2"] as const;
@@ -159,7 +159,7 @@ export function utcDayWindow(now: Date): { startAt: string; endAt: string } {
 }
 
 // ---------------------------------------------------------------------------
-// Dual approval (M5-2)
+// Dual approval
 // ---------------------------------------------------------------------------
 
 export interface WithdrawalApproval {
@@ -263,7 +263,7 @@ export function readApprovalPolicy(
 }
 
 // ---------------------------------------------------------------------------
-// Security cooldown (M5-2)
+// Security cooldown
 // ---------------------------------------------------------------------------
 
 export type SecurityChangeKind = "withdrawal_address_added" | "two_factor_changed" | "new_device_login";

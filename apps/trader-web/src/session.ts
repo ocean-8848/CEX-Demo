@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingHttpHeaders } from "node:http";
 
 /**
- * Browser session for trader-web (M5-1). The Web Host (this BFF) keeps the
+ * Browser session for trader-web. The Web Host (this BFF) keeps the
  * gateway session token in an HttpOnly cookie and attaches it to proxied
  * gateway requests and the private WebSocket, so the page never holds the
  * token. Cookie-authenticated writes must echo the readable `tw_csrf` cookie

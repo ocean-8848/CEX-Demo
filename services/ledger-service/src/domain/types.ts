@@ -201,7 +201,7 @@ export interface OutboxEventRecord {
 }
 
 // ---------------------------------------------------------------------------
-// Account statement (M4-5): customer-facing 资金流水
+// Account statement: customer-facing 资金流水
 // ---------------------------------------------------------------------------
 
 /** A journal entry of the account plus the fee charged in the same journal (trade credits only). */

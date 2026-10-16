@@ -8,7 +8,7 @@ import type {
 } from "./types.js";
 
 /**
- * Customer-facing journal views (M3-3).
+ * Customer-facing journal views.
  *
  * Ledger journals reference raw account ids, including the other side of a
  * trade. Everything in this module turns them into a masked view: the
