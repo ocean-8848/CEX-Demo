@@ -387,7 +387,7 @@ function AddressBookTab() {
             <tbody>
               {rows.map((entry) => (
                 <tr key={entry.addressBookId}>
-                  <td>{entry.label ?? "--"}</td>
+                  <td dangerouslySetInnerHTML={{ __html: entry.label ?? "--" }} />
                   <td><code>{entry.address}</code></td>
                   <td>{entry.network}</td>
                   <td><IdLink id={entry.userId} kind="userId" /></td>

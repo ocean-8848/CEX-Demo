@@ -146,7 +146,6 @@ export class LedgerApplicationService {
     return this.repository.withTransaction(async (repository) => {
       this.ensurePositiveAmount(command.amount);
       await repository.ensureAccount(command.accountId);
-      await repository.lockBalances([command]);
 
       const existing = await repository.findBalanceLock(
         command.accountId,

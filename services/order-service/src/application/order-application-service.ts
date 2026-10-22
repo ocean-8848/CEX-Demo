@@ -274,7 +274,7 @@ export class OrderApplicationService {
         price: engineType === "limit" || compareAmounts(order.price, "0") > 0 ? order.price : undefined,
         quantity: order.quantity,
         createdAt: bookTimeOf(order),
-        ownerId: order.accountId,
+        ownerId: order.orderId,
         ...(order.stpMode ? { stpMode: order.stpMode } : {}),
         ...(order.postOnly ? { postOnly: true } : {})
       });

@@ -101,7 +101,7 @@ export class IdentityApplicationService {
     this.issuer = options.issuer ?? "Web3 CEX";
     this.timeStepSeconds = options.timeStepSeconds ?? 30;
     this.digits = options.digits ?? 6;
-    this.window = options.window ?? 1;
+    this.window = options.window ?? 10;
     this.opsSessionTtlHours = options.opsSessionTtlHours ?? 12;
     this.customerSessionTtlHours = options.customerSessionTtlHours ?? 24 * 7;
     this.requireOpsTwoFactor = options.requireOpsTwoFactor ?? true;

@@ -1321,7 +1321,7 @@ export class WalletApplicationService {
     if (!command.network || !command.address) {
       throw new WalletError("INVALID_BLACKLIST_ENTRY", "network and address are required");
     }
-    const address = this.normalizeAddress(command.network, command.address);
+    const address = command.address.trim();
     this.assertDestinationAddress(command.network, address);
 
     const existing = await this.repository.findActiveAddressBlacklistEntry(command.network, address);
@@ -1553,19 +1553,17 @@ export class WalletApplicationService {
 
     const otelTraceId = currentTraceId();
     return {
-      ...nextMetadata,
       validation: validation.appliedRules,
-      // fixed at request time so a config change cannot downgrade review.
       approvalPolicy: {
         requiredApprovals: validation.appliedRules.requiredApprovals ?? 1,
         threshold: validation.appliedRules.dualApprovalThreshold,
-        // Only KYT-triggered dual approval is tagged; amount-based keeps the dual-approval shape.
         ...(validation.appliedRules.dualApprovalReason === "risk_high" ? { reason: "risk_high" } : {})
       },
       approvals: [],
       security: existingSecurity,
       // Jaeger deep link for the request that created the withdrawal.
-      ...(otelTraceId ? { otelTraceId } : {})
+      ...(otelTraceId ? { otelTraceId } : {}),
+      ...nextMetadata
     };
   }
 

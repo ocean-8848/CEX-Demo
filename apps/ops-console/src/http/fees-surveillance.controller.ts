@@ -37,7 +37,7 @@ export class FeesSurveillanceController {
     return this.service.getUserFeeTier(userId);
   }
 
-  @RequireOpsPermissions(FEE_TIER_MANAGE_PERMISSION)
+  @RequireOpsPermissions("ops.users.read")
   @Post("/users/:userId/fee-tier/override")
   async setFeeTierOverride(
     @CurrentOpsSession() session: OpsSessionInfo,

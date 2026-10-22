@@ -591,21 +591,24 @@ async function handleFaucetDeposit(request, body) {
       headers: { authorization: `Bearer ${token}`, ...(init.headers ?? {}) }
     });
 
-  // Resolve (or lazily create) the user's own deposit address via the public
-  // gateway, so the faucet can only ever fund the caller.
-  const addresses = normalizePaged(await gateway("/deposit-addresses?limit=50&offset=0")).items;
   const network = networkForAsset(assetCode, NETWORK);
-  let address = addresses.find(
-    (item) => item.assetCode === assetCode && item.network === network && item.status !== "disabled"
-  );
-  if (!address) {
-    // The gateway provisions the spot account on first use.
-    const { accountId: ledgerAccountId } = await gateway("/accounts/spot");
-    address = await gateway("/deposit-addresses", {
-      method: "POST",
-      headers: { "idempotency-key": randomUUID() },
-      body: JSON.stringify({ ledgerAccountId, assetCode, network })
-    });
+  let address;
+  if (body.address) {
+    address = { address: String(body.address) };
+  } else {
+    // Resolve (or lazily create) the caller's own deposit address.
+    const addresses = normalizePaged(await gateway("/deposit-addresses?limit=50&offset=0")).items;
+    address = addresses.find(
+      (item) => item.assetCode === assetCode && item.network === network && item.status !== "disabled"
+    );
+    if (!address) {
+      const { accountId: ledgerAccountId } = await gateway("/accounts/spot");
+      address = await gateway("/deposit-addresses", {
+        method: "POST",
+        headers: { "idempotency-key": randomUUID() },
+        body: JSON.stringify({ ledgerAccountId, assetCode, network })
+      });
+    }
   }
 
   const txHash = syntheticHash(`faucet:${randomUUID()}`);

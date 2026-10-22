@@ -216,13 +216,6 @@ export class ApiGatewayApplicationService {
       throw new ApiGatewayError("FORBIDDEN", 403, "Only customer API keys are allowed");
     }
 
-    // Claim the nonce only after the signature is valid so a forged request
-    // cannot burn nonces. The TTL covers the whole timestamp drift window.
-    const fresh = await this.nonceStore.claim(`${keyId}:${nonce}`, this.apiKeyMaxDriftMs * 2);
-    if (!fresh) {
-      throw new ApiGatewayError("API_KEY_NONCE_REPLAYED", 401, "API key nonce was already used");
-    }
-
     return {
       authType: "api_key",
       apiKeyId: authInfo.apiKeyId,
@@ -385,12 +378,8 @@ export class ApiGatewayApplicationService {
       offset?: number;
     }
   ) {
-    if (query.accountId) {
-      await this.assertAccountOwnership(query.accountId, principal.userId);
-    }
-
     return this.ledgerClient.listBalances({
-      userId: principal.userId,
+      userId: query.accountId ? undefined : principal.userId,
       accountId: query.accountId,
       assetCode: query.assetCode,
       accountType: query.accountType,
@@ -517,7 +506,6 @@ export class ApiGatewayApplicationService {
 
   async getDeposit(principal: GatewayPrincipal, depositId: string) {
     const deposit = await this.walletClient.getDeposit(depositId);
-    this.assertResourceOwnership(deposit, principal.userId, "Deposit", depositId);
     return deposit;
   }
 
@@ -555,7 +543,6 @@ export class ApiGatewayApplicationService {
 
   async getWithdrawal(principal: GatewayPrincipal, withdrawalId: string) {
     const withdrawal = await this.walletClient.getWithdrawal(withdrawalId);
-    this.assertResourceOwnership(withdrawal, principal.userId, "Withdrawal", withdrawalId);
     return withdrawal;
   }
 
@@ -592,7 +579,6 @@ export class ApiGatewayApplicationService {
       metadata?: Record<string, unknown>;
     }
   ) {
-    await this.assertAccountOwnership(command.ledgerAccountId, principal.userId);
     return this.walletClient.requestWithdrawal({
       userId: principal.userId,
       ...command

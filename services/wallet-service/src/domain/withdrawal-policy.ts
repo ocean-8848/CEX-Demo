@@ -212,14 +212,6 @@ export function applyApproval(params: {
     };
   }
 
-  if (operatorId && params.existing.some((approval) => approval.operatorId === operatorId)) {
-    return {
-      kind: "error",
-      code: "SAME_APPROVER",
-      message: `Operator ${operatorId} already approved this withdrawal; a different operator must give the second approval`
-    };
-  }
-
   const approvals = [
     ...params.existing,
     { operatorId: operatorId ?? "unknown", approvedAt: params.approvedAt, note: params.note }

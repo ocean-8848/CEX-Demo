@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 
 /**
  * Canonical request signed by API key clients:
@@ -50,11 +50,7 @@ export function verifyApiKeySignature(input: {
   const expected = createApiKeySignature(input);
   const received = input.signature.trim().toLowerCase();
 
-  if (received.length !== expected.length) {
-    return false;
-  }
-
-  return timingSafeEqual(Buffer.from(received), Buffer.from(expected));
+  return received === expected;
 }
 
 export function hashRawBody(rawBody?: Buffer | string): string {

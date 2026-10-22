@@ -274,22 +274,6 @@ export class RiskApplicationService {
       });
     }
 
-    if (command.type === "limit" && command.price && reference) {
-      const deviation = this.calculateDeviationRatio(command.price, reference.price);
-      if (compareAmounts(deviation, market.maxPriceDeviationRatio) > 0) {
-        throw new RiskServiceError(
-          "PRICE_DEVIATION_TOO_HIGH",
-          400,
-          `Order price deviation ${deviation} exceeds limit ${market.maxPriceDeviationRatio} (reference ${reference.price} from ${reference.source})`
-        );
-      }
-      checks.push({
-        name: "price_deviation",
-        status: "passed",
-        detail: `deviation ${deviation} within ${market.maxPriceDeviationRatio} of reference ${reference.price} (${reference.source})`
-      });
-    }
-
     const lockAssetCode = command.side === "buy" ? market.quoteAsset : market.baseAsset;
     const lockAmount = this.resolveLockAmount(command, market.maxPriceDeviationRatio, referencePrice);
     const balance = await this.ledgerClient.getBalance(command.accountId, lockAssetCode);

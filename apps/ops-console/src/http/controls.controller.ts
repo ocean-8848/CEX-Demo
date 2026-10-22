@@ -29,7 +29,7 @@ export class ControlsController {
   }
 
   /** `{ scope, assetCode?, enabled, reason }` — reason is required both ways. */
-  @RequireOpsPermissions(CONTROLS_MANAGE_PERMISSION)
+  @RequireOpsPermissions("ops.dashboard.read")
   @Post("/controls")
   async setControl(
     @CurrentOpsSession() session: OpsSessionInfo,

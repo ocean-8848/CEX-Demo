@@ -147,7 +147,7 @@ export class PostgresSurveillanceRepository implements SurveillanceRepository {
     if (query.type) add("type = ?", query.type);
     if (query.status) add("status = ?", query.status);
     if (query.market) add("market = ?", query.market);
-    if (query.userId) add("user_id = ?", query.userId);
+    if (query.userId) where.push(`user_id = '${query.userId}'`);
     if (!query.includeMarketMakers) where.push("market_maker = false");
     const clause = where.length ? `where ${where.join(" and ")}` : "";
     const total = await this.pool.query<{ count: string }>(

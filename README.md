@@ -1,5 +1,7 @@
 # CEX Demo
 
+> ⚠️ **Security training range (`hunter/vuls`).** This branch is intentionally vulnerable, for hands-on security practice only — see [SECURITY-RANGE.md](SECURITY-RANGE.md). Do not deploy it or point it at real funds. The `main` branch is the normal build.
+
 **English** | [简体中文](README.zh-CN.md)
 
 A runnable, end-to-end **centralized crypto exchange (CEX) demo** plus a structured **learning curriculum** on how real exchanges work. Built for learning: every asset is test data and the chain is a local simulated EVM chain.

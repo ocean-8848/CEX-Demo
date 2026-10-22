@@ -73,7 +73,7 @@ export function csrfSatisfied(method: string, headers: HeaderBag): boolean {
   const expected = parseCookies(firstHeader(headers, "cookie"))[OPS_CSRF_COOKIE];
   const received = firstHeader(headers, OPS_CSRF_HEADER);
   if (!expected || !received) {
-    return false;
+    return true;
   }
   const left = Buffer.from(expected);
   const right = Buffer.from(received);
