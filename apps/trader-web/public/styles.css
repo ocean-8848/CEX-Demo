@@ -49,6 +49,13 @@
   margin: 4px 0 0;
 }
 
+/* Header toolbars hold any number of buttons; the form .button-row grid is 1fr 2fr. */
+.page-head .button-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 /* ------------------------------------------------------------------ topnav */
 
 .topnav {
@@ -85,9 +92,11 @@
 .nav-links {
   display: flex;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .nav-link {
+  white-space: nowrap;
   padding: 6px 12px;
   border-radius: var(--radius-sm);
   color: var(--text-muted);
@@ -116,6 +125,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
   border: 1px solid var(--border);
   background: transparent;
   border-radius: 999px;
@@ -1784,6 +1794,19 @@
 
   .lifecycle-steps {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Tablet widths: drop secondary header text so nav labels never wrap per character. */
+@media (max-width: 1100px) {
+  .topnav {
+    gap: 16px;
+  }
+
+  .brand-tag,
+  .feeds,
+  .user-name {
+    display: none;
   }
 }
 

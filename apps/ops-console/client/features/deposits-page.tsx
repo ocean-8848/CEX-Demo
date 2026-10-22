@@ -188,7 +188,7 @@ function PendingObservations(props: { onChanged: () => void }) {
                     aria-label="全选"
                   />
                 </th>
-                <th>检测时间</th><th>地址</th><th className="num">数量</th><th>交易哈希</th><th>区块</th><th>确认进度</th><th className="num">操作</th>
+                <th>检测时间</th><th>地址</th><th className="num">数量</th><th>交易哈希</th><th>区块</th><th>确认进度</th><th className="num actions">操作</th>
               </tr>
             </thead>
             <tbody>

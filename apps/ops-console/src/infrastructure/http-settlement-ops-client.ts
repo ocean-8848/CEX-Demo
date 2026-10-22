@@ -6,6 +6,7 @@ import type {
   OpsTradeSettlementQuery,
   OpsTradeSettlementRecoveryJobQuery
 } from "../domain/clients.js";
+import { OpsConsoleError } from "../domain/errors.js";
 import { buildInternalServiceHeaders } from "./internal-service-request.js";
 
 export class HttpSettlementOpsClient implements OpsSettlementClient {
@@ -26,7 +27,7 @@ export class HttpSettlementOpsClient implements OpsSettlementClient {
       }
     );
     if (!response.ok) {
-      throw new Error(`Settlement service rejected request: ${await response.text()}`);
+      throw await settlementUpstreamError(response);
     }
 
     return (await response.json()) as Record<string, unknown>[];
@@ -47,7 +48,7 @@ export class HttpSettlementOpsClient implements OpsSettlementClient {
       }
     );
     if (!response.ok) {
-      throw new Error(`Settlement service rejected request: ${await response.text()}`);
+      throw await settlementUpstreamError(response);
     }
 
     return (await response.json()) as Record<string, unknown>;
@@ -70,7 +71,7 @@ export class HttpSettlementOpsClient implements OpsSettlementClient {
       }
     );
     if (!response.ok) {
-      throw new Error(`Settlement service rejected request: ${await response.text()}`);
+      throw await settlementUpstreamError(response);
     }
 
     return (await response.json()) as Record<string, unknown>[];
@@ -93,7 +94,7 @@ export class HttpSettlementOpsClient implements OpsSettlementClient {
       }
     );
     if (!response.ok) {
-      throw new Error(`Settlement service rejected request: ${await response.text()}`);
+      throw await settlementUpstreamError(response);
     }
 
     return (await response.json()) as Record<string, unknown>;
@@ -116,7 +117,7 @@ export class HttpSettlementOpsClient implements OpsSettlementClient {
       }
     );
     if (!response.ok) {
-      throw new Error(`Settlement service rejected request: ${await response.text()}`);
+      throw await settlementUpstreamError(response);
     }
 
     return (await response.json()) as Record<string, unknown>[];
@@ -144,7 +145,7 @@ export class HttpSettlementOpsClient implements OpsSettlementClient {
       body
     });
     if (!response.ok) {
-      throw new Error(`Settlement service rejected request: ${await response.text()}`);
+      throw await settlementUpstreamError(response);
     }
 
     return (await response.json()) as Record<string, unknown>;
@@ -162,7 +163,7 @@ export class HttpSettlementOpsClient implements OpsSettlementClient {
       })
     });
     if (!response.ok) {
-      throw new Error(`Settlement service rejected request: ${await response.text()}`);
+      throw await settlementUpstreamError(response);
     }
 
     return (await response.json()) as Record<string, unknown>;
@@ -185,7 +186,7 @@ export class HttpSettlementOpsClient implements OpsSettlementClient {
       }
     );
     if (!response.ok) {
-      throw new Error(`Settlement service rejected request: ${await response.text()}`);
+      throw await settlementUpstreamError(response);
     }
 
     return (await response.json()) as Record<string, unknown>[];
@@ -209,7 +210,7 @@ export class HttpSettlementOpsClient implements OpsSettlementClient {
       body
     });
     if (!response.ok) {
-      throw new Error(`Settlement service rejected request: ${await response.text()}`);
+      throw await settlementUpstreamError(response);
     }
 
     return (await response.json()) as Record<string, unknown>;
@@ -228,7 +229,7 @@ export class HttpSettlementOpsClient implements OpsSettlementClient {
       })
     });
     if (!response.ok) {
-      throw new Error(`Settlement service rejected request: ${await response.text()}`);
+      throw await settlementUpstreamError(response);
     }
 
     return (await response.json()) as Record<string, unknown>;
@@ -244,4 +245,30 @@ function toQuery(query: Record<string, unknown>): string {
     params.set(key, String(value));
   }
   return params.toString();
+}
+
+/**
+ * Keeps the upstream status and business code (e.g. 409
+ * SETTLEMENT_EVENT_SUBSCRIBER_PAUSED) instead of surfacing every rejection as a 500.
+ */
+async function settlementUpstreamError(response: Response): Promise<OpsConsoleError> {
+  const payload = await response.text();
+  let code: string | undefined;
+  let message = payload.slice(0, 500);
+  try {
+    const parsed = JSON.parse(payload) as { code?: unknown; message?: unknown };
+    if (typeof parsed.code === "string" && /^[A-Z][A-Z0-9_]+$/.test(parsed.code) && parsed.code !== "HTTP_EXCEPTION") {
+      code = parsed.code;
+    }
+    if (typeof parsed.message === "string") {
+      message = parsed.message;
+    }
+  } catch {
+    // not JSON
+  }
+  return new OpsConsoleError(
+    code ?? "SETTLEMENT_UPSTREAM_FAILED",
+    response.status >= 400 && response.status < 600 ? response.status : 502,
+    `Settlement service rejected request: ${message}`
+  );
 }

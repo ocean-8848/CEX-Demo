@@ -17,7 +17,7 @@
 ```mermaid
 flowchart LR
   OS["order-service"] -->|XADD trade.executed| STR[("Redis Stream<br/>web3-cex:trade-events:&lt;market&gt;")]
-  OS -->|PUBLISH order.* / trade.executed| TE[("Pub/Sub<br/>web3-cex:trading.events")]
+  OS -->|PUBLISH order.* / trade.executed / trade.settled| TE[("Pub/Sub<br/>web3-cex:trading.events")]
   STR -->|XRANGE 轮询 + checkpoint| SS["settlement-service"]
   TE --> GW["api-gateway<br/>私有 WS"]
   TE --> MD["market-data-service<br/>公共 WS"]
@@ -53,7 +53,7 @@ flowchart LR
 }
 ```
 
-`payload.userIds` 列出与事件相关的用户，api-gateway 据此决定推给哪些 WebSocket 连接。订单事件的 `payload.order`、成交事件的 `payload.trade` 二选一。
+`payload.userIds` 列出与事件相关的用户，api-gateway 据此决定推给哪些 WebSocket 连接。订单事件的 `payload.order`、成交事件的 `payload.trade` 二选一；`trade.settled` 两者都不带。
 
 ### 1.2 订单事件
 
@@ -106,6 +106,16 @@ flowchart LR
 | `traceparent` | 追踪开启时的 W3C trace context（事件 JSON 本身不含追踪信息） |
 
 Stream 以 `MAXLEN ~ 10000`（`ORDER_EVENT_STREAM_MAX_LEN`）近似裁剪。order-service 还有一个周期性维护任务，可按保留时长裁剪，并把裁掉的条目复制到归档 Stream `web3-cex:trade-events:archive:<market>`（上限 50000 条）。运营可在 ops-console 查看 Stream 头部、手动回放（可选同时重发到 Pub/Sub）或裁剪。
+
+### 1.4 `trade.settled`
+
+| 项 | 内容 |
+| --- | --- |
+| 生产者 | order-service |
+| 发布时机 | settlement-service 结算完成后回调 order-service `POST /api/v1/trades/{tradeId}/settlement`，成交第一次记下真实 `settlementId` 时；回放重复确认不再发 |
+| 通道 | 只走 Pub/Sub `web3-cex:trading.events`，不进成交 Stream |
+| `payload` | `market`、`userIds`（买卖双方），不带 `order` / `trade` |
+| 用途 | 异步结算模式下 `trade.executed` 先于账本入账到达网关，网关当时读到的还是冻结中的余额；这条事件让网关在入账后再推一次 `balances`，前台无需刷新即可看到冻结释放、资产到账 |
 
 ## 2. 钱包事件（wallet-service）
 
@@ -205,7 +215,7 @@ sequenceDiagram
 
 ### 4.2 market-data-service：交易事件
 
-收到 `web3-cex:trading.events` 上的任意事件后，按 `payload.market`：
+收到 `web3-cex:trading.events` 上的事件后（`trade.settled` 除外：结算不改变盘口和成交，直接忽略），按 `payload.market`：
 
 1. 从 order-service 拉取最近成交和挂单，重建 ticker、depth、recent trades；
 2. 写入 Redis 快照（`web3-cex:market-data:*`，TTL 300 秒）并异步落 ClickHouse；
@@ -221,7 +231,7 @@ sequenceDiagram
 | --- | --- |
 | 含 `payload.order` 的交易事件 | `orders`（按订单版本去重） |
 | `trade.executed` | `trades`（按 `tradeId` 去重） |
-| 任意交易事件 | `balances`、`positions`（重新查 ledger 计算差量） |
+| 任意交易事件（含 `trade.settled`） | `balances`、`positions`（重新查 ledger 计算差量） |
 | `wallet.notification.created` | `notifications` |
 | `wallet.deposit.updated` | `deposits` |
 | `wallet.withdrawal.updated` | `withdrawals` |

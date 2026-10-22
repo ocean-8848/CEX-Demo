@@ -6,6 +6,7 @@ import {
   decimalsOf,
   floorToStep,
   formatAmount,
+  formatAmountDown,
   formatFixed,
   formatPercent,
   marketLabel,
@@ -17,6 +18,7 @@ import {
   filledRatio,
   isOpenOrder,
   mergeRecords,
+  parseTime,
   summarizeBalances,
   takerSide,
   userTradeFee,
@@ -185,4 +187,27 @@ test("fee tier helpers use the user's VIP rate and the rate recorded on the trad
   assert.deepEqual(userTradeFeeRate(trade, "bob"), { rate: 0.0005, tier: undefined });
   assert.equal(formatRate(0.001), "0.1%");
   assert.equal(formatRate("0.0008"), "0.08%");
+});
+
+test("formatAmountDown never shows more than the balance holds", () => {
+  assert.equal(formatAmountDown("24839.995000000000000000", 2), "24,839.99");
+  assert.equal(formatAmountDown("5.049950000000000000", 3), "5.049");
+  assert.equal(formatAmountDown(0.29, 2), "0.29");
+  assert.equal(formatAmountDown("25000", 2), "25,000");
+  assert.equal(formatAmountDown(undefined, 2), "--");
+});
+
+test("mergeRecords can keep rows in the order of the displayed time column", () => {
+  type Row = { id: string; requestedAt: string; updatedAt: string };
+  const older: Row = { id: "older", requestedAt: "2026-10-22T13:44:11Z", updatedAt: "2026-10-22T13:44:11Z" };
+  const newer: Row = { id: "newer", requestedAt: "2026-10-22T13:45:43Z", updatedAt: "2026-10-22T13:45:43Z" };
+  // The older withdrawal completes after the newer one was requested.
+  const completed: Row = { ...older, updatedAt: "2026-10-22T13:46:30Z" };
+
+  const byUpdate = mergeRecords([newer, older], [completed], (row) => row.id);
+  assert.deepEqual(byUpdate.map((row) => row.id), ["older", "newer"]);
+
+  const byRequest = mergeRecords([newer, older], [completed], (row) => row.id, (row) => parseTime(row.requestedAt));
+  assert.deepEqual(byRequest.map((row) => row.id), ["newer", "older"]);
+  assert.equal(parseTime(undefined), 0);
 });

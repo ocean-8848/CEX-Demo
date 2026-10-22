@@ -30,6 +30,7 @@ import {
   describeFundingStatus,
   isOpenOrder,
   mergeRecords,
+  parseTime,
   spotAccountId as spotAccountIdOf,
   summarizeBalances,
   type AssetBalance
@@ -366,12 +367,18 @@ function applyPrivateItems(
     case "deposits":
       return {
         ...state,
-        deposits: mergeRecords(state.deposits, items as DepositRecord[], (d) => d.depositId)
+        // Same time column as the deposit table.
+        deposits: mergeRecords(state.deposits, items as DepositRecord[], (d) => d.depositId, (d) =>
+          parseTime(d.creditedAt ?? d.detectedAt ?? d.createdAt)
+        )
       };
     case "withdrawals":
       return {
         ...state,
-        withdrawals: mergeRecords(state.withdrawals, items as WithdrawalRecord[], (w) => w.withdrawalId)
+        // Same time column as the withdrawal table.
+        withdrawals: mergeRecords(state.withdrawals, items as WithdrawalRecord[], (w) => w.withdrawalId, (w) =>
+          parseTime(w.requestedAt ?? w.createdAt)
+        )
       };
     case "notifications":
       return {

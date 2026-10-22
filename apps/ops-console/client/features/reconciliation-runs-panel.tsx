@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { Badge, Button, Empty, Panel, formatAmount, href } from "@web3-cex/web-ui";
+import { Badge, Button, Empty, Panel, formatAmount, formatTime, href } from "@web3-cex/web-ui";
 
 import type { ControlsReport, ReconciliationJobStatus, ReconciliationRun } from "../lib/types.js";
 import { IdLink, JsonView, QueryView, RefreshButton, StatCard, StatusBadge, Time } from "../components/kit.js";
@@ -70,7 +70,7 @@ export function ReconciliationJobPanel() {
         <StatCard
           label="调度"
           value={job ? (job.enabled ? `每 ${job.intervalSeconds} 秒` : "未开启") : "--"}
-          hint={job?.nextRunAt ? `下次 ${new Date(job.nextRunAt).toLocaleTimeString()}` : "可手动运行"}
+          hint={job?.nextRunAt ? `下次 ${formatTime(job.nextRunAt)}` : "可手动运行"}
         />
         <StatCard
           label="最近结果"

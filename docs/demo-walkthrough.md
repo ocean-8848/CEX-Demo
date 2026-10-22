@@ -173,7 +173,7 @@ pnpm demo:verify    # 校验余额、充值地址、盘口和后台模块
 
 1. 在「🚰 测试水龙头」里选一个预设金额（预设来自 `config/markets.json`，例如 `1 ETH` / `5 ETH`、`1,000 USDT` / `10,000 USDT`），点「模拟转入」。
 2. `demo-simulator` 把一笔转账写进当前区块并报告给 `blockchain-indexer`。如果你还没有该币种的充值地址，水龙头会先自动生成一个。
-3. 水龙头下方显示「x/12 确认」进度；「充值记录」里这笔充值先是确认中，确认数随出块增加，到 12 个确认后变为已入账，余额增加。整个过程约 20 秒。
+3. 水龙头下方显示「x/12 确认」进度，确认数随出块增加。确认中的交易只记在 `blockchain-indexer` 的观察表里（后台「充值与链上 → 待确认观察」可见）；到 12 个确认后 indexer 才通知 `wallet-service` 建充值单并入账，所以「充值记录」里出现这笔充值时已经是已入账，余额同时增加。整个过程约 20 秒。
 
 **提现**：
 
@@ -425,7 +425,7 @@ pnpm demo:verify    # 校验余额、充值地址、盘口和后台模块
 | --- | --- | --- | --- |
 | 1 | `trader-web` →「资产」→「充值」，选 `ETH` | 显示充值地址 | `wallet-service` |
 | 2 | 测试水龙头选 `1 ETH`，点「模拟转入」 | 学习模式出现 `demo-simulator`、`blockchain-indexer` 事件 | `demo-simulator` → `blockchain-indexer` |
-| 3 | 看水龙头进度和「充值记录」 | 确认数逐块增加，约 20 秒到 12 个确认 | `demo-simulator`（出块）→ `blockchain-indexer` |
+| 3 | 看水龙头进度 | 确认数逐块增加，约 20 秒到 12 个确认；确认期间「充值记录」里还没有这笔（未达阈值的交易只在 indexer 观察表里） | `demo-simulator`（出块）→ `blockchain-indexer` |
 | 4 | 达到阈值 | 状态变为已入账，ETH 可用余额增加，铃铛出现到账通知 | `wallet-service` → `ledger-service` |
 | 5 | 打开「资金流水」 | 出现一条充值入账 | `ledger-service` |
 | 6 | 到 `ops-console` →「充值与链上」 | 「充值记录」里能找到这笔充值；确认过程中「待确认观察」里能看到它 | `wallet-service`、`blockchain-indexer` |

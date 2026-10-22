@@ -1442,3 +1442,72 @@ test("injectEngineReset empties the book; only a sequence reset is healed by syn
   assert.equal(synced.replayedOrderCount, 1);
   assert.equal((await ops.getAnomalies("ETH-USDT")).length, 0);
 });
+
+test("acknowledgeTradeSettlement publishes trade.settled once so realtime balances refresh", async () => {
+  const repository = new InMemoryOrderRepository();
+  await repository.saveTrade({
+    tradeId: "trade-1",
+    market: "ETH-USDT",
+    price: "3200",
+    quantity: "0.05",
+    makerOrderId: "maker-1",
+    takerOrderId: "taker-1",
+    buyerOrderId: "taker-1",
+    sellerOrderId: "maker-1",
+    buyerUserId: "buyer-1",
+    sellerUserId: "seller-1",
+    buyerAccountId: "acct-buyer",
+    sellerAccountId: "acct-seller",
+    sellerFeeRate: "0.0005",
+    buyerFeeRate: "0.001",
+    executionId: "exec-1",
+    executionBatchId: "batch-1",
+    executionSequence: 1,
+    executionBatchSequence: 1,
+    replayCursor: "ETH-USDT:1",
+    protocolVersion: "v2",
+    settlementId: "pending",
+    executedAt: "2026-10-22T10:00:00.000Z"
+  });
+  const published: Array<{ eventType: string; userIds: string[]; market: string }> = [];
+  const unused = async () => {
+    throw new Error("not used");
+  };
+  const service = new OrderApplicationService(
+    repository,
+    { validateSpotOrder: unused },
+    { freezeBalance: unused, releaseBalance: unused },
+    { settleTrade: unused },
+    {
+      submitOrder: unused,
+      seedOrder: unused,
+      cancelOrder: unused,
+      resetBook: unused,
+      getBookSnapshot: unused
+    } as unknown as MatchingEngineClient,
+    {
+      now: () => new Date("2026-10-22T10:00:01.000Z"),
+      createId: () => "event-1",
+      eventPublisher: {
+        async publish(events) {
+          for (const event of events) {
+            published.push({
+              eventType: event.eventType,
+              userIds: event.payload.userIds,
+              market: event.payload.market
+            });
+          }
+        }
+      }
+    }
+  );
+
+  const acked = await service.acknowledgeTradeSettlement({ tradeId: "trade-1", settlementId: "settlement-1" });
+  assert.equal(acked?.settlementId, "settlement-1");
+  // A replayed stream entry acknowledges the same settlement again: no second event.
+  await service.acknowledgeTradeSettlement({ tradeId: "trade-1", settlementId: "settlement-1" });
+
+  assert.deepEqual(published, [
+    { eventType: "trade.settled", userIds: ["buyer-1", "seller-1"], market: "ETH-USDT" }
+  ]);
+});

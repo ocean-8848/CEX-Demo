@@ -47,7 +47,8 @@ function stepIndex(status: string | undefined): number {
   return index < 0 ? 0 : index;
 }
 
-type Review = { kind: "approve" | "reject"; ids: string[] } | null;
+/** `firstOfTwo`: every selected withdrawal still needs both dual-approval sign-offs, so confirming only records progress. */
+type Review = { kind: "approve" | "reject"; ids: string[]; firstOfTwo?: boolean } | null;
 
 interface ApprovalProgress {
   required: number;
@@ -156,7 +157,13 @@ export function useWithdrawalReview(onDone: () => void) {
           ? "批准后 wallet-service 立即调用 custody-adapter 签名并广播交易，链上确认后从账本最终扣除冻结资金。此操作不可撤回。超过阈值的大额提现需要两名不同运营人员分别批准，第一次批准只记录复核进度。"
           : "拒绝后冻结的金额与手续费会退回用户可用余额，用户会收到通知。"
       }
-      confirmLabel={review?.kind === "approve" ? "确认批准并广播" : "确认拒绝"}
+      confirmLabel={
+        review?.kind === "approve"
+          ? review.firstOfTwo
+            ? "确认第 1 位批准（暂不广播）"
+            : "确认批准并广播"
+          : "确认拒绝"
+      }
       danger={review?.kind === "reject"}
       noteLabel={review?.kind === "approve" ? "审核备注" : "拒绝原因"}
       noteRequired={review?.kind === "reject"}
@@ -172,7 +179,17 @@ export function useWithdrawalReview(onDone: () => void) {
       Boolean(session?.userId && approvalProgress(row).approvals.some((item) => item.operatorId === session.userId)),
     canReview: can("ops.withdrawals.review"),
     canBatch: can("ops.withdrawals.batch_review"),
-    approve: (ids: string[]) => setReview({ kind: "approve", ids }),
+    approve: (ids: string[], rows?: WithdrawalRecord[]) =>
+      setReview({
+        kind: "approve",
+        ids,
+        firstOfTwo:
+          !!rows?.length &&
+          rows.every((row) => {
+            const progress = approvalProgress(row);
+            return progress.required === 2 && progress.approvals.length === 0;
+          })
+      }),
     reject: (ids: string[]) => setReview({ kind: "reject", ids }),
     dialog
   };
@@ -302,7 +319,7 @@ export function WithdrawalsPage(props: { initialId?: string }) {
                     <th>风险</th>
                     <th>规则校验</th>
                     <th>状态</th>
-                    {tab === "queue" ? <th className="num">操作</th> : null}
+                    {tab === "queue" ? <th className="num actions">操作</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -350,7 +367,7 @@ export function WithdrawalsPage(props: { initialId?: string }) {
                               variant="primary"
                               disabled={!review.canReview || review.alreadyApprovedByMe(row)}
                               title={review.alreadyApprovedByMe(row) ? "你已批准过，需要另一名运营人员复核" : undefined}
-                              onClick={() => review.approve([row.withdrawalId])}
+                              onClick={() => review.approve([row.withdrawalId], [row])}
                               data-approve={row.withdrawalId}
                             >
                               {row.reviewStatus === "pending_second_approval" ? "复核批准" : "批准"}

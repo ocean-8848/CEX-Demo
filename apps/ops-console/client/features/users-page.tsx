@@ -560,7 +560,7 @@ function KycTab() {
           <div className="table-scroll">
             <table className="data-table" id="kyc-requests-table">
               <thead>
-                <tr><th>提交时间</th><th>用户</th><th>当前</th><th>申请</th><th>姓名 / 证件</th><th>状态</th><th className="num">操作</th></tr>
+                <tr><th>提交时间</th><th>用户</th><th>当前</th><th>申请</th><th>姓名 / 证件</th><th>状态</th><th className="num actions">操作</th></tr>
               </thead>
               <tbody>
                 {rows.map((request) => (

@@ -181,6 +181,7 @@ HTTP 接口:
 - `order-service` 是现货交易主链的中心编排层；recovery queue 采用 claim-based worker，带 lease renewal、运行报告和 dead-letter 管理
 - 成交记录带 `executionId / executionBatchId / executionSequence / replayCursor / protocolVersion`，`trade.executed` 事件使用稳定的 execution 级 `eventId`
 - `trade.executed` 事件附带 `buyer/seller` 双边身份、账户、双方费率和 VIP 等级（`buyerFeeTier` / `sellerFeeTier`），发布前经过 schema registry / version gate 校验
+- settlement-service 结算完成回调 `POST /api/v1/trades/{tradeId}/settlement` 时（第一次记下 `settlementId`），在 Pub/Sub 上补发 `trade.settled`（只带 `market` 与双方 `userIds`），让 api-gateway 在入账后再推一次余额；回放重复确认不再发
 - 内部调用方白名单默认包含 `risk-service`（市场监控读取成交 / 撤单窗口）
 - 手工 `replay-engine`、自动 compensation replay 和 recovery cycle 都会写入 automation execution history
 - `matching-engine` 的确定性 replay 由 Rust 内建回归集覆盖，根目录 `pnpm test:mvp` 会连同 `scripts/test-trade-domain-replay.mjs` 一起验证主链

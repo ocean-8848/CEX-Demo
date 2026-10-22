@@ -178,7 +178,10 @@ export type TradingEventType =
   | "order.updated"
   | "order.cancelled"
   | "order.rejected"
-  | "trade.executed";
+  | "trade.executed"
+  // Pub/sub only (never on the trade stream): settlement-service acknowledged
+  // the trade, so both users' balances are final and realtime clients can refresh.
+  | "trade.settled";
 
 export interface TradingEventPayload {
   market: SpotMarket;

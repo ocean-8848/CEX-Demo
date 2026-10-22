@@ -438,6 +438,18 @@ textarea:focus {
   justify-content: flex-end;
 }
 
+/* Wide tables scroll sideways; keep the approve / reject buttons in view. */
+.data-table td.actions,
+.data-table th.actions {
+  position: sticky;
+  right: 0;
+  background: var(--panel);
+}
+
+.data-table tbody tr:hover td.actions {
+  background: var(--panel-hover);
+}
+
 .data-table tr.row-alert td {
   background: var(--down-soft);
 }

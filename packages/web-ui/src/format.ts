@@ -48,6 +48,23 @@ export function formatAmount(
   });
 }
 
+/**
+ * Like formatAmount but rounds down, for spendable balances: showing
+ * 24839.995 as "24,840" would offer more than the account holds.
+ */
+export function formatAmountDown(
+  value: string | number | undefined | null,
+  maxDecimals = 8
+): string {
+  const numeric = toNumber(value);
+  if (!Number.isFinite(numeric)) {
+    return EMPTY;
+  }
+  const factor = 10 ** maxDecimals;
+  // The epsilon absorbs binary noise such as 0.29 * 100 = 28.999999999999996.
+  return formatAmount(Math.floor(numeric * factor + 1e-9) / factor, maxDecimals);
+}
+
 /** Compact notation for large volumes: 1234567 -> "1.23M". */
 export function formatCompact(value: string | number | undefined | null): string {
   const numeric = toNumber(value);

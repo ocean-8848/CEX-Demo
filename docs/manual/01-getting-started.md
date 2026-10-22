@@ -6,7 +6,7 @@
 
 | 工具 | 要求 |
 | --- | --- |
-| Node.js | 22（以根目录 `.nvmrc` 为准） |
+| Node.js | 26（以根目录 `.nvmrc` 为准） |
 | pnpm | 10（`packageManager` 锁定 `pnpm@10.6.0`，可用 `corepack enable` 自动匹配） |
 | Docker | 支持 `docker compose`（Compose v2），用于本地 PostgreSQL / Redis / Kafka / ClickHouse |
 

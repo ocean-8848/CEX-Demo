@@ -555,11 +555,19 @@ export class OrderApplicationService {
     tradeId: string;
     settlementId: string;
   }): Promise<SpotTradeRecord | null> {
-    return this.repository.updateTradeSettlement({
+    const previous = await this.repository.findTradeById(command.tradeId);
+    const trade = await this.repository.updateTradeSettlement({
       tradeId: command.tradeId,
       settlementId: command.settlementId,
       settlementUpdatedAt: this.now().toISOString()
     });
+    // trade.executed reaches the gateway before asynchronous settlement posts
+    // the ledger entries; this second event lets it push the settled balances.
+    // Re-acks of replayed stream entries are skipped.
+    if (trade && previous?.settlementId !== command.settlementId) {
+      await this.publishSafely([this.createTradeSettledEvent(trade, command.settlementId)]);
+    }
+    return trade;
   }
 
   async listAutomationExecutions(
@@ -1133,6 +1141,21 @@ export class OrderApplicationService {
         market: trade.market,
         userIds: [trade.buyerUserId, trade.sellerUserId],
         trade: this.toDomainTrade(trade)
+      }
+    };
+  }
+
+  private createTradeSettledEvent(trade: SpotTradeRecord, settlementId: string): TradingEvent {
+    return {
+      eventId: this.createId(),
+      eventType: "trade.settled",
+      aggregateType: "spot_trade",
+      aggregateId: trade.tradeId,
+      traceId: `settlement:${settlementId}`,
+      occurredAt: this.now().toISOString(),
+      payload: {
+        market: trade.market,
+        userIds: [trade.buyerUserId, trade.sellerUserId]
       }
     };
   }

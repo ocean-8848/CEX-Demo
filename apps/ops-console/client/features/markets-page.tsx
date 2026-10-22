@@ -69,7 +69,7 @@ export function MarketsPage() {
                     <th className="num">Maker / Taker</th>
                     <th className="num">参考价 / 偏离上限</th>
                     <th>运行时覆盖</th>
-                    {canManage ? <th className="num">操作</th> : null}
+                    {canManage ? <th className="num actions">操作</th> : null}
                   </tr>
                 </thead>
                 <tbody>

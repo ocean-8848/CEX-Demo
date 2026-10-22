@@ -142,6 +142,10 @@ export class MarketDataHttpService implements OnModuleInit, OnModuleDestroy {
 
     if (this.eventSubscriber) {
       await this.eventSubscriber.subscribe(async (event) => {
+        // Settlement changes balances only; book, ticker and trades are unchanged.
+        if (event.eventType === "trade.settled") {
+          return;
+        }
         await this.refreshSnapshotsForMarket(event.payload.market, event.eventType);
         for (const listener of this.listeners) {
           await listener(event);

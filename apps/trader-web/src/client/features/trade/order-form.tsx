@@ -5,6 +5,7 @@ import {
   decimalsOf,
   floorToStep,
   formatAmount,
+  formatAmountDown,
   formatFixed,
   splitMarket,
   toNumber
@@ -292,7 +293,7 @@ export function OrderForm(props: { pickedPrice?: { price: string; nonce: number 
       <div className="avail">
         <span>可用</span>
         <b id="order-available">
-          {loggedIn ? `${formatAmount(available, side === "buy" ? 2 : quantityDecimals)} ${side === "buy" ? quote : base}` : "--"}
+          {loggedIn ? `${formatAmountDown(available, side === "buy" ? 2 : quantityDecimals)} ${side === "buy" ? quote : base}` : "--"}
         </b>
       </div>
 

@@ -14,8 +14,17 @@ import type {
 
 export type { Tone };
 
-/** Upserts `incoming` into `current` by key and keeps newest first. */
-export function mergeRecords<T>(current: T[], incoming: T[], keyOf: (item: T) => string): T[] {
+/**
+ * Upserts `incoming` into `current` by key and keeps newest first. Pass
+ * `sortTime` when a table shows a fixed time column (e.g. requestedAt), so a
+ * later status update does not reorder rows against that column.
+ */
+export function mergeRecords<T>(
+  current: T[],
+  incoming: T[],
+  keyOf: (item: T) => string,
+  sortTime: (item: T) => number = timeOf
+): T[] {
   const byKey = new Map<string, T>();
   for (const item of current) {
     byKey.set(keyOf(item), item);
@@ -23,7 +32,13 @@ export function mergeRecords<T>(current: T[], incoming: T[], keyOf: (item: T) =>
   for (const item of incoming) {
     byKey.set(keyOf(item), { ...(byKey.get(keyOf(item)) ?? {}), ...item });
   }
-  return [...byKey.values()].sort((left, right) => timeOf(right) - timeOf(left));
+  return [...byKey.values()].sort((left, right) => sortTime(right) - sortTime(left));
+}
+
+/** Parses an ISO timestamp; 0 when absent so undated rows sink to the end. */
+export function parseTime(value: string | undefined): number {
+  const time = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(time) ? time : 0;
 }
 
 export function timeOf(value: unknown): number {

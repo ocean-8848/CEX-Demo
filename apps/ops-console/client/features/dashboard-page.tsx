@@ -112,7 +112,7 @@ export function DashboardPage() {
                         <div className="muted small"><IdLink id={item.userId} kind="userId" /> · <Time value={item.requestedAt} /></div>
                       </td>
                       <td className="num actions">
-                        <Button size="sm" variant="primary" disabled={!review.canReview} onClick={() => review.approve([item.withdrawalId])}>
+                        <Button size="sm" variant="primary" disabled={!review.canReview} onClick={() => review.approve([item.withdrawalId], [item])}>
                           批准
                         </Button>
                         <Button size="sm" variant="ghost" disabled={!review.canReview} onClick={() => review.reject([item.withdrawalId])}>
