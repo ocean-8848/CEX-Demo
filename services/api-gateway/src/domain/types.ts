@@ -346,7 +346,7 @@ export interface LedgerGatewayClient {
     accountType: AccountType;
   }): Promise<GatewayLedgerAccount>;
   listBalances(query: {
-    userId: string;
+    userId?: string;
     accountId?: string;
     assetCode?: AssetCode;
     accountType?: AccountType;

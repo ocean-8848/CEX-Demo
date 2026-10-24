@@ -29,7 +29,7 @@ export class HttpLedgerClient implements LedgerGatewayClient {
   }
 
   async listBalances(query: {
-    userId: string;
+    userId?: string;
     accountId?: string;
     assetCode?: string;
     accountType?: string;
