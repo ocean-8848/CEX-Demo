@@ -3,7 +3,7 @@
 > 学习目标：读完本篇，你能——
 > 1. 把一起交易所安全事故归入 10 类攻击路径之一，并说出它突破了哪一层防线。
 > 2. 用一张"案例卡"复盘事故：日期、损失、攻击路径、根因、发现、处置、用户结果、教训。
-> 3. 解释 2016–2025 年的趋势：攻击重心从"偷热钱包私钥"转向"操纵签名流程和员工"。
+> 3. 解释 2016–2026 年的趋势：攻击重心从"偷热钱包私钥"转向"操纵签名流程和员工"。
 >
 > 前置章节：[13 可靠性与安全事故](../13-reliability-security-incidents.md)（第 4 节已复盘币安 2019、BNB Chain 跨链桥 2022、FTX 2022、Mt.Gox 2014）、[B02 平台安全](B02-platform-security.md)、[B07 应急响应](B07-incident-response.md)
 > 相关篇：[B03 账户安全](B03-account-security.md)、[B04 对账](B04-reconciliation.md)、[B06 金库与流动性](B06-treasury-liquidity.md)、[B08 风控平台](B08-risk-platform.md)、[B11 安全工程](B11-security-engineering.md)
@@ -222,12 +222,13 @@ timeline
     2022 : Crypto.com 约 3400 万美元 : Mango Markets 约 1.14 亿美元 : FTX 挪用 见 13 章
     2024 : DMM Bitcoin 4502.9 BTC : WazirX 约 2.3 亿美元 : BingX 约 4400 万美元
     2025 : Phemex 约 7000 万美元 : Bybit 约 14.6 亿美元 : Coinbase 客户数据泄露 : CoinDCX 约 4420 万美元 : Upbit 约 445 亿韩元
+    2026 : Bitget 约 3.88 亿美元 : 币安约 63.4 亿美元
 ```
 
 读图要点：
 
 - 2016–2021 年的主角是热钱包（P1）。2024–2025 年签名流程、供应商和员工成为主角。
-- 2025 年 Bybit 一起事件的金额，超过本表其他交易所事件金额之和。
+- 2025 年 Bybit 一起事件的金额，超过本表 2025 年以前其他交易所事件金额之和。2026 年币安一起事件约 63.4 亿美元，是 Bybit 的 4 倍多。
 - 2019 年和 2025 年 Upbit 两次热钱包被盗。韩国警方 2024 年把 2019 年事件归因于朝鲜，2025 年事件据报道也被怀疑与 Lazarus 有关。
 - 局限：本表只收录有可靠公开报道的事件。很多小型事故没有公开。
 
@@ -539,7 +540,7 @@ flowchart LR
 
 - 热钱包限额和冷热分离普及后，热钱包的"性价比"下降。攻击者转向能打开冷钱包的人和流程。
 - 2024–2025 年的大案多数归因于朝鲜相关组织。他们的典型手法是假招聘、假面试、渗透 IT 外包。
-- 热钱包事故没有消失。Phemex 2025、Upbit 2025 仍是热钱包被盗。
+- 热钱包事故没有消失。Phemex 2025、Upbit 2025、Bitget 2026、币安 2026 仍是热钱包被盗。区别是 2026 年两起都从员工终端或第三方产品进入，再拿下签名能力，见 6.5 节。
 - 局限：趋势由少数大案主导。一起 Bybit 就能改变全年统计。
 
 **朝鲜相关组织的占比（据链上分析公司报告）：**
@@ -562,6 +563,42 @@ flowchart LR
 | 无用户资产损失 | CoinDCX；Coinbase（数据泄露，对被骗客户自愿赔付） |
 
 读表要点：结局主要取决于平台有没有储备或股东支持，而不取决于攻击路径。这正是 [B06](B06-treasury-liquidity.md) 储备与保险基金存在的理由。
+
+### 6.5 2026 年补充案例
+
+> 💡 注意：以下两起事件发生在本篇初版之后。6.4 节的统计表只覆盖 C01–C16。两起事件的调查仍在进行，金额和根因可能修正（截至 2026 年 11 月 14 日）。
+
+#### C17 · 2026 · Bitget · 约 3.88 亿美元
+
+| 字段 | 内容 |
+|---|---|
+| 日期 | 2026 年 9 月 24 日（约 18:31 UTC 系统发现未授权转账） |
+| 损失 | 初报约 3.516 亿美元，后按链上追踪上调到约 3.875 亿美元 |
+| 攻击路径 | P1 热钱包（入口 P9：据报道利用第三方安全产品的零日漏洞） |
+| 根因 | 部分热钱包和温钱包被未授权转出。冷钱包未受影响。Mandiant 与 SlowMist 参与调查 |
+| 发现与处置 | 发现：系统监控告警。处置：暂停提币；约 4 天后分批恢复，先恢复 BTC；用户余额保持不变 |
+| 用户结果 | 否。平台称事件在用户保护基金（约 4.64 亿美元）覆盖范围内 |
+| 归因 | 平台怀疑朝鲜相关组织；Chainalysis 发现部分赃款后来与币安 2026 年被盗资金混在一起 |
+| 教训 → 防线 | 安全产品本身也是攻击面；温钱包同样需要限额 → [B11](B11-security-engineering.md)、[B02](B02-platform-security.md) |
+
+#### C18 · 2026 · 币安 · 约 63.4 亿美元
+
+| 字段 | 内容 |
+|---|---|
+| 日期 | 2026 年 10 月 29 日（约 20:05 UTC 开始，主要转出在约 20 分钟内完成） |
+| 损失 | 约 63.4 亿美元，涉及约 10 条链；史上最大加密资产盗窃 |
+| 攻击路径 | P1 签名服务被控制（入口 P4：工程师电脑被伪装招聘与恶意下载控制） |
+| 根因 | 据币安初步调查：攻击者经内部工具拿到有容器部署权限的凭证，运行恶意代码，使热钱包签名服务批准交易；私钥未被偷。在以太坊上还签出链上授权，第三方分析认为利用了 EIP-7702 账户委托 |
+| 发现与处置 | 处置：暂停全部充提；另发链上交易撤销授权；约两周内用公司资金与 SAFU 等买回被盗资产；发布临时零知识 PoR 快照；分批恢复提币；重建钱包系统 |
+| 用户结果 | 否。币安宣布全额补足用户资产。补足不等于追回：据美国司法部，政府与行业冻结超过 27 亿美元，其中约 12 亿美元获法院授权扣押或冻结 |
+| 归因 | 据 FBI，朝鲜；区块链分析公司认为是 TraderTraitor |
+| 教训 → 防线 | 签名服务是热钱包的真正控制点；暂停提币不能撤销链上授权；热钱包限额要按最坏损失定 → [B02](B02-platform-security.md)、[B07](B07-incident-response.md)、[B11](B11-security-engineering.md)；完整因果图见 [04 章 5.6 节](../04-wallet-custody.md) |
+
+读图要点（两起合看）：
+
+- 两起都归入 P1，但入口分别是 P9 和 P4。按"最终突破点"分类，它们和 2016–2021 年的热钱包事故同类；按入口看，它们延续了 2024–2025 年"员工与供应商"的趋势。
+- 两起都没有证据表明冷钱包失守。冷热分层仍然有效，但大型交易所的热钱包本身已经是十亿美元级目标。
+- 两家平台都由自有储备兜底。这再次说明，用户结局主要取决于平台储备，见 [B06](B06-treasury-liquidity.md)。
 
 ---
 
@@ -637,6 +674,8 @@ flowchart LR
 - **C05 KuCoin 2020**：[Decrypt：找到攻击者](https://decrypt.co/43806/kucoin-has-found-the-hackers-who-stole-281-million)；[Finance Magnates](https://www.financemagnates.com/cryptocurrency/news/kucoin-identifies-attackers-in-the-281-million-crypto-hack/)；[Wikipedia：KuCoin](https://en.wikipedia.org/wiki/KuCoin)；[FXStreet：追回 84%](https://www.fxstreet.com/amp/cryptocurrencies/news/kucoin-on-track-to-reopen-all-operations-after-recovering-84-of-the-280-million-hack-202011111323)
 - **C06 Liquid 2021**：[Fortune](https://fortune.com/2021/08/19/hackers-liquid-crypto-exchange-japan-100-million-ethereum)；[Cointelegraph：FTX 债务融资](https://regional-front.cointelegraph.com/news/hacked-liquid-exchange-receives-120m-debt-funding-from-ftx)；[Zawya/Reuters：Chainalysis 2021 朝鲜攻击](https://www.zawya.com/en/legal/nkorean-hackers-stole-400mln-in-cryptocurrency-in-2021-report-d1b02km0)
 - **C07 BitMart 2021**：[CNBC](https://www.cnbc.com/2021/12/05/hackers-take-196-million-from-crypto-exchange-bitmart-in-large-breach.html)；[Finance Magnates：赔付](https://www.financemagnates.com/cryptocurrency/news/hacked-crypto-exchange-bitmart-to-compensate-all-victims/)
+- **C17 Bitget 2026**：[BleepingComputer：3.516 亿美元被盗](https://bleepingcomputer.com/news/security/hackers-steal-3516-million-in-bitget-crypto-exchange-hack)；[BleepingComputer：恢复 BTC 提币、金额上调](https://www.bleepingcomputer.com/news/security/bitget-resumes-bitcoin-withdrawals-after-3875-million-crypto-heist/amp/)；[The Hacker News：怀疑朝鲜](https://thehackernews.com/2026/09/bitget-says-suspected-north-korean.html)
+- **C18 币安 2026**：[TechCrunch：暂停提币](https://techcrunch.com/2026/10/29/binance-pauses-withdrawals-as-hackers-suspected-of-stealing-billions-in-crypto/)；[The Block：零知识 PoR 快照](https://www.theblock.co/news/business/2026-11-02-binance-zero-knowledge-proof-of-reserves-snapshot-hack-recovery-432321)；[Fintech Wrap Up：暂停提币为何不够](https://www.fintechwrapup.com/p/deep-dive-why-pausing-withdrawals)；[Yahoo Finance：币安称已补足 63 亿美元](https://finance.yahoo.com/markets/crypto/articles/binance-says-replaced-6-3-193012677.html)；[The Crypto Times：DOJ 扣押 12 亿美元](https://www.cryptotimes.io/2026/11/13/binance-covers-all-6-3b-in-hack-losses-as-doj-moves-to-seize-1-2b-of-stolen-crypto/)
 - **C08 Crypto.com 2022**：[TechCrunch](https://techcrunch.com/2022/01/20/2fa-compromise-led-to-34m-crypto-com-hack/)；[Security Affairs](https://securityaffairs.com/posts/crypto-com-crypto-heist)
 - **C09 Mango Markets 2022**：[Bloomberg Law：定罪被撤销](https://news.bloomberglaw.com/crypto/crypto-traders-convictions-vacated-in-mango-markets-fraud-case)；[OCCRP：返还大部分资金](https://occrp.org/daily/16921-114m-crypto-hacker-outs-himself-returns-most-of-the-money)；[Blockworks：DAO 赔付方案](https://blockworks.com/news/mango-dao-readies-42m-to-make-users-whole)
 - **C10 DMM Bitcoin 2024**：[The Hacker News：FBI 归因 TraderTraitor](https://thehackernews.com/2024/12/north-korean-hackers-pull-off-308m.html)；[The Block：停业并移交 SBI](https://www.theblock.co/post/328890/japanese-exchange-dmm-bitcoin-to-shut-down-transfer-assets-to-sbi-group-unit-after-300-million-hack)

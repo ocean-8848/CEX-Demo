@@ -71,7 +71,7 @@
     <a class="back" href="../backstage/B12-incident-casebook.md">📖 对应章节：B12 交易所安全事故案例库</a>
   </header>
   <h1>事故案例浏览器</h1>
-  <p class="lead">把 2014–2025 年 21 起交易所及相关平台的安全事故放在一张图上。按攻击路径、赔付结局和年份筛选；选中一起事故，看它突破了哪几层防线、哪一层本可以拦住它；最后用测验模式检验你能否只凭事实判断根因类别。</p>
+  <p class="lead">把 2014–2026 年 23 起交易所及相关平台的安全事故放在一张图上。按攻击路径、赔付结局和年份筛选；选中一起事故，看它突破了哪几层防线、哪一层本可以拦住它；最后用测验模式检验你能否只凭事实判断根因类别。</p>
 
   <div class="callout info small">
     <b>怎么玩：</b>
@@ -99,9 +99,9 @@
       </select>
       <label>年份范围</label>
       <div class="yr">
-        <input type="number" id="yFrom" min="2014" max="2025" value="2014" aria-label="起始年份">
+        <input type="number" id="yFrom" min="2014" max="2026" value="2014" aria-label="起始年份">
         <span class="muted">—</span>
-        <input type="number" id="yTo" min="2014" max="2025" value="2025" aria-label="结束年份">
+        <input type="number" id="yTo" min="2014" max="2026" value="2026" aria-label="结束年份">
       </div>
       <p class="small muted" id="countTxt" style="margin:8px 0 0"></p>
     </div>
@@ -286,13 +286,21 @@
     { id: 'upbit25', y: 2025, date: '2025-11-27', ex: 'Upbit', loss: 30.4, lossT: '约 445 亿韩元（约 3,040 万美元），Solana 热钱包', path: 'P1', sub: [], attr: '据报道，Lazarus 被怀疑',
       root: 'Solana 热钱包异常流出，细节未公开', reimbT: '公司储备覆盖', reimb: 'full',
       lesson: '同一交易所 6 年后热钱包再次被盗', failed: ['L3'], stop: ['L3'], limit: ['L5'], ref: 'B12 6.1',
-      facts: '韩国最大交易所的一个 Solana 生态在线钱包在凌晨出现异常流出，涉及 SOL 和多种生态代币。交易所把剩余资产转入离线钱包，并承诺用公司储备覆盖。' }
+      facts: '韩国最大交易所的一个 Solana 生态在线钱包在凌晨出现异常流出，涉及 SOL 和多种生态代币。交易所把剩余资产转入离线钱包，并承诺用公司储备覆盖。' },
+    { id: 'bitget26', y: 2026, date: '2026-09-24', ex: 'Bitget', loss: 387.5, lossT: '初报约 3.516 亿美元，后上调到约 3.875 亿美元（热钱包与温钱包）', path: 'P1', sub: ['P9'], attr: '平台怀疑朝鲜相关组织',
+      root: '据报道，攻击者利用第三方安全产品的零日漏洞，从部分热钱包和温钱包转出资产；冷钱包未受影响', reimbT: '用户保护基金覆盖，用户余额不变', reimb: 'full',
+      lesson: '安全产品本身也是攻击面；温钱包同样需要限额', failed: ['L0', 'L3'], stop: ['L0', 'L3'], limit: ['L5'], ref: 'B12 C17',
+      facts: '一家大型交易所的监控在傍晚发现未授权转账。被转出的是部分热钱包和温钱包，冷钱包没事。调查发现，入口在交易所采购的第三方安全产品里。' },
+    { id: 'binance26', y: 2026, date: '2026-10-29', ex: '币安', loss: 6340, lossT: '约 63.4 亿美元，约 10 条链（史上最大）', path: 'P1', sub: ['P4'], attr: 'FBI：朝鲜；分析公司：TraderTraitor',
+      root: '工程师电脑被伪装招聘控制 → 内部工具与部署凭证 → 控制热钱包签名服务；以太坊上签出链上授权，暂停提币后仍有效', reimbT: '约两周内用公司资金与 SAFU 等全额补足', reimb: 'full',
+      lesson: '签名服务是热钱包真正的控制点；止血要撤销链上授权', failed: ['L0', 'L3'], stop: ['L0', 'L3'], limit: ['L4', 'L5'], ref: 'B12 C18、04 章 5.6',
+      facts: '约 20 分钟内，一家头部交易所的十多个热钱包向攻击者地址转出巨额资产，私钥并没有被偷。交易所暂停提币后，以太坊上仍有一笔转账成功，因为攻击者事先拿到的链上授权还有效。' }
   ];
   CASES.sort(function (a, b) { return a.y - b.y || a.date.localeCompare(b.date); });
   var byId = {}; CASES.forEach(function (c) { byId[c.id] = c; });
 
   /* ---------- 状态 ---------- */
-  var state = { paths: {}, reimb: 'all', yFrom: 2014, yTo: 2025, sel: 'coincheck' };
+  var state = { paths: {}, reimb: 'all', yFrom: 2014, yTo: 2026, sel: 'coincheck' };
   PATH_KEYS.forEach(function (k) { state.paths[k] = true; });
 
   function visible(c) {
@@ -337,8 +345,8 @@
   $('reimbSel').addEventListener('change', function (e) { state.reimb = e.target.value; render(); });
   function yrChange() {
     var a = parseInt($('yFrom').value, 10), b = parseInt($('yTo').value, 10);
-    if (isNaN(a)) a = 2014; if (isNaN(b)) b = 2025;
-    a = Math.max(2014, Math.min(2025, a)); b = Math.max(2014, Math.min(2025, b));
+    if (isNaN(a)) a = 2014; if (isNaN(b)) b = 2026;
+    a = Math.max(2014, Math.min(2026, a)); b = Math.max(2014, Math.min(2026, b));
     if (a > b) { var t = a; a = b; b = t; }
     state.yFrom = a; state.yTo = b; render();
   }
@@ -347,7 +355,7 @@
 
   /* ---------- 散点图 ---------- */
   var W = 760, H = 360, M = { l: 56, r: 16, t: 14, b: 34 }, NARROW = false;
-  var X0 = 2013.5, X1 = 2025.8, LOG0 = 1, LOG1 = 4; // 10M .. 10B（单位：百万美元）
+  var X0 = 2013.5, X1 = 2026.8, LOG0 = 1, LOG1 = 4; // 10M .. 10B（单位：百万美元）
   function sx(y) { return M.l + (y - X0) / (X1 - X0) * (W - M.l - M.r); }
   function sy(v) { var l = Math.log10(Math.max(v, 10)); return H - M.b - (l - LOG0) / (LOG1 - LOG0) * (H - M.t - M.b); }
   function fmtLoss(v) { return v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'B' : Math.round(v) + 'M'; }
@@ -378,9 +386,9 @@
       var tx = document.createElementNS(NS, 'text'); tx.setAttribute('x', M.l - 6); tx.setAttribute('y', y + 4); tx.setAttribute('text-anchor', 'end'); tx.setAttribute('class', 'tick');
       tx.textContent = '$' + fmtLoss(v); g.appendChild(tx);
     });
-    for (var yr = 2014; yr <= 2025; yr++) {
+    for (var yr = 2014; yr <= 2026; yr++) {
       var t = document.createElementNS(NS, 'text'); t.setAttribute('x', sx(yr)); t.setAttribute('y', H - M.b + 18); t.setAttribute('text-anchor', 'middle'); t.setAttribute('class', 'tick');
-      t.textContent = NARROW ? ((yr % 3 === 2 || yr === 2025) ? "'" + String(yr).slice(2) : '') : ((yr % 2 === 0 || yr === 2025) ? String(yr) : ''); g.appendChild(t);
+      t.textContent = NARROW ? ((yr % 3 === 2 || yr === 2026) ? "'" + String(yr).slice(2) : '') : ((yr % 2 === 0 || yr === 2026) ? String(yr) : ''); g.appendChild(t);
       var tk = document.createElementNS(NS, 'line'); tk.setAttribute('x1', sx(yr)); tk.setAttribute('x2', sx(yr)); tk.setAttribute('y1', H - M.b); tk.setAttribute('y2', H - M.b + 4); tk.setAttribute('class', 'gridline'); g.appendChild(tk);
     }
     var ax = document.createElementNS(NS, 'line'); ax.setAttribute('x1', M.l); ax.setAttribute('x2', W - M.r); ax.setAttribute('y1', H - M.b); ax.setAttribute('y2', H - M.b); ax.setAttribute('class', 'gridline'); ax.setAttribute('stroke-dasharray', '0'); g.appendChild(ax);
